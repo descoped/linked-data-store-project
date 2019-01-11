@@ -131,13 +131,13 @@ public class PersistenceLinksConnectionFetcherTest {
     /**
      * For test. Only the interface is marked public.
      */
-    private static final class TestEnvironment implements DataFetchingEnvironment {
+    public static final class TestEnvironment implements DataFetchingEnvironment {
 
         private final Map<String, Object> arguments;
         private final Object source;
         private final ZonedDateTime snapshot;
 
-        private TestEnvironment(
+        public TestEnvironment(
                 Map<String, Object> arguments,
                 Map<String, Object> source,
                 ZonedDateTime snapshot
