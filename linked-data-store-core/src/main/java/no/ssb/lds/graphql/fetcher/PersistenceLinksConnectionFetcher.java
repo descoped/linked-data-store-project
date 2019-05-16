@@ -19,7 +19,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * A wrapper around {@link PersistenceLinksFetcher} that support relay style connections.
+ * A fetcher that support relay style connection parameters and type.
  */
 public class PersistenceLinksConnectionFetcher extends ConnectionFetcher<Map<String, Object>> {
 
@@ -59,7 +59,7 @@ public class PersistenceLinksConnectionFetcher extends ConnectionFetcher<Map<Str
 
             String sourceId = getIdFromSource(environment);
 
-            Flowable<JsonDocument> documents = persistence.readLinkedDocuments(tx, parameters.getSnapshot(), nameSpace,
+            Flowable<JsonDocument> documents = persistence.readTargetDocuments(tx, parameters.getSnapshot(), nameSpace,
                     sourceEntityName, sourceId, relationPath, targetEntityName, parameters.getRange());
 
             List<Edge<Map<String, Object>>> edges = documents.map(document -> toEdge(document)).toList()
