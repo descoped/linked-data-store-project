@@ -2,7 +2,8 @@
 
 This is a convencience project that makes it easy to checkout and pull changes form all LDS repos.
 
-> For more information about Linked Data Store, please refer to the [LDS documentation](https://github.com/statisticsnorway/linked-data-store-documentation).
+> For more information about Linked Data Store, please refer to
+> the [LDS documentation](https://github.com/descoped/linked-data-store-documentation).
 
 
 **Git checkout**
