@@ -1,6 +1,6 @@
-package no.ssb.lds.api.search;
+package io.descoped.lds.api.search;
 
-import no.ssb.lds.api.persistence.DocumentKey;
+import io.descoped.lds.api.persistence.DocumentKey;
 
 public class SearchResult {
 

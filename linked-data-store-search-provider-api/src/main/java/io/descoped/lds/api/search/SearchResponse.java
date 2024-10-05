@@ -1,4 +1,4 @@
-package no.ssb.lds.api.search;
+package io.descoped.lds.api.search;
 
 import java.util.List;
 
