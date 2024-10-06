@@ -166,20 +166,22 @@
                 <version>1.0.0-SNAPSHOT</version>
             </dependency>
             <dependency>
-                <groupId>no.ssb.rawdata</groupId>
+                <groupId>io.descoped.rawdata</groupId>
                 <artifactId>rawdata-client-api</artifactId>
-                <version>0.23</version>
+                <version>2.0.0</version>
             </dependency>
+            <!--
             <dependency>
-                <groupId>no.ssb.rawdata</groupId>
+                <groupId>io.descoped.rawdata</groupId>
                 <artifactId>rawdata-client-provider-lmdb</artifactId>
-                <version>0.2</version>
+                <version>2.0.0-SNAPSHOT</version>
                 <scope>test</scope>
             </dependency>
+            -->
             <dependency>
-                <groupId>no.ssb.rawdata</groupId>
+                <groupId>io.descoped.rawdata</groupId>
                 <artifactId>rawdata-client-provider-postgres</artifactId>
-                <version>0.9</version>
+                <version>2.0.0</version>
             </dependency>
 
             <dependency>
