@@ -143,27 +143,27 @@
             <dependency>
                 <groupId>no.cantara.saga</groupId>
                 <artifactId>saga-api</artifactId>
-                <version>1.0.18</version>
+                <version>1.0.19</version>
             </dependency>
             <dependency>
                 <groupId>no.cantara.saga</groupId>
                 <artifactId>saga-execution</artifactId>
-                <version>1.0.18</version>
+                <version>1.0.19</version>
             </dependency>
             <dependency>
                 <groupId>no.cantara.saga</groupId>
                 <artifactId>sagalog-api</artifactId>
-                <version>1.0.18</version>
+                <version>1.0.19</version>
             </dependency>
             <dependency>
                 <groupId>no.cantara.saga</groupId>
                 <artifactId>sagalog-postgres</artifactId>
-                <version>1.0.18</version>
+                <version>1.0.19</version>
             </dependency>
             <dependency>
                 <groupId>no.cantara.saga</groupId>
                 <artifactId>sagalog-file</artifactId>
-                <version>1.0.18</version>
+                <version>1.0.19</version>
             </dependency>
             <dependency>
                 <groupId>io.descoped.rawdata</groupId>
