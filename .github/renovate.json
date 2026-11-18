@@ -1,0 +1,71 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard"
+  ],
+  "packageRules": [
+    {
+      "description": "Always the latest stable version; CI on JDK 27 is the gate",
+      "matchManagers": [
+        "maven",
+        "github-actions"
+      ],
+      "automerge": true
+    },
+    {
+      "description": "The JDK in the workflows is the baseline (27) and is raised by hand, together with java.version in the root POM and the image.",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchDepNames": [
+        "java-jdk"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "Held versions: each of these moves to the latest stable in the pull request that revises the code written for it (see .claude/CLAUDE.md, Held versions). Remove an entry here in that pull request.",
+      "matchManagers": [
+        "maven"
+      ],
+      "matchPackageNames": [
+        "io.descoped.config:dynamic-configuration",
+        "io.descoped.rawdata:**",
+        "io.reactivex.rxjava2:**",
+        "com.github.akarnokd:rxjava2-jdk9-interop",
+        "com.graphql-java:**",
+        "io.undertow:**",
+        "org.jboss.xnio:**",
+        "org.jboss.threads:**",
+        "org.apache.tika:**",
+        "com.squareup.okhttp3:**",
+        "org.neo4j.driver:**",
+        "org.foundationdb:**",
+        "org.apache.solr:**"
+      ],
+      "matchUpdateTypes": [
+        "major",
+        "minor"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "Maven bumps through the wrapper: Renovate does not update distributionSha256Sum, so CI fails until it is set by hand (see .claude/CLAUDE.md, Maven Wrapper)",
+      "matchManagers": [
+        "maven-wrapper"
+      ],
+      "labels": [
+        "maven-wrapper"
+      ],
+      "prBodyNotes": [
+        "Update `distributionSha256Sum` in `.mvn/wrapper/maven-wrapper.properties` to the SHA-256 of the new `apache-maven-<version>-bin.zip`, after checking the zip against Maven's published `.sha512`."
+      ]
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "labels": [
+      "security"
+    ],
+    "automerge": true
+  }
+}

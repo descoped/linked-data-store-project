@@ -8,7 +8,6 @@ import org.testng.annotations.BeforeMethod;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.Map;
 import java.util.Set;
 
 public class ResultSetPublisherIntegrationTest extends PublisherVerification<ResultSet> {
@@ -26,13 +25,7 @@ public class ResultSetPublisherIntegrationTest extends PublisherVerification<Res
         super(new TestEnvironment(DEFAULT_TIMEOUT_MILLIS, DEFAULT_NO_SIGNALS_TIMEOUT_MILLIS), PUBLISHER_REFERENCE_CLEANUP_TIMEOUT_MILLIS);
         initializer = new PostgresDbInitializer();
         initializer.initialize("ns",
-                Map.of(
-                        "postgres.driver.host", "postgresdb",
-                        "postgres.driver.port", "5432",
-                        "postgres.driver.user", "lds",
-                        "postgres.driver.password", "lds",
-                        "postgres.driver.database", "lds"
-                ),
+                Postgres18.configuration(),
                 Set.of("A")
         );
         postgresPersistence = initializer.getPostgresPersistence();

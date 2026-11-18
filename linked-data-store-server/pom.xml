@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.descoped.lds</groupId>
+        <artifactId>linked-data-store-project</artifactId>
+        <version>3.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>linked-data-store-server</artifactId>
+    <packaging>jar</packaging>
+
+    <name>Linked Data Store Server</name>
+    <description>The runnable Linked Data Store: core with every persistence and search provider, the main class and the container image.</description>
+
+    <build>
+        <plugins>
+            <!-- Pre-3.0 code has little Javadoc. Doclint checks what is there; missing Javadoc becomes an
+                 error again when the module is revised. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <configuration>
+                    <doclint>all,-missing</doclint>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.descoped.config</groupId>
+            <artifactId>dynamic-configuration</artifactId>
+            <version>${dynamic-configuration.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.descoped.lds</groupId>
+            <artifactId>linked-data-store-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>no.cantara.saga</groupId>
+            <artifactId>sagalog-postgres</artifactId>
+            <version>${cantara-saga.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.descoped.rawdata</groupId>
+            <artifactId>rawdata-client-api</artifactId>
+            <version>${rawdata-client.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.descoped.rawdata</groupId>
+            <artifactId>rawdata-client-provider-postgres</artifactId>
+            <version>${rawdata-client.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.descoped.lds</groupId>
+            <artifactId>linked-data-store-persistence-provider-neo4j</artifactId>
+            <version>${project.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.descoped.lds</groupId>
+            <artifactId>linked-data-store-persistence-provider-postgres</artifactId>
+            <version>${project.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.descoped.lds</groupId>
+            <artifactId>linked-data-store-persistence-provider-memory</artifactId>
+            <version>${project.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.descoped.lds</groupId>
+            <artifactId>linked-data-store-persistence-provider-foundationdb</artifactId>
+            <version>${project.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.descoped.lds</groupId>
+            <artifactId>linked-data-store-search-provider-solr</artifactId>
+            <version>${project.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>${slf4j.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>jcl-over-slf4j</artifactId>
+            <version>${slf4j.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <version>${logback.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+    </dependencies>
+
+</project>

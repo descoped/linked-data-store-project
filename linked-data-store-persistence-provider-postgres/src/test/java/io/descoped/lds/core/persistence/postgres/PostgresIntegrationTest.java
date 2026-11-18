@@ -4,6 +4,7 @@ import io.descoped.lds.core.persistence.test.PersistenceIntegrationTest;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 
@@ -15,14 +16,9 @@ public class PostgresIntegrationTest extends PersistenceIntegrationTest {
 
     @BeforeClass
     public void setup() {
-        persistence = new PostgresDbInitializer().initialize(namespace,
-                Map.of("postgres.driver.host", "postgresdb",
-                        "postgres.driver.port", "5432",
-                        "postgres.driver.user", "lds",
-                        "postgres.driver.password", "lds",
-                        "postgres.driver.database", "lds",
-                        "persistence.fragment.capacity", String.valueOf(Integer.MAX_VALUE)
-                ),
+        Map<String, String> configuration = new LinkedHashMap<>(Postgres18.configuration());
+        configuration.put("persistence.fragment.capacity", String.valueOf(Integer.MAX_VALUE));
+        persistence = new PostgresDbInitializer().initialize(namespace, configuration,
                 Set.of("Person", "Address", "FunkyLongAddress"));
     }
 

@@ -1,204 +1,172 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>io.descoped.lds</groupId>
+    <parent>
+        <groupId>io.descoped.lds</groupId>
+        <artifactId>linked-data-store-project</artifactId>
+        <version>3.0.0-SNAPSHOT</version>
+    </parent>
+
     <artifactId>linked-data-store-core</artifactId>
-    <version>2.0.0-SNAPSHOT</version>
     <packaging>jar</packaging>
 
-    <name>LinkedDataStore Core</name>
-    <description>LinkedDataStore Core</description>
-    <url>https://github.com/descoped/</url>
-    <inceptionYear>2018</inceptionYear>
+    <name>Linked Data Store Core</name>
+    <description>The Linked Data Store application: REST and GraphQL over a model read at start, writes through sagas with a transaction log, and search.</description>
 
-    <properties>
-        <java.version>11</java.version>
-        <module.build.sourceEncoding>UTF-8</module.build.sourceEncoding>
-        <module.reporting.outputEncoding>UTF-8</module.reporting.outputEncoding>
-    </properties>
-
-    <licenses>
-        <license>
-            <name>The Apache License, Version 2.0</name>
-            <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
-        </license>
-    </licenses>
-
-    <developers>
-        <developer>
-            <name>Ove Ranheim</name>
-            <email>ove.ranheim@gmail.com</email>
-            <url>https://www.linkedin.com/in/overanheim/</url>
-        </developer>
-    </developers>
-
-    <contributors>
-        <contributor>
-            <name>Kim Christian Gaarder</name>
-            <url>https://www.linkedin.com/in/kimchristiangaarder/</url>
-        </contributor>
-        <contributor>
-            <name>Hadrien Kohl</name>
-            <url>https://www.linkedin.com/in/hadrienkohl/</url>
-        </contributor>
-    </contributors>
-
-    <scm>
-        <connection>scm:git:git://github.com/descoped/linked-data-store-core.git</connection>
-        <developerConnection>scm:git:git@github.com:descoped/linked-data-store-core.git</developerConnection>
-        <url>https://github.com/descoped/linked-data-store-core/tree/master</url>
-        <tag>HEAD</tag>
-    </scm>
-
-    <repositories>
-        <repository>
-            <id>jitpack.io</id>
-            <url>https://jitpack.io</url>
-        </repository>
-        <repository>
-            <id>cantara-releases</id>
-            <name>Cantara Release Repository</name>
-            <url>https://mvnrepo.cantara.no/content/repositories/releases/</url>
-        </repository>
-    </repositories>
-
-    <dependencyManagement>
-        <dependencies>
-            <dependency>
-                <groupId>io.descoped.lds</groupId>
-                <artifactId>linked-data-store-project</artifactId>
-                <version>2.0.0-SNAPSHOT</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
-        </dependencies>
-    </dependencyManagement>
+    <build>
+        <plugins>
+            <!-- Pre-3.0 code: these lint categories are not clean yet. Every other warning fails the build, and
+                 this override goes when the module is revised. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <compilerArgs combine.self="override">
+                        <arg>-Xlint:all,-requires-automatic,-exports,-serial,-missing-explicit-ctor,-rawtypes,-unchecked,-cast,-deprecation,-lossy-conversions,-static</arg>
+                        <arg>-Werror</arg>
+                    </compilerArgs>
+                </configuration>
+            </plugin>
+            <!-- Pre-3.0 code has little Javadoc. Doclint checks what is there; missing Javadoc becomes an
+                 error again when the module is revised. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <configuration>
+                    <doclint>all,-missing</doclint>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 
     <dependencies>
         <dependency>
             <groupId>io.descoped.config</groupId>
             <artifactId>dynamic-configuration</artifactId>
+            <version>${dynamic-configuration.version}</version>
             <exclusions>
                 <exclusion>
-                    <artifactId>reactive-streams</artifactId>
                     <groupId>org.reactivestreams</groupId>
+                    <artifactId>reactive-streams</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
-
         <dependency>
             <groupId>io.descoped.lds</groupId>
             <artifactId>linked-data-store-persistence-provider-api</artifactId>
+            <version>${project.version}</version>
         </dependency>
-
         <dependency>
             <groupId>io.descoped.lds</groupId>
             <artifactId>linked-data-store-search-provider-api</artifactId>
+            <version>${project.version}</version>
         </dependency>
-
         <dependency>
             <groupId>no.cantara.concurrent.futureselector</groupId>
             <artifactId>future-selector</artifactId>
+            <version>${cantara-saga.version}</version>
         </dependency>
         <dependency>
             <groupId>no.cantara.saga</groupId>
             <artifactId>saga-api</artifactId>
+            <version>${cantara-saga.version}</version>
         </dependency>
         <dependency>
             <groupId>no.cantara.saga</groupId>
             <artifactId>saga-execution</artifactId>
+            <version>${cantara-saga.version}</version>
         </dependency>
         <dependency>
             <groupId>no.cantara.saga</groupId>
             <artifactId>sagalog-api</artifactId>
+            <version>${cantara-saga.version}</version>
         </dependency>
         <dependency>
             <groupId>no.cantara.saga</groupId>
             <artifactId>sagalog-postgres</artifactId>
+            <version>${cantara-saga.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>no.cantara.saga</groupId>
             <artifactId>sagalog-file</artifactId>
+            <version>${cantara-saga.version}</version>
             <scope>test</scope>
         </dependency>
-
         <dependency>
             <groupId>io.descoped.lds</groupId>
             <artifactId>linked-data-store-persistence-provider-memory</artifactId>
+            <version>${project.version}</version>
             <scope>test</scope>
         </dependency>
-
         <dependency>
             <groupId>io.descoped.rawdata</groupId>
             <artifactId>rawdata-client-api</artifactId>
+            <version>${rawdata-client.version}</version>
         </dependency>
-        <!--
-        <dependency>
-            <groupId>io.descoped.rawdata</groupId>
-            <artifactId>rawdata-client-provider-lmdb</artifactId>
-            <scope>test</scope>
-        </dependency>
-        -->
         <dependency>
             <groupId>io.descoped.rawdata</groupId>
             <artifactId>rawdata-client-provider-postgres</artifactId>
+            <version>${rawdata-client.version}</version>
             <scope>test</scope>
         </dependency>
-
         <dependency>
             <groupId>io.reactivex.rxjava2</groupId>
             <artifactId>rxjava</artifactId>
+            <version>${rxjava2.version}</version>
         </dependency>
-
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-core</artifactId>
+            <version>${jackson.version}</version>
         </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
+            <version>${jackson.version}</version>
         </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-annotations</artifactId>
+            <version>${jackson-annotations.version}</version>
         </dependency>
         <dependency>
             <groupId>org.msgpack</groupId>
             <artifactId>jackson-dataformat-msgpack</artifactId>
+            <version>${msgpack.version}</version>
         </dependency>
-
         <dependency>
             <groupId>com.github.akarnokd</groupId>
             <artifactId>rxjava2-jdk9-interop</artifactId>
+            <version>${rxjava2-jdk9-interop.version}</version>
         </dependency>
-
         <dependency>
             <groupId>com.graphql-java</groupId>
             <artifactId>graphql-java</artifactId>
+            <version>${graphql-java.version}</version>
         </dependency>
-
         <dependency>
             <groupId>com.graphql-java</groupId>
             <artifactId>graphql-java-extended-scalars</artifactId>
+            <version>${graphql-java-extended-scalars.version}</version>
             <exclusions>
                 <exclusion>
-                    <artifactId>okhttp</artifactId>
                     <groupId>com.squareup.okhttp3</groupId>
+                    <artifactId>okhttp</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
-
         <dependency>
             <groupId>org.json</groupId>
             <artifactId>json</artifactId>
+            <version>${org-json.version}</version>
         </dependency>
-
         <dependency>
-            <groupId>com.github.everit-org.json-schema</groupId>
-            <artifactId>org.everit.json.schema</artifactId>
+            <groupId>com.github.erosb</groupId>
+            <artifactId>everit-json-schema</artifactId>
+            <version>${everit-json-schema.version}</version>
             <exclusions>
                 <exclusion>
                     <groupId>commons-logging</groupId>
@@ -206,355 +174,112 @@
                 </exclusion>
             </exclusions>
         </dependency>
-
         <dependency>
             <groupId>io.undertow</groupId>
             <artifactId>undertow-core</artifactId>
-            <scope>compile</scope>
+            <version>${undertow.version}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.tika</groupId>
             <artifactId>tika-core</artifactId>
-            <version>1.24.1</version>
+            <version>${tika.version}</version>
         </dependency>
-
         <dependency>
             <groupId>org.jboss.xnio</groupId>
             <artifactId>xnio-api</artifactId>
-            <scope>compile</scope>
+            <version>${xnio.version}</version>
             <exclusions>
                 <exclusion>
                     <groupId>org.jboss.threads</groupId>
                     <artifactId>jboss-threads</artifactId>
                 </exclusion>
                 <exclusion>
-                    <artifactId>wildfly-common</artifactId>
                     <groupId>org.wildfly.common</groupId>
+                    <artifactId>wildfly-common</artifactId>
                 </exclusion>
                 <exclusion>
-                    <artifactId>jboss-logging</artifactId>
                     <groupId>org.jboss.logging</groupId>
+                    <artifactId>jboss-logging</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
-
         <dependency>
             <groupId>org.jboss.threads</groupId>
             <artifactId>jboss-threads</artifactId>
+            <version>${jboss-threads.version}</version>
             <scope>runtime</scope>
             <exclusions>
                 <exclusion>
-                    <artifactId>jboss-logging</artifactId>
                     <groupId>org.jboss.logging</groupId>
+                    <artifactId>jboss-logging</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
-
         <dependency>
             <groupId>org.jboss.xnio</groupId>
             <artifactId>xnio-nio</artifactId>
+            <version>${xnio.version}</version>
             <scope>runtime</scope>
         </dependency>
-
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
-            <scope>compile</scope>
+            <version>${slf4j.version}</version>
         </dependency>
-
-        <!-- Needed by hystrix-core and org.everit.json.schema -->
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>jcl-over-slf4j</artifactId>
+            <version>${slf4j.version}</version>
             <scope>runtime</scope>
         </dependency>
-
-        <dependency>
-            <groupId>ch.qos.logback</groupId>
-            <artifactId>logback-core</artifactId>
-            <scope>test</scope>
-        </dependency>
-
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
+            <version>${logback.version}</version>
             <scope>test</scope>
-            <exclusions>
-                <exclusion>
-                    <groupId>com.sun.mail</groupId>
-                    <artifactId>javax.mail</artifactId>
-                </exclusion>
-            </exclusions>
         </dependency>
-
         <dependency>
             <groupId>org.testng</groupId>
             <artifactId>testng</artifactId>
+            <version>${testng.version}</version>
             <scope>test</scope>
         </dependency>
-
         <dependency>
             <groupId>com.damnhandy</groupId>
             <artifactId>handy-uri-templates</artifactId>
-            <!--<scope>test</scope>-->
+            <version>${handy-uri-templates.version}</version>
+            <scope>test</scope>
         </dependency>
-
         <dependency>
             <groupId>org.assertj</groupId>
             <artifactId>assertj-core</artifactId>
+            <version>${assertj.version}</version>
             <scope>test</scope>
         </dependency>
-
         <dependency>
             <groupId>javax.inject</groupId>
             <artifactId>javax.inject</artifactId>
+            <version>${javax-inject.version}</version>
             <scope>test</scope>
         </dependency>
-
         <dependency>
             <groupId>org.skyscreamer</groupId>
             <artifactId>jsonassert</artifactId>
+            <version>${jsonassert.version}</version>
             <scope>test</scope>
         </dependency>
-
         <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-math3</artifactId>
+            <version>${commons-math3.version}</version>
             <scope>test</scope>
         </dependency>
-
-        <!-- https://mvnrepository.com/artifact/com.squareup.okhttp3/okhttp-urlconnection -->
         <dependency>
             <groupId>com.squareup.okhttp3</groupId>
             <artifactId>okhttp-urlconnection</artifactId>
+            <version>${okhttp.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
-
-    <profiles>
-        <profile>
-            <id>snapshot</id>
-            <distributionManagement>
-                <snapshotRepository>
-                    <id>ossrh</id>
-                    <url>https://s01.oss.sonatype.org/content/repositories/snapshots</url>
-                </snapshotRepository>
-            </distributionManagement>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-release-plugin</artifactId>
-                        <configuration>
-                            <tagNameFormat>@{project.version}</tagNameFormat>
-                            <goals>deploy</goals>
-                        </configuration>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-
-        <profile>
-            <id>release</id>
-            <distributionManagement>
-                <repository>
-                    <id>ossrh</id>
-                    <url>https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/</url>
-                </repository>
-            </distributionManagement>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-source-plugin</artifactId>
-                        <version>3.3.1</version>
-                        <executions>
-                            <execution>
-                                <id>attach-sources</id>
-                                <goals>
-                                    <goal>jar-no-fork</goal>
-                                </goals>
-                            </execution>
-                        </executions>
-                    </plugin>
-
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-javadoc-plugin</artifactId>
-                        <version>3.10.1</version>
-                        <configuration>
-                            <encoding>${module.reporting.outputEncoding}</encoding>
-                            <additionalOptions>-Xdoclint:none</additionalOptions>
-                        </configuration>
-                        <executions>
-                            <execution>
-                                <id>attach-javadocs</id>
-                                <goals>
-                                    <goal>jar</goal>
-                                </goals>
-                            </execution>
-                        </executions>
-                    </plugin>
-
-                    <plugin>
-                        <groupId>org.sonatype.plugins</groupId>
-                        <artifactId>nexus-staging-maven-plugin</artifactId>
-                        <version>1.7.0</version>
-                        <extensions>true</extensions>
-                        <configuration>
-                            <serverId>ossrh</serverId>
-                            <nexusUrl>https://s01.oss.sonatype.org/</nexusUrl>
-                            <autoReleaseAfterClose>true</autoReleaseAfterClose>
-                        </configuration>
-                    </plugin>
-
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-release-plugin</artifactId>
-                        <version>3.1.1</version>
-                        <configuration>
-                            <tagNameFormat>@{project.version}</tagNameFormat>
-                            <autoVersionSubmodules>true</autoVersionSubmodules>
-                            <useReleaseProfile>false</useReleaseProfile>
-                            <releaseProfiles>release</releaseProfiles>
-                            <goals>deploy</goals>
-                        </configuration>
-                    </plugin>
-
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-gpg-plugin</artifactId>
-                        <version>3.2.7</version>
-                        <executions>
-                            <execution>
-                                <id>sign-artifacts</id>
-                                <phase>verify</phase>
-                                <goals>
-                                    <goal>sign</goal>
-                                </goals>
-                            </execution>
-                        </executions>
-                        <configuration>
-                            <gpgArguments>
-                                <arg>--pinentry-mode</arg>
-                                <arg>loopback</arg>
-                            </gpgArguments>
-                        </configuration>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-
-        <profile>
-            <id>coverage</id>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>org.jacoco</groupId>
-                        <artifactId>jacoco-maven-plugin</artifactId>
-                        <version>0.8.12</version>
-                        <executions>
-                            <execution>
-                                <id>prepare-agent</id>
-                                <goals>
-                                    <goal>prepare-agent</goal>
-                                </goals>
-                            </execution>
-                            <execution>
-                                <id>report</id>
-                                <phase>prepare-package</phase>
-                                <goals>
-                                    <goal>report</goal>
-                                </goals>
-                            </execution>
-                        </executions>
-                    </plugin>
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-surefire-plugin</artifactId>
-                        <version>3.5.0</version>
-                        <configuration>
-                            <!--suppress UnresolvedMavenProperty -->
-                            <argLine>
-                                ${argLine}
-                            </argLine>
-                        </configuration>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-
-        <profile>
-            <id>sonar</id>
-            <properties>
-                <sonar.host.url>https://sonarcloud.io</sonar.host.url>
-                <sonar.organization>descoped</sonar.organization>
-                <sonar.projectKey>descoped_${project.artifactId}</sonar.projectKey>
-                <sonar.moduleKey>${project.groupId}:${project.artifactId}</sonar.moduleKey>
-                <sonar.coverage.exclusions/>
-                <sonar.coverage.jacoco.xmlReportPaths>
-                    target/site/jacoco/jacoco.xml
-                </sonar.coverage.jacoco.xmlReportPaths>
-            </properties>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>org.sonarsource.scanner.maven</groupId>
-                        <artifactId>sonar-maven-plugin</artifactId>
-                        <version>4.0.0.4121</version>
-                        <executions>
-                            <execution>
-                                <id>sonar</id>
-                                <phase>verify</phase>
-                                <goals>
-                                    <goal>sonar</goal>
-                                </goals>
-                            </execution>
-                        </executions>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-    </profiles>
-
-    <build>
-        <plugins>
-            <plugin>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.8.0</version>
-                <configuration>
-                    <source>${java.version}</source>
-                    <target>${java.version}</target>
-                    <release>${java.version}</release>
-                    <encoding>${module.build.sourceEncoding}</encoding>
-                    <meminitial>64m</meminitial>
-                    <maxmem>512m</maxmem>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-resources-plugin</artifactId>
-                <version>3.1.0</version>
-                <configuration>
-                    <encoding>UTF-8</encoding>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-jar-plugin</artifactId>
-                <version>3.1.0</version>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <version>2.19.1</version> <!-- Newer version do not yet work with Java 11 -->
-                <configuration>
-                    <suiteXmlFiles>
-                        <suiteXmlFile>src/test/resources/testng.xml</suiteXmlFile>
-                    </suiteXmlFiles>
-                </configuration>
-            </plugin>
-        </plugins>
-    </build>
 
 </project>
