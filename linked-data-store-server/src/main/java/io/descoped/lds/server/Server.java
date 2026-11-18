@@ -43,6 +43,7 @@ public class Server {
             try {
                 Thread.currentThread().join();
             } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
             }
         } finally {
             application.stop();

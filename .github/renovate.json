@@ -24,28 +24,29 @@
       "enabled": false
     },
     {
-      "description": "Held versions: each of these moves to the latest stable in the pull request that revises the code written for it (see .claude/CLAUDE.md, Held versions). Remove an entry here in that pull request.",
+      "description": "Held versions: each of these moves to the latest stable in the pull request that revises the code written for it (see .claude/CLAUDE.md, Held versions; the same list as the held block in the root POM). No updates at all until then, patch releases included, so the list stays one list. Remove an entry here in that pull request.",
       "matchManagers": [
         "maven"
       ],
       "matchPackageNames": [
+        "no.cantara.saga:**",
+        "no.cantara.concurrent.futureselector:**",
         "io.descoped.config:dynamic-configuration",
         "io.descoped.rawdata:**",
         "io.reactivex.rxjava2:**",
         "com.github.akarnokd:rxjava2-jdk9-interop",
+        "org.reactivestreams:**",
         "com.graphql-java:**",
         "io.undertow:**",
         "org.jboss.xnio:**",
         "org.jboss.threads:**",
+        "com.github.erosb:everit-json-schema",
+        "org.json:json",
         "org.apache.tika:**",
         "com.squareup.okhttp3:**",
         "org.neo4j.driver:**",
         "org.foundationdb:**",
         "org.apache.solr:**"
-      ],
-      "matchUpdateTypes": [
-        "major",
-        "minor"
       ],
       "enabled": false
     },

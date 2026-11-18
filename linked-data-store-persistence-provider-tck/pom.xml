@@ -15,6 +15,12 @@
     <name>Linked Data Store Persistence Provider TCK</name>
     <description>The tests every persistence provider must pass. A provider depends on it with test scope and extends its test class.</description>
 
+    <!-- The provider tests are this module's product, so they live in src/main; SonarCloud analyses them as tests. -->
+    <properties>
+        <sonar.sources>pom.xml</sonar.sources>
+        <sonar.tests>src/main/java</sonar.tests>
+    </properties>
+
     <build>
         <plugins>
             <!-- Pre-3.0 code: these lint categories are not clean yet. Every other warning fails the build, and
