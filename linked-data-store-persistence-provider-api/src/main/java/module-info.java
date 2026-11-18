@@ -3,8 +3,9 @@ module io.descoped.lds.persistence.api {
     requires org.reactivestreams;
     requires com.github.akarnokd.rxjava2jdk9interop;
     requires com.fasterxml.jackson.core;
-    requires com.fasterxml.jackson.databind;
+    requires transitive com.fasterxml.jackson.databind;
 
+    exports io.descoped.lds.persistence.api;
     exports io.descoped.lds.api.persistence;
     exports io.descoped.lds.api.persistence.flattened;
     exports io.descoped.lds.api.persistence.streaming;
@@ -12,4 +13,6 @@ module io.descoped.lds.persistence.api {
     exports io.descoped.lds.api.persistence.reactivex;
     exports io.descoped.lds.api.specification;
     exports io.descoped.lds.api.json;
+
+    uses io.descoped.lds.persistence.api.PersistenceProvider;
 }

@@ -13,7 +13,7 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import java.io.IOException;
-import java.net.ServerSocket;
+import java.net.InetSocketAddress;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -27,28 +27,6 @@ public class CORSHandlerTest {
     private OkHttpClient client;
     private Undertow server;
     private Request.Builder requestBuilder;
-
-    /**
-     * Find a free port for the undertow server.
-     */
-    private static int findFree() {
-        int port = 0;
-        while (port == 0) {
-            ServerSocket socket = null;
-            try {
-                socket = new ServerSocket(0);
-                port = socket.getLocalPort();
-            } catch (IOException e) {
-                throw new RuntimeException("Failed finding free port", e);
-            } finally {
-                try {
-                    if (socket != null) socket.close();
-                } catch (IOException ignore) {
-                }
-            }
-        }
-        return port;
-    }
 
     @AfterMethod
     public void tearDown() {
@@ -75,10 +53,12 @@ public class CORSHandlerTest {
         CORSHandler corsHandler = new CORSHandler(httpHandler, patterns, true, 444,
                 123456, Set.of("GET", "PUT"), Set.of("x-foo", "y-bar"));
 
-        int port = findFree();
-        server = Undertow.builder().addHttpListener(port, "localhost").setHandler(corsHandler).build();
+        // Port 0: the system picks a free port when the server binds. Looking for a free port first and binding
+        // it afterwards lets another process take it in between.
+        server = Undertow.builder().addHttpListener(0, "localhost").setHandler(corsHandler).build();
         client = new OkHttpClient();
         server.start();
+        int port = ((InetSocketAddress) server.getListenerInfo().get(0).getAddress()).getPort();
 
         requestBuilder = new Request.Builder().url("http://localhost:" + port)
                 .addHeader("Origin", "http://foo");

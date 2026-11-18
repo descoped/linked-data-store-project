@@ -13,9 +13,9 @@ reactor, group `io.descoped.lds`.
 |---|---|---|
 | `linked-data-store-project` (root) | n/a | parent and aggregator |
 | `linked-data-store-bom` | n/a | BOM of the modules below |
-| `linked-data-store-persistence-provider-api` | `io.descoped.lds.persistence.api` | the persistence SPI (`PersistenceInitializer`, `RxJsonPersistence`), document flattening, `Specification` |
-| `linked-data-store-persistence-provider-tck` | none yet (class path) | `PersistenceIntegrationTest`, the tests every persistence provider extends |
-| `linked-data-store-persistence-provider-memory` | `io.descoped.lds.persistence.memory` | provider `mem`, in memory; built on the FoundationDB provider's key layout |
+| `linked-data-store-persistence-provider-api` | `io.descoped.lds.persistence.api` | the persistence SPI, package `io.descoped.lds.persistence.api` (`PersistenceProvider`, `Persistence`, `Transaction`, `Document`, `Range`), and `Specification`. Also still the pre-3.0 reactive SPI (`io.descoped.lds.api.persistence..`), see "The two persistence interfaces" |
+| `linked-data-store-persistence-provider-tck` | none yet (class path) | `PersistenceTck` (JUnit), the tests every persistence provider extends; and the pre-3.0 `PersistenceIntegrationTest` (TestNG) for the providers not yet revised |
+| `linked-data-store-persistence-provider-memory` | `io.descoped.lds.persistence.memory` | provider `mem`: an ordered map in memory, keys packed with `io.descoped.tuple`. For tests and for trying LDS, not for production |
 | `linked-data-store-persistence-provider-postgres` | `io.descoped.lds.persistence.postgres` | provider `postgres` |
 | `linked-data-store-persistence-provider-neo4j` | `io.descoped.lds.persistence.neo4j` | provider `neo4j` |
 | `linked-data-store-persistence-provider-foundationdb` | `io.descoped.lds.persistence.foundationdb` | provider `foundationdb` |
@@ -31,6 +31,20 @@ Until 2026-11 every module was a repository of its own; their histories were imp
 (old tags prefixed with the repository name, e.g. `linked-data-store-core/v0.16`). Nothing was released under
 `io.descoped.lds` before. 3.0.0 is the first version built from this repository, and the work toward it goes module
 by module: build first, then the persistence API and each provider, search, core, the server image.
+
+## The two persistence interfaces
+
+3.0 has one persistence SPI, `io.descoped.lds.persistence.api`: blocking calls (run them on virtual threads),
+versions as UTC instants cut to microseconds, `Transaction.commit()` explicit and `close()` rolling back, validated
+names (`Identifiers`), ids in code point order. Its rules are the package documentation, and `PersistenceTck` checks
+them. The memory provider implements it.
+
+The pre-3.0 interface (`RxJsonPersistence`, `PersistenceInitializer`, fragments and flattening, RxJava 2) is still
+in the API module because core and the PostgreSQL, Neo4j and FoundationDB providers use it. Core reaches a 3.0
+provider through `PersistenceAdapter` (`PersistenceConfigurator` looks for a `PersistenceProvider` first), which
+keeps core's pre-3.0 expectations: `close()` commits there. Each provider pull request moves that provider to the
+3.0 SPI and `PersistenceTck`; the pull request that moves core to it deletes the reactive interface, the adapter,
+`PersistenceIntegrationTest` and RxJava. Write nothing new against the reactive interface.
 
 ## Invariants (never violate)
 
@@ -75,7 +89,7 @@ to the latest stable and removes them from this list, from the "held" block in t
 
 | Dependency | Held at | Moves with |
 |---|---|---|
-| RxJava 2, rxjava2-jdk9-interop, reactive-streams | 2.2.21, 0.2.7, 1.0.4 | the persistence API revision (the SPI stops being reactive) |
+| RxJava 2, rxjava2-jdk9-interop, reactive-streams | 2.2.21, 0.2.7, 1.0.4 | core's move to the 3.0 persistence SPI, which removes them (the last provider on the reactive interface must be revised first) |
 | fdb-java | 5.2.5 | the FoundationDB provider |
 | neo4j-java-driver | 4.0.2 | the Neo4j provider |
 | solr-solrj, solr-test-framework (and the Restlet repository in the Solr module) | 7.7.1 | the Solr provider |
@@ -88,11 +102,12 @@ to the latest stable and removes them from this list, from the "held" block in t
 
 ## Testing
 
-- TestNG 7, run by Surefire on the class path (`useModulePath` false): the pre-3.0 tests share packages with the
-  code. Tests move to JUnit and to test modules of their own as each module is revised.
+- New and revised tests are JUnit 6 with AssertJ. The pre-3.0 tests are TestNG 7; both run in one Surefire run, on
+  the class path (`useModulePath` false), because the pre-3.0 tests share packages with the code. Tests move to
+  JUnit as each module is revised.
 - The PostgreSQL provider's tests (the TCK and the reactive-streams TCK for its publisher) run on a real
   PostgreSQL 18 (`postgres:18-alpine`) through Testcontainers, so **the build needs Docker**.
-- The TCK runs for the memory and PostgreSQL providers. `Neo4jPersistenceIntegrationTest` and
+- `PersistenceTck` runs for the memory provider; the pre-3.0 suite runs for PostgreSQL. `Neo4jPersistenceIntegrationTest` and
   `FoundationDBIntegrationTest` are excluded in their modules' POMs, with the reason, until those providers are
   revised against a container.
 - Core's tests start the application in the JVM on a random port with the memory provider (`TestServerListener`).
