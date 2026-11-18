@@ -23,8 +23,9 @@ import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.json.JsonDocument;
 import io.descoped.lds.api.persistence.json.JsonTools;
+import io.descoped.lds.api.persistence.reactivex.PersistenceAdapter;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
-import io.descoped.lds.core.persistence.memory.MemoryInitializer;
+import io.descoped.lds.persistence.memory.MemoryPersistenceProvider;
 import io.descoped.lds.graphql.GraphQLContext;
 import io.undertow.server.HttpServerExchange;
 import org.dataloader.DataLoader;
@@ -62,10 +63,7 @@ public class PersistenceLinksConnectionFetcherTest {
 
     @BeforeMethod
     public void setUp() {
-        RxJsonPersistence persistence = new MemoryInitializer().initialize("ns",
-                Map.of("persistence.mem.wait.min", "0",
-                        "persistence.mem.wait.max", "0"),
-                Set.of("Source", "Target"));
+        RxJsonPersistence persistence = new PersistenceAdapter(new MemoryPersistenceProvider().open(Map.of(), null));
         connectionFetcher = new PersistenceLinksConnectionFetcher(persistence, "ns", "Source", JsonNavigationPath.from("$.targetIds"), "Target");
         snapshot = ZonedDateTime.now();
 

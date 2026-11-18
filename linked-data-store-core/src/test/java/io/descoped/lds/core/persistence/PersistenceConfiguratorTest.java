@@ -20,10 +20,7 @@ public class PersistenceConfiguratorTest {
     public void thatServiceLoadingWorks() {
         DynamicConfiguration configuration = new StoreBasedDynamicConfiguration.Builder()
                 .values("persistence.provider", "mem",
-                        "persistence.initialization.max-wait-seconds", "0",
-                        "persistence.mem.wait.min", "0",
-                        "persistence.mem.wait.max", "0",
-                        "persistence.fragment.capacity", "1024")
+                        "persistence.initialization.max-wait-seconds", "0")
                 .build();
         Specification specification = JsonSchemaBasedSpecification.create("spec/schemas/contact.json", "spec/schemas/provisionagreement.json");
         RxJsonPersistence persistence = PersistenceConfigurator.configurePersistence(configuration, specification);
@@ -31,32 +28,16 @@ public class PersistenceConfiguratorTest {
     }
 
     @Test
-    public void thatInitializationFailsWhenConfigurationsAreMissing() {
+    public void thatAnUnknownProviderIsRejected() {
         DynamicConfiguration configuration = new StoreBasedDynamicConfiguration.Builder()
-                .values("persistence.provider", "mem")
+                .values("persistence.provider", "no-such-provider")
                 .build();
         Specification specification = JsonSchemaBasedSpecification.create("spec/schemas/contact.json", "spec/schemas/provisionagreement.json");
         try {
             PersistenceConfigurator.configurePersistence(configuration, specification);
-            Assert.fail("Test should have failed because configurations are missing");
-        } catch (IllegalArgumentException e) {
-            Assert.assertTrue(e.getMessage().contains("persistence.fragment.capacity"));
+            Assert.fail("A provider that is not on the class path must not be found");
+        } catch (RuntimeException e) {
+            Assert.assertTrue(e.getMessage().contains("no-such-provider"));
         }
     }
-
-    @Test
-    public void thatAnnotationsAcrossServiceLoaderWorks() {
-        String providerId = "mem";
-        ServiceLoader<PersistenceInitializer> loader = ServiceLoader.load(PersistenceInitializer.class);
-        List<ServiceLoader.Provider<PersistenceInitializer>> providers = loader.stream()
-                .filter(p -> {
-                    Class<? extends PersistenceInitializer> type = p.type();
-                    ProviderName providerName = type.getDeclaredAnnotation(ProviderName.class);
-                    return providerId.equals(providerName.value());
-                })
-                .collect(Collectors.toList());
-        Assert.assertEquals(providers.size(), 1);
-        Assert.assertEquals(providers.get(0).get().persistenceProviderId(), providerId);
-    }
-
 }

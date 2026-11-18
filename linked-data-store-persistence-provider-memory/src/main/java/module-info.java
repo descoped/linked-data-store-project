@@ -1,10 +1,13 @@
-import io.descoped.lds.api.persistence.PersistenceInitializer;
-import io.descoped.lds.core.persistence.memory.MemoryInitializer;
-
+/**
+ * The in-memory persistence provider, {@code mem}.
+ */
 module io.descoped.lds.persistence.memory {
-    requires io.descoped.lds.persistence.api;
-    requires io.descoped.lds.persistence.foundationdb;
-    requires fdb.java;
+    requires transitive io.descoped.lds.persistence.api;
+    requires io.descoped.tuple;
+    requires com.fasterxml.jackson.databind;
 
-    provides PersistenceInitializer with MemoryInitializer;
+    exports io.descoped.lds.persistence.memory;
+
+    provides io.descoped.lds.persistence.api.PersistenceProvider
+            with io.descoped.lds.persistence.memory.MemoryPersistenceProvider;
 }
