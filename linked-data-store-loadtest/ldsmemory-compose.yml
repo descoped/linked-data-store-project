@@ -1,0 +1,34 @@
+version: '3.3'
+
+services:
+
+  lds:
+    image: descoped/lds-memory:latest
+    networks:
+    - ldsloadtest
+    ports:
+    - "9090:9090"
+    environment:
+      - LDS_persistence.fragment.capacity=8192
+    volumes:
+    - ldsmemoryconf:/conf:ro
+    - ldsmemoryschemas:/schemas:ro
+
+volumes:
+  ldsmemoryconf:
+    driver: local
+    driver_opts:
+      type: none
+      device: ${CONF_FOLDER}
+      o: bind
+  ldsmemoryschemas:
+    driver: local
+    driver_opts:
+      type: none
+      device: ${SCHEMA_FOLDER}
+      o: bind
+
+networks:
+  ldsloadtest:
+    external:
+      name: ldsloadtest

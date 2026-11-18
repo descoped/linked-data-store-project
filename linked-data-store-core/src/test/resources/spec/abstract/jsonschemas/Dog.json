@@ -1,0 +1,19 @@
+{
+  "$ref" : "#/definitions/Dog",
+  "definitions" : {
+    "Dog" : {
+      "type" : "object",
+      "properties" : {
+        "name" : {
+          "type" : "string"
+        },
+        "age" : {
+          "type" : "number"
+        }
+      },
+      "required" : [ "name" ],
+      "additionalProperties" : false
+    }
+  },
+  "$schema" : "http://json-schema.org/draft-04/schema#"
+}
