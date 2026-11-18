@@ -29,7 +29,6 @@ final class MemoryPersistence implements Persistence {
     private static final Object DELETE_MARKER = new Object();
 
     private final MemoryStore store = new MemoryStore();
-    private volatile boolean closed;
 
     @Override
     public Transaction begin(boolean readOnly) {
@@ -216,9 +215,24 @@ final class MemoryPersistence implements Persistence {
         });
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>A transaction that is still open is rolled back the next time it is used: it fails, commit included.
+     */
     @Override
     public void close() {
-        closed = true;
+        store.closed = true;
+    }
+
+    /** How many keys are committed, documents and recorded values together. */
+    int committedKeys() {
+        store.lock.readLock().lock();
+        try {
+            return store.size();
+        } finally {
+            store.lock.readLock().unlock();
+        }
     }
 
     /** The version a snapshot sees, or null when there is none or it is a delete marker. */
@@ -291,7 +305,7 @@ final class MemoryPersistence implements Persistence {
     }
 
     private void requireOpen() {
-        if (closed) {
+        if (store.closed) {
             throw new IllegalStateException("The persistence is closed");
         }
     }

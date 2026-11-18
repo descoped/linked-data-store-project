@@ -1,5 +1,8 @@
 package io.descoped.lds.persistence.memory;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import io.descoped.lds.persistence.api.DocumentKey;
+
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.Map;
@@ -19,6 +22,9 @@ final class MemoryStore {
     static final Object REMOVED = new Object();
 
     final ReadWriteLock lock = new ReentrantReadWriteLock();
+
+    /** Set when the persistence is closed: nothing reads or commits after that. */
+    volatile boolean closed;
     private final NavigableMap<byte[], Object> committed = new TreeMap<>(Arrays::compareUnsigned);
 
     /** A new, empty map with the store's key order. */
@@ -26,8 +32,25 @@ final class MemoryStore {
         return new TreeMap<>(Arrays::compareUnsigned);
     }
 
-    /** Applies a transaction's writes. The caller holds the write lock. */
+    /**
+     * Applies a transaction's writes. The caller holds the write lock.
+     *
+     * <p>A version this transaction replaces or removes may have been committed by another transaction after this
+     * one looked at it. The values recorded for that content are removed here, where it is known what is being
+     * replaced, so that they do not stay behind for good.
+     */
     void apply(NavigableMap<byte[], Object> overlay) {
+        overlay.forEach((key, value) -> {
+            if (committed.get(key) instanceof JsonNode replaced && Keys.isVersion(key)) {
+                DocumentKey documentKey = Keys.documentKey(key);
+                Keys.strings(replaced, "$", (path, text) -> {
+                    byte[] recorded = Keys.value(documentKey, path, text);
+                    if (!overlay.containsKey(recorded)) {
+                        committed.remove(recorded);
+                    }
+                });
+            }
+        });
         overlay.forEach((key, value) -> {
             if (value == REMOVED) {
                 committed.remove(key);
@@ -35,6 +58,11 @@ final class MemoryStore {
                 committed.put(key, value);
             }
         });
+    }
+
+    /** How many keys are committed. The caller holds the read lock. */
+    int size() {
+        return committed.size();
     }
 
     /** The committed value of a key, or the overlay's. The caller holds the read lock. */

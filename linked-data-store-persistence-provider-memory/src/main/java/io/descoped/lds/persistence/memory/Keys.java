@@ -43,6 +43,11 @@ final class Keys {
         return Tuple.of(DOCUMENTS, namespace, entity).range();
     }
 
+    /** Whether a key is the key of a version, not of a recorded value. */
+    static boolean isVersion(byte[] key) {
+        return DOCUMENTS.equals(Tuple.fromBytes(key).getString(0));
+    }
+
     /** Reads the document key back from a version key. */
     static DocumentKey documentKey(byte[] versionKey) {
         Tuple tuple = Tuple.fromBytes(versionKey);

@@ -169,6 +169,7 @@ public final class PersistenceAdapter implements RxJsonPersistence {
 
         private final io.descoped.lds.persistence.api.Transaction delegate;
         private boolean done;
+        private boolean cancelled;
 
         private AdaptedTransaction(io.descoped.lds.persistence.api.Transaction delegate) {
             this.delegate = delegate;
@@ -176,6 +177,9 @@ public final class PersistenceAdapter implements RxJsonPersistence {
 
         @Override
         public synchronized CompletableFuture<TransactionStatistics> commit() {
+            if (cancelled) {
+                return CompletableFuture.failedFuture(new IllegalStateException("The transaction was cancelled"));
+            }
             if (!done) {
                 done = true;
                 try {
@@ -191,6 +195,7 @@ public final class PersistenceAdapter implements RxJsonPersistence {
 
         @Override
         public synchronized CompletableFuture<TransactionStatistics> cancel() {
+            cancelled = !done;
             done = true;
             delegate.close();
             return CompletableFuture.completedFuture(new TransactionStatistics());

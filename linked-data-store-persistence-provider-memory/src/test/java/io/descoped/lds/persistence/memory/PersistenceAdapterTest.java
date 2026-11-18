@@ -69,6 +69,7 @@ class PersistenceAdapterTest {
         Transaction cancelled = persistence.createTransaction(false);
         persistence.createOrOverwrite(cancelled, person("dropped", "2020-01-01T00:00:00Z", "Dropped"), null).blockingAwait();
         cancelled.cancel().join();
+        assertThat(cancelled.commit()).as("a commit after a cancel must not report success").isCompletedExceptionally();
 
         try (Transaction tx = persistence.createTransaction(true)) {
             ZonedDateTime now = ZonedDateTime.parse("2021-01-01T00:00:00Z");

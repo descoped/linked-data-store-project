@@ -19,6 +19,9 @@
  *       io.descoped.lds.persistence.api.Range} returns the same order reversed.</li>
  *   <li><b>Names</b> are validated ({@link io.descoped.lds.persistence.api.Identifiers}) and never become part of a
  *       query text, a key or a path without it.</li>
+ *   <li><b>Paths and values</b> are data. The field names in a path and the value searched for reach the engine as
+ *       bound parameters or as parts of a key, or are checked against the model first; they are never written into
+ *       a query text.</li>
  *   <li><b>Transactions</b> commit only when {@link io.descoped.lds.persistence.api.Transaction#commit() commit} is
  *       called; closing one that was not committed rolls it back.</li>
  *   <li><b>JSON</b> comes back as it went in: nested arrays, nulls, empty containers, any field name, and numbers

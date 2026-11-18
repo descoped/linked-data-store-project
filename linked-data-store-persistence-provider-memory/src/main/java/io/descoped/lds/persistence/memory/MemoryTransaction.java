@@ -26,6 +26,11 @@ final class MemoryTransaction implements Transaction {
         if (state != State.OPEN) {
             throw new IllegalStateException("The transaction is " + (state == State.COMMITTED ? "committed" : "closed"));
         }
+        if (store.closed) {
+            overlay.clear();
+            state = State.CLOSED;
+            throw new IllegalStateException("The persistence is closed");
+        }
         if (writing && readOnly) {
             throw new IllegalStateException("The transaction is read-only");
         }
