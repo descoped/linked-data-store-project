@@ -15,7 +15,7 @@ module io.descoped.lds.core {
     requires undertow.core;
     requires xnio.api;
     requires org.json;
-    requires org.everit.json.schema;
+    requires everit.json.schema;
     requires java.xml; // TODO this should be in test-scope only!
     requires com.fasterxml.jackson.core;
     requires com.fasterxml.jackson.databind;

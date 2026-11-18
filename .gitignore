@@ -1,5 +1,29 @@
-/.idea/
-/*.log
-/*.iml
-/.DS_Store
-/target/
+# Build output
+target/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# macOS
+.DS_Store
+
+# JVM crash logs
+hs_err_pid*
+
+# Logs
+*.log
+
+# maven-release-plugin leftovers of an interrupted release
+release.properties
+pom.xml.releaseBackup
+pom.xml.tag
+pom.xml.next
+
+# Local run state of the server and the providers
+fdb.cluster
+/linked-data-store-server/schemas/
+/linked-data-store-server/sagalogs/
+/linked-data-store-server/gsim-raml-schema/
+/linked-data-store-search-provider-solr/data/

@@ -7,7 +7,7 @@ module io.descoped.lds.persistence.postgres {
     requires com.zaxxer.hikari;
     requires org.postgresql.jdbc;
     requires java.logging;
-    requires jul_to_slf4j;
+    requires jul.to.slf4j;
     requires io.reactivex.rxjava2;
     requires org.reactivestreams;
 
