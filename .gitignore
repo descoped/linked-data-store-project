@@ -1,9 +1,5 @@
 /.idea/
-/linked-data-store-*/
 /*.log
 /*.iml
-/lds-test/
-/txlog-api/
-/txlog-pulsar/
 /.DS_Store
 /target/
