@@ -23,7 +23,6 @@ public class AppendTxLogAdapter extends Adapter<JsonNode> {
     public JsonNode executeAction(SagaNode sagaNode, Object input, Map<SagaNode, Object> dependeesOutput) {
         SagaInput sagaInput = new SagaInput((JsonNode) input);
         RawdataProducer producer = pool.producer(sagaInput.source());
-//        producer.publishBuilders(TxLogTools.sagaInputToTxEntry(producer.builder(), sagaInput)); // TODO fix rawdata client update of dep from 0.23 to 2.0.0
         producer.publish(TxLogTools.sagaInputToTxEntry(sagaInput));
         return null;
     }

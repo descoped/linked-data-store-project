@@ -97,8 +97,7 @@ to the latest stable and removes them from this list, from the "held" block in t
 | Undertow, xnio, jboss-threads | 2.0.30, 3.8.0, 2.3.3 | core, HTTP |
 | everit json-schema, org.json, tika-core, okhttp | 1.14.6, 20260814, 1.24.1, 3.14.0 | core, validation (replaced or removed) |
 | dynamic-configuration | 2.0.0 | core, housekeeping |
-| rawdata-client | 2.0.0 | core, transaction log (waits for the rawdata-client 3.0.0 release) |
-| Cantara saga, future-selector (and the Cantara repository in the root POM) | 1.0.23 | core, write path |
+| Cantara saga (no.cantara.saga, future-selector) | 2.0.1-SNAPSHOT | the saga 2.0.1 release, which no longer leaves a thread of the saga thread pool blocked after a saga fails in one of two parallel steps. Until then the SNAPSHOT must be installed in the local Maven repository from the distributed-saga sources; it is on no remote repository, so CI cannot build this |
 
 ## Testing
 
@@ -110,6 +109,8 @@ to the latest stable and removes them from this list, from the "held" block in t
 - `PersistenceTck` runs for the memory provider; the pre-3.0 suite runs for PostgreSQL. `Neo4jPersistenceIntegrationTest` and
   `FoundationDBIntegrationTest` are excluded in their modules' POMs, with the reason, until those providers are
   revised against a container.
+- Core's `SagaLogPostgresTest` runs the write path with the saga log in a PostgreSQL 18 container: concurrent
+  writes, recovery of an unfinished saga by the next write, after a restart and by another instance of the cluster.
 - Core's tests start the application in the JVM on a random port with the memory provider (`TestServerListener`).
   13 of them are disabled in the source (`enabled = false`, `@Ignore`), several because they hang; they are
   re-enabled or deleted with a reason when core is revised.

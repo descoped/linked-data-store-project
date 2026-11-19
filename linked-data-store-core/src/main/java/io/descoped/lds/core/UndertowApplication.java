@@ -22,12 +22,10 @@ import io.descoped.lds.core.search.SearchIndexConfigurator;
 import io.descoped.lds.core.specification.JsonSchemaBasedSpecification;
 import io.descoped.lds.core.specification.SpecificationJsonSchemaBuilder;
 import io.descoped.lds.core.txlog.TxlogRawdataPool;
-import io.descoped.lds.core.utils.LDSProviderConfigurator;
 import io.descoped.lds.graphql.GraphqlHttpHandler;
 import io.descoped.lds.graphql.jsonSchema.GraphQLToJsonConverter;
 import io.descoped.lds.graphql.schemas.GraphQLSchemaBuilder;
 import io.descoped.rawdata.api.RawdataClient;
-import io.descoped.rawdata.api.RawdataClientInitializer;
 import io.undertow.Handlers;
 import io.undertow.Undertow;
 import io.undertow.server.HttpHandler;
@@ -386,8 +384,8 @@ public class UndertowApplication {
     public static RawdataClient configureTxLogRawdataClient(DynamicConfiguration configuration) {
         String provider = configuration.evaluateToString("txlog.rawdata.provider");
         LOG.info("Using transaction-log provider: {}", provider);
-        Map<String, String> providerConfig = subMapFromPrefix(configuration.asMap(), "txlog.config.");
-        RawdataClientInitializer clientInitializer = LDSProviderConfigurator.configure(providerConfig, provider, RawdataClientInitializer.class);
+        Map<String, String> providerConfig = new LinkedHashMap<>(subMapFromPrefix(configuration.asMap(), "txlog.config."));
+        providerConfig.put(RawdataClient.PROVIDER_KEY, provider);
 
         int retryIntervalSeconds = configuration.evaluateToInt("txlog.rawdata.provider.initialization.retry-interval-seconds");
         int maxWaitSeconds = configuration.evaluateToInt("txlog.rawdata.provider.initialization.max-wait-seconds");
@@ -395,7 +393,7 @@ public class UndertowApplication {
         for (int i = 1; ; i++) {
             try {
                 LOG.info("Transaction-log provider initialization attempt # {}", i);
-                RawdataClient txLogRawdataClient = clientInitializer.initialize(providerConfig);
+                RawdataClient txLogRawdataClient = RawdataClient.create(providerConfig);
                 LOG.info("Transaction-log initialized");
                 return txLogRawdataClient;
             } catch (Exception e) {

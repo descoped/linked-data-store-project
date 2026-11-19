@@ -29,10 +29,9 @@
         "maven"
       ],
       "matchPackageNames": [
+        "io.descoped.config:dynamic-configuration",
         "no.cantara.saga:**",
         "no.cantara.concurrent.futureselector:**",
-        "io.descoped.config:dynamic-configuration",
-        "io.descoped.rawdata:**",
         "io.reactivex.rxjava2:**",
         "com.github.akarnokd:rxjava2-jdk9-interop",
         "org.reactivestreams:**",

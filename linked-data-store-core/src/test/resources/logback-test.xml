@@ -13,7 +13,6 @@
     <logger name="io.descoped.lds" level="DEBUG"/>
     <logger name="io.descoped.lds.core.domain" level="DEBUG"/>
     <logger name="graphql" level="DEBUG"/>
-    <logger name="io.descoped.rawdata.lmdb" level="DEBUG"/>
 
     <root level="INFO">
         <appender-ref ref="STDOUT"/>
