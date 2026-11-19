@@ -47,7 +47,8 @@ to an interface.
 The second interface, `io.descoped.lds.persistence.api` (blocking calls returning lists; `PersistenceTck`; the
 memory provider on it; core reaches it through `PersistenceAdapter`, where `close()` commits), was added in
 November 2026 and is not the direction of 3.0: streaming stays. Write nothing new against it and move no provider
-to it. What becomes of it and of the memory provider is the owner's decision, taken before the next provider is
+to it. Core's tests run on that memory provider, so a new test in core still uses it; that is not new code against
+the interface. What becomes of it and of the memory provider is the owner's decision, taken before the next provider is
 revised.
 
 ## Invariants (never violate)
@@ -65,8 +66,9 @@ revised.
 - **Lint and Javadoc.** `-Xlint:all -Werror` and doclint `all` with warnings as errors are the rule in the root POM.
   A module that still holds pre-3.0 code overrides them with the exact categories it is not clean of; the override
   is removed, not widened, when the module is revised.
-- **One persistence contract for every provider**, checked by the TCK against the real engine (a container), not a
-  substitute.
+- **One persistence contract for every provider**: the reactive interface, checked by the shared suite
+  (`PersistenceIntegrationTest`) against the real engine (a container), not a substitute. The memory provider is
+  the exception while it is on the blocking interface (see "The two persistence interfaces").
 - **No spliced identifiers.** Entity, field, namespace and topic names and user search text are validated and never
   concatenated into SQL, Cypher, Solr queries, keys or file paths.
 - **Time.** Document versions are stored and compared as UTC instants.
@@ -109,14 +111,15 @@ to the latest stable and removes them from this list, from the "held" block in t
   JUnit as each module is revised. Until core is revised, a test in core that needs the running application is
   TestNG, because the test server is started by a TestNG listener: a new test class asserts with AssertJ, a test
   added to a pre-3.0 class follows that class.
-- The PostgreSQL provider's tests (the TCK and the reactive-streams TCK for its publisher) run on a real
+- The PostgreSQL provider's tests (the shared suite and the Reactive Streams TCK for its publisher) run on a real
   PostgreSQL 18 (`postgres:18-alpine`) through Testcontainers, so **the build needs Docker**.
-- `PersistenceTck` runs for the memory provider; the pre-3.0 suite runs for PostgreSQL. `Neo4jPersistenceIntegrationTest` and
-  `FoundationDBIntegrationTest` are excluded in their modules' POMs, with the reason, until those providers are
-  revised against a container.
+- `PersistenceIntegrationTest`, the suite of the reactive interface, runs for PostgreSQL; `PersistenceTck` runs
+  for the memory provider. `Neo4jPersistenceIntegrationTest` and `FoundationDBIntegrationTest` are excluded in
+  their modules' POMs, with the reason, until those providers are revised against a container.
 - Core's `SagaLogPostgresTest` runs the write path with the saga log in a PostgreSQL 18 container: concurrent
   writes, recovery of an unfinished saga by the next write, after a restart and by another instance of the cluster.
-- Core's tests start the application in the JVM on a random port with the memory provider (`TestServerListener`).
+- Core's tests start the application in the JVM on a random port with the memory provider (`TestServerListener`),
+  which they reach through `PersistenceAdapter`: they do not pass through the bridge.
   13 of them are disabled in the source (`enabled = false`, `@Ignore`), several because they hang; they are
   re-enabled or deleted with a reason when core is revised.
 - A change that switches tests on is run about ten times before it is pushed

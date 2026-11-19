@@ -9,7 +9,6 @@ module io.descoped.lds.persistence.neo4j {
     requires java.logging;
     requires jul.to.slf4j;
     requires io.reactivex.rxjava3;
-    requires org.reactivestreams;
 
     provides PersistenceInitializer with Neo4jInitializer;
 }

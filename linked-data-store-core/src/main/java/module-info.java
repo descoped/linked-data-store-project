@@ -23,7 +23,6 @@ module io.descoped.lds.core {
 
     requires graphql.java;
     requires io.reactivex.rxjava3;
-    requires org.reactivestreams;
     requires graphql.java.extended.scalars;
 
     opens io.descoped.lds.graphql.graphiql;
