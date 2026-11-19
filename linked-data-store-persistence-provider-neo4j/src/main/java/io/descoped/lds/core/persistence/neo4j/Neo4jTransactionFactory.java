@@ -1,103 +1,41 @@
 package io.descoped.lds.core.persistence.neo4j;
 
 import io.descoped.lds.api.persistence.PersistenceException;
-import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.TransactionFactory;
 import org.neo4j.driver.AccessMode;
 import org.neo4j.driver.Driver;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.SessionConfig;
 
-import java.util.concurrent.CompletableFuture;
-import java.util.function.Function;
-
-public class Neo4jTransactionFactory implements TransactionFactory {
+/**
+ * Opens the transactions of the provider, one session of the driver for each.
+ */
+final class Neo4jTransactionFactory implements TransactionFactory {
 
     private final Driver driver;
     private final boolean logCypher;
 
-    public Neo4jTransactionFactory(Driver driver, boolean logCypher) {
+    Neo4jTransactionFactory(Driver driver, boolean logCypher) {
         this.driver = driver;
         this.logCypher = logCypher;
     }
 
     @Override
-    public <T> CompletableFuture<T> runAsyncInIsolatedTransaction(Function<? super Transaction, ? extends T> retryable, boolean readOnly) {
-        return null;
-    }
-
-    @Override
     public Neo4jTransaction createTransaction(boolean readOnly) throws PersistenceException {
-        Session session = driver.session(readOnly ? SessionConfig.builder().withDefaultAccessMode(AccessMode.READ).build() :
-                SessionConfig.builder().withDefaultAccessMode(AccessMode.WRITE).build());
-        return new Neo4jTransaction(session, logCypher);
+        Session session = driver.session(SessionConfig.builder()
+                .withDefaultAccessMode(readOnly ? AccessMode.READ : AccessMode.WRITE)
+                .build());
+        try {
+            return new Neo4jTransaction(session, logCypher);
+        } catch (RuntimeException e) {
+            // the transaction did not begin
+            session.close();
+            throw e;
+        }
     }
 
     @Override
     public void close() {
         driver.close();
-    }
-
-    <T> T writeTransaction(Function<org.neo4j.driver.Transaction, T> work) {
-        boolean committed = false;
-        try (Session session = driver.session(SessionConfig.builder().withDefaultAccessMode(AccessMode.WRITE).build())) {
-            T result = session.writeTransaction(tx -> work.apply(tx));
-            committed = true;
-            return result;
-        } catch (PersistenceException e) {
-            throw e;
-        } catch (RuntimeException e) {
-            throw new PersistenceException(e);
-        } finally {
-            if (logCypher) {
-                if (committed) {
-                    System.out.println("WRITE COMMITED");
-                } else {
-                    System.out.println("WRITE ROLLED-BACK");
-                }
-            }
-        }
-    }
-
-    <T> T readTransaction(Function<org.neo4j.driver.Transaction, T> work) {
-        boolean committed = false;
-        try (Session session = driver.session(SessionConfig.builder().withDefaultAccessMode(AccessMode.READ).build())) {
-            T result = session.readTransaction(tx -> work.apply(tx));
-            committed = true;
-            return result;
-        } catch (PersistenceException e) {
-            throw e;
-        } catch (RuntimeException e) {
-            throw new PersistenceException(e);
-        } finally {
-            if (logCypher) {
-                if (committed) {
-                    System.out.println("READ COMMITED");
-                } else {
-                    System.out.println("READ ROLLED-BACK");
-                }
-            }
-        }
-    }
-
-    <T> T readAutoCommit(Function<Session, T> work) {
-        boolean committed = false;
-        try (Session session = driver.session(SessionConfig.builder().withDefaultAccessMode(AccessMode.READ).build())) {
-            T result = work.apply(session);
-            committed = true;
-            return result;
-        } catch (PersistenceException e) {
-            throw e;
-        } catch (RuntimeException e) {
-            throw new PersistenceException(e);
-        } finally {
-            if (logCypher) {
-                if (committed) {
-                    System.out.println("READ COMMITED");
-                } else {
-                    System.out.println("READ ROLLED-BACK");
-                }
-            }
-        }
     }
 }

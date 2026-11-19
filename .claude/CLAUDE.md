@@ -17,7 +17,7 @@ reactor, group `io.descoped.lds`.
 | `linked-data-store-persistence-provider-tck` | none yet (class path) | `PersistenceIntegrationTest` (TestNG), the suite every persistence provider extends |
 | `linked-data-store-persistence-provider-memory` | `io.descoped.lds.persistence.memory` | provider `mem`: fragments in a sorted map in memory, the keys packed as tuples with `io.descoped.tuple:java-tuple`, behind the bridge (`MemoryRxPersistence`). For tests and for trying LDS, not for production |
 | `linked-data-store-persistence-provider-postgres` | `io.descoped.lds.persistence.postgres` | provider `postgres`, revised for 3.0: one table, `fragment`, created at start, holding every namespace; every read is one statement whose rows are fetched as they are asked for |
-| `linked-data-store-persistence-provider-neo4j` | `io.descoped.lds.persistence.neo4j` | provider `neo4j` |
+| `linked-data-store-persistence-provider-neo4j` | `io.descoped.lds.persistence.neo4j` | provider `neo4j`, revised for 3.0 on Neo4j 2026 (community edition is enough): a document is a node with its entity as label and `namespace` and `id` as properties, unique together, so one database holds every namespace; a version is a `VERSION` relationship (`from`, `to`) to the root of a tree of `<entity>_E` nodes; a link is a `REF` relationship to the document node it points at. The constraints and indexes are created at start |
 | `linked-data-store-search-provider-api` | `io.descoped.lds.search.api` | the search SPI (`SearchIndexProvider`, `SearchIndex`) |
 | `linked-data-store-search-provider-solr` | `io.descoped.lds.search.provider.solr` | provider `solr` |
 | `linked-data-store-core` | `io.descoped.lds.core` | the application: `UndertowApplication`, REST (`NamespaceController`), GraphQL, sagas, transaction log |
@@ -38,9 +38,11 @@ LDS streams. Its persistence interface is the reactive one in `io.descoped.lds.a
 one document; storage order is id, version, path), `RxJsonPersistence` carries documents, and
 `RxJsonPersistenceBridge` with `RxGroupByTools.groupByOrdered` cuts one ordered fragment stream into documents,
 asking the source for more one document at a time. The PostgreSQL and memory providers read their
-store only on demand (`ResultSetPublisher`, `AsyncIterablePublisher`, both checked with the Reactive Streams TCK);
-Neo4j implements `RxJsonPersistence` directly. Keep the mechanism when changing this code: a stream is not replaced
-by a call that returns a complete list, and no blocking call is added to an interface.
+store only on demand (`ResultSetPublisher`, `AsyncIterablePublisher`, both checked with the Reactive Streams TCK).
+Neo4j implements `RxJsonPersistence` directly: a read is one statement that returns one record for each document,
+and a record is taken from the driver when a document is asked for (`Neo4jTransaction.executeCypherAsync`). Keep
+the mechanism when changing this code: a stream is not replaced by a call that returns a complete list, and no
+blocking call is added to an interface.
 
 ## Invariants (never violate)
 
@@ -73,8 +75,11 @@ by a call that returns a complete list, and no blocking call is added to an inte
   images. Maven Central goes through the Central Portal (profiles `central,sign`).
 - **SonarCloud**: one project, `descoped_linked-data-store-project`, for the whole reactor.
 
-Several of these describe where 3.0.0 is going and are not true of the pre-3.0 code yet (identifiers in Cypher,
-UTC instants, `Transaction.close()` committing). New and revised code must meet them; a pull request that revises a
+Several of these describe where 3.0.0 is going and are not true of the pre-3.0 code yet (UTC instants in the
+memory provider, `Transaction.close()` committing). One is met in another way than it is worded: the Neo4j provider
+writes the name of an entity into Cypher as a quoted label (`Cypher.label`), and does not validate it; a label as a
+parameter costs Neo4j its indexes for lists, and a constraint cannot be created with one. Everything else it is
+given is a parameter. New and revised code must meet them; a pull request that revises a
 module makes that module meet them.
 
 ## Held versions
@@ -85,7 +90,6 @@ to the latest stable and removes them from this list, from the "held" block in t
 
 | Dependency | Held at | Moves with |
 |---|---|---|
-| neo4j-java-driver | 4.0.2 | the Neo4j provider |
 | solr-solrj, solr-test-framework (and the Restlet repository in the Solr module) | 7.7.1 | the Solr provider |
 | graphql-java, extended scalars | 12.0, 1.0 | core, GraphQL |
 | Undertow, xnio, jboss-threads | 2.0.30, 3.8.0, 2.3.3 | core, HTTP |
@@ -104,9 +108,11 @@ to the latest stable and removes them from this list, from the "held" block in t
 - The PostgreSQL provider's tests (the shared suite, the Reactive Streams TCK for its publisher, and
   `PostgresProviderTest` for what the suite does not cover) run on a real PostgreSQL 18 (`postgres:18-alpine`)
   through Testcontainers, so **the build needs Docker**.
-- The shared suite runs for the memory provider and for PostgreSQL. `Neo4jPersistenceIntegrationTest` is
-  excluded in its module's POM, with the reason, until that provider is revised against a container. The memory
-  provider also runs the Reactive Streams TCK for `AsyncIterablePublisher`.
+- The Neo4j provider's tests (the shared suite, `Neo4jProviderTest` for what the suite does not cover,
+  `Neo4jRoundTripTest` for documents of every shape and `Neo4jTransactionTest`) run on a real Neo4j 2026
+  (`neo4j:2026.10-community`) through Testcontainers.
+- The shared suite runs for every provider: memory, PostgreSQL and Neo4j. The memory provider also runs the
+  Reactive Streams TCK for `AsyncIterablePublisher`.
 - Core's `SagaLogPostgresTest` runs the write path with the saga log in a PostgreSQL 18 container: concurrent
   writes, recovery of an unfinished saga by the next write, after a restart and by another instance of the cluster.
 - Core's tests start the application in the JVM on a random port with the memory provider (`TestServerListener`).

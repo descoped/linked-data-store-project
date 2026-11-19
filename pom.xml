@@ -48,6 +48,7 @@
         <msgpack.version>0.9.12</msgpack.version>
         <hikaricp.version>7.1.0</hikaricp.version>
         <postgresql.version>42.7.14</postgresql.version>
+        <neo4j-java-driver.version>6.3.0</neo4j-java-driver.version>
         <handy-uri-templates.version>2.1.8</handy-uri-templates.version>
         <commons-math3.version>3.6.1</commons-math3.version>
         <javax-inject.version>1</javax-inject.version>
@@ -75,7 +76,6 @@
         <org-json.version>20260814</org-json.version>
         <tika.version>1.24.1</tika.version>
         <okhttp.version>3.14.0</okhttp.version>
-        <neo4j-java-driver.version>4.0.2</neo4j-java-driver.version>
         <solr.version>7.7.1</solr.version>
     </properties>
 

@@ -6,11 +6,16 @@ import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import org.neo4j.driver.AuthTokens;
 import org.neo4j.driver.Driver;
 import org.neo4j.driver.GraphDatabase;
+import org.neo4j.driver.Session;
 
 import java.util.Map;
 import java.util.Set;
 import java.util.logging.Level;
 
+/**
+ * Starts the provider {@code neo4j}: opens the driver and creates the constraints and indexes that are missing
+ * for the entities LDS manages.
+ */
 @ProviderName("neo4j")
 public class Neo4jInitializer implements PersistenceInitializer {
 
@@ -20,7 +25,15 @@ public class Neo4jInitializer implements PersistenceInitializer {
         }
 
         static void initialize() {
+            // exists to run the static initializer above, once
         }
+    }
+
+    /**
+     * Created by the service loader.
+     */
+    public Neo4jInitializer() {
+        // nothing to prepare: the provider starts in initialize
     }
 
     @Override
@@ -47,9 +60,17 @@ public class Neo4jInitializer implements PersistenceInitializer {
         boolean logCypher = Boolean.parseBoolean(configuration.get("neo4j.cypher.show"));
         Driver driver = open(neo4jDriverURL, neo4jDriverUsername, neo4jDriverPassword);
         Neo4jTransactionFactory transactionFactory = new Neo4jTransactionFactory(driver, logCypher);
-        try (Neo4jTransaction tx = transactionFactory.createTransaction(false)) {
-            Neo4jIndexManagement indexManagement = new Neo4jIndexManagement(tx, defaultNamespace, managedDomains);
-            indexManagement.createMissingIndices(tx);
+        boolean started = false;
+        try (Session session = driver.session()) {
+            // Instances that start together create the same constraints and can end in a deadlock, which Neo4j
+            // resolves by failing one of them with an error that says "try again". The driver does that here.
+            session.executeWriteWithoutResult(tx -> new Neo4jIndexManagement(tx, managedDomains).createMissingIndices(tx));
+            started = true;
+        } finally {
+            if (!started) {
+                // nothing is left to close the driver later
+                transactionFactory.close();
+            }
         }
         return new Neo4jPersistence(transactionFactory);
     }

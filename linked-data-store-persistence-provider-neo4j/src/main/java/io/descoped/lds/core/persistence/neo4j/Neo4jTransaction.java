@@ -2,28 +2,37 @@ package io.descoped.lds.core.persistence.neo4j;
 
 import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.TransactionStatistics;
-import io.reactivex.rxjava3.core.BackpressureStrategy;
 import io.reactivex.rxjava3.core.Flowable;
 import org.neo4j.driver.Record;
 import org.neo4j.driver.Result;
 import org.neo4j.driver.Session;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.temporal.Temporal;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
-class Neo4jTransaction implements Transaction {
+/**
+ * One transaction of the driver in a session of its own. The session is closed when the transaction ends, so its
+ * connection goes back to the driver's pool.
+ */
+final class Neo4jTransaction implements Transaction {
+
+    private static final Logger LOG = LoggerFactory.getLogger(Neo4jTransaction.class);
 
     private final boolean logCypher;
+    private final Session session;
     private final org.neo4j.driver.Transaction neo4jTransaction;
     private final TransactionStatistics statistics = new TransactionStatistics();
     private final CompletableFuture<TransactionStatistics> result;
 
     Neo4jTransaction(Session session, boolean logCypher) {
         this.logCypher = logCypher;
+        this.session = session;
         this.neo4jTransaction = session.beginTransaction();
         this.result = new CompletableFuture<>();
     }
@@ -31,12 +40,7 @@ class Neo4jTransaction implements Transaction {
     @Override
     public CompletableFuture<TransactionStatistics> commit() {
         if (!result.isDone()) {
-            try {
-                neo4jTransaction.commit();
-                result.complete(statistics);
-            } catch (Throwable t) {
-                result.completeExceptionally(t);
-            }
+            end(true);
         }
         return result;
     }
@@ -44,112 +48,126 @@ class Neo4jTransaction implements Transaction {
     @Override
     public CompletableFuture<TransactionStatistics> cancel() {
         if (!result.isDone()) {
-            try {
-                neo4jTransaction.rollback();
-                result.complete(statistics);
-            } catch (Throwable t) {
-                result.completeExceptionally(t);
-            }
+            end(false);
         }
         return result;
     }
 
-    org.neo4j.driver.Transaction getNeo4jTransaction() {
-        return this.neo4jTransaction;
-    }
-
-    Result executeCypher(String query, Object... keysAndValues) {
-        LinkedHashMap<String, Object> params = new LinkedHashMap<>();
-        for (int i = 0; i < keysAndValues.length; i += 2) {
-            String key = (String) keysAndValues[i];
-            Object value = keysAndValues[i + 1];
-            params.put(key, value);
-        }
-        return executeCypher(query, params);
-    }
-
-    Flowable<Record> executeCypherAsync(String query, Map<String, Object> parameters) {
-        if (logCypher) {
-            String interactiveQuery = query;
-            for (Map.Entry<String, Object> entry : parameters.entrySet()) {
-                String regex = "\\$" + entry.getKey();
-                String replacement = serializeForInteractive(entry.getValue());
-                interactiveQuery = interactiveQuery.replaceAll(regex, Matcher.quoteReplacement(replacement));
+    private void end(boolean commit) {
+        // Whatever is thrown here is caught, an Error too: the future is what the caller waits for, and it is
+        // completed in every case.
+        Throwable failure = null;
+        try {
+            if (commit) {
+                neo4jTransaction.commit();
+            } else {
+                neo4jTransaction.rollback();
             }
-            System.out.format("\n:: CYPHER (ASYNC) ::\n%s\n", interactiveQuery);
+        } catch (Throwable t) {
+            failure = t;
         }
-        return Flowable.create(emitter -> {
-                    try {
-                        Result result = neo4jTransaction.run(query, parameters);
-                        result.forEachRemaining(emitter::onNext);
-                        result.consume();
+        try {
+            session.close();
+        } catch (Throwable t) {
+            if (failure == null) {
+                failure = t;
+            } else {
+                failure.addSuppressed(t);
+            }
+        }
+        if (failure == null) {
+            result.complete(statistics);
+        } else {
+            result.completeExceptionally(failure);
+        }
+    }
+
+    /**
+     * Runs a statement and returns its result, to be read by the caller before the next statement is run.
+     */
+    Result executeCypher(String query, Map<String, Object> parameters) {
+        log(query, parameters);
+        return neo4jTransaction.run(query, parameters);
+    }
+
+    /**
+     * A stream of the records of a statement. The statement is run when the stream is subscribed to, and a record
+     * is taken from the driver for each one that is asked for; the driver fetches them from the server in
+     * batches. What is left when the stream is cancelled is discarded on the server.
+     */
+    Flowable<Record> executeCypherAsync(String query, Map<String, Object> parameters) {
+        return Flowable.generate(
+                () -> executeCypher(query, parameters),
+                (rows, emitter) -> {
+                    if (rows.hasNext()) {
+                        emitter.onNext(rows.next());
+                    } else {
                         emitter.onComplete();
-                    } catch (Throwable t) {
-                        emitter.onError(t);
                     }
                 },
-                BackpressureStrategy.BUFFER);
+                Result::consume);
     }
 
-    private String serializeForInteractive(Object parameters) {
+    private void log(String query, Map<String, Object> parameters) {
+        if (logCypher && LOG.isInfoEnabled()) {
+            LOG.info(":: CYPHER ::\n{}", interactive(query, parameters));
+        }
+    }
+
+    /**
+     * The statement with its parameters written into it, to be read or run by hand.
+     */
+    static String interactive(String query, Map<String, Object> parameters) {
+        String interactiveQuery = query;
+        for (Map.Entry<String, Object> entry : parameters.entrySet()) {
+            // the whole name: $id is not the beginning of $idAfter
+            String regex = "\\$" + Pattern.quote(entry.getKey()) + "\\b";
+            String replacement = serializeForInteractive(entry.getValue());
+            interactiveQuery = interactiveQuery.replaceAll(regex, Matcher.quoteReplacement(replacement));
+        }
+        return interactiveQuery;
+    }
+
+    private static String serializeForInteractive(Object parameters) {
         StringBuilder sb = new StringBuilder();
         doSerializeRecursively(sb, parameters);
         return sb.toString();
     }
 
-    private void doSerializeRecursively(StringBuilder sb, Object input) {
-        if (input == null) {
-            sb.append("NULL");
-            return;
-        }
-        if (input instanceof Map) {
-            sb.append("{");
-            boolean first = true;
-            for (Map.Entry<String, Object> entry : ((Map<String, Object>) input).entrySet()) {
-                if (!first) {
-                    sb.append(", ");
+    private static void doSerializeRecursively(StringBuilder sb, Object input) {
+        switch (input) {
+            case null -> sb.append("NULL");
+            case Map<?, ?> map -> {
+                sb.append("{");
+                boolean first = true;
+                for (Map.Entry<?, ?> entry : map.entrySet()) {
+                    if (!first) {
+                        sb.append(", ");
+                    }
+                    first = false;
+                    sb.append(entry.getKey()).append(": ");
+                    doSerializeRecursively(sb, entry.getValue());
                 }
-                first = false;
-                sb.append(entry.getKey()).append(": ");
-                doSerializeRecursively(sb, entry.getValue());
+                sb.append("}");
             }
-            sb.append("}");
-            return;
-        }
-        if (input instanceof List) {
-            sb.append("[");
-            boolean first = true;
-            for (Object o : (List<Object>) input) {
-                if (!first) {
-                    sb.append(", ");
+            case List<?> list -> {
+                sb.append("[");
+                boolean first = true;
+                for (Object o : list) {
+                    if (!first) {
+                        sb.append(", ");
+                    }
+                    first = false;
+                    doSerializeRecursively(sb, o);
                 }
-                first = false;
-                doSerializeRecursively(sb, o);
+                sb.append("]");
             }
-            sb.append("]");
-            return;
-        }
-        if (input instanceof CharSequence) {
-            sb.append("'").append(input).append("'");
-            return;
-        }
-        if (input instanceof Number) {
-            sb.append(input);
-            return;
-        }
-        if (input instanceof Temporal) {
-            sb.append("datetime('").append(input).append("')");
-        }
-    }
-
-    Result executeCypher(String query, Map<String, Object> params) {
-        if (logCypher) {
-            String interactiveQuery = query;
-            for (Map.Entry<String, Object> entry : params.entrySet()) {
-                interactiveQuery = interactiveQuery.replaceAll("\\$" + entry.getKey(), Matcher.quoteReplacement(serializeForInteractive(entry.getValue())));
+            case CharSequence text -> sb.append("'").append(text).append("'");
+            case Number number -> sb.append(number);
+            case Temporal temporal -> sb.append("datetime('").append(temporal).append("')");
+            default -> {
+                // other types were never written out
             }
-            System.out.format("\n:: CYPHER ::\n%s\n", interactiveQuery);
         }
-        return neo4jTransaction.run(query, params);
     }
 }

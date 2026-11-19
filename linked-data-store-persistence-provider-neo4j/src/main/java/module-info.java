@@ -1,6 +1,9 @@
 import io.descoped.lds.api.persistence.PersistenceInitializer;
 import io.descoped.lds.core.persistence.neo4j.Neo4jInitializer;
 
+/**
+ * The persistence provider {@code neo4j}: documents as a graph in a Neo4j database.
+ */
 module io.descoped.lds.persistence.neo4j {
     requires io.descoped.lds.persistence.api;
     requires com.fasterxml.jackson.core;
@@ -8,6 +11,7 @@ module io.descoped.lds.persistence.neo4j {
     requires org.neo4j.driver;
     requires java.logging;
     requires jul.to.slf4j;
+    requires org.slf4j;
     requires io.reactivex.rxjava3;
 
     provides PersistenceInitializer with Neo4jInitializer;
