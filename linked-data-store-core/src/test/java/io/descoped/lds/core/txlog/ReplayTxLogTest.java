@@ -14,6 +14,8 @@ import org.testng.annotations.Listeners;
 import org.testng.annotations.Test;
 
 import javax.inject.Inject;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.concurrent.TimeUnit;
 
 import static io.descoped.lds.core.utils.FileAndClasspathReaderUtils.readFileOrClasspathResource;
@@ -92,6 +94,29 @@ public class ReplayTxLogTest {
     private String entityAndId(RawdataMessage m1) {
         String position = m1.position();
         return position.substring(0, position.length() - 14); // remove the last 14 characters in order to strip away the version/timestamp component
+    }
+
+    /**
+     * The version of a write is kept as a UTC time, whatever offset the client gave it in: the same instant must not
+     * be written to the transaction log in two forms.
+     */
+    @Test
+    @ConfigurationOverride({
+            "txlog.rawdata.provider", "memory",
+            "specification.schema", "spec/demo/contact.json"
+    })
+    public void thatTheVersionOfAnEntryIsInUtc() throws Exception {
+        client.put("/data/contact/utc1?sync=true&timestamp=2020-01-01T00:00:00%2B01:00", readFileOrClasspathResource("demo/3-skrue.json")).expect201Created();
+        client.get("/data/contact/utc1?timestamp=2019-12-31T23:00:00Z").expect200Ok();
+        client.get("/data/contact/utc1?timestamp=2019-12-31T22:59:59Z").expect404NotFound();
+
+        TxlogRawdataPool txlogRawdataPool = server.getApplication().getTxlogRawdataPool();
+        try (RawdataConsumer consumer = txlogRawdataPool.getClient().consumer(txlogRawdataPool.topicOf(null))) {
+            RawdataMessage message = consumer.receive(0, TimeUnit.MILLISECONDS);
+            assertEquals(entityAndId(message), "contact/utc1");
+            assertEquals(TxLogTools.txEntryToSagaInput(message).version(), ZonedDateTime.of(2019, 12, 31, 23, 0, 0, 0, ZoneId.of("Etc/UTC")));
+            assertEquals(message.position(), "contact/utc1/" + ZonedDateTime.parse("2019-12-31T23:00:00Z").toInstant().toEpochMilli());
+        }
     }
 
     private void dumpCurrentTxLog() throws Exception {

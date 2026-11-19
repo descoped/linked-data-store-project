@@ -103,7 +103,9 @@ to the latest stable and removes them from this list, from the "held" block in t
 
 - New and revised tests are JUnit 6 with AssertJ. The pre-3.0 tests are TestNG 7; both run in one Surefire run, on
   the class path (`useModulePath` false), because the pre-3.0 tests share packages with the code. Tests move to
-  JUnit as each module is revised.
+  JUnit as each module is revised. Until core is revised, a test in core that needs the running application is
+  TestNG, because the test server is started by a TestNG listener: a new test class asserts with AssertJ, a test
+  added to a pre-3.0 class follows that class.
 - The PostgreSQL provider's tests (the TCK and the reactive-streams TCK for its publisher) run on a real
   PostgreSQL 18 (`postgres:18-alpine`) through Testcontainers, so **the build needs Docker**.
 - `PersistenceTck` runs for the memory provider; the pre-3.0 suite runs for PostgreSQL. `Neo4jPersistenceIntegrationTest` and

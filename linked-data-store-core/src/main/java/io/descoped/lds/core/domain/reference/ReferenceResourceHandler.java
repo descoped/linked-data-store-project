@@ -98,10 +98,11 @@ public class ReferenceResourceHandler implements HttpHandler {
                     try (Transaction tx = persistence.createTransaction(true)) {
                         jsonDocument = persistence.readDocument(tx, resourceContext.getTimestamp(), namespace, managedDomain, managedDocumentId).blockingGet();
                     }
-                    boolean referenceToExists = false;
-                    if (jsonDocument != null && !jsonDocument.deleted()) {
-                        referenceToExists = resourceContext.referenceToExists(jsonDocument.jackson());
+                    if (jsonDocument == null || jsonDocument.deleted()) {
+                        exchange.setStatusCode(404); // no document at this time to hold the link, as for GET
+                        return;
                     }
+                    boolean referenceToExists = resourceContext.referenceToExists(jsonDocument.jackson());
                     if (referenceToExists) {
                         exchange.setStatusCode(200);
                     } else {

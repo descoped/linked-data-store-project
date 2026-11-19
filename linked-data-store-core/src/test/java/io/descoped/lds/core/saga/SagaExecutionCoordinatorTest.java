@@ -15,6 +15,7 @@ import org.testng.annotations.Test;
 import javax.inject.Inject;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -199,6 +200,42 @@ public class SagaExecutionCoordinatorTest {
         } finally {
             SlowTruncateSagaLogInitializer.TRUNCATES.set(true);
         }
+        SagaLog sagaLog = pool.tryAcquire(new SagaLogOwner("core-sec-test"), 2, TimeUnit.SECONDS);
+        Assert.assertNotNull(sagaLog, "the saga log was not released");
+        try {
+            sagaLog.truncate().join();
+        } finally {
+            pool.release(sagaLog.id());
+        }
+    }
+
+    /**
+     * Recovery at start and by the timer takes a saga log, runs its sagas and truncates it. When that truncate
+     * fails the recovery fails, and the log must be given back: a log that stays taken is lost to every write
+     * after, and to every later recovery.
+     */
+    @Test
+    @ConfigurationOverride({
+            "saga.recovery.enabled", "false",
+            "sagalog.provider", "io.descoped.lds.core.saga.SlowTruncateSagaLogInitializer",
+            "saga.number-of-logs", "1",
+            "saga.commands.enabled", "true"
+    })
+    public void thatASagaLogIsReleasedWhenItsTruncateFailsAfterRecovery() throws Exception {
+        SagaExecutionCoordinator sec = server.getApplication().getSec();
+        SagaLogPool pool = sec.getSagaLogPool();
+        client.put("/data/provisionagreement/t1?sync=true&saga=failAfter%20S", "{\"name\":\"unfinished\",\"contacts\":[]}").expectAnyOf(500);
+        SlowTruncateSagaLogInitializer.FAILING_TRUNCATES.set(1);
+        try {
+            sec.completeLocalIncompleteSagas(sec.getRecoveryThreadPool()).join();
+            Assert.fail("The truncate failed and the recovery did not");
+        } catch (CompletionException e) {
+            assertTrue(String.valueOf(e.getCause()).contains("truncate failed"), String.valueOf(e.getCause()));
+        } finally {
+            SlowTruncateSagaLogInitializer.FAILING_TRUNCATES.set(0);
+        }
+        client.get("/data/provisionagreement/t1").expect200Ok(); // the saga itself was recovered
+
         SagaLog sagaLog = pool.tryAcquire(new SagaLogOwner("core-sec-test"), 2, TimeUnit.SECONDS);
         Assert.assertNotNull(sagaLog, "the saga log was not released");
         try {

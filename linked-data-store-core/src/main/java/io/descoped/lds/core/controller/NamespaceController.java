@@ -64,7 +64,7 @@ public class NamespaceController implements HttpHandler {
             return;
         }
 
-        if (requestPath.startsWith(defaultNamespace)) {
+        if (requestPath.equals(defaultNamespace) || requestPath.startsWith(defaultNamespace + "/")) {
             new DataController(specification, schemaRepository, persistence, sec, sagaRepository).handleRequest(exchange);
             return;
         }
@@ -76,7 +76,8 @@ public class NamespaceController implements HttpHandler {
 
         exchange.setStatusCode(400);
         exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "text/plain");
-        String namespace = requestPath.substring(1, Math.max(requestPath.substring(1).indexOf("/") + 1, requestPath.length()));
+        int end = requestPath.indexOf('/', 1);
+        String namespace = requestPath.substring(1, end < 0 ? requestPath.length() : end); // the first path segment
         exchange.getResponseSender().send("Unsupported namespace: \"" + namespace + "\"");
     }
 }

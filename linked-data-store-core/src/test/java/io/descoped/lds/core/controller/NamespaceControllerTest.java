@@ -21,6 +21,14 @@ public class NamespaceControllerTest {
         assertEquals(response, "Unsupported namespace: \"bad\"");
     }
 
+    @Test
+    public void thatANamespaceThatOnlyStartsWithTheDefaultNamespaceFailsWith400() {
+        String body = "{\"name\":\"pa-test-name\",\"contacts\":[]}";
+        assertEquals(client.put("/datax/provisionagreement/n1?sync=true", body).expect400BadRequest().body(), "Unsupported namespace: \"datax\"");
+        assertEquals(client.get("/datax/provisionagreement/n1").expect400BadRequest().body(), "Unsupported namespace: \"datax\"");
+        client.get("/data/provisionagreement/n1").expect404NotFound();
+    }
+
     @Test(enabled = false)
     public void thatPUTOnLegalNamespaceAndDocumentAcceptsWith200() {
         client.put("/data/contact/1", "{\"name\":\"John\",\"email\":\"john@company.com\"}").expect200Ok();

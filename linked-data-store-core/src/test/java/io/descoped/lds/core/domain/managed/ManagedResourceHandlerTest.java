@@ -55,6 +55,14 @@ public class ManagedResourceHandlerTest {
     }
 
     @Test
+    public void thatDELETEWithoutAnIdFailsWith400AndRemovesNothing() {
+        createTestResource("provisionagreement", "m-kept", "{\"name\":\"pa-test-name\",\"contacts\":[]}");
+        assertEquals(client.delete("/data/provisionagreement?sync=true").expect400BadRequest().body(), "Id was empty!");
+        assertEquals(client.delete("/data/provisionagreement/?sync=true").expect400BadRequest().body(), "Id was empty!");
+        client.get("/data/provisionagreement/m-kept").expect200Ok();
+    }
+
+    @Test
     public void thatDELETEDoesRemoveResource() {
         createTestResource("provisionagreement", "m2", "{\"name\":\"pa-test-name\",\"contacts\":[\"/contact/c1\",\"/contact/c2\"]}");
         client.get("/data/provisionagreement/m2").expect200Ok();
