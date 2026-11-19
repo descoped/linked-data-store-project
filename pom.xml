@@ -11,7 +11,7 @@
 
     <name>Linked Data Store Project</name>
     <description>Linked Data Store: a server that gives REST and GraphQL access to versioned, linked JSON documents
-        described by a model read at start, with pluggable persistence (PostgreSQL, Neo4j, FoundationDB, memory)
+        described by a model read at start, with pluggable persistence (PostgreSQL, Neo4j, memory)
         and search (Solr).
     </description>
     <url>https://github.com/descoped/linked-data-store-project</url>
@@ -21,7 +21,6 @@
         <module>linked-data-store-bom</module>
         <module>linked-data-store-persistence-provider-api</module>
         <module>linked-data-store-persistence-provider-tck</module>
-        <module>linked-data-store-persistence-provider-foundationdb</module>
         <module>linked-data-store-persistence-provider-memory</module>
         <module>linked-data-store-persistence-provider-neo4j</module>
         <module>linked-data-store-persistence-provider-postgres</module>
@@ -52,10 +51,12 @@
         <handy-uri-templates.version>2.1.8</handy-uri-templates.version>
         <commons-math3.version>3.6.1</commons-math3.version>
         <javax-inject.version>1</javax-inject.version>
+        <junit.version>6.1.3</junit.version>
         <testng.version>7.12.0</testng.version>
         <assertj.version>3.27.7</assertj.version>
         <jsonassert.version>1.5.3</jsonassert.version>
         <rawdata-client.version>3.0.1</rawdata-client.version>
+        <java-tuple.version>0.1.0</java-tuple.version>
         <testcontainers.version>2.0.5</testcontainers.version>
         <rxjava.version>3.1.12</rxjava.version>
         <reactive-streams.version>1.0.4</reactive-streams.version>
@@ -75,7 +76,6 @@
         <tika.version>1.24.1</tika.version>
         <okhttp.version>3.14.0</okhttp.version>
         <neo4j-java-driver.version>4.0.2</neo4j-java-driver.version>
-        <fdb-java.version>5.2.5</fdb-java.version>
         <solr.version>7.7.1</solr.version>
     </properties>
 

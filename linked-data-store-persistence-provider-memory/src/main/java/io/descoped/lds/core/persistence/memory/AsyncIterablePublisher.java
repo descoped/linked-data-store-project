@@ -1,7 +1,5 @@
-package io.descoped.lds.core.persistence.foundationdb;
+package io.descoped.lds.core.persistence.memory;
 
-import com.apple.foundationdb.async.AsyncIterable;
-import com.apple.foundationdb.async.AsyncIterator;
 import org.reactivestreams.Publisher;
 import org.reactivestreams.Subscriber;
 import org.reactivestreams.Subscription;

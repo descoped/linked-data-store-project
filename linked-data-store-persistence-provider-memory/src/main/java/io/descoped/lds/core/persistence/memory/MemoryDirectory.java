@@ -1,15 +1,12 @@
 package io.descoped.lds.core.persistence.memory;
 
-import com.apple.foundationdb.subspace.Subspace;
-import com.apple.foundationdb.tuple.Tuple;
-import io.descoped.lds.api.persistence.PersistenceException;
-import io.descoped.lds.core.persistence.foundationdb.FoundationDBDirectory;
+import io.descoped.tuple.Tuple;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
-class MemoryDirectory implements FoundationDBDirectory {
+class MemoryDirectory {
 
     final int prefixLength;
 
@@ -21,8 +18,7 @@ class MemoryDirectory implements FoundationDBDirectory {
         this.nextPrefix = new byte[prefixLength];
     }
 
-    @Override
-    public CompletableFuture<Subspace> createOrOpen(Tuple key) throws PersistenceException {
+    CompletableFuture<Subspace> createOrOpen(Tuple key) {
         Subspace subspace = subspaceByTuple.computeIfAbsent(key, k -> new Subspace(allocateUnusedShortPrefix()));
         return CompletableFuture.completedFuture(subspace);
     }

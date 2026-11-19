@@ -3,8 +3,8 @@ import io.descoped.lds.core.persistence.memory.MemoryInitializer;
 
 module io.descoped.lds.persistence.memory {
     requires io.descoped.lds.persistence.api;
-    requires io.descoped.lds.persistence.foundationdb;
-    requires fdb.java;
+    requires io.descoped.tuple;
+    requires io.reactivex.rxjava3;
 
     provides PersistenceInitializer with MemoryInitializer;
 }

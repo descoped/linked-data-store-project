@@ -1,14 +1,7 @@
 package io.descoped.lds.core.persistence.memory;
 
-import com.apple.foundationdb.KeyValue;
-import com.apple.foundationdb.async.AsyncIterable;
-import com.apple.foundationdb.async.AsyncIterator;
-
-import java.util.List;
 import java.util.NavigableMap;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
-import java.util.stream.Collectors;
 
 public class MemoryAsyncIterable implements AsyncIterable<KeyValue> {
 
@@ -25,10 +18,5 @@ public class MemoryAsyncIterable implements AsyncIterable<KeyValue> {
     @Override
     public AsyncIterator<KeyValue> iterator() {
         return new MemoryAsyncIterator(executor, map, limit);
-    }
-
-    @Override
-    public CompletableFuture<List<KeyValue>> asList() {
-        return CompletableFuture.supplyAsync(() -> map.entrySet().stream().map(e -> new KeyValue(e.getKey(), e.getValue())).collect(Collectors.toList()), executor);
     }
 }

@@ -17,7 +17,6 @@ until that is done, treat the code as work in progress.
 | `linked-data-store-persistence-provider-tck` | The tests every persistence provider must pass |
 | `linked-data-store-persistence-provider-postgres` | PostgreSQL |
 | `linked-data-store-persistence-provider-neo4j` | Neo4j |
-| `linked-data-store-persistence-provider-foundationdb` | FoundationDB |
 | `linked-data-store-persistence-provider-memory` | In memory, for tests and trials |
 | `linked-data-store-search-provider-api` | The interface a search index implements |
 | `linked-data-store-search-provider-solr` | Apache Solr |
