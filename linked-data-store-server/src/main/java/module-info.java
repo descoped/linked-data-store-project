@@ -6,5 +6,4 @@ module io.descoped.lds.server {
     requires io.descoped.rawdata.api;
     requires io.descoped.service.provider.api;
 
-    uses io.descoped.rawdata.api.RawdataClientInitializer;
 }

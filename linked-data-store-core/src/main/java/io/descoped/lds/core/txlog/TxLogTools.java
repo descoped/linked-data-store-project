@@ -4,7 +4,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import de.huxhorn.sulky.ulid.ULID;
 import io.descoped.lds.core.saga.SagaInput;
 import io.descoped.rawdata.api.RawdataMessage;
 import org.msgpack.jackson.dataformat.MessagePackFactory;
@@ -13,6 +12,7 @@ import java.io.IOException;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Date;
+import java.util.UUID;
 
 import static java.util.Optional.ofNullable;
 
@@ -38,7 +38,7 @@ public class TxLogTools {
         String uri = String.format("%s/%s/%s", sagaInput.entity(), sagaInput.resourceId(), Date.from(sagaInput.version().toInstant()).getTime());
 
         RawdataMessage.Builder builder = RawdataMessage.builder();
-        builder.ulid(ULID.parseULID(sagaInput.txId()))
+        builder.id(UUID.fromString(sagaInput.txId()))
                 .position(uri);
         if (sagaInput.data() != null) {
             builder.put("data", toBytes(sagaInput.data()));
@@ -49,7 +49,7 @@ public class TxLogTools {
     public static SagaInput txEntryToSagaInput(RawdataMessage message) {
         JsonNode meta = toJson(message.get("meta"));
         JsonNode data = message.keys().contains("data") ? toJson(message.get("data")) : null;
-        return new SagaInput(message.ulid(),
+        return new SagaInput(message.id(),
                 meta.get("method").textValue(),
                 meta.get("schema").textValue(),
                 meta.get("namespace").textValue(),

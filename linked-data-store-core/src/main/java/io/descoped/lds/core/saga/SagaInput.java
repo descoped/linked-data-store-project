@@ -2,11 +2,11 @@ package io.descoped.lds.core.saga;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import de.huxhorn.sulky.ulid.ULID;
 import io.descoped.lds.api.persistence.json.JsonTools;
 
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.UUID;
 
 import static java.util.Optional.ofNullable;
 
@@ -18,7 +18,7 @@ public class SagaInput {
         this.node = node;
     }
 
-    public SagaInput(ULID.Value txId, String method, String schema, String namespace, String entity,
+    public SagaInput(UUID txId, String method, String schema, String namespace, String entity,
                      String id, ZonedDateTime version, String source, String sourceId, JsonNode data) {
         ObjectNode node = JsonTools.mapper.createObjectNode();
         node.put("txid", txId.toString());

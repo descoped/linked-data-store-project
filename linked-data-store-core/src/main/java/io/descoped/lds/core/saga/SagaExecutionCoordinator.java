@@ -1,8 +1,8 @@
 package io.descoped.lds.core.saga;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import de.huxhorn.sulky.ulid.ULID;
 import io.descoped.lds.api.persistence.json.JsonTools;
+import io.descoped.rawdata.api.RawdataIds;
 import no.cantara.concurrent.futureselector.SelectableFuture;
 import no.cantara.concurrent.futureselector.SelectableThreadPoolExectutor;
 import no.cantara.saga.api.Saga;
@@ -29,6 +29,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -50,8 +51,7 @@ public class SagaExecutionCoordinator {
 
     static final Pattern deadLetterSagaPattern = Pattern.compile("dead-saga");
 
-    final ULID ulid = new ULID();
-    final AtomicReference<ULID.Value> prevUlid = new AtomicReference<>(ulid.nextValue());
+    final AtomicReference<UUID> previousTxId = new AtomicReference<>(RawdataIds.generate());
 
     final int numberOfSagaLogs;
     final SagaLogPool sagaLogPool;
@@ -136,15 +136,12 @@ public class SagaExecutionCoordinator {
         return future;
     }
 
-    public ULID.Value generateTxId() {
-        ULID.Value previousUlid = prevUlid.get();
-        ULID.Value next = ulid.nextStrictlyMonotonicValue(previousUlid).orElse(null);
-        while (next == null || !prevUlid.compareAndSet(previousUlid, next)) {
-            Thread.yield();
-            previousUlid = prevUlid.get();
-            next = ulid.nextStrictlyMonotonicValue(previousUlid).orElse(null);
-        }
-        return next;
+    /**
+     * A new transaction id: a UUIDv7 that is greater, in {@link RawdataIds#ORDER}, than every id this coordinator
+     * gave before, also within one millisecond and when the clock goes back.
+     */
+    public UUID generateTxId() {
+        return previousTxId.updateAndGet(RawdataIds::next);
     }
 
     SagaLog acquireCleanSagaLog(Consumer<SagaExecutionTraversalContext> forwardRecoveryPreAction, Consumer<SagaExecutionTraversalContext> forwardRecoveryPostAction) {

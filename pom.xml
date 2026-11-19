@@ -66,7 +66,7 @@
              the same list. -->
         <cantara-saga.version>1.0.23</cantara-saga.version>
         <dynamic-configuration.version>2.0.0</dynamic-configuration.version>
-        <rawdata-client.version>2.0.0</rawdata-client.version>
+        <rawdata-client.version>3.0.1-SNAPSHOT</rawdata-client.version>
         <rxjava2.version>2.2.21</rxjava2.version>
         <rxjava2-jdk9-interop.version>0.2.7</rxjava2-jdk9-interop.version>
         <reactive-streams.version>1.0.4</reactive-streams.version>
