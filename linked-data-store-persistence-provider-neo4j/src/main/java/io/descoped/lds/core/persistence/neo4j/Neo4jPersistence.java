@@ -23,9 +23,9 @@ import org.neo4j.driver.Value;
 import org.neo4j.driver.types.Node;
 import org.neo4j.driver.types.Relationship;
 
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,116 +33,99 @@ import java.util.TreeMap;
 
 import static io.descoped.lds.core.persistence.neo4j.Neo4jCreationalPatternFactory.hashOf;
 
-public class Neo4jPersistence implements RxJsonPersistence {
+/**
+ * Documents as a graph in Neo4j.
+ * <ul>
+ * <li>A document is one node, with the entity as its label and the properties {@code namespace} and {@code id}.
+ * One database holds any number of namespaces.</li>
+ * <li>Each version is a {@code VERSION} relationship from the document node to the root of that version, valid
+ * from {@code from} until {@code to}. Both are instants, stored in UTC.</li>
+ * <li>Below the root, objects, arrays and values are nodes with the label {@code <entity>_E}, joined by
+ * {@code EMBED} relationships that carry the field name, or the index in an array. A value node also carries the
+ * namespace, for the index that a search for a value looks up.</li>
+ * <li>A link is a {@code REF} relationship to the document node it points at, in the same namespace. That node is
+ * created with the link when the document is not written yet.</li>
+ * </ul>
+ * A read is one statement that returns one record for each document, and a record is taken from the driver when
+ * a document is asked for.
+ */
+final class Neo4jPersistence implements RxJsonPersistence {
+
+    static final ZoneId UTC = ZoneId.of("Etc/UTC");
+
+    /*
+     * The end of every read. r is the document node, v the version and m its root; "leaves" holds every node
+     * below the root with the relationships that lead to it.
+     */
+    private static final String RETURN_DOCUMENT = "RETURN r, v, m, [p = (m)-[:EMBED|REF*]->(e) | [relationships(p), e]] AS leaves";
 
     private final Neo4jTransactionFactory transactionFactory;
     private final Neo4jCreationalPatternFactory creationalPatternFactory;
 
-    public Neo4jPersistence(Neo4jTransactionFactory transactionFactory) {
+    Neo4jPersistence(Neo4jTransactionFactory transactionFactory) {
         this.transactionFactory = transactionFactory;
         this.creationalPatternFactory = new Neo4jCreationalPatternFactory();
     }
 
-    private static JsonDocument createJsonDocument(Map<String, FlattenedDocumentLeafNode> leafNodesByPath,
-                                                   DocumentKey documentKey, boolean deleted) {
-        FlattenedDocument flattenedDocument = new FlattenedDocument(documentKey, leafNodesByPath, deleted);
-        JsonNode jsonObject = new FlattenedDocumentToJson(flattenedDocument).toJsonNode();
-        return new JsonDocument(documentKey, jsonObject);
+    /**
+     * The instant in the one zone versions are stored with. Neo4j tells two values of the same instant apart
+     * when their zones differ, also "Z" and "Etc/UTC".
+     */
+    static ZonedDateTime utc(ZonedDateTime instant) {
+        return instant.withZoneSameInstant(UTC);
     }
 
     /**
-     * Compute path from Record.
+     * The document of a record.
      */
-    static String getPathFromRecord(Record record) {
-        Node rootNode = record.get("m").asNode();
-        if (rootNode.containsKey("deleted") && rootNode.get("deleted").asBoolean(false)) {
-            // Empty path if deleted.
-            return "$";
+    static JsonDocument toDocument(Record record, String namespace, String entityName) {
+        String id = record.get("r").get("id").asString();
+        ZonedDateTime version = record.get("v").get("from").asZonedDateTime();
+        DocumentKey key = new DocumentKey(namespace, entityName, id, version);
+
+        Map<String, FlattenedDocumentLeafNode> leaves = new TreeMap<>();
+        Node root = record.get("m").asNode();
+        if (root.containsKey("deleted") && root.get("deleted").asBoolean(false)) {
+            // a version that marks the document as deleted
+            leaves.put("$", new FlattenedDocumentLeafNode(key, null, FragmentType.DELETED, null, Integer.MAX_VALUE));
         } else {
-            List<Relationship> embeds = record.get("l").asList(Value::asRelationship);
-            return computePath(embeds);
-        }
-    }
-
-    /**
-     * Convert the {@link Record} to {@link FlattenedDocumentLeafNode}.
-     * <p>
-     * Documents marked as deleted will be returned as empty.
-     * TODO: I think this is different in other implementations.
-     */
-    static FlattenedDocumentLeafNode getLeafFromRecord(Record record, DocumentKey documentKey) {
-
-        Node rootNode = record.get("m").asNode();
-        if (rootNode.containsKey("deleted") && rootNode.get("deleted").asBoolean(false)) {
-            return new FlattenedDocumentLeafNode(documentKey, null, FragmentType.DELETED, null, Integer.MAX_VALUE);
-        }
-
-        String pathWithIndices = getPathFromRecord(record);
-
-        Value value = record.get("e");
-        if (value.isNull()) {
-            return new FlattenedDocumentLeafNode(documentKey, pathWithIndices, FragmentType.NULL, null, Integer.MAX_VALUE);
-        }
-
-        Node valueNode = value.asNode();
-        if (valueNode.containsKey("id")) {
-            // ref-target node
-            String linkTargetEntity = valueNode.labels().iterator().next();
-            String id = valueNode.get("id").asString();
-            String link = "/" + linkTargetEntity + "/" + id;
-            return new FlattenedDocumentLeafNode(documentKey, pathWithIndices, FragmentType.STRING, link, Integer.MAX_VALUE);
-        } else {
-            Value typeValue = valueNode.get("type");
-            String type = typeValue.asString();
-            Value valueValue = valueNode.get("value");
-            if ("string".equals(type)) {
-                String stringValue = valueValue.asString();
-                return new FlattenedDocumentLeafNode(documentKey, pathWithIndices, FragmentType.STRING, stringValue, Integer.MAX_VALUE);
-            } else if ("number".equals(type)) {
-                String stringValue = String.valueOf(valueValue.asNumber());
-                return new FlattenedDocumentLeafNode(documentKey, pathWithIndices, FragmentType.NUMERIC, stringValue, Integer.MAX_VALUE);
-            } else if ("boolean".equals(type)) {
-                String stringValue = String.valueOf(valueValue.asBoolean());
-                return new FlattenedDocumentLeafNode(documentKey, pathWithIndices, FragmentType.BOOLEAN, stringValue, Integer.MAX_VALUE);
-            } else if ("map".equals(type)) {
-                return new FlattenedDocumentLeafNode(documentKey, pathWithIndices, FragmentType.EMPTY_OBJECT, null, Integer.MAX_VALUE);
-            } else if ("array".equals(type)) {
-                return new FlattenedDocumentLeafNode(documentKey, pathWithIndices, FragmentType.EMPTY_ARRAY, null, Integer.MAX_VALUE);
-            } else {
-                throw new IllegalStateException("type not supported: " + typeValue.asString());
+            for (Value leaf : record.get("leaves").values()) {
+                String path = computePath(leaf.get(0).asList(Value::asRelationship));
+                leaves.put(path, toLeaf(key, path, leaf.get(1).asNode()));
             }
         }
+
+        // The document is never marked as deleted here: a version that marks it holds the one leaf above.
+        FlattenedDocument flattenedDocument = new FlattenedDocument(key, leaves, false);
+        JsonNode jsonObject = new FlattenedDocumentToJson(flattenedDocument).toJsonNode();
+        return new JsonDocument(key, jsonObject);
     }
 
-    /**
-     * Create a {@link DocumentKey} from a record.
-     */
-    static DocumentKey getKeyFromRecord(Record record, String namespace, String entityName) {
-        String docId = record.get("r").get("id").asString();
-        ZonedDateTime version = record.get("v").get("from").asZonedDateTime();
-        return new DocumentKey(namespace, entityName, docId, version);
-    }
-
-    /**
-     * Convert {@link Record}s stream {@link JsonDocument} stream.
-     */
-    static Flowable<JsonDocument> toDocuments(Flowable<Record> records, String nameSpace, String entityName) {
-        return records.groupBy(record -> {
-            // Group by id and version.
-            return getKeyFromRecord(record, nameSpace, entityName);
-        }).concatMapEager(recordById -> {
-            // For each group create a
-            DocumentKey key = recordById.getKey();
-            return recordById.toMap(record -> {
-                // Compute path.
-                return getPathFromRecord(record);
-            }, record -> getLeafFromRecord(record, key)).map(values -> {
-                // Un-flatten. Note that we always mark the node as not deleted since the
-                // neo4j data model does not contain any deleted nodes. Not sure if that
-                // TODO: Check that this does not break the contract.
-                return createJsonDocument(new TreeMap<>(values), key, false);
-            }).toFlowable();
-        });
+    private static FlattenedDocumentLeafNode toLeaf(DocumentKey key, String path, Node node) {
+        if (node.containsKey("id")) {
+            // the document node a link points at
+            String linkTargetEntity = node.labels().iterator().next();
+            String link = "/" + linkTargetEntity + "/" + node.get("id").asString();
+            return new FlattenedDocumentLeafNode(key, path, FragmentType.STRING, link, Integer.MAX_VALUE);
+        }
+        String type = node.get("type").asString();
+        Value value = node.get("value");
+        return switch (type) {
+            case "map" -> new FlattenedDocumentLeafNode(key, path, FragmentType.EMPTY_OBJECT, null, Integer.MAX_VALUE);
+            case "array" -> new FlattenedDocumentLeafNode(key, path, FragmentType.EMPTY_ARRAY, null, Integer.MAX_VALUE);
+            case "string", "number", "boolean" -> {
+                if (value.isNull()) {
+                    // written as null: the node has no value
+                    yield new FlattenedDocumentLeafNode(key, path, FragmentType.NULL, null, Integer.MAX_VALUE);
+                }
+                yield switch (type) {
+                    case "string" -> new FlattenedDocumentLeafNode(key, path, FragmentType.STRING, value.asString(), Integer.MAX_VALUE);
+                    case "number" -> new FlattenedDocumentLeafNode(key, path, FragmentType.NUMERIC, String.valueOf(value.asNumber()), Integer.MAX_VALUE);
+                    default -> new FlattenedDocumentLeafNode(key, path, FragmentType.BOOLEAN, String.valueOf(value.asBoolean()), Integer.MAX_VALUE);
+                };
+            }
+            default -> throw new IllegalStateException("type not supported: " + type);
+        };
     }
 
     static String computePath(List<Relationship> embeds) {
@@ -159,6 +142,39 @@ public class Neo4jPersistence implements RxJsonPersistence {
         return completePath.toString();
     }
 
+    /*
+     * The bounds, the direction and the limit of a range of ids, for a statement that names the document node r.
+     */
+    private static String idConditions(Range<String> range, Map<String, Object> params) {
+        StringBuilder conditions = new StringBuilder();
+        if (range.hasAfter()) {
+            conditions.append(" AND $idAfter < r.id");
+            params.put("idAfter", range.getAfter());
+        }
+        if (range.hasBefore()) {
+            conditions.append(" AND r.id < $idBefore");
+            params.put("idBefore", range.getBefore());
+        }
+        return conditions.toString();
+    }
+
+    private static String orderAndLimit(Range<?> range, String orderBy, Map<String, Object> params) {
+        String order = " ORDER BY " + orderBy + (range.isBackward() ? " DESC" : "");
+        if (range.isLimited()) {
+            params.put("limit", range.getLimit());
+            return order + " LIMIT $limit";
+        }
+        return order;
+    }
+
+    private static Flowable<JsonDocument> documents(Transaction tx, String query, Map<String, Object> params, String namespace, String entityName) {
+        return ((Neo4jTransaction) tx).executeCypherAsync(query, params).map(record -> toDocument(record, namespace, entityName));
+    }
+
+    private static Completable run(Transaction tx, String query, Map<String, Object> params) {
+        return ((Neo4jTransaction) tx).executeCypherAsync(query, params).ignoreElements();
+    }
+
     @Override
     public Transaction createTransaction(boolean readOnly) throws PersistenceException {
         return transactionFactory.createTransaction(readOnly);
@@ -166,206 +182,112 @@ public class Neo4jPersistence implements RxJsonPersistence {
 
     @Override
     public Completable createOrOverwrite(Transaction transaction, Flowable<JsonDocument> documentFlowable, Specification specification) {
-        Neo4jTransaction tx = (Neo4jTransaction) transaction;
-
-        Map<String, List<JsonDocument>> documentsByEntity = new LinkedHashMap<>();
-        List<JsonDocument> documents = documentFlowable.toList().blockingGet();
-        for (JsonDocument document : documents) {
-            documentsByEntity.computeIfAbsent(document.key().entity(), e -> new ArrayList<>()).add(document);
-        }
-        List<Completable> completables = new ArrayList<>();
-        for (Map.Entry<String, List<JsonDocument>> entry : documentsByEntity.entrySet()) {
-            String entity = entry.getKey();
-            List<JsonDocument> documentForEntityList = entry.getValue();
-            Neo4jQueryAndParams qp = creationalPatternFactory.creationalQueryAndParams(specification, entity, documentForEntityList);
-            completables.add(tx.executeCypherAsync(qp.query, qp.params).ignoreElements());
-        }
-        return Completable.merge(completables);
+        return documentFlowable.toList().flatMapCompletable(documents -> {
+            Map<String, List<JsonDocument>> documentsByEntity = new LinkedHashMap<>();
+            for (JsonDocument document : documents) {
+                documentsByEntity.computeIfAbsent(document.key().entity(), e -> new ArrayList<>()).add(document);
+            }
+            List<Completable> completables = new ArrayList<>();
+            for (Map.Entry<String, List<JsonDocument>> entry : documentsByEntity.entrySet()) {
+                String entity = entry.getKey();
+                List<JsonDocument> documentForEntityList = entry.getValue();
+                Neo4jQueryAndParams qp = creationalPatternFactory.creationalQueryAndParams(specification, entity, documentForEntityList);
+                completables.add(run(transaction, qp.query(), qp.params()));
+            }
+            return Completable.concat(completables);
+        });
     }
 
     @Override
     public Flowable<JsonDocument> findDocument(Transaction tx, ZonedDateTime snapshot, String namespace, String entityName, JsonNavigationPath path, String value, Range<String> range) {
-        Neo4jTransaction neoTx = (Neo4jTransaction) tx;
-        StringBuilder cypher = new StringBuilder();
         Map<String, Object> params = new LinkedHashMap<>();
-        params.put("snapshot", snapshot);
-        params.put("limit", Integer.MAX_VALUE);
+        params.put("namespace", namespace);
+        params.put("snapshot", utc(snapshot));
         params.put("path", path.serialize());
-        // TODO refactor API.
-        Object objectValue = value;
-        if (objectValue instanceof String) {
-            String str = (String) objectValue;
-            // TODO: Make configurable.
-            if (str.length() > 40) {
-                params.put("value", hashOf(str));
-            } else {
-                params.put("value", str);
-            }
-        } else if (objectValue instanceof Boolean) {
-            params.put("value", objectValue);
-        } else if (objectValue instanceof Integer) {
-            params.put("value", objectValue);
-        } else if (objectValue instanceof Long) {
-            params.put("value", objectValue);
-        } else if (objectValue instanceof Float) {
-            params.put("value", objectValue);
-        } else if (objectValue instanceof Double) {
-            params.put("value", objectValue);
-        } else {
-            throw new UnsupportedOperationException("Value type not supported: " + value.getClass().getName());
-        }
-        cypher.append("MATCH (e :").append(entityName).append("_E {path: $path, hashOrValue: $value})<-[:EMBED*]-(m)<-[v:VERSION]-(r) ");
-        cypher.append("WHERE v.from <= $snapshot AND $snapshot < v.to WITH r, v, m ORDER BY r.id LIMIT $limit\n");
-        cypher.append("OPTIONAL MATCH p=(m)-[:EMBED|REF*]->(e) RETURN r, v, m, relationships(p) AS l, e");
-        return toDocuments(neoTx.executeCypherAsync(cypher.toString(), params), namespace, entityName);
+        // TODO: Make configurable.
+        params.put("value", value.length() > 40 ? hashOf(value) : value);
+        String cypher = "MATCH (e:" + Cypher.label(entityName + "_E") + " {namespace: $namespace, path: $path, hashOrValue: $value})<-[:EMBED*]-(m)<-[v:VERSION]-(r)\n" +
+                "WHERE v.from <= $snapshot AND $snapshot < v.to" + idConditions(range, params) + "\n" +
+                // DISTINCT: an array that holds the value more than once is one document
+                "WITH DISTINCT r, v, m" + orderAndLimit(range, "r.id", params) + "\n" +
+                RETURN_DOCUMENT;
+        return documents(tx, cypher, params, namespace, entityName);
     }
 
     @Override
     public Maybe<JsonDocument> readDocument(Transaction tx, ZonedDateTime snapshot, String ns, String entityName, String id) {
-        Neo4jTransaction neoTx = (Neo4jTransaction) tx;
-
-        StringBuilder cypher = new StringBuilder();
         Map<String, Object> params = new LinkedHashMap<>();
+        params.put("namespace", ns);
         params.put("rid", id);
-        params.put("snapshot", snapshot);
-        cypher.append("MATCH (r :").append(entityName).append(" {id: $rid})-[v:VERSION]->(m) WHERE v.from <= $snapshot AND $snapshot < v.to ");
-        cypher.append("WITH r, v, m OPTIONAL MATCH p=(m)-[:EMBED|REF*]->(e) RETURN r, v, m, relationships(p) AS l, e");
-
-        Flowable<Record> records = neoTx.executeCypherAsync(cypher.toString(), params);
-        return toDocuments(records, ns, entityName).firstElement();
+        params.put("snapshot", utc(snapshot));
+        String cypher = "MATCH (r:" + Cypher.label(entityName) + " {namespace: $namespace, id: $rid})-[v:VERSION]->(m) WHERE v.from <= $snapshot AND $snapshot < v.to\n" +
+                RETURN_DOCUMENT;
+        return documents(tx, cypher, params, ns, entityName).firstElement();
     }
 
     @Override
     public Flowable<JsonDocument> readDocuments(Transaction tx, ZonedDateTime snapshot, String ns, String entityName, Range<String> range) {
-
         Map<String, Object> params = new LinkedHashMap<>();
-
-        List<String> conditions = new ArrayList<>();
-        conditions.add("TRUE");
-
-        if (range.hasAfter()) {
-            conditions.add("r.id > $idAfter");
-            params.put("idAfter", range.getAfter());
-        }
-        if (range.hasBefore()) {
-            conditions.add("r.id < $idBefore");
-            params.put("idBefore", range.getBefore());
-        }
-
-        // Swap the order so that we only use limit.
-        String orderBy = " ORDER BY r.id " + (range.isBackward() ? "DESC " : "");
-        String limit = "";
-        if (range.isLimited()) {
-            limit = " LIMIT $limit ";
-            params.put("limit", range.getLimit());
-        }
-
-        params.put("snapshot", snapshot);
-
-        Neo4jTransaction neoTx = (Neo4jTransaction) tx;
-        StringBuilder cypher = new StringBuilder();
-
-        cypher.append("MATCH (r :").append(entityName).append(") WHERE ").append(String.join(" AND ", conditions)).append(" WITH r ").append(orderBy).append("\n");
-        cypher.append("MATCH (r)-[v:VERSION]->(m) WHERE v.from <= $snapshot AND $snapshot < v.to").append(" ");
-        cypher.append("WITH r, v, m ").append(limit);
-        cypher.append("OPTIONAL MATCH p=(m)-[:EMBED|REF*]->(e) RETURN r, v, m, relationships(p) AS l, e");
-
-        Flowable<Record> records = neoTx.executeCypherAsync(cypher.toString(), params);
-        return toDocuments(records, ns, entityName);
+        params.put("namespace", ns);
+        params.put("snapshot", utc(snapshot));
+        String cypher = "MATCH (r:" + Cypher.label(entityName) + " {namespace: $namespace})-[v:VERSION]->(m)\n" +
+                "WHERE v.from <= $snapshot AND $snapshot < v.to" + idConditions(range, params) + "\n" +
+                "WITH r, v, m" + orderAndLimit(range, "r.id", params) + "\n" +
+                RETURN_DOCUMENT;
+        return documents(tx, cypher, params, ns, entityName);
     }
 
     @Override
     public Flowable<JsonDocument> readDocumentVersions(Transaction tx, String ns, String entityName, String id, Range<ZonedDateTime> range) {
-        Neo4jTransaction neoTx = (Neo4jTransaction) tx;
-        StringBuilder cypher = new StringBuilder();
         Map<String, Object> params = new LinkedHashMap<>();
+        params.put("namespace", ns);
         params.put("rid", id);
 
-        // Construct where clauses based on the range.
-        // First find the first one between ]after:before[
-        // Then filter the results such as ]after:from:before[
-
-
+        // the versions between the bounds, both exclusive
         List<String> conditions = new ArrayList<>();
         if (range.hasAfter()) {
-            params.put("snapshotFrom", range.getAfter());
+            params.put("snapshotFrom", utc(range.getAfter()));
             conditions.add("$snapshotFrom < v.from");
         }
-
         if (range.hasBefore()) {
-            params.put("snapshotTo", range.getBefore());
+            params.put("snapshotTo", utc(range.getBefore()));
             conditions.add("v.from < $snapshotTo");
         }
+        String where = conditions.isEmpty() ? "" : " WHERE " + String.join(" AND ", conditions);
 
-        String where = conditions.isEmpty() ? " " : " WHERE " + String.join(" AND ", conditions);
-
-        // Swap the order so that we only use limit.
-        String orderBy = range.isBackward() ? " ORDER BY r.id, v.from DESC" : " ORDER BY r.id, v.from";
-        String limit = "";
-        if (range.isLimited()) {
-            limit = " LIMIT $limit";
-            // Obs, since we are getting the r node, we need to bump limit by one.
-            params.put("limit", range.getLimit());
-        }
-
-        cypher.append("MATCH (r :").append(entityName).append(" {id: $rid})-[v:VERSION]->(m) \n");
-        cypher.append("WITH r, v, m ").append(orderBy).append(where).append("\n");
-        cypher.append("WITH r, v, m ").append(limit).append(" OPTIONAL MATCH p=(m)-[:EMBED|REF*]->(e) RETURN r, v, m, relationships(p) AS l, e");
-
-        Flowable<Record> records = neoTx.executeCypherAsync(cypher.toString(), params);
-        return toDocuments(records, ns, entityName);
+        String cypher = "MATCH (r:" + Cypher.label(entityName) + " {namespace: $namespace, id: $rid})-[v:VERSION]->(m)" + where + "\n" +
+                "WITH r, v, m" + orderAndLimit(range, "v.from", params) + "\n" +
+                RETURN_DOCUMENT;
+        return documents(tx, cypher, params, ns, entityName);
     }
 
     @Override
     public Flowable<JsonDocument> readTargetDocuments(Transaction tx, ZonedDateTime snapshot, String ns,
                                                       String entityName, String id, JsonNavigationPath jsonNavigationPath,
                                                       String targetEntityName, Range<String> range) {
-        Neo4jTransaction neoTx = (Neo4jTransaction) tx;
-        try {
-            Map<String, Object> parameters = new LinkedHashMap<>();
-
-            parameters.put("snapshot", snapshot);
-            parameters.put("path", jsonNavigationPath.popBack().serialize());
-            parameters.put("lastPathElement", jsonNavigationPath.back());
-            parameters.put("id", id);
-
-            String orderBy = "ORDER BY r.id" + (range.isBackward() ? " DESC\n" : "\n");
-
-            String limit = "";
-            if (range.isLimited()) {
-                limit = "LIMIT $limit\n";
-                parameters.put("limit", range.getLimit());
-            }
-
-            String afterCondition = "";
-            if (range.hasAfter()) {
-                afterCondition = "AND $after < r.id\n";
-                parameters.put("after", range.getAfter());
-            }
-            String beforeCondition = "";
-            if (range.hasBefore()) {
-                beforeCondition = "AND r.id < $before\n";
-                parameters.put("before", range.getBefore());
-            }
-            String query = (
-                    "MATCH   (elem:%{entityName} {id: $id})-[version:VERSION]->\n" +
-                            "(root:%{entityName}_E)-[:EMBED*]->\n" +
-                            "(edge:%{entityName}_E {path:$path})-[:REF {path: $lastPathElement}]->\n" +
-                            "(r:" + targetEntityName + ")\n" +
-                            "WHERE  version.from <= $snapshot AND $snapshot < version.to \n" +
-                            afterCondition +
-                            beforeCondition +
-                            "WITH r\n" +
-                            orderBy +
-                            limit +
-                            "MATCH (r)-[v:VERSION]->(m) WHERE v.from <= $snapshot AND $snapshot < v.to " +
-                            "WITH r, v, m OPTIONAL MATCH p=(m)-[:EMBED|REF*]->(e) RETURN r, v, m, relationships(p) AS l, e"
-            ).replace("%{entityName}", entityName);
-
-            return toDocuments(neoTx.executeCypherAsync(query, parameters), ns, targetEntityName);
-        } catch (Exception ex) {
-            return Flowable.error(ex);
-        }
+        return Flowable.defer(() -> {
+            Map<String, Object> params = new LinkedHashMap<>();
+            params.put("namespace", ns);
+            params.put("snapshot", utc(snapshot));
+            params.put("path", jsonNavigationPath.popBack().serialize());
+            params.put("lastPathElement", jsonNavigationPath.back());
+            params.put("id", id);
+            String source = Cypher.label(entityName);
+            String sourceNode = Cypher.label(entityName + "_E");
+            // "*0..": the node that holds the link is the root itself when the link is at the top of the document
+            String cypher = "MATCH (elem:" + source + " {namespace: $namespace, id: $id})-[version:VERSION]->" +
+                    "(root:" + sourceNode + ")-[:EMBED*0..]->" +
+                    "(edge:" + sourceNode + " {path: $path})-[:REF {path: $lastPathElement}]->" +
+                    "(r:" + Cypher.label(targetEntityName) + ")\n" +
+                    "WHERE version.from <= $snapshot AND $snapshot < version.to" + idConditions(range, params) + "\n" +
+                    // DISTINCT: an array that links to a document more than once reads it once
+                    "WITH DISTINCT r\n" +
+                    // a link may point at a document that is not written (yet): the limit counts those that are
+                    "MATCH (r)-[v:VERSION]->(m) WHERE v.from <= $snapshot AND $snapshot < v.to\n" +
+                    "WITH r, v, m" + orderAndLimit(range, "r.id", params) + "\n" +
+                    RETURN_DOCUMENT;
+            return documents(tx, cypher, params, ns, targetEntityName);
+        });
     }
 
     @Override
@@ -373,92 +295,58 @@ public class Neo4jPersistence implements RxJsonPersistence {
                                                       String targetEntityName, String targetId,
                                                       JsonNavigationPath relationPath, String sourceEntityName,
                                                       Range<String> range) {
-        Neo4jTransaction neoTx = (Neo4jTransaction) tx;
-        try {
-            Map<String, Object> parameters = new LinkedHashMap<>();
-
-            parameters.put("snapshot", snapshot);
-            parameters.put("path", relationPath.popBack().serialize());
-            parameters.put("lastPathElement", relationPath.back());
-            parameters.put("id", targetId);
-
-            String orderBy = "ORDER BY r.id" + (range.isBackward() ? " DESC\n" : "\n");
-
-            String limit = "";
-            if (range.isLimited()) {
-                limit = "LIMIT $limit\n";
-                parameters.put("limit", range.getLimit());
-            }
-
-            String afterCondition = "";
-            if (range.hasAfter()) {
-                afterCondition = "AND $after < source.id\n";
-                parameters.put("after", range.getAfter());
-            }
-            String beforeCondition = "";
-            if (range.hasBefore()) {
-                beforeCondition = "AND source.id < $before\n";
-                parameters.put("before", range.getBefore());
-            }
-            String query = (
-                    "MATCH (edge:%{sourceEntityName}_E {path:$path})-[REF {path: $lastPathElement}]->(target:%{targetEntityName} {id: $id}),\n" +
-                            "      (root:%{sourceEntityName}_E)-[*0..]->(edge:%{sourceEntityName}_E),\n" +
-                            "      (source:%{sourceEntityName})-[version:VERSION]->(root)\n" +
-                            "WHERE  version.from <= $snapshot AND $snapshot < version.to \n" +
-                            afterCondition +
-                            beforeCondition +
-                            "WITH source as r\n" +
-                            orderBy +
-                            limit +
-                            "MATCH (r)-[v:VERSION]->(m) WHERE v.from <= $snapshot AND $snapshot < v.to \n" +
-                            "WITH r, v, m OPTIONAL MATCH p=(m)-[:EMBED|REF*]->(e) RETURN r, v, m, relationships(p) AS l, e\n"
-            ).replace("%{sourceEntityName}", sourceEntityName).replace("%{targetEntityName}", targetEntityName);
-
-            return toDocuments(neoTx.executeCypherAsync(query, parameters), ns, sourceEntityName);
-        } catch (Exception ex) {
-            return Flowable.error(ex);
-        }
+        return Flowable.defer(() -> {
+            Map<String, Object> params = new LinkedHashMap<>();
+            params.put("namespace", ns);
+            params.put("snapshot", utc(snapshot));
+            params.put("path", relationPath.popBack().serialize());
+            params.put("lastPathElement", relationPath.back());
+            params.put("id", targetId);
+            String sourceNode = Cypher.label(sourceEntityName + "_E");
+            String cypher = "MATCH (target:" + Cypher.label(targetEntityName) + " {namespace: $namespace, id: $id})" +
+                    "<-[:REF {path: $lastPathElement}]-(edge:" + sourceNode + " {path: $path})" +
+                    "<-[:EMBED*0..]-(m:" + sourceNode + ")" +
+                    "<-[v:VERSION]-(r:" + Cypher.label(sourceEntityName) + ")\n" +
+                    "WHERE v.from <= $snapshot AND $snapshot < v.to" + idConditions(range, params) + "\n" +
+                    // DISTINCT: an array that links to the document more than once is one source
+                    "WITH DISTINCT r, v, m" + orderAndLimit(range, "r.id", params) + "\n" +
+                    RETURN_DOCUMENT;
+            return documents(tx, cypher, params, ns, sourceEntityName);
+        });
     }
 
     @Override
     public Completable deleteDocument(Transaction tx, String ns, String entityName, String id, ZonedDateTime version, PersistenceDeletePolicy policy) {
-        Neo4jTransaction neoTx = (Neo4jTransaction) tx;
-        StringBuilder cypher = new StringBuilder();
-        cypher.append("MATCH (r:").append(entityName).append(" {id: $rid})-[:VERSION {from:$version}]->(m) OPTIONAL MATCH (m)-[:EMBED*]->(e) DETACH DELETE m, e ");
-        cypher.append("WITH r MATCH (r) WHERE NOT (r)--() DELETE r");
-        return neoTx.executeCypherAsync(cypher.toString(), Map.of("rid", id, "version", version)).ignoreElements();
+        String cypher = "MATCH (r:" + Cypher.label(entityName) + " {namespace: $namespace, id: $rid})-[:VERSION {from: $version}]->(m) OPTIONAL MATCH (m)-[:EMBED*]->(e) DETACH DELETE m, e " +
+                "WITH r MATCH (r) WHERE NOT (r)--() DELETE r";
+        return run(tx, cypher, Map.of("namespace", ns, "rid", id, "version", utc(version)));
     }
 
     @Override
     public Completable deleteAllDocumentVersions(Transaction tx, String ns, String entity, String id, PersistenceDeletePolicy policy) {
-        Neo4jTransaction neoTx = (Neo4jTransaction) tx;
-        StringBuilder cypher = new StringBuilder();
-        cypher.append("MATCH (r:").append(entity).append(" {id: $rid}) OPTIONAL MATCH (r)-[:VERSION]->(m) OPTIONAL MATCH (m)-[:EMBED*]->(e) DETACH DELETE m, e ");
-        cypher.append("WITH r MATCH (r) WHERE NOT (r)<--() DELETE r");
-        return neoTx.executeCypherAsync(cypher.toString(), Map.of("rid", id)).ignoreElements();
+        String cypher = "MATCH (r:" + Cypher.label(entity) + " {namespace: $namespace, id: $rid}) OPTIONAL MATCH (r)-[:VERSION]->(m) OPTIONAL MATCH (m)-[:EMBED*]->(e) DETACH DELETE m, e " +
+                "WITH r MATCH (r) WHERE NOT (r)<--() DELETE r";
+        return run(tx, cypher, Map.of("namespace", ns, "rid", id));
     }
 
     @Override
     public Completable deleteAllEntities(Transaction tx, String namespace, String entity, Specification specification) {
-        Neo4jTransaction neoTx = (Neo4jTransaction) tx;
-        StringBuilder cypher = new StringBuilder();
-        cypher.append("MATCH (r:").append(entity).append(") OPTIONAL MATCH (r)-[:VERSION]->(m) OPTIONAL MATCH (m)-[:EMBED*]->(e) DETACH DELETE m, e ");
-        cypher.append("WITH 1 AS a MATCH (r:").append(entity).append(") WHERE NOT (r)<--() DELETE r");
-        return neoTx.executeCypherAsync(cypher.toString(), Collections.emptyMap()).ignoreElements();
+        // DISTINCT: each document node once, where there was a row for every node of every version
+        String cypher = "MATCH (r:" + Cypher.label(entity) + " {namespace: $namespace}) OPTIONAL MATCH (r)-[:VERSION]->(m) OPTIONAL MATCH (m)-[:EMBED*]->(e) DETACH DELETE m, e " +
+                "WITH DISTINCT r WHERE NOT (r)<--() DELETE r";
+        return run(tx, cypher, Map.of("namespace", namespace));
     }
 
     @Override
     public Completable markDocumentDeleted(Transaction transaction, String ns, String entityName, String id, ZonedDateTime version, PersistenceDeletePolicy policy) {
-        Neo4jTransaction tx = (Neo4jTransaction) transaction;
-        StringBuilder cypher = new StringBuilder();
-        cypher.append("MERGE (r:").append(entityName).append(" {id: $rid}) WITH r\n");
-        cypher.append("OPTIONAL MATCH (r:").append(entityName).append(")-[v:VERSION]->() WHERE v.from <= $version AND $version < v.to WITH r, v AS prevVersion\n");
-        cypher.append("OPTIONAL MATCH (r:").append(entityName).append(")-[v:VERSION]->() WHERE v.from > $version WITH r, prevVersion, v AS nextVersion ORDER BY v.from LIMIT 1\n");
-        cypher.append("MERGE (r)-[v:VERSION {from: $version, to: coalesce(prevVersion.to, nextVersion.from, datetime('9999-01-01T00:00:00.0Z[Etc/UTC]'))}]->(m:").append(entityName).append("_E {type:'map', path:'$'})\n");
-        cypher.append("SET prevVersion.to = $version, m.deleted = true\n");
-        cypher.append("WITH m OPTIONAL MATCH (m)-[:EMBED*]->(e) DETACH DELETE e");
-
-        return tx.executeCypherAsync(cypher.toString(), Map.of("rid", id, "version", version)).ignoreElements();
+        String label = Cypher.label(entityName);
+        String cypher = "MERGE (r:" + label + " {namespace: $namespace, id: $rid}) WITH r\n" +
+                "OPTIONAL MATCH (r:" + label + ")-[v:VERSION]->() WHERE v.from <= $version AND $version < v.to WITH r, v AS prevVersion\n" +
+                "OPTIONAL MATCH (r:" + label + ")-[v:VERSION]->() WHERE v.from > $version WITH r, prevVersion, v AS nextVersion ORDER BY v.from LIMIT 1\n" +
+                "MERGE (r)-[v:VERSION {from: $version, to: coalesce(prevVersion.to, nextVersion.from, datetime('9999-01-01T00:00:00.0Z[Etc/UTC]'))}]->(m:" + Cypher.label(entityName + "_E") + " {type:'map', path:'$'})\n" +
+                "SET prevVersion.to = $version, m.deleted = true\n" +
+                "WITH m OPTIONAL MATCH (m)-[:EMBED*]->(e) DETACH DELETE e";
+        return run(transaction, cypher, Map.of("namespace", ns, "rid", id, "version", utc(version)));
     }
 
     @Override

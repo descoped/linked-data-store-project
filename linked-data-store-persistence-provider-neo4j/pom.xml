@@ -15,42 +15,6 @@
     <name>Linked Data Store Persistence Provider Neo4j</name>
     <description>Persistence provider that stores documents as a graph in Neo4j.</description>
 
-    <build>
-        <plugins>
-            <!-- Pre-3.0 code: these lint categories are not clean yet. Every other warning fails the build, and
-                 this override goes when the module is revised. -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <configuration>
-                    <compilerArgs combine.self="override">
-                        <arg>-Xlint:all,-requires-automatic,-unchecked,-deprecation</arg>
-                        <arg>-Werror</arg>
-                    </compilerArgs>
-                </configuration>
-            </plugin>
-            <!-- The TCK run needs a Neo4j server, and the provider's schema statements are Neo4j 4 syntax. It is switched on,
-                 against a Neo4j container, when the provider is revised. -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <configuration>
-                    <excludes>
-                        <exclude>**/Neo4jPersistenceIntegrationTest.java</exclude>
-                    </excludes>
-                </configuration>
-            </plugin>
-            <!-- Pre-3.0 code has little Javadoc. Doclint checks what is there; missing Javadoc becomes an
-                 error again when the module is revised. -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-javadoc-plugin</artifactId>
-                <configuration>
-                    <doclint>all,-missing</doclint>
-                </configuration>
-            </plugin>
-        </plugins>
-    </build>
 
     <dependencies>
         <dependency>
@@ -84,6 +48,18 @@
             <version>${slf4j.version}</version>
         </dependency>
         <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <version>${assertj.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>org.testng</groupId>
             <artifactId>testng</artifactId>
             <version>${testng.version}</version>
@@ -93,6 +69,12 @@
             <groupId>io.descoped.lds</groupId>
             <artifactId>linked-data-store-persistence-provider-tck</artifactId>
             <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-neo4j</artifactId>
+            <version>${testcontainers.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

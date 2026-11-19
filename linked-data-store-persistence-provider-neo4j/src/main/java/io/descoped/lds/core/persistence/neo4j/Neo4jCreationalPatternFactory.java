@@ -36,8 +36,9 @@ class Neo4jCreationalPatternFactory {
             convertJsonDocumentToMultiDimensionalCypherData(data, documentRootNode, entitySpecificationElement);
             List<Object> record = new ArrayList<>();
             record.add(key.id());
-            record.add(key.timestamp());
+            record.add(Neo4jPersistence.utc(key.timestamp()));
             record.add(data);
+            record.add(key.namespace());
             batch.add(record);
         }
         Map<String, Object> params = Map.of(
@@ -56,19 +57,22 @@ class Neo4jCreationalPatternFactory {
     static final Pattern linkPattern = Pattern.compile("/?([^/]*)/([^/]*)");
 
     static String buildCreationalCypherForEntity(SpecificationElement specificationElement) {
-        String entity = specificationElement.getName();
+        String entity = Cypher.label(specificationElement.getName());
+        String entityNode = Cypher.label(specificationElement.getName() + "_E");
         StringBuilder cypher = new StringBuilder();
         cypher.append("UNWIND $batch AS record\n");
-        cypher.append("MERGE (r:").append(entity).append(" {id: record[0]}) WITH r, record[1] AS version, record[2] AS data\n");
-        cypher.append("OPTIONAL MATCH (r:").append(entity).append(")-[v:VERSION {from: version}]->(m)-[:EMBED*]->(e) DETACH DELETE m, e WITH r, version, data\n");
-        cypher.append("OPTIONAL MATCH (r:").append(entity).append(")-[v:VERSION]->() WHERE v.from <= version AND version < v.to WITH r, version, data, v AS prevVersion\n");
-        cypher.append("OPTIONAL MATCH (r:").append(entity).append(")-[v:VERSION]->() WHERE v.from > version WITH r, version, data, prevVersion, min(v.from) AS nextVersionFrom\n");
+        cypher.append("MERGE (r:").append(entity).append(" {namespace: record[3], id: record[0]}) WITH r, record[1] AS version, record[2] AS data, record[3] AS ns\n");
+        // The version that is overwritten goes with everything below it. Its root is matched on its own: a version
+        // that holds nothing, or links only, has no node below the root.
+        cypher.append("OPTIONAL MATCH (r:").append(entity).append(")-[v:VERSION {from: version}]->(m) OPTIONAL MATCH (m)-[:EMBED*]->(e) DETACH DELETE m, e WITH r, version, data, ns\n");
+        cypher.append("OPTIONAL MATCH (r:").append(entity).append(")-[v:VERSION]->() WHERE v.from <= version AND version < v.to WITH r, version, data, ns, v AS prevVersion\n");
+        cypher.append("OPTIONAL MATCH (r:").append(entity).append(")-[v:VERSION]->() WHERE v.from > version WITH r, version, data, ns, prevVersion, min(v.from) AS nextVersionFrom\n");
         cypher.append("FOREACH(d IN data |\n");
-        cypher.append("  MERGE (r)-[v:VERSION {from: version, to: coalesce(prevVersion.to, nextVersionFrom, datetime('9999-01-01T00:00:00.0Z[Etc/UTC]'))}]->(m:").append(entity).append("_E {type:'map', path:'$'})\n");
+        cypher.append("  MERGE (r)-[v:VERSION {from: version, to: coalesce(prevVersion.to, nextVersionFrom, datetime('9999-01-01T00:00:00.0Z[Etc/UTC]'))}]->(m:").append(entityNode).append(" {type:'map', path:'$'})\n");
         cypher.append("  SET prevVersion.to = version");
         int i = 0;
         for (Map.Entry<String, SpecificationElement> entry : specificationElement.getProperties().entrySet()) {
-            traverseSpecification(cypher, entity, entry.getValue(), 1, "    ", "m", "m" + i, "d[" + i + "]");
+            traverseSpecification(cypher, entityNode, entry.getValue(), 1, "    ", "m", "m" + i, "d[" + i + "]");
             i++;
         }
         cypher.append(")");
@@ -79,7 +83,7 @@ class Neo4jCreationalPatternFactory {
         return nodeIdentifier.endsWith("i");
     }
 
-    static void traverseSpecification(StringBuilder cypher, String entity, SpecificationElement element, int depth, String indentation, String parentNodeIdentifier, String nodeIdentifier, String dataListIdentifier) {
+    static void traverseSpecification(StringBuilder cypher, String entityNode, SpecificationElement element, int depth, String indentation, String parentNodeIdentifier, String nodeIdentifier, String dataListIdentifier) {
         String path = JsonNavigationPath.from(element).serialize();
         cypher.append("\n").append(indentation).append("FOREACH(d").append(depth).append(" IN ").append(dataListIdentifier).append(" |");
         indentation += "  ";
@@ -90,29 +94,29 @@ class Neo4jCreationalPatternFactory {
             relationPath = "[]";
         }
         if (element.getJsonTypes().contains("object")) {
-            cypher.append("\n").append(indentation).append("CREATE (").append(parentNodeIdentifier).append(")-[:").append("EMBED").append("{path: '").append(relationPath).append("'");
+            cypher.append("\n").append(indentation).append("CREATE (").append(parentNodeIdentifier).append(")-[:").append("EMBED").append("{path: ").append(Cypher.text(relationPath));
             if (parentIsArray) {
                 cypher.append(", index: ").append(dataListIdentifier).append("[0]");
             }
             cypher.append("}]->");
-            cypher.append("(").append(nodeIdentifier).append(":").append(entity).append("_E {type: 'map', path: '").append(path).append("'})");
+            cypher.append("(").append(nodeIdentifier).append(":").append(entityNode).append(" {type: 'map', path: ").append(Cypher.text(path)).append("})");
             int i = 0;
             for (Map.Entry<String, SpecificationElement> entry : element.getProperties().entrySet()) {
                 String childDataListIdentifier = dataListIdentifier + (parentIsArray ? "[1]" : "") + "[" + i + "]";
                 String childNodeIdentifier = nodeIdentifier + "p" + i;
-                traverseSpecification(cypher, entity, entry.getValue(), depth + 1, indentation, nodeIdentifier, childNodeIdentifier, childDataListIdentifier);
+                traverseSpecification(cypher, entityNode, entry.getValue(), depth + 1, indentation, nodeIdentifier, childNodeIdentifier, childDataListIdentifier);
                 i++;
             }
         } else if (element.getJsonTypes().contains("array")) {
-            cypher.append("\n").append(indentation).append("CREATE (").append(parentNodeIdentifier).append(")-[:").append("EMBED").append("{path: '").append(relationPath).append("'");
+            cypher.append("\n").append(indentation).append("CREATE (").append(parentNodeIdentifier).append(")-[:").append("EMBED").append("{path: ").append(Cypher.text(relationPath));
             if (parentIsArray) {
                 cypher.append(", index: ").append(dataListIdentifier).append("[0]");
             }
             cypher.append("}]->");
-            cypher.append("(").append(nodeIdentifier).append(":").append(entity).append("_E {type:'array', path: '").append(path).append("'})");
+            cypher.append("(").append(nodeIdentifier).append(":").append(entityNode).append(" {type:'array', path: ").append(Cypher.text(path)).append("})");
             String childDataListIdentifier = dataListIdentifier + (parentIsArray ? "[1]" : "");
             String childNodeIdentifier = nodeIdentifier + "i";
-            traverseSpecification(cypher, entity, element.getItems(), depth + 1, indentation, nodeIdentifier, childNodeIdentifier, childDataListIdentifier);
+            traverseSpecification(cypher, entityNode, element.getItems(), depth + 1, indentation, nodeIdentifier, childNodeIdentifier, childDataListIdentifier);
         } else {
 
             // value node
@@ -136,10 +140,10 @@ class Neo4jCreationalPatternFactory {
                     cypher.append(parentIsArray ? "[1]" : "").append("[").append(i).append("]").append(" |");
 
                     cypher.append("\n").append(indentation).append("  ");
-                    cypher.append("MERGE (").append(nodeIdentifier).append(":").append(refType).append(" {id: ").append(refDataIdentifier).append("})");
+                    cypher.append("MERGE (").append(nodeIdentifier).append(":").append(Cypher.label(refType)).append(" {namespace: ns, id: ").append(refDataIdentifier).append("})");
 
                     cypher.append("\n").append(indentation).append("  ");
-                    cypher.append("CREATE (").append(parentNodeIdentifier).append(")-[:").append("REF {path: '").append(relationPath).append("'");
+                    cypher.append("CREATE (").append(parentNodeIdentifier).append(")-[:").append("REF {path: ").append(Cypher.text(relationPath));
                     if (parentIsArray) {
                         cypher.append(", index: ").append(dataListIdentifier).append("[0]");
                     }
@@ -150,21 +154,21 @@ class Neo4jCreationalPatternFactory {
 
             } else {
 
-                cypher.append("\n").append(indentation).append("CREATE (").append(parentNodeIdentifier).append(")-[:").append("EMBED").append("{path: '").append(relationPath).append("'");
+                cypher.append("\n").append(indentation).append("CREATE (").append(parentNodeIdentifier).append(")-[:").append("EMBED").append("{path: ").append(Cypher.text(relationPath));
                 if (parentIsArray) {
                     cypher.append(", index: ").append(dataListIdentifier).append("[0]");
                 }
                 cypher.append("}]->");
 
                 // start node and properties
-                cypher.append("(").append(nodeIdentifier).append(":").append(entity).append("_E {");
+                cypher.append("(").append(nodeIdentifier).append(":").append(entityNode).append(" {");
 
                 // type property
                 String jsonType = element.getJsonTypes().contains("string") ? "string" : element.getJsonTypes().contains("number") ? "number" : element.getJsonTypes().contains("boolean") ? "boolean" : element.getJsonTypes().stream().collect(Collectors.joining(","));
-                cypher.append("type: '").append(jsonType).append("'");
+                cypher.append("type: ").append(Cypher.text(jsonType));
 
                 // path property
-                cypher.append(", path: '").append(path).append("'");
+                cypher.append(", path: ").append(Cypher.text(path));
 
                 // value property
                 cypher.append(", value: ");
@@ -181,6 +185,9 @@ class Neo4jCreationalPatternFactory {
                     cypher.append("[1]");
                 }
                 cypher.append("[1]"); // hashOrValue
+
+                // namespace property: the value index starts with it
+                cypher.append(", namespace: ns");
 
                 // end properties
                 cypher.append("})");

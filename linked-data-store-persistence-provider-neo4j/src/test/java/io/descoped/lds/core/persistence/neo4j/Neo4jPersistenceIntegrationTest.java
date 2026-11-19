@@ -4,7 +4,6 @@ import io.descoped.lds.core.persistence.test.PersistenceIntegrationTest;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 
-import java.util.Map;
 import java.util.Set;
 
 public class Neo4jPersistenceIntegrationTest extends PersistenceIntegrationTest {
@@ -16,13 +15,8 @@ public class Neo4jPersistenceIntegrationTest extends PersistenceIntegrationTest 
     @BeforeClass
     public void setup() {
 
-        persistence = new Neo4jInitializer().initialize(namespace,
-                Map.of("neo4j.driver.url", "bolt://db-neo4j:7687",
-                        "neo4j.driver.username", "neo4j",
-                        "neo4j.driver.password", "PasSW0rd",
-                        "neo4j.cypher.show", "true"),
-                Set.of("Person", "Address", "FunkyLongAddress")
-        );
+        persistence = new Neo4jInitializer().initialize(namespace, Neo4j2026.configuration(),
+                Set.of("Person", "Address", "FunkyLongAddress"));
 
     }
 
