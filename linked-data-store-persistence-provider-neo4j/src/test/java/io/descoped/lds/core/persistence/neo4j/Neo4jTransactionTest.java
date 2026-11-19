@@ -10,6 +10,7 @@ import org.neo4j.driver.Record;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.exceptions.ClientException;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -99,6 +100,17 @@ class Neo4jTransactionTest {
         }
         assertThat(session.isOpen()).isFalse();
         assertThat(undeliverable).isEmpty();
+    }
+
+    @Test
+    void theStatementForTheLogTakesEachParameterByItsWholeName() {
+        Map<String, Object> parameters = new LinkedHashMap<>();
+        parameters.put("id", "oslo");
+        parameters.put("idAfter", "bergen");
+        parameters.put("limit", 3);
+
+        assertThat(Neo4jTransaction.interactive("MATCH (r {id: $id}) WHERE $idAfter < r.id RETURN r LIMIT $limit", parameters))
+                .isEqualTo("MATCH (r {id: 'oslo'}) WHERE 'bergen' < r.id RETURN r LIMIT 3");
     }
 
     @Test

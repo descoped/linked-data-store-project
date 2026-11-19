@@ -31,14 +31,14 @@ final class Neo4jIndexManagement {
 
     static final class Index {
         final String label;
-        final Set<String> properties;
+        final List<String> properties;
         final boolean uniqueConstraint;
         /* The name of the constraint, or of the index when there is no constraint; null for one that is wanted. */
         final String name;
 
         Index(String label, List<String> properties, boolean uniqueConstraint, String name) {
             this.label = label;
-            this.properties = new LinkedHashSet<>(properties);
+            this.properties = List.copyOf(properties);
             this.uniqueConstraint = uniqueConstraint;
             this.name = name;
         }
@@ -64,13 +64,14 @@ final class Neo4jIndexManagement {
             if (this == o) return true;
             if (o == null || getClass() != o.getClass()) return false;
             Index index = (Index) o;
-            return label.equals(index.label) &&
+            return uniqueConstraint == index.uniqueConstraint &&
+                    label.equals(index.label) &&
                     properties.equals(index.properties);
         }
 
         @Override
         public int hashCode() {
-            return Objects.hash(label, properties);
+            return Objects.hash(label, properties, uniqueConstraint);
         }
 
         @Override
@@ -78,6 +79,7 @@ final class Neo4jIndexManagement {
             return "Index{" +
                     "label='" + label + '\'' +
                     ", properties=" + properties +
+                    ", unique=" + uniqueConstraint +
                     '}';
         }
     }
@@ -86,13 +88,13 @@ final class Neo4jIndexManagement {
         currentIndexes = new LinkedHashSet<>();
         Result indexes = transaction.run(
                 "SHOW INDEXES YIELD name, labelsOrTypes, properties, owningConstraint WHERE labelsOrTypes IS NOT NULL");
-        indexes.forEachRemaining(record -> {
-            List<String> labels = record.get("labelsOrTypes").asList(Value::asString);
+        indexes.forEachRemaining(row -> {
+            List<String> labels = row.get("labelsOrTypes").asList(Value::asString);
             if (!labels.isEmpty()) {
-                List<String> propertyList = record.get("properties").asList(Value::asString);
-                Value constraint = record.get("owningConstraint");
+                List<String> propertyList = row.get("properties").asList(Value::asString);
+                Value constraint = row.get("owningConstraint");
                 currentIndexes.add(constraint.isNull()
-                        ? new Index(labels.getFirst(), propertyList, false, record.get("name").asString())
+                        ? new Index(labels.getFirst(), propertyList, false, row.get("name").asString())
                         : new Index(labels.getFirst(), propertyList, true, constraint.asString()));
             }
         });
@@ -105,7 +107,7 @@ final class Neo4jIndexManagement {
 
     void createMissingIndices(SimpleQueryRunner transaction) {
         for (Index index : currentIndexes) {
-            if (!wantedIndexes.contains(index)) {
+            if (!wantedIndexes.contains(index) && LOG.isInfoEnabled()) {
                 LOG.info("Not using index: {}. Use the following cypher statement to drop: {}", index, index.deleteCypherStatement());
             }
         }

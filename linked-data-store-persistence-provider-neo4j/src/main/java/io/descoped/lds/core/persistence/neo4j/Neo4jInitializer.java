@@ -25,6 +25,7 @@ public class Neo4jInitializer implements PersistenceInitializer {
         }
 
         static void initialize() {
+            // exists to run the static initializer above, once
         }
     }
 
@@ -32,6 +33,7 @@ public class Neo4jInitializer implements PersistenceInitializer {
      * Created by the service loader.
      */
     public Neo4jInitializer() {
+        // nothing to prepare: the provider starts in initialize
     }
 
     @Override
@@ -58,14 +60,17 @@ public class Neo4jInitializer implements PersistenceInitializer {
         boolean logCypher = Boolean.parseBoolean(configuration.get("neo4j.cypher.show"));
         Driver driver = open(neo4jDriverURL, neo4jDriverUsername, neo4jDriverPassword);
         Neo4jTransactionFactory transactionFactory = new Neo4jTransactionFactory(driver, logCypher);
+        boolean started = false;
         try (Session session = driver.session()) {
             // Instances that start together create the same constraints and can end in a deadlock, which Neo4j
             // resolves by failing one of them with an error that says "try again". The driver does that here.
             session.executeWriteWithoutResult(tx -> new Neo4jIndexManagement(tx, managedDomains).createMissingIndices(tx));
-        } catch (RuntimeException | Error e) {
-            // the provider did not start: nothing is left to close the driver later
-            transactionFactory.close();
-            throw e;
+            started = true;
+        } finally {
+            if (!started) {
+                // nothing is left to close the driver later
+                transactionFactory.close();
+            }
         }
         return new Neo4jPersistence(transactionFactory);
     }

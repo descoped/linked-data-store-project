@@ -25,11 +25,15 @@ final class Neo4jTransactionFactory implements TransactionFactory {
         Session session = driver.session(SessionConfig.builder()
                 .withDefaultAccessMode(readOnly ? AccessMode.READ : AccessMode.WRITE)
                 .build());
+        Neo4jTransaction transaction = null;
         try {
-            return new Neo4jTransaction(session, logCypher);
-        } catch (RuntimeException | Error e) {
-            session.close();
-            throw e;
+            transaction = new Neo4jTransaction(session, logCypher);
+            return transaction;
+        } finally {
+            if (transaction == null) {
+                // the transaction did not begin
+                session.close();
+            }
         }
     }
 

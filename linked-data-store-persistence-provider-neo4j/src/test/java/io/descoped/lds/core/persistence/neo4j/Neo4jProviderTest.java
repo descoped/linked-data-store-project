@@ -15,6 +15,8 @@ import io.reactivex.rxjava3.subscribers.TestSubscriber;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.neo4j.driver.Driver;
+import org.neo4j.driver.Session;
 
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -36,6 +38,7 @@ import static io.descoped.lds.core.persistence.neo4j.SpecificationBuilder.object
 import static io.descoped.lds.core.persistence.neo4j.SpecificationBuilder.refNode;
 import static io.descoped.lds.core.persistence.neo4j.SpecificationBuilder.stringNode;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * What the Neo4j provider must do beyond the shared suite, on a real Neo4j. Each test uses namespaces of its own,
@@ -424,6 +427,17 @@ class Neo4jProviderTest {
             }
         }
         assertThat(failures).isEmpty();
+    }
+
+    @Test
+    void aPlainIndexDoesNotStandInForTheConstraint() {
+        try (Driver driver = Neo4j2026.driver(); Session session = driver.session()) {
+            session.run("CREATE INDEX FOR (n:PlainIndex) ON (n.namespace, n.id)").consume();
+        }
+
+        // Neo4j refuses the constraint while the index is there, so the start fails and says why
+        assertThatThrownBy(() -> new Neo4jInitializer().initialize("provider-test", Neo4j2026.configuration(), Set.of("PlainIndex")))
+                .hasMessageContaining("PlainIndex");
     }
 
     // ---- namespaces, deletes

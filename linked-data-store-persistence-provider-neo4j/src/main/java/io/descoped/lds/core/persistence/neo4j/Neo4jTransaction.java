@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * One transaction of the driver in a session of its own. The session is closed when the transaction ends, so its
@@ -53,6 +54,8 @@ final class Neo4jTransaction implements Transaction {
     }
 
     private void end(boolean commit) {
+        // Whatever is thrown here is caught, an Error too: the future is what the caller waits for, and it is
+        // completed in every case.
         Throwable failure = null;
         try {
             if (commit) {
@@ -95,9 +98,9 @@ final class Neo4jTransaction implements Transaction {
     Flowable<Record> executeCypherAsync(String query, Map<String, Object> parameters) {
         return Flowable.generate(
                 () -> executeCypher(query, parameters),
-                (records, emitter) -> {
-                    if (records.hasNext()) {
-                        emitter.onNext(records.next());
+                (rows, emitter) -> {
+                    if (rows.hasNext()) {
+                        emitter.onNext(rows.next());
                     } else {
                         emitter.onComplete();
                     }
@@ -106,16 +109,23 @@ final class Neo4jTransaction implements Transaction {
     }
 
     private void log(String query, Map<String, Object> parameters) {
-        if (!logCypher) {
-            return;
+        if (logCypher && LOG.isInfoEnabled()) {
+            LOG.info(":: CYPHER ::\n{}", interactive(query, parameters));
         }
+    }
+
+    /**
+     * The statement with its parameters written into it, to be read or run by hand.
+     */
+    static String interactive(String query, Map<String, Object> parameters) {
         String interactiveQuery = query;
         for (Map.Entry<String, Object> entry : parameters.entrySet()) {
-            String regex = "\\$" + entry.getKey();
+            // the whole name: $id is not the beginning of $idAfter
+            String regex = "\\$" + Pattern.quote(entry.getKey()) + "\\b";
             String replacement = serializeForInteractive(entry.getValue());
             interactiveQuery = interactiveQuery.replaceAll(regex, Matcher.quoteReplacement(replacement));
         }
-        LOG.info(":: CYPHER ::\n{}", interactiveQuery);
+        return interactiveQuery;
     }
 
     private static String serializeForInteractive(Object parameters) {
