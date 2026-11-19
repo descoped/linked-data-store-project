@@ -109,6 +109,8 @@ to the latest stable and removes them from this list, from the "held" block in t
 - `PersistenceTck` runs for the memory provider; the pre-3.0 suite runs for PostgreSQL. `Neo4jPersistenceIntegrationTest` and
   `FoundationDBIntegrationTest` are excluded in their modules' POMs, with the reason, until those providers are
   revised against a container.
+- Core's `SagaLogPostgresTest` runs the write path with the saga log in a PostgreSQL 18 container: concurrent
+  writes, recovery of an unfinished saga by the next write, after a restart and by another instance of the cluster.
 - Core's tests start the application in the JVM on a random port with the memory provider (`TestServerListener`).
   13 of them are disabled in the source (`enabled = false`, `@Ignore`), several because they hang; they are
   re-enabled or deleted with a reason when core is revised.
