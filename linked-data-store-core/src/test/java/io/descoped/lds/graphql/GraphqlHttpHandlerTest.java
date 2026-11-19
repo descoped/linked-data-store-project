@@ -16,8 +16,8 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.net.ProxySelector;
-import java.net.ServerSocket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -34,28 +34,6 @@ public class GraphqlHttpHandlerTest {
     private Undertow server;
     private HttpClient client;
     private UriTemplate uriTemplate;
-
-    /**
-     * Find a free port for the undertow server.
-     */
-    private static int findFree() {
-        int port = 0;
-        while (port == 0) {
-            ServerSocket socket = null;
-            try {
-                socket = new ServerSocket(0);
-                port = socket.getLocalPort();
-            } catch (IOException e) {
-                throw new RuntimeException("Failed finding free port", e);
-            } finally {
-                try {
-                    if (socket != null) socket.close();
-                } catch (IOException ignore) {
-                }
-            }
-        }
-        return port;
-    }
 
     @BeforeMethod
     public void setUp() {
@@ -91,11 +69,10 @@ public class GraphqlHttpHandlerTest {
 
         graphql = GraphQL.newGraphQL(graphQLSchema).build();
 
-        int port = findFree();
-
-        // Test server.
-        server = Undertow.builder().addHttpListener(port, "localhost", new GraphqlHttpHandler(graphql)).build();
+        // Test server, on a port the system chooses when it binds.
+        server = Undertow.builder().addHttpListener(0, "localhost", new GraphqlHttpHandler(graphql)).build();
         server.start();
+        int port = ((InetSocketAddress) server.getListenerInfo().get(0).getAddress()).getPort();
 
         // Template for the client.
         uriTemplate = UriTemplate.buildFromTemplate("http://localhost:" + port)

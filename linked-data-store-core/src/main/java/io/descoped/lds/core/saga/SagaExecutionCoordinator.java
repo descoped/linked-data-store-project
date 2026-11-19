@@ -108,21 +108,24 @@ public class SagaExecutionCoordinator {
         SagaLog sagaLog = acquireCleanSagaLog(c -> {
         }, c -> {
         });
-        executionIdBySagaLogId.compute(sagaLog.id(), (k, v) -> {
-            if (v != null) {
-                throw new RuntimeException(String.format("executionIdBySagaLogId with key %s is already associated with another executionId %s", k, v));
-            }
-            return executionId;
-        });
         AtomicBoolean sagaLogReleased = new AtomicBoolean(false);
         Runnable releaseSagaLog = () -> {
             if (sagaLogReleased.compareAndSet(false, true)) {
-                executionIdBySagaLogId.remove(sagaLog.id());
-                sagaLogPool.release(sagaLog.id());
+                try {
+                    executionIdBySagaLogId.remove(sagaLog.id(), executionId); // not the entry of another execution
+                } finally {
+                    sagaLogPool.release(sagaLog.id());
+                }
             }
         };
         SagaHandoffControl handoffControl;
         try {
+            executionIdBySagaLogId.compute(sagaLog.id(), (k, v) -> {
+                if (v != null) {
+                    throw new RuntimeException(String.format("executionIdBySagaLogId with key %s is already associated with another executionId %s", k, v));
+                }
+                return executionId;
+            });
             SagaExecution sagaExecution = new SagaExecution(sagaLog, threadPool, saga, adapterLoader);
             handoffControl = startSagaExecutionWithThrottling(sagaExecution, sagaInput, sagaLog, sagaCommandsEnabled ? commandsByNodeId : Collections.emptyMap(), releaseSagaLog);
         } catch (RuntimeException e) {

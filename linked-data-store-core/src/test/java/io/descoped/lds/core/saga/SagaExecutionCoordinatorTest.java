@@ -208,6 +208,35 @@ public class SagaExecutionCoordinatorTest {
         }
     }
 
+    /**
+     * A saga log that the coordinator still holds for another execution cannot be used; the write fails, and the
+     * log is released and the other execution's entry is left alone.
+     */
+    @Test
+    @ConfigurationOverride({
+            "saga.recovery.enabled", "false",
+            "sagalog.provider", "no.cantara.sagalog.memory.MemorySagaLogInitializer",
+            "saga.number-of-logs", "1"
+    })
+    public void thatASagaLogIsReleasedWhenItIsHeldForAnotherExecution() throws Exception {
+        SagaExecutionCoordinator sec = server.getApplication().getSec();
+        SagaLogPool pool = sec.getSagaLogPool();
+        SagaLogOwner owner = new SagaLogOwner("core-sec-test");
+        SagaLog sagaLog = pool.tryAcquire(owner);
+        pool.release(sagaLog.id());
+        sec.executionIdBySagaLogId.put(sagaLog.id(), "another-execution");
+        try {
+            client.put("/data/provisionagreement/h1?sync=true", "{\"name\":\"held\",\"contacts\":[]}").expectAnyOf(500);
+
+            SagaLog released = pool.tryAcquire(owner, 2, TimeUnit.SECONDS);
+            Assert.assertNotNull(released, "the saga log was not released");
+            pool.release(released.id());
+            Assert.assertEquals(sec.executionIdBySagaLogId.get(sagaLog.id()), "another-execution");
+        } finally {
+            sec.executionIdBySagaLogId.remove(sagaLog.id());
+        }
+    }
+
     private Consumer<SagaExecutionTraversalContext> failOnce() {
         AtomicBoolean failedOnce = new AtomicBoolean();
         return c -> {
