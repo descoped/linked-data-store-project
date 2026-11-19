@@ -400,6 +400,7 @@ public class SagaExecutionCoordinator {
         return CompletableFuture.allOf(futureList.toArray(new CompletableFuture[futureList.size()]))
                 .handle((v, t) -> {
                     boolean removed = false;
+                    Throwable failure = null;
                     try {
                         if (t != null) {
                             throw new RuntimeException("Unable to complete saga forward recovery", t);
@@ -411,12 +412,22 @@ public class SagaExecutionCoordinator {
                             deleteExternalResourceAssociatedWithSagaLog(logId); // not in use
                         }
                         return v;
+                    } catch (Throwable e) {
+                        failure = e;
+                        throw e;
                     } finally {
                         // also when the truncate, the remove or the delete failed, or the log would stay held for ever
                         try {
                             if (removeFromPoolWhenDone && !removed) {
+                                // The log of another instance is not kept in this pool after a failure. Its entries
+                                // are still in the saga log store, so the next cluster-wide pass finds it again.
                                 sagaLogPool.remove(logId);
                             }
+                        } catch (RuntimeException e) {
+                            if (failure == null) {
+                                throw e;
+                            }
+                            failure.addSuppressed(e); // the first failure is the one to report
                         } finally {
                             if (releaseSagaLogWhenDone) {
                                 sagaLogPool.release(logId);
