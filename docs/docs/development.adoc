@@ -51,10 +51,6 @@ Git projects are prefixed `linked-data-store-`.
 |Neo4j Provider
 |Stable
 
-|https://github.com/descoped/linked-data-store-persistence-provider-foundationdb[persistence-provider-foundationdb]
-|FoundationDB Provider
-|New
-
 |https://github.com/descoped/linked-data-store-docker-memory[docker-memory]
 |https://hub.docker.com/r/descoped/lds-memory/tags/[Docker Memory Container]
 |Stable (test purposes only)
@@ -66,10 +62,6 @@ Git projects are prefixed `linked-data-store-`.
 |https://github.com/descoped/linked-data-store-docker-neo4j[docker-neo4j]
 |https://hub.docker.com/r/descoped/lds-neo4j/tags/[Docker Neo4j Container]
 |Stable
-
-|https://github.com/descoped/linked-data-store-docker-foundationdb[docker-foundationdb]
-|https://hub.docker.com/r/descoped/lds-foundationdb/tags/[Docker FoundationDb Container]
-|Upcoming
 |===
 
 

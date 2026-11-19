@@ -26,8 +26,8 @@ import static io.descoped.lds.core.persistence.memory.OrderedKeyValueTransaction
 import static java.util.Optional.ofNullable;
 
 /**
- * Fragments in a store of ordered keys, the keys packed as tuples. Written for FoundationDB, which LDS no longer
- * has a provider for; here the store is a sorted map in memory ({@link MemoryTransaction}).
+ * Fragments in a store of ordered keys, the keys packed as tuples. The store is a sorted map in memory
+ * ({@link MemoryTransaction}).
  */
 public class MemoryRxPersistence implements RxPersistence {
 

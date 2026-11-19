@@ -15,7 +15,7 @@ reactor, group `io.descoped.lds`.
 | `linked-data-store-bom` | n/a | BOM of the modules below |
 | `linked-data-store-persistence-provider-api` | `io.descoped.lds.persistence.api` | the persistence interface, packages `io.descoped.lds.api.persistence..` (`PersistenceInitializer`, `RxJsonPersistence`, `RxPersistence`, the bridge, fragments), and `Specification` |
 | `linked-data-store-persistence-provider-tck` | none yet (class path) | `PersistenceIntegrationTest` (TestNG), the suite every persistence provider extends |
-| `linked-data-store-persistence-provider-memory` | `io.descoped.lds.persistence.memory` | provider `mem`: fragments in a sorted map in memory, the keys packed as tuples with `io.descoped.tuple:java-tuple`, behind the bridge (`MemoryRxPersistence`; the logic was written for FoundationDB, whose provider was removed before 3.0). For tests and for trying LDS, not for production |
+| `linked-data-store-persistence-provider-memory` | `io.descoped.lds.persistence.memory` | provider `mem`: fragments in a sorted map in memory, the keys packed as tuples with `io.descoped.tuple:java-tuple`, behind the bridge (`MemoryRxPersistence`). For tests and for trying LDS, not for production |
 | `linked-data-store-persistence-provider-postgres` | `io.descoped.lds.persistence.postgres` | provider `postgres`, revised for 3.0: one table, `fragment`, created at start, holding every namespace; every read is one statement whose rows are fetched as they are asked for |
 | `linked-data-store-persistence-provider-neo4j` | `io.descoped.lds.persistence.neo4j` | provider `neo4j` |
 | `linked-data-store-search-provider-api` | `io.descoped.lds.search.api` | the search SPI (`SearchIndexProvider`, `SearchIndex`) |

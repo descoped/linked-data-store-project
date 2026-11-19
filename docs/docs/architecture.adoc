@@ -19,7 +19,7 @@ endif::[]
 * Write links even before the data you are linking to, has been created
 * Time-based versioning (live time machine)
 * Provider based persistence storage capability
-** Chose between: PostgreSQL, Neo4j, FoundationDb or BigTable
+** Chose between: PostgreSQL, Neo4j or BigTable
 
 
 == Overview
