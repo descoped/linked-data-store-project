@@ -30,7 +30,6 @@
       ],
       "matchPackageNames": [
         "io.descoped.config:dynamic-configuration",
-        "io.descoped.rawdata:**",
         "no.cantara.saga:**",
         "no.cantara.concurrent.futureselector:**",
         "io.reactivex.rxjava2:**",

@@ -59,13 +59,13 @@
         <testng.version>7.12.0</testng.version>
         <assertj.version>3.27.7</assertj.version>
         <jsonassert.version>1.5.3</jsonassert.version>
+        <rawdata-client.version>3.0.1</rawdata-client.version>
         <testcontainers.version>2.0.5</testcontainers.version>
 
         <!-- Held at the version the code was written for. Each one moves, to the latest stable, in the pull request
              that revises the code using it (see .claude/CLAUDE.md, "Held versions"); .github/renovate.json holds
              the same list. -->
         <dynamic-configuration.version>2.0.0</dynamic-configuration.version>
-        <rawdata-client.version>3.0.1-SNAPSHOT</rawdata-client.version>
         <cantara-saga.version>2.0.1-SNAPSHOT</cantara-saga.version>
         <rxjava2.version>2.2.21</rxjava2.version>
         <rxjava2-jdk9-interop.version>0.2.7</rxjava2-jdk9-interop.version>

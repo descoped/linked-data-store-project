@@ -97,8 +97,7 @@ to the latest stable and removes them from this list, from the "held" block in t
 | Undertow, xnio, jboss-threads | 2.0.30, 3.8.0, 2.3.3 | core, HTTP |
 | everit json-schema, org.json, tika-core, okhttp | 1.14.6, 20260814, 1.24.1, 3.14.0 | core, validation (replaced or removed) |
 | dynamic-configuration | 2.0.0 | core, housekeeping |
-| rawdata-client | 3.0.1-SNAPSHOT | the rawdata-client release that accepts given ids in any order. Until then the SNAPSHOT must be installed in the local Maven repository from the rawdata-client-project sources; it is on no remote repository, so CI cannot build this |
-| Cantara saga (no.cantara.saga, future-selector) | 2.0.1-SNAPSHOT | the saga 2.0.1 release, which no longer leaves a thread of the saga thread pool blocked after a saga fails in one of two parallel steps. Until then the SNAPSHOT must be installed in the local Maven repository from the distributed-saga sources, as with rawdata-client |
+| Cantara saga (no.cantara.saga, future-selector) | 2.0.1-SNAPSHOT | the saga 2.0.1 release, which no longer leaves a thread of the saga thread pool blocked after a saga fails in one of two parallel steps. Until then the SNAPSHOT must be installed in the local Maven repository from the distributed-saga sources; it is on no remote repository, so CI cannot build this |
 
 ## Testing
 
