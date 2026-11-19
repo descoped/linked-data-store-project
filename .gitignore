@@ -22,7 +22,6 @@ pom.xml.tag
 pom.xml.next
 
 # Local run state of the server and the providers
-fdb.cluster
 /linked-data-store-server/schemas/
 /linked-data-store-server/sagalogs/
 /linked-data-store-server/gsim-raml-schema/

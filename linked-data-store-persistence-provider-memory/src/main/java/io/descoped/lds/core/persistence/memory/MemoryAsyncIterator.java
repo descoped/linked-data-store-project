@@ -1,15 +1,12 @@
 package io.descoped.lds.core.persistence.memory;
 
-import com.apple.foundationdb.KeyValue;
-import com.apple.foundationdb.async.AsyncIterator;
-
 import java.util.Iterator;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
-import static com.apple.foundationdb.ReadTransaction.ROW_LIMIT_UNLIMITED;
+import static io.descoped.lds.core.persistence.memory.OrderedKeyValueTransaction.ROW_LIMIT_UNLIMITED;
 
 public class MemoryAsyncIterator implements AsyncIterator<KeyValue> {
 
@@ -31,7 +28,7 @@ public class MemoryAsyncIterator implements AsyncIterator<KeyValue> {
 
     @Override
     public CompletableFuture<Boolean> onHasNext() {
-        return CompletableFuture.supplyAsync(() -> hasNext(), executor);
+        return CompletableFuture.supplyAsync(this::hasNext, executor);
     }
 
     @Override
@@ -51,9 +48,5 @@ public class MemoryAsyncIterator implements AsyncIterator<KeyValue> {
             produced++;
             return new KeyValue(nextInternal.getKey(), nextInternal.getValue());
         }
-    }
-
-    @Override
-    public void cancel() {
     }
 }

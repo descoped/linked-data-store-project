@@ -1,23 +1,14 @@
 package io.descoped.lds.core.persistence.memory;
 
-import com.apple.foundationdb.KeySelector;
-import com.apple.foundationdb.KeyValue;
-import com.apple.foundationdb.Range;
-import com.apple.foundationdb.StreamingMode;
-import com.apple.foundationdb.async.AsyncIterable;
-import com.apple.foundationdb.subspace.Subspace;
-import com.apple.foundationdb.tuple.Tuple;
 import io.descoped.lds.api.persistence.TransactionStatistics;
-import io.descoped.lds.core.persistence.foundationdb.OrderedKeyValueTransaction;
+import io.descoped.tuple.Range;
 
-import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentNavigableMap;
@@ -27,8 +18,6 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Lock;
 import java.util.function.Function;
-
-import static com.apple.foundationdb.ReadTransaction.ROW_LIMIT_UNLIMITED;
 
 public class MemoryTransaction implements OrderedKeyValueTransaction {
 
@@ -65,28 +54,28 @@ public class MemoryTransaction implements OrderedKeyValueTransaction {
         return mapByIndex.computeIfAbsent(index, k -> new ConcurrentSkipListMap<>((o1, o2) -> Arrays.compareUnsigned(o1, o2)));
     }
 
+    /*
+     * The key a selector points at, or null when there is none. A selector is: the last key less than its key
+     * (or less than or equal to it, when orEqual), and from there offset keys forward. So with offset 1, orEqual
+     * gives the first key greater than the key, and not orEqual the first key greater than or equal to it.
+     */
     Function<KeySelector, byte[]> keySelectorFunction(String index) {
         return ks -> {
             NavigableMap<byte[], byte[]> map = getMapByIndex(index);
-            String ksToString = ks.toString();
-            if (ks.getOffset() == 0) {
-                // less
-                if (ksToString.contains("true")) {
-                    // less than or equal
-                    return map.floorKey(ks.getKey());
+            if (ks.offset() == 0) {
+                if (ks.orEqual()) {
+                    // last less than or equal
+                    return map.floorKey(ks.key());
                 }
-                // less than
-                return map.lowerKey(ks.getKey());
+                // last less than
+                return map.lowerKey(ks.key());
             }
-            // greater
-            if (ksToString.contains("true")) {
-                // greater than or equal
-                return map.higherKey(ks.getKey());
-                //return map.ceilingKey(ks.getKey()); // TODO Switch higherKey call with call to ceilingKey after KeySelector orEqual flag bug is fixed.
+            if (ks.orEqual()) {
+                // first greater than
+                return map.higherKey(ks.key());
             }
-            // greater than
-            return map.ceilingKey(ks.getKey());
-            //return map.higherKey(ks.getKey()); // TODO Switch ceilingKey call with call to higherKey after KeySelector orEqual flag bug is fixed.
+            // first greater than or equal
+            return map.ceilingKey(ks.key());
         };
     }
 
@@ -151,7 +140,7 @@ public class MemoryTransaction implements OrderedKeyValueTransaction {
 
     @Override
     public void clearRange(Range range, String index) {
-        NavigableMap<byte[], byte[]> subMap = getMapByIndex(index).subMap(range.begin, true, range.end, false);
+        NavigableMap<byte[], byte[]> subMap = getMapByIndex(index).subMap(range.begin(), true, range.end(), false);
         transactionLog.add(new TransactionLogElement(index, subMap));
         subMap.clear();
     }
@@ -174,16 +163,11 @@ public class MemoryTransaction implements OrderedKeyValueTransaction {
 
     @Override
     public AsyncIterable<KeyValue> getRange(Range range, String index, int limit) {
-        return new MemoryAsyncIterable(executor, copy(getMapByIndex(index).subMap(range.begin, true, range.end, false)), limit);
+        return new MemoryAsyncIterable(executor, copy(getMapByIndex(index).subMap(range.begin(), true, range.end(), false)), limit);
     }
 
     @Override
     public AsyncIterable<KeyValue> getRange(KeySelector begin, KeySelector end, String index, int limit) {
-        return getRange(begin, end, ROW_LIMIT_UNLIMITED, StreamingMode.ITERATOR, index);
-    }
-
-    @Override
-    public AsyncIterable<KeyValue> getRange(KeySelector begin, KeySelector end, int limit, StreamingMode streamingMode, String index) {
         byte[] fromInclusive = keySelectorFunction(index).apply(begin);
         byte[] toExclusive = keySelectorFunction(index).apply(end);
         if (fromInclusive != null) {
@@ -197,7 +181,7 @@ public class MemoryTransaction implements OrderedKeyValueTransaction {
                 return new MemoryAsyncIterable(executor, copy(getMapByIndex(index).subMap(fromInclusive, true, toExclusive, false)), limit);
             }
             // toExclusive is null
-            if (end.getOffset() == 0) {
+            if (end.offset() == 0) {
                 // end less
                 return new MemoryAsyncIterable(executor, Collections.emptyNavigableMap(), limit);
             }
@@ -206,7 +190,7 @@ public class MemoryTransaction implements OrderedKeyValueTransaction {
         } else {
             // fromInclusive == null
             if (toExclusive != null) {
-                if (begin.getOffset() == 0) {
+                if (begin.offset() == 0) {
                     // begin less
                     return new MemoryAsyncIterable(executor, copy(getMapByIndex(index).headMap(toExclusive, false)), limit);
                 }
@@ -214,22 +198,12 @@ public class MemoryTransaction implements OrderedKeyValueTransaction {
                 return new MemoryAsyncIterable(executor, Collections.emptyNavigableMap(), limit);
             }
             // toExclusive == null
-            if (begin.getOffset() == 0 && end.getOffset() == 1) {
+            if (begin.offset() == 0 && end.offset() == 1) {
                 // begin less and end greater
                 return new MemoryAsyncIterable(executor, copy(getMapByIndex(index)), limit);
             }
             // begin greater or end less
             return new MemoryAsyncIterable(executor, Collections.emptyNavigableMap(), limit);
-        }
-    }
-
-    @Override
-    public void dumpIndex(String index, Subspace subspace) {
-        Set<Map.Entry<byte[], byte[]>> entries = getMapByIndex(index).entrySet();
-        for (Map.Entry<byte[], byte[]> entry : entries) {
-            Tuple key = subspace.unpack(entry.getKey());
-            String value = new String(entry.getValue(), StandardCharsets.UTF_8);
-            System.out.printf("%-80s  ::  %s%n", key, value);
         }
     }
 

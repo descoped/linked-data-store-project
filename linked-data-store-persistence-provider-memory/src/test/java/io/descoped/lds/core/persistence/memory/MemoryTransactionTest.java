@@ -1,17 +1,13 @@
 package io.descoped.lds.core.persistence.memory;
 
-import com.apple.foundationdb.KeySelector;
-import com.apple.foundationdb.KeyValue;
-import com.apple.foundationdb.Range;
-import com.apple.foundationdb.async.AsyncIterable;
-import com.apple.foundationdb.async.AsyncIterator;
+import io.descoped.tuple.Range;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 import java.util.ArrayList;
 import java.util.List;
 
-import static com.apple.foundationdb.ReadTransaction.ROW_LIMIT_UNLIMITED;
+import static io.descoped.lds.core.persistence.memory.OrderedKeyValueTransaction.ROW_LIMIT_UNLIMITED;
 
 public class MemoryTransactionTest {
 
@@ -47,16 +43,16 @@ public class MemoryTransactionTest {
                     firstGreaterOrEqual(new byte[]{1, 2, 3, 4, 5}),
                     KeySelector.lastLessOrEqual(new byte[]{1, 2, 3, 6}), "i1");
             Assert.assertEquals(beforeClearRange.size(), 2); // confirm that range contains 2 elements
-            tx.clearRange(Range.startsWith(new byte[]{1, 2, 3, 5}), "i1");
+            tx.clearRange(startsWith(new byte[]{1, 2, 3, 5}), "i1");
             List<KeyValue> afterClearRange = getRange(tx,
                     firstGreaterOrEqual(new byte[]{1, 2, 3, 4, 5}),
                     KeySelector.lastLessOrEqual(new byte[]{1, 2, 3, 6}), "i1");
             Assert.assertEquals(afterClearRange.size(), 0); // confirm that range was cleared
 
             // replace an existing value with a new value
-            List<KeyValue> rangeResultBeforeNewValue = getRange(tx, Range.startsWith(new byte[]{1, 2, 3, 7}), "i1");
+            List<KeyValue> rangeResultBeforeNewValue = getRange(tx, startsWith(new byte[]{1, 2, 3, 7}), "i1");
             tx.set(new byte[]{1, 2, 3, 7}, new byte[]{93, 12, 51, 67, 125, -42}, "i1");
-            List<KeyValue> rangeResultAfterNewValue = getRange(tx, Range.startsWith(new byte[]{1, 2, 3, 7}), "i1");
+            List<KeyValue> rangeResultAfterNewValue = getRange(tx, startsWith(new byte[]{1, 2, 3, 7}), "i1");
             Assert.assertNotEquals(rangeResultAfterNewValue, rangeResultBeforeNewValue); // confirm that value has changed
 
             List<KeyValue> withAllChanges = copyDatabase(factory);
@@ -65,7 +61,7 @@ public class MemoryTransactionTest {
             tx.cancel();
 
             try {
-                getRange(tx, Range.startsWith(new byte[]{1, 2, 3, 7}), "i1");
+                getRange(tx, startsWith(new byte[]{1, 2, 3, 7}), "i1");
                 Assert.fail("Accessing database from within a cancelled transaction is expected to be illegal.");
             } catch (IllegalStateException e) {
                 // expected
@@ -115,5 +111,12 @@ public class MemoryTransactionTest {
 
     private KeySelector firstGreaterOrEqual(byte[] key) {
         return new KeySelector(key, true, 1);
+    }
+
+    /* Every key that starts with the prefix: up to the prefix with its last byte one higher. */
+    private Range startsWith(byte[] prefix) {
+        byte[] end = prefix.clone();
+        end[end.length - 1]++;
+        return new Range(prefix, end);
     }
 }

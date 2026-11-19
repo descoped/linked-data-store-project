@@ -39,7 +39,6 @@
         "org.apache.tika:**",
         "com.squareup.okhttp3:**",
         "org.neo4j.driver:**",
-        "org.foundationdb:**",
         "org.apache.solr:**"
       ],
       "enabled": false

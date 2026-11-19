@@ -1,6 +1,6 @@
 package io.descoped.lds.core.persistence.memory;
 
-import com.apple.foundationdb.tuple.Tuple;
+import io.descoped.tuple.Tuple;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -17,7 +17,7 @@ public class MemoryDirectoryTest {
         MemoryDirectory directory = new MemoryDirectory(prefixLength);
         for (int i = 0; i < possibilities; i++) {
             byte[] prefix = directory.allocateUnusedShortPrefix();
-            Tuple tuple = Tuple.from(prefix);
+            Tuple tuple = Tuple.of((Object) prefix);
             Assert.assertFalse(set.contains(tuple));
             set.add(tuple);
         }

@@ -5,7 +5,6 @@ import io.descoped.lds.api.persistence.ProviderName;
 import io.descoped.lds.api.persistence.TransactionFactory;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistenceBridge;
-import io.descoped.lds.core.persistence.foundationdb.FoundationDBDirectory;
 
 import java.util.Map;
 import java.util.Set;
@@ -43,8 +42,7 @@ public class MemoryInitializer implements PersistenceInitializer {
         int fragmentCapacityBytes = Integer.parseInt(ofNullable(configuration.get("persistence.fragment.capacity")).orElse("8192"));
         boolean cancelTxOnClose = Boolean.parseBoolean(ofNullable(configuration.get("persistence.mem.transaction.cancel-on-close")).orElse("false"));
         TransactionFactory transactionFactory = new MemoryTransactionFactory(cancelTxOnClose);
-        FoundationDBDirectory foundationDbDirectory = new MemoryDirectory(2);
-        persistence = new MemoryRxPersistence(transactionFactory, foundationDbDirectory);
+        persistence = new MemoryRxPersistence(transactionFactory, new MemoryDirectory(2));
         rxJsonPersistence = new RxJsonPersistenceBridge(persistence, fragmentCapacityBytes);
         return rxJsonPersistence;
     }

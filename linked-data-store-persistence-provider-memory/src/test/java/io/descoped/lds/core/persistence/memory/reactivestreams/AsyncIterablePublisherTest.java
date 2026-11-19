@@ -1,12 +1,10 @@
 package io.descoped.lds.core.persistence.memory.reactivestreams;
 
-import com.apple.foundationdb.KeySelector;
-import com.apple.foundationdb.KeyValue;
-import com.apple.foundationdb.StreamingMode;
-import com.apple.foundationdb.async.AsyncIterable;
-import com.apple.foundationdb.async.AsyncIterator;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
-import io.descoped.lds.core.persistence.foundationdb.AsyncIterablePublisher;
+import io.descoped.lds.core.persistence.memory.AsyncIterable;
+import io.descoped.lds.core.persistence.memory.AsyncIterablePublisher;
+import io.descoped.lds.core.persistence.memory.KeySelector;
+import io.descoped.lds.core.persistence.memory.KeyValue;
 import io.descoped.lds.core.persistence.memory.MemoryInitializer;
 import io.descoped.lds.core.persistence.memory.MemoryRxPersistence;
 import io.descoped.lds.core.persistence.memory.MemoryTransaction;
@@ -17,10 +15,8 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 
 import java.nio.ByteBuffer;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 
 public class AsyncIterablePublisherTest extends PublisherVerification<KeyValue> {
 
@@ -61,22 +57,13 @@ public class AsyncIterablePublisherTest extends PublisherVerification<KeyValue> 
         for (int i = 0; i < Math.min(elements, 1000); i++) {
             tx.set(ByteBuffer.allocate(4).putInt(i).array(), new byte[0], "AnyIndex");
         }
-        return new AsyncIterablePublisher<>(tx.getRange(KeySelector.firstGreaterOrEqual(new byte[]{(byte) 0}), KeySelector.firstGreaterOrEqual(new byte[]{(byte) -1}), (int) elements, StreamingMode.ITERATOR, "AnyIndex"));
+        return new AsyncIterablePublisher<>(tx.getRange(KeySelector.firstGreaterOrEqual(new byte[]{(byte) 0}), KeySelector.firstGreaterOrEqual(new byte[]{(byte) -1}), "AnyIndex", (int) elements));
     }
 
     @Override
     public Publisher<KeyValue> createFailedPublisher() {
-        return new AsyncIterablePublisher<>(new AsyncIterable<>() {
-            @Override
-            public AsyncIterator<KeyValue> iterator() {
-                return null;
-            }
-
-            @Override
-            public CompletableFuture<List<KeyValue>> asList() {
-                return null;
-            }
-        });
+        AsyncIterable<KeyValue> withoutIterator = () -> null;
+        return new AsyncIterablePublisher<>(withoutIterator);
     }
 
     private void rollbackExistingAndBeginNewTransaction() {

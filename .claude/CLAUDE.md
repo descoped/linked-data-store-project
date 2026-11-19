@@ -15,10 +15,9 @@ reactor, group `io.descoped.lds`.
 | `linked-data-store-bom` | n/a | BOM of the modules below |
 | `linked-data-store-persistence-provider-api` | `io.descoped.lds.persistence.api` | the persistence interface, packages `io.descoped.lds.api.persistence..` (`PersistenceInitializer`, `RxJsonPersistence`, `RxPersistence`, the bridge, fragments), and `Specification` |
 | `linked-data-store-persistence-provider-tck` | none yet (class path) | `PersistenceIntegrationTest` (TestNG), the suite every persistence provider extends |
-| `linked-data-store-persistence-provider-memory` | `io.descoped.lds.persistence.memory` | provider `mem`: the FoundationDB provider's logic (`MemoryRxPersistence extends FoundationDBRxPersistence`) on a sorted map in memory, behind the bridge. For tests and for trying LDS, not for production; it is also what tests the FoundationDB provider's streaming logic without a FoundationDB |
+| `linked-data-store-persistence-provider-memory` | `io.descoped.lds.persistence.memory` | provider `mem`: fragments in a sorted map in memory, the keys packed as tuples with `io.descoped.tuple:java-tuple`, behind the bridge (`MemoryRxPersistence`; the logic was written for FoundationDB, whose provider was removed before 3.0). For tests and for trying LDS, not for production |
 | `linked-data-store-persistence-provider-postgres` | `io.descoped.lds.persistence.postgres` | provider `postgres`, revised for 3.0: one table, `fragment`, created at start, holding every namespace; every read is one statement whose rows are fetched as they are asked for |
 | `linked-data-store-persistence-provider-neo4j` | `io.descoped.lds.persistence.neo4j` | provider `neo4j` |
-| `linked-data-store-persistence-provider-foundationdb` | `io.descoped.lds.persistence.foundationdb` | provider `foundationdb` |
 | `linked-data-store-search-provider-api` | `io.descoped.lds.search.api` | the search SPI (`SearchIndexProvider`, `SearchIndex`) |
 | `linked-data-store-search-provider-solr` | `io.descoped.lds.search.provider.solr` | provider `solr` |
 | `linked-data-store-core` | `io.descoped.lds.core` | the application: `UndertowApplication`, REST (`NamespaceController`), GraphQL, sagas, transaction log |
@@ -38,7 +37,7 @@ LDS streams. Its persistence interface is the reactive one in `io.descoped.lds.a
 (`Flowable`, `Maybe`, `Single`, `Completable`): `RxPersistence` carries fragments (one leaf value of one version of
 one document; storage order is id, version, path), `RxJsonPersistence` carries documents, and
 `RxJsonPersistenceBridge` with `RxGroupByTools.groupByOrdered` cuts one ordered fragment stream into documents,
-asking the source for more one document at a time. The PostgreSQL, FoundationDB and memory providers read their
+asking the source for more one document at a time. The PostgreSQL and memory providers read their
 store only on demand (`ResultSetPublisher`, `AsyncIterablePublisher`, both checked with the Reactive Streams TCK);
 Neo4j implements `RxJsonPersistence` directly. Keep the mechanism when changing this code: a stream is not replaced
 by a call that returns a complete list, and no blocking call is added to an interface.
@@ -65,7 +64,7 @@ by a call that returns a complete list, and no blocking call is added to an inte
 - **Time.** Document versions are stored and compared as UTC instants.
 - **Transactions** commit only when asked and roll back otherwise.
 - **Always the latest stable version** of every library, plugin, action, image and engine (PostgreSQL 18, Neo4j
-  2026, Solr 10, FoundationDB 8). Pre-releases only on request. Old and outdated code and configuration is removed,
+  2026, Solr 10). Pre-releases only on request. Old and outdated code and configuration is removed,
   not carried along. The exception is the list under "Held versions".
 - **No leftovers** of the earlier hosts and pipelines: no Statistics Norway (SSB) references, Azure Pipelines,
   Travis, Drone or OSSRH configuration.
@@ -86,7 +85,6 @@ to the latest stable and removes them from this list, from the "held" block in t
 
 | Dependency | Held at | Moves with |
 |---|---|---|
-| fdb-java | 5.2.5 | the FoundationDB provider. The memory provider uses its key, tuple and iterator types too, and reads whether a `KeySelector` is inclusive from its `toString()` (`MemoryTransaction.keySelectorFunction`): check that against the new version in the same pull request |
 | neo4j-java-driver | 4.0.2 | the Neo4j provider |
 | solr-solrj, solr-test-framework (and the Restlet repository in the Solr module) | 7.7.1 | the Solr provider |
 | graphql-java, extended scalars | 12.0, 1.0 | core, GraphQL |
@@ -106,10 +104,9 @@ to the latest stable and removes them from this list, from the "held" block in t
 - The PostgreSQL provider's tests (the shared suite, the Reactive Streams TCK for its publisher, and
   `PostgresProviderTest` for what the suite does not cover) run on a real PostgreSQL 18 (`postgres:18-alpine`)
   through Testcontainers, so **the build needs Docker**.
-- The shared suite runs for the memory provider and for PostgreSQL. `Neo4jPersistenceIntegrationTest` and
-  `FoundationDBIntegrationTest` are excluded in their modules' POMs, with the reason, until those providers are
-  revised against a container. The memory provider also runs the Reactive Streams TCK for
-  `AsyncIterablePublisher`.
+- The shared suite runs for the memory provider and for PostgreSQL. `Neo4jPersistenceIntegrationTest` is
+  excluded in its module's POM, with the reason, until that provider is revised against a container. The memory
+  provider also runs the Reactive Streams TCK for `AsyncIterablePublisher`.
 - Core's `SagaLogPostgresTest` runs the write path with the saga log in a PostgreSQL 18 container: concurrent
   writes, recovery of an unfinished saga by the next write, after a restart and by another instance of the cluster.
 - Core's tests start the application in the JVM on a random port with the memory provider (`TestServerListener`).

@@ -77,12 +77,6 @@
         </dependency>
         <dependency>
             <groupId>io.descoped.lds</groupId>
-            <artifactId>linked-data-store-persistence-provider-foundationdb</artifactId>
-            <version>${project.version}</version>
-            <scope>runtime</scope>
-        </dependency>
-        <dependency>
-            <groupId>io.descoped.lds</groupId>
             <artifactId>linked-data-store-search-provider-solr</artifactId>
             <version>${project.version}</version>
             <scope>runtime</scope>

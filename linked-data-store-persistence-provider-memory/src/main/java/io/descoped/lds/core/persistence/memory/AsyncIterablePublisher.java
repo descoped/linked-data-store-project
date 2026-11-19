@@ -1,7 +1,5 @@
-package io.descoped.lds.core.persistence.foundationdb;
+package io.descoped.lds.core.persistence.memory;
 
-import com.apple.foundationdb.async.AsyncIterable;
-import com.apple.foundationdb.async.AsyncIterator;
 import org.reactivestreams.Publisher;
 import org.reactivestreams.Subscriber;
 import org.reactivestreams.Subscription;
@@ -20,10 +18,13 @@ public class AsyncIterablePublisher<T> implements Publisher<T> {
 
     @Override
     public void subscribe(Subscriber<? super T> subscriber) {
-        subscriber.onSubscribe(new AsyncIterableSubscription(subscriber));
+        AsyncIterableSubscription subscription = new AsyncIterableSubscription(subscriber);
+        subscriber.onSubscribe(subscription);
         if (asyncIterator == null) {
-            subscriber.onError(new NullPointerException("asyncIterator"));
+            subscription.signalError(new NullPointerException("asyncIterator"));
+            return;
         }
+        subscription.onSubscribeReturned();
     }
 
     class AsyncIterableSubscription implements Subscription {
@@ -31,10 +32,19 @@ public class AsyncIterablePublisher<T> implements Publisher<T> {
         final AtomicLong published = new AtomicLong();
         final AtomicBoolean cancelled = new AtomicBoolean();
         final AtomicReference<Subscriber<? super T>> subscriber = new AtomicReference<>();
-        final AtomicBoolean publicationPending = new AtomicBoolean();
+        /*
+         * Held by the one publication that is under way. It starts held: an item is delivered on a thread of the
+         * iterator, so what is requested inside onSubscribe is delivered only when onSubscribe has returned.
+         */
+        final AtomicBoolean publicationPending = new AtomicBoolean(true);
 
         AsyncIterableSubscription(Subscriber<? super T> subscriber) {
             this.subscriber.set(subscriber);
+        }
+
+        void onSubscribeReturned() {
+            publicationPending.set(false);
+            queuePublicationRequest(() -> asyncIterate());
         }
 
         @Override
@@ -58,36 +68,55 @@ public class AsyncIterablePublisher<T> implements Publisher<T> {
                 } while (!requested.compareAndSet(r, newRequestedValue));
                 queuePublicationRequest(() -> asyncIterate());
             } catch (Throwable t) {
-                Subscriber<? super T> subscriber = this.subscriber.get();
-                if (subscriber == null) {
-                    // asynchronously cancelled
-                    return;
-                }
-                subscriber.onError(t);
+                signalError(t);
+            }
+        }
+
+        /*
+         * The last signal. The subscription is cancelled first, so nothing follows it: not from a publication
+         * that is under way, and not from a later request.
+         */
+        private void signalError(Throwable failure) {
+            cancelled.set(true);
+            Subscriber<? super T> subscriber = this.subscriber.getAndSet(null);
+            if (subscriber != null) {
+                subscriber.onError(failure);
+            }
+        }
+
+        private void signalComplete() {
+            cancelled.set(true);
+            Subscriber<? super T> subscriber = this.subscriber.getAndSet(null);
+            if (subscriber != null) {
+                subscriber.onComplete();
             }
         }
 
         private void asyncIterate() {
-            asyncIterator.onHasNext().thenAccept(hasNext -> {
+            asyncIterator.onHasNext().whenComplete((hasNext, failure) -> {
+                if (failure != null) {
+                    signalError(failure); // the iterator could not tell whether there is a next item
+                    return;
+                }
                 Subscriber<? super T> subscriber = this.subscriber.get();
                 if (subscriber == null) {
                     // asynchronously cancelled
                     return;
                 }
-                if (hasNext) {
-                    try {
-                        T item = asyncIterator.next();
-                        subscriber.onNext(item);
-                        published.incrementAndGet();
-                    } catch (Throwable t) {
-                        subscriber.onError(t);
-                    } finally {
-                        publicationPending.set(false);
-                    }
-                    queuePublicationRequest(() -> asyncIterate());
-                } else {
-                    subscriber.onComplete();
+                if (!hasNext) {
+                    signalComplete();
+                    return;
                 }
+                try {
+                    T item = asyncIterator.next();
+                    subscriber.onNext(item);
+                    published.incrementAndGet();
+                } catch (Throwable t) {
+                    signalError(t);
+                    return; // the publication stays held
+                }
+                publicationPending.set(false);
+                queuePublicationRequest(() -> asyncIterate());
             });
         }
 
