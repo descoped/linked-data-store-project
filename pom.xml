@@ -60,12 +60,12 @@
         <testcontainers.version>2.0.5</testcontainers.version>
         <rxjava.version>3.1.12</rxjava.version>
         <reactive-streams.version>1.0.4</reactive-streams.version>
+        <cantara-saga.version>2.1.0</cantara-saga.version>
 
         <!-- Held at the version the code was written for. Each one moves, to the latest stable, in the pull request
              that revises the code using it (see .claude/CLAUDE.md, "Held versions"); .github/renovate.json holds
              the same list. -->
         <dynamic-configuration.version>2.0.0</dynamic-configuration.version>
-        <cantara-saga.version>2.0.1-SNAPSHOT</cantara-saga.version>
         <graphql-java.version>12.0</graphql-java.version>
         <graphql-java-extended-scalars.version>1.0</graphql-java-extended-scalars.version>
         <undertow.version>2.0.30.Final</undertow.version>

@@ -30,8 +30,6 @@
       ],
       "matchPackageNames": [
         "io.descoped.config:dynamic-configuration",
-        "no.cantara.saga:**",
-        "no.cantara.concurrent.futureselector:**",
         "com.graphql-java:**",
         "io.undertow:**",
         "org.jboss.xnio:**",
