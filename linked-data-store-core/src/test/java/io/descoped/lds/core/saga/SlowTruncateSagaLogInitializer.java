@@ -32,6 +32,9 @@ public class SlowTruncateSagaLogInitializer implements SagaLogInitializer {
     /** False makes {@code truncate()} do nothing, so a saga log stays full whatever is done to empty it. */
     static final AtomicBoolean TRUNCATES = new AtomicBoolean(true);
 
+    /** The number of coming {@code truncate()} calls that fail. */
+    static final AtomicInteger FAILING_TRUNCATES = new AtomicInteger();
+
     static final long WRITE_MILLIS = 10;
     static final long TRUNCATE_MILLIS = 200;
 
@@ -60,7 +63,12 @@ public class SlowTruncateSagaLogInitializer implements SagaLogInitializer {
     private SagaLog slow(SagaLog log) {
         return proxy(SagaLog.class, (proxy, method, args) -> {
             if (method.getName().equals("truncate") && method.getParameterCount() == 0) {
-                return after(TRUNCATE_MILLIS).thenCompose(v -> TRUNCATES.get() ? log.truncate() : CompletableFuture.completedFuture(null));
+                return after(TRUNCATE_MILLIS).thenCompose(v -> {
+                    if (FAILING_TRUNCATES.getAndUpdate(n -> Math.max(0, n - 1)) > 0) {
+                        return CompletableFuture.failedFuture(new IllegalStateException("truncate failed, as the test asked"));
+                    }
+                    return TRUNCATES.get() ? log.truncate() : CompletableFuture.completedFuture(null);
+                });
             }
             if (method.getName().equals("write")) {
                 return after(WRITE_MILLIS).thenCompose(v -> {

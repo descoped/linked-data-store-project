@@ -399,25 +399,30 @@ public class SagaExecutionCoordinator {
         }
         return CompletableFuture.allOf(futureList.toArray(new CompletableFuture[futureList.size()]))
                 .handle((v, t) -> {
-                    if (t != null) {
+                    boolean removed = false;
+                    try {
+                        if (t != null) {
+                            throw new RuntimeException("Unable to complete saga forward recovery", t);
+                        }
+                        sagaLog.truncate().join();
                         if (removeFromPoolWhenDone) {
                             sagaLogPool.remove(logId);
+                            removed = true;
+                            deleteExternalResourceAssociatedWithSagaLog(logId); // not in use
                         }
-                        if (releaseSagaLogWhenDone) {
-                            sagaLogPool.release(logId);
+                        return v;
+                    } finally {
+                        // also when the truncate, the remove or the delete failed, or the log would stay held for ever
+                        try {
+                            if (removeFromPoolWhenDone && !removed) {
+                                sagaLogPool.remove(logId);
+                            }
+                        } finally {
+                            if (releaseSagaLogWhenDone) {
+                                sagaLogPool.release(logId);
+                            }
                         }
-
-                        throw new RuntimeException("Unable to complete saga forward recovery", t);
                     }
-                    sagaLog.truncate().join();
-                    if (removeFromPoolWhenDone) {
-                        sagaLogPool.remove(logId);
-                        deleteExternalResourceAssociatedWithSagaLog(logId); // not in use
-                    }
-                    if (releaseSagaLogWhenDone) {
-                        sagaLogPool.release(logId);
-                    }
-                    return v;
                 });
     }
 

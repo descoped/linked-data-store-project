@@ -64,6 +64,21 @@ public class ReferenceResourceHandlerTest {
     }
 
     @Test
+    public void thatPUTOnADocumentThatDoesNotExistReturns404() {
+        client.get("/data/provisionagreement/r-missing/friend/contact/f1").expect404NotFound();
+        client.put("/data/provisionagreement/r-missing/friend/contact/f1?sync=true").expect404NotFound();
+        client.get("/data/provisionagreement/r-missing").expect404NotFound();
+    }
+
+    @Test
+    public void thatPUTOnADeletedDocumentReturns404() {
+        createTestResource("provisionagreement", "r-deleted", "{\"id\":\"r-deleted\",\"name\":\"pa-test-name\"}");
+        client.delete("/data/provisionagreement/r-deleted?sync=true").expect204NoContent();
+        client.put("/data/provisionagreement/r-deleted/friend/contact/f1?sync=true").expect404NotFound();
+        client.get("/data/provisionagreement/r-deleted").expect404NotFound();
+    }
+
+    @Test
     public void thatPUTCreateSingleReferenceReturns200() {
         createTestResource("provisionagreement", "r5", "{\"id\":\"r5\",\"name\":\"pa-test-name\",\"contacts\":[\"/contact/c1\",\"/contact/c2\"]}");
         client.get("/data/provisionagreement/r5/friend/contact/f1").expect404NotFound();

@@ -207,6 +207,14 @@ public class ManagedResourceHandler implements HttpHandler {
         ResourceElement topLevelElement = resourceContext.getFirstElement();
         String managedDomain = topLevelElement.name();
 
+        // check that we have a document id, as for PUT
+        if (topLevelElement.id() == null || "".equals(topLevelElement.id())) {
+            exchange.setStatusCode(400);
+            exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "text/plain");
+            exchange.getResponseSender().send("Id was empty!");
+            return;
+        }
+
         // True if defined and no false values.
         Map<String, Deque<String>> parameters = exchange.getQueryParameters();
         boolean sync = parameters.getOrDefault("sync", new LinkedList<>())

@@ -495,8 +495,16 @@ public class UndertowApplication {
             LOG.debug("SagaObserver was shutdown");
         }));
         if (sagaRecoveryTrigger != null) {
-            futures.add(CompletableFuture.runAsync(sagaRecoveryTrigger::stop));
-            LOG.debug("SagaRecoveryTrigger was shutdown");
+            futures.add(CompletableFuture.runAsync(() -> {
+                sagaRecoveryTrigger.stop(); // shuts the recovery thread-pool down as well
+                LOG.debug("SagaRecoveryTrigger was shutdown");
+            }));
+        } else {
+            futures.add(CompletableFuture.runAsync(() -> {
+                // recovery by the next write uses this pool also when there is no trigger
+                shutdownAndAwaitTermination(sec.getRecoveryThreadPool());
+                LOG.debug("Saga recovery thread-pool was shutdown");
+            }));
         }
         futures.add(CompletableFuture.runAsync(() -> {
             sec.shutdown();
