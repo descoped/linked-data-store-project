@@ -16,7 +16,6 @@ import java.io.IOException;
 import static io.descoped.lds.core.utils.FileAndClasspathReaderUtils.readFileOrClasspathResource;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertTrue;
 
 
 @Listeners(TestServerListener.class)
@@ -71,9 +70,7 @@ public class GraphQLIntegrationTest {
     public void thatGetContactOnlyWorks() {
         // setup demo data
         putResource("/data/contact/821aa", "demo/4-donald.json");
-        // compared as JSON: a document comes back with its fields in the order they were written
-        assertTrue(JsonTools.toJsonNode(client.get("/data/contact/821aa").expect200Ok().body())
-                .equals(JsonTools.toJsonNode("{\"email\":\"donald@duck.no\",\"name\":\"Donald Duck\"}")));
+        assertEquals(client.get("/data/contact/821aa").expect200Ok().body(), "{\"email\":\"donald@duck.no\",\"name\":\"Donald Duck\"}");
 
         assertNoErrors(executeGraphQLQuery("spec/demo/graphql/contact_only.json"));
         assertNoErrors(executeGraphQLQuery("spec/demo/graphql/contact_by_id.json", "821aa"));

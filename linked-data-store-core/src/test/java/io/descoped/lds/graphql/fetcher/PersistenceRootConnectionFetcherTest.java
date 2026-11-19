@@ -8,9 +8,8 @@ import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.json.JsonDocument;
 import io.descoped.lds.api.persistence.json.JsonTools;
-import io.descoped.lds.api.persistence.reactivex.PersistenceAdapter;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
-import io.descoped.lds.persistence.memory.MemoryPersistenceProvider;
+import io.descoped.lds.core.persistence.memory.MemoryInitializer;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Ignore;
 import org.testng.annotations.Test;
@@ -46,7 +45,9 @@ public class PersistenceRootConnectionFetcherTest {
 
     @BeforeMethod
     public void setUp() {
-        RxJsonPersistence persistence = new PersistenceAdapter(new MemoryPersistenceProvider().open(Map.of(), null));
+        RxJsonPersistence persistence = new MemoryInitializer().initialize("ns",
+                Map.of(),
+                Set.of("Source", "Target"));
         connectionFetcher = new PersistenceRootConnectionFetcher(persistence, "ns", "Target");
         snapshot = ZonedDateTime.now();
 
