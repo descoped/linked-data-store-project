@@ -46,8 +46,7 @@ public class PersistenceRootConnectionFetcherTest {
     @BeforeMethod
     public void setUp() {
         RxJsonPersistence persistence = new MemoryInitializer().initialize("ns",
-                Map.of("persistence.mem.wait.min", "0",
-                        "persistence.mem.wait.max", "0"),
+                Map.of(),
                 Set.of("Source", "Target"));
         connectionFetcher = new PersistenceRootConnectionFetcher(persistence, "ns", "Target");
         snapshot = ZonedDateTime.now();

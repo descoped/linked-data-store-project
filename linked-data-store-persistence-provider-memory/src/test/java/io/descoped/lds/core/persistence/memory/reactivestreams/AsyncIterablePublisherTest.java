@@ -38,11 +38,7 @@ public class AsyncIterablePublisherTest extends PublisherVerification<KeyValue> 
         super(new TestEnvironment(DEFAULT_TIMEOUT_MILLIS, DEFAULT_NO_SIGNALS_TIMEOUT_MILLIS), PUBLISHER_REFERENCE_CLEANUP_TIMEOUT_MILLIS);
         initializer = new MemoryInitializer();
         initializer.initialize("ns",
-                Map.of(
-                        "persistence.mem.wait.min", "0",
-                        "persistence.mem.wait.max", "0",
-                        "persistence.fragment.capacity", "8192"
-                ),
+                Map.of("persistence.fragment.capacity", "8192"),
                 Set.of("A")
         );
         rxJsonPersistence = initializer.getRxJsonPersistence();

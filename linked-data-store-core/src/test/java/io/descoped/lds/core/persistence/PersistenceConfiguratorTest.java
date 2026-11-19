@@ -21,8 +21,6 @@ public class PersistenceConfiguratorTest {
         DynamicConfiguration configuration = new StoreBasedDynamicConfiguration.Builder()
                 .values("persistence.provider", "mem",
                         "persistence.initialization.max-wait-seconds", "0",
-                        "persistence.mem.wait.min", "0",
-                        "persistence.mem.wait.max", "0",
                         "persistence.fragment.capacity", "1024")
                 .build();
         Specification specification = JsonSchemaBasedSpecification.create("spec/schemas/contact.json", "spec/schemas/provisionagreement.json");
@@ -41,6 +39,20 @@ public class PersistenceConfiguratorTest {
             Assert.fail("Test should have failed because configurations are missing");
         } catch (IllegalArgumentException e) {
             Assert.assertTrue(e.getMessage().contains("persistence.fragment.capacity"));
+        }
+    }
+
+    @Test
+    public void thatAnUnknownProviderIsRejected() {
+        DynamicConfiguration configuration = new StoreBasedDynamicConfiguration.Builder()
+                .values("persistence.provider", "no-such-provider")
+                .build();
+        Specification specification = JsonSchemaBasedSpecification.create("spec/schemas/contact.json", "spec/schemas/provisionagreement.json");
+        try {
+            PersistenceConfigurator.configurePersistence(configuration, specification);
+            Assert.fail("A provider that is not on the class path must not be found");
+        } catch (RuntimeException e) {
+            Assert.assertTrue(e.getMessage().contains("no-such-provider"));
         }
     }
 

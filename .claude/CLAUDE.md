@@ -86,7 +86,7 @@ to the latest stable and removes them from this list, from the "held" block in t
 
 | Dependency | Held at | Moves with |
 |---|---|---|
-| fdb-java | 5.2.5 | the FoundationDB provider (the memory provider uses its key, tuple and iterator types too) |
+| fdb-java | 5.2.5 | the FoundationDB provider. The memory provider uses its key, tuple and iterator types too, and reads whether a `KeySelector` is inclusive from its `toString()` (`MemoryTransaction.keySelectorFunction`): check that against the new version in the same pull request |
 | neo4j-java-driver | 4.0.2 | the Neo4j provider |
 | solr-solrj, solr-test-framework (and the Restlet repository in the Solr module) | 7.7.1 | the Solr provider |
 | graphql-java, extended scalars | 12.0, 1.0 | core, GraphQL |
