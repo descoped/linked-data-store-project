@@ -2,6 +2,9 @@ package io.descoped.lds.core.persistence.postgres;
 
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.Map;
 
 /**
@@ -30,12 +33,32 @@ final class Postgres18 {
      * The provider configuration that reaches the container.
      */
     static Map<String, String> configuration() {
+        return configuration(CONTAINER.getDatabaseName());
+    }
+
+    /**
+     * Creates an empty database in the container, and returns the provider configuration that reaches it.
+     *
+     * @param number tells the databases of one test run apart
+     */
+    static Map<String, String> configurationOfNewDatabase(int number) {
+        String database = "empty_" + number;
+        try (Connection connection = CONTAINER.createConnection("");
+             Statement statement = connection.createStatement()) {
+            statement.execute("CREATE DATABASE " + database);
+        } catch (SQLException e) {
+            throw new IllegalStateException(e);
+        }
+        return configuration(database);
+    }
+
+    private static Map<String, String> configuration(String database) {
         return Map.of(
                 "postgres.driver.host", CONTAINER.getHost(),
                 "postgres.driver.port", String.valueOf(CONTAINER.getMappedPort(PostgreSQLContainer.POSTGRESQL_PORT)),
                 "postgres.driver.user", CONTAINER.getUsername(),
                 "postgres.driver.password", CONTAINER.getPassword(),
-                "postgres.driver.database", CONTAINER.getDatabaseName()
+                "postgres.driver.database", database
         );
     }
 }

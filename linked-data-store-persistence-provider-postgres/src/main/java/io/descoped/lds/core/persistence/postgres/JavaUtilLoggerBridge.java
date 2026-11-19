@@ -5,9 +5,15 @@ import org.slf4j.bridge.SLF4JBridgeHandler;
 import java.util.logging.Level;
 import java.util.logging.LogManager;
 
-class JavaUtilLoggerBridge {
+/**
+ * Sends what the JDBC driver logs with {@code java.util.logging} to SLF4J.
+ */
+final class JavaUtilLoggerBridge {
 
-    private static class Initializer {
+    private JavaUtilLoggerBridge() {
+    }
+
+    private static final class Initializer {
         static {
             LogManager.getLogManager().reset();
             SLF4JBridgeHandler.removeHandlersForRootLogger();
@@ -19,7 +25,7 @@ class JavaUtilLoggerBridge {
         }
     }
 
-    static final void installJavaUtilLoggerBridgeHandler(Level level) {
+    static void installJavaUtilLoggerBridgeHandler(Level level) {
         Initializer.configure();
         LogManager.getLogManager().getLogger("").setLevel(level);
     }
