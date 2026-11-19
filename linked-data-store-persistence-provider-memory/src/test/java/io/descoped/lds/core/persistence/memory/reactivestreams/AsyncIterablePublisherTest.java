@@ -3,7 +3,6 @@ package io.descoped.lds.core.persistence.memory.reactivestreams;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.core.persistence.memory.AsyncIterable;
 import io.descoped.lds.core.persistence.memory.AsyncIterablePublisher;
-import io.descoped.lds.core.persistence.memory.AsyncIterator;
 import io.descoped.lds.core.persistence.memory.KeySelector;
 import io.descoped.lds.core.persistence.memory.KeyValue;
 import io.descoped.lds.core.persistence.memory.MemoryInitializer;
@@ -63,12 +62,8 @@ public class AsyncIterablePublisherTest extends PublisherVerification<KeyValue> 
 
     @Override
     public Publisher<KeyValue> createFailedPublisher() {
-        return new AsyncIterablePublisher<>(new AsyncIterable<>() {
-            @Override
-            public AsyncIterator<KeyValue> iterator() {
-                return null;
-            }
-        });
+        AsyncIterable<KeyValue> withoutIterator = () -> null;
+        return new AsyncIterablePublisher<>(withoutIterator);
     }
 
     private void rollbackExistingAndBeginNewTransaction() {

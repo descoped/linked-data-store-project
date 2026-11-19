@@ -12,7 +12,8 @@ public record KeyValue(byte[] key, byte[] value) {
 
     @Override
     public boolean equals(Object other) {
-        return other instanceof KeyValue that && Arrays.equals(key, that.key) && Arrays.equals(value, that.value);
+        return other instanceof KeyValue(byte[] otherKey, byte[] otherValue)
+                && Arrays.equals(key, otherKey) && Arrays.equals(value, otherValue);
     }
 
     @Override

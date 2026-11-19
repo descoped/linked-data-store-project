@@ -18,10 +18,13 @@ public class AsyncIterablePublisher<T> implements Publisher<T> {
 
     @Override
     public void subscribe(Subscriber<? super T> subscriber) {
-        subscriber.onSubscribe(new AsyncIterableSubscription(subscriber));
+        AsyncIterableSubscription subscription = new AsyncIterableSubscription(subscriber);
+        subscriber.onSubscribe(subscription);
         if (asyncIterator == null) {
             subscriber.onError(new NullPointerException("asyncIterator"));
+            return; // the publication stays held, so nothing follows the error
         }
+        subscription.onSubscribeReturned();
     }
 
     class AsyncIterableSubscription implements Subscription {
@@ -29,10 +32,19 @@ public class AsyncIterablePublisher<T> implements Publisher<T> {
         final AtomicLong published = new AtomicLong();
         final AtomicBoolean cancelled = new AtomicBoolean();
         final AtomicReference<Subscriber<? super T>> subscriber = new AtomicReference<>();
-        final AtomicBoolean publicationPending = new AtomicBoolean();
+        /*
+         * Held by the one publication that is under way. It starts held: an item is delivered on a thread of the
+         * iterator, so what is requested inside onSubscribe is delivered only when onSubscribe has returned.
+         */
+        final AtomicBoolean publicationPending = new AtomicBoolean(true);
 
         AsyncIterableSubscription(Subscriber<? super T> subscriber) {
             this.subscriber.set(subscriber);
+        }
+
+        void onSubscribeReturned() {
+            publicationPending.set(false);
+            queuePublicationRequest(() -> asyncIterate());
         }
 
         @Override

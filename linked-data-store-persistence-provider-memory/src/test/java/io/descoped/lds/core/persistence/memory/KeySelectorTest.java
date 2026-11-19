@@ -92,6 +92,15 @@ class KeySelectorTest {
     }
 
     @Test
+    void selectorsAreEqualWhenTheirBytesAndTheRestAre() {
+        assertThat(KeySelector.firstGreaterOrEqual(key(1))).isEqualTo(new KeySelector(key(1), false, 1))
+                .hasSameHashCodeAs(new KeySelector(key(1), false, 1))
+                .isNotEqualTo(KeySelector.firstGreaterOrEqual(key(2)))
+                .isNotEqualTo(new KeySelector(key(1), true, 1))
+                .isNotEqualTo(KeySelector.lastLessOrEqual(key(1)));
+    }
+
+    @Test
     void entriesAreEqualWhenTheirBytesAre() {
         assertThat(new KeyValue(key(1), key(2))).isEqualTo(new KeyValue(key(1), key(2))).hasSameHashCodeAs(new KeyValue(key(1), key(2)));
         assertThat(new KeyValue(key(1), key(2))).isNotEqualTo(new KeyValue(key(1), key(3))).isNotEqualTo(new KeyValue(key(2), key(2)));

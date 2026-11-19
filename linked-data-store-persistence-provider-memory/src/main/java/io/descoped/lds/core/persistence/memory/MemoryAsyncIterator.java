@@ -28,7 +28,7 @@ public class MemoryAsyncIterator implements AsyncIterator<KeyValue> {
 
     @Override
     public CompletableFuture<Boolean> onHasNext() {
-        return CompletableFuture.supplyAsync(() -> hasNext(), executor);
+        return CompletableFuture.supplyAsync(this::hasNext, executor);
     }
 
     @Override
