@@ -68,7 +68,9 @@ final class ResultSetPublisher implements Publisher<ResultSet> {
                 } while (!requested.compareAndSet(r, newRequestedValue));
                 publish();
             } catch (Throwable t) {
-                Subscriber<? super ResultSet> subscriber = this.subscriber.get();
+                // the error is the last signal: the subscription is cancelled first, so a later request delivers nothing
+                cancelled.set(true);
+                Subscriber<? super ResultSet> subscriber = this.subscriber.getAndSet(null);
                 if (subscriber == null) {
                     // asynchronously cancelled
                     return;
