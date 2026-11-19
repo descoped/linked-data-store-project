@@ -6,7 +6,7 @@ import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.json.JsonDocument;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.graphql.GraphQLContext;
-import io.reactivex.Maybe;
+import io.reactivex.rxjava3.core.Maybe;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;

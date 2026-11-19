@@ -6,7 +6,7 @@ module io.descoped.lds.search.provider.solr {
     requires io.descoped.lds.persistence.api;
     requires solr.solrj;
     requires org.slf4j;
-    requires io.reactivex.rxjava2;
+    requires io.reactivex.rxjava3;
 
     provides SearchIndexProvider with SolrProvider;
 }

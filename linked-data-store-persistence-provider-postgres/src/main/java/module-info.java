@@ -8,7 +8,7 @@ module io.descoped.lds.persistence.postgres {
     requires org.postgresql.jdbc;
     requires java.logging;
     requires jul.to.slf4j;
-    requires io.reactivex.rxjava2;
+    requires io.reactivex.rxjava3;
     requires org.reactivestreams;
 
     opens postgres;

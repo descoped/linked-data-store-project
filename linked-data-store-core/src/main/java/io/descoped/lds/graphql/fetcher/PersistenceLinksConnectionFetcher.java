@@ -18,7 +18,7 @@ import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.json.JsonDocument;
 import io.descoped.lds.api.persistence.reactivex.Range;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
-import io.reactivex.Flowable;
+import io.reactivex.rxjava3.core.Flowable;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -104,7 +104,7 @@ public class PersistenceLinksConnectionFetcher extends ConnectionFetcher<Map<Str
                 if (parameters.getRange().isLimited()) {
                     documents = parameters.getRange().isBackward()
                             ? documents.takeLast(parameters.getRange().getLimit())
-                            : documents.limit(parameters.getRange().getLimit());
+                            : documents.take(parameters.getRange().getLimit());
                 }
                 documents = parameters.getRange().isBackward()
                         ? documents.sorted(BY_ID.reversed())

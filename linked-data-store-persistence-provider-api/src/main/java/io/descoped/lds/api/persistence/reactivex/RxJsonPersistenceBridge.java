@@ -16,10 +16,10 @@ import io.descoped.lds.api.persistence.streaming.FragmentType;
 import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.api.specification.SpecificationElement;
 import io.descoped.lds.api.specification.SpecificationTraversal;
-import io.reactivex.Completable;
-import io.reactivex.Flowable;
-import io.reactivex.Maybe;
-import io.reactivex.Single;
+import io.reactivex.rxjava3.core.Completable;
+import io.reactivex.rxjava3.core.Flowable;
+import io.reactivex.rxjava3.core.Maybe;
+import io.reactivex.rxjava3.core.Single;
 
 import java.time.Instant;
 import java.time.ZonedDateTime;

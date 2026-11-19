@@ -5,7 +5,7 @@ module io.descoped.lds.persistence.foundationdb {
     requires java.logging;
     requires jul.to.slf4j;
     requires fdb.java;
-    requires io.reactivex.rxjava2;
+    requires io.reactivex.rxjava3;
     requires org.reactivestreams;
 
     exports io.descoped.lds.core.persistence.foundationdb;

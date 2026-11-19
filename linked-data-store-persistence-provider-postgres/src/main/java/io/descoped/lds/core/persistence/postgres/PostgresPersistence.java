@@ -9,9 +9,9 @@ import io.descoped.lds.api.persistence.reactivex.Range;
 import io.descoped.lds.api.persistence.reactivex.RxPersistence;
 import io.descoped.lds.api.persistence.streaming.Fragment;
 import io.descoped.lds.api.persistence.streaming.FragmentType;
-import io.reactivex.Completable;
-import io.reactivex.Flowable;
-import io.reactivex.Single;
+import io.reactivex.rxjava3.core.Completable;
+import io.reactivex.rxjava3.core.Flowable;
+import io.reactivex.rxjava3.core.Single;
 
 import java.sql.Array;
 import java.sql.PreparedStatement;

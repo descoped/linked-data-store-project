@@ -19,7 +19,7 @@ import io.descoped.lds.core.saga.SagaRepository;
 import io.descoped.lds.core.schema.SchemaRepository;
 import io.descoped.lds.core.validation.LinkedDocumentValidationException;
 import io.descoped.lds.core.validation.LinkedDocumentValidator;
-import io.reactivex.Flowable;
+import io.reactivex.rxjava3.core.Flowable;
 import io.undertow.server.HttpHandler;
 import io.undertow.server.HttpServerExchange;
 import io.undertow.util.HeaderMap;

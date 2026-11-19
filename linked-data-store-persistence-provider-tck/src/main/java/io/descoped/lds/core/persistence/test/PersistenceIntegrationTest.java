@@ -13,7 +13,7 @@ import io.descoped.lds.api.persistence.reactivex.Range;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.api.specification.SpecificationElementType;
-import io.reactivex.Flowable;
+import io.reactivex.rxjava3.core.Flowable;
 import org.json.JSONException;
 import org.skyscreamer.jsonassert.JSONAssert;
 import org.testng.annotations.Test;
