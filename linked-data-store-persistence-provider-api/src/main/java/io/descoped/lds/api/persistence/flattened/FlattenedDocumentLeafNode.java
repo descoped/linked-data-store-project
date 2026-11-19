@@ -62,7 +62,8 @@ public class FlattenedDocumentLeafNode {
         } else if (type == FragmentType.NUMERIC) {
             valueByOffset.put(0, value.getBytes(StandardCharsets.UTF_8));
         } else if (type == FragmentType.STRING) {
-            ByteBuffer out = ByteBuffer.allocate(Math.min(fragmentCapacity, 2 * value.length() + 256));
+            // A char is at most three bytes in UTF-8, so a value is cut only where it exceeds the fragment capacity.
+            ByteBuffer out = ByteBuffer.allocate((int) Math.min(fragmentCapacity, 3L * value.length() + 256));
             CharBuffer in = CharBuffer.wrap(value);
             CharsetEncoder encoder = StandardCharsets.UTF_8.newEncoder();
             CoderResult coderResult;

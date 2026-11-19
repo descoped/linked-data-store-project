@@ -7,54 +7,45 @@ import io.descoped.lds.api.persistence.TransactionStatistics;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 
-class PostgresTransaction implements Transaction {
+/**
+ * One connection of the pool with a transaction open on it. Committing or cancelling ends the transaction and
+ * gives the connection back; whatever is asked after that does nothing.
+ */
+final class PostgresTransaction implements Transaction {
 
     final Connection connection;
-    final TransactionStatistics statistics = new TransactionStatistics();
+    private final TransactionStatistics statistics = new TransactionStatistics();
+    private final AtomicBoolean ended = new AtomicBoolean();
 
-    public PostgresTransaction(Connection connection) throws SQLException {
+    PostgresTransaction(Connection connection) {
         this.connection = connection;
-        connection.beginRequest();
     }
 
     @Override
-    public CompletableFuture<TransactionStatistics> commit() throws PersistenceException {
-        try {
-            return CompletableFuture.completedFuture(statistics);
-        } finally {
-            try {
-                connection.commit();
-                connection.endRequest();
-            } catch (SQLException e) {
-                throw new PersistenceException(e);
-            } finally {
-                try {
-                    connection.close();
-                } catch (SQLException e) {
-                    throw new PersistenceException(e);
-                }
-            }
-        }
+    public CompletableFuture<TransactionStatistics> commit() {
+        return end(true);
     }
 
     @Override
     public CompletableFuture<TransactionStatistics> cancel() {
-        try {
+        return end(false);
+    }
+
+    private CompletableFuture<TransactionStatistics> end(boolean commit) {
+        if (!ended.compareAndSet(false, true)) {
             return CompletableFuture.completedFuture(statistics);
-        } finally {
-            try {
-                connection.rollback();
-                connection.endRequest();
-            } catch (SQLException e) {
-                throw new PersistenceException(e);
-            } finally {
-                try {
-                    connection.close();
-                } catch (SQLException e) {
-                    throw new PersistenceException(e);
-                }
+        }
+        try (Connection ending = connection) {
+            if (commit) {
+                ending.commit();
+            } else {
+                ending.rollback();
             }
+            return CompletableFuture.completedFuture(statistics);
+        } catch (SQLException e) {
+            return CompletableFuture.failedFuture(new PersistenceException(e));
         }
     }
 }

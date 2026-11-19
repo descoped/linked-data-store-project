@@ -16,7 +16,7 @@ reactor, group `io.descoped.lds`.
 | `linked-data-store-persistence-provider-api` | `io.descoped.lds.persistence.api` | the persistence interface, packages `io.descoped.lds.api.persistence..` (`PersistenceInitializer`, `RxJsonPersistence`, `RxPersistence`, the bridge, fragments), and `Specification` |
 | `linked-data-store-persistence-provider-tck` | none yet (class path) | `PersistenceIntegrationTest` (TestNG), the suite every persistence provider extends |
 | `linked-data-store-persistence-provider-memory` | `io.descoped.lds.persistence.memory` | provider `mem`: fragments in a sorted map in memory, the keys packed as tuples with `io.descoped.tuple:java-tuple`, behind the bridge (`MemoryRxPersistence`; the logic was written for FoundationDB, whose provider was removed before 3.0). For tests and for trying LDS, not for production |
-| `linked-data-store-persistence-provider-postgres` | `io.descoped.lds.persistence.postgres` | provider `postgres` |
+| `linked-data-store-persistence-provider-postgres` | `io.descoped.lds.persistence.postgres` | provider `postgres`, revised for 3.0: one table, `fragment`, created at start, holding every namespace; every read is one statement whose rows are fetched as they are asked for |
 | `linked-data-store-persistence-provider-neo4j` | `io.descoped.lds.persistence.neo4j` | provider `neo4j` |
 | `linked-data-store-search-provider-api` | `io.descoped.lds.search.api` | the search SPI (`SearchIndexProvider`, `SearchIndex`) |
 | `linked-data-store-search-provider-solr` | `io.descoped.lds.search.provider.solr` | provider `solr` |
@@ -94,13 +94,16 @@ to the latest stable and removes them from this list, from the "held" block in t
 
 ## Testing
 
-- New and revised tests are JUnit 6 with AssertJ. The tests there are today are TestNG 7 (the JUnit dependency
-  comes back with the first JUnit test); they run on the class path (`useModulePath` false), because they share
-  packages with the code. Tests move to JUnit as each module is revised. Until core is revised, a test in core
-  that needs the running application is TestNG, because the test server is started by a TestNG listener: a new
-  test class asserts with AssertJ, a test added to an existing class follows that class.
-- The PostgreSQL provider's tests (the shared suite and the Reactive Streams TCK for its publisher) run on a real
-  PostgreSQL 18 (`postgres:18-alpine`) through Testcontainers, so **the build needs Docker**.
+- New and revised tests are JUnit 6 with AssertJ. The older tests are TestNG 7. Both run in one build and on the
+  JUnit Platform (Surefire 3.6 runs TestNG through the TestNG engine for the platform, which it brings itself),
+  on the class path (`useModulePath` false), because they share packages with the code. Tests move to JUnit as
+  each module is revised; a class that extends the shared suite or the Reactive Streams TCK stays TestNG, because
+  those are. Until core is revised, a test in core that needs the running application is TestNG, because the
+  test server is started by a TestNG listener: a new test class asserts with AssertJ, a test added to an
+  existing class follows that class.
+- The PostgreSQL provider's tests (the shared suite, the Reactive Streams TCK for its publisher, and
+  `PostgresProviderTest` for what the suite does not cover) run on a real PostgreSQL 18 (`postgres:18-alpine`)
+  through Testcontainers, so **the build needs Docker**.
 - The shared suite runs for the memory provider and for PostgreSQL. `Neo4jPersistenceIntegrationTest` is
   excluded in its module's POM, with the reason, until that provider is revised against a container. The memory
   provider also runs the Reactive Streams TCK for `AsyncIterablePublisher`.
