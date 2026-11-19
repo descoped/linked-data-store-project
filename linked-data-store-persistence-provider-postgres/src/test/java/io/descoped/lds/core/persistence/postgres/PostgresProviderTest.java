@@ -24,8 +24,14 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import static io.descoped.lds.api.persistence.json.JsonTools.mapper;
@@ -69,6 +75,34 @@ class PostgresProviderTest {
     @Test
     void startingLeavesNoConnectionInUse() {
         assertThat(fragments.transactionFactory.dataSource.getHikariPoolMXBean().getActiveConnections()).isZero();
+    }
+
+    @Test
+    void instancesThatStartTogetherOnAnEmptyDatabaseAllStart() throws InterruptedException {
+        int instances = 4;
+        List<Throwable> failures = new ArrayList<>();
+        for (int round = 0; round < 5; round++) {
+            Map<String, String> configuration = Postgres18.configurationOfNewDatabase(round);
+            CountDownLatch together = new CountDownLatch(1);
+            try (ExecutorService threads = Executors.newFixedThreadPool(instances)) {
+                List<Future<RxJsonPersistence>> starting = new ArrayList<>();
+                for (int i = 0; i < instances; i++) {
+                    starting.add(threads.submit(() -> {
+                        together.await();
+                        return new PostgresDbInitializer().initialize(NS, configuration, Set.of());
+                    }));
+                }
+                together.countDown();
+                for (Future<RxJsonPersistence> start : starting) {
+                    try {
+                        start.get().close();
+                    } catch (ExecutionException e) {
+                        failures.add(e.getCause());
+                    }
+                }
+            }
+        }
+        assertThat(failures).isEmpty();
     }
 
     // ---- namespaces, ids, versions

@@ -97,12 +97,13 @@ to the latest stable and removes them from this list, from the "held" block in t
 
 ## Testing
 
-- New and revised tests are JUnit 6 with AssertJ. The older tests are TestNG 7. Both run in one build (Surefire runs
-  them on the JUnit Platform) and on the class path (`useModulePath` false), because they share packages with the
-  code. Tests move to JUnit as each module is revised; a class that extends the shared suite or the Reactive
-  Streams TCK stays TestNG, because those are. Until core is revised, a test in core that needs the running
-  application is TestNG, because the test server is started by a TestNG listener: a new test class asserts with
-  AssertJ, a test added to an existing class follows that class.
+- New and revised tests are JUnit 6 with AssertJ. The older tests are TestNG 7. Both run in one build and on the
+  JUnit Platform (Surefire 3.6 runs TestNG through the TestNG engine for the platform, which it brings itself),
+  on the class path (`useModulePath` false), because they share packages with the code. Tests move to JUnit as
+  each module is revised; a class that extends the shared suite or the Reactive Streams TCK stays TestNG, because
+  those are. Until core is revised, a test in core that needs the running application is TestNG, because the
+  test server is started by a TestNG listener: a new test class asserts with AssertJ, a test added to an
+  existing class follows that class.
 - The PostgreSQL provider's tests (the shared suite, the Reactive Streams TCK for its publisher, and
   `PostgresProviderTest` for what the suite does not cover) run on a real PostgreSQL 18 (`postgres:18-alpine`)
   through Testcontainers, so **the build needs Docker**.

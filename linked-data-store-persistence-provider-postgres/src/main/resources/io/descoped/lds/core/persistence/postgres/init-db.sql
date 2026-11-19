@@ -1,3 +1,8 @@
+-- Instances that start at the same time run this file one after the other: CREATE ... IF NOT EXISTS is not safe
+-- when two transactions create the same table at once. The lock is released when the transaction ends. The
+-- number only has to be the same for every instance.
+SELECT pg_advisory_xact_lock(7308327816128787041);
+
 -- One row is one leaf value of one version of one document, in a namespace. The array positions of the value are
 -- taken out of the path: $.tags[1] is path $.tags[] and indices {1}.
 CREATE TABLE IF NOT EXISTS fragment

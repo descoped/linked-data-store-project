@@ -40,6 +40,11 @@ import java.util.Set;
  * <p>
  * A version is an instant with millisecond precision. A value is one fragment: this provider does not split a
  * value.
+ * <p>
+ * Ids are ordered by their UTF-8 bytes (collation {@code POSIX}), which is the order of code points. Java orders
+ * strings by UTF-16 code units, and the bridge sorts a list that way. The two differ only between a character
+ * from U+E000 to U+FFFF and one above U+FFFF (an emoji), so for ids with both, {@code hasNext} and
+ * {@code hasPrevious} can disagree with the list until the bridge stops sorting.
  */
 final class PostgresPersistence implements RxPersistence {
 
