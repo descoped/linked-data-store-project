@@ -10,10 +10,10 @@ import io.descoped.lds.api.persistence.json.JsonDocument;
 import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.persistence.api.Document;
 import io.descoped.lds.persistence.api.Persistence;
-import io.reactivex.Completable;
-import io.reactivex.Flowable;
-import io.reactivex.Maybe;
-import io.reactivex.Single;
+import io.reactivex.rxjava3.core.Completable;
+import io.reactivex.rxjava3.core.Flowable;
+import io.reactivex.rxjava3.core.Maybe;
+import io.reactivex.rxjava3.core.Single;
 
 import java.time.ZoneId;
 import java.time.ZonedDateTime;

@@ -1,7 +1,5 @@
 module io.descoped.lds.persistence.api {
-    requires io.reactivex.rxjava2;
-    requires org.reactivestreams;
-    requires com.github.akarnokd.rxjava2jdk9interop;
+    requires transitive io.reactivex.rxjava3;
     requires com.fasterxml.jackson.core;
     requires transitive com.fasterxml.jackson.databind;
 

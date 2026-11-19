@@ -1,8 +1,8 @@
 package io.descoped.lds.api.search;
 
 import io.descoped.lds.api.persistence.json.JsonDocument;
-import io.reactivex.Completable;
-import io.reactivex.Single;
+import io.reactivex.rxjava3.core.Completable;
+import io.reactivex.rxjava3.core.Single;
 
 import java.util.Collection;
 import java.util.Set;

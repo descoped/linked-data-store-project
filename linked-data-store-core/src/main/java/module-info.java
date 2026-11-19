@@ -22,9 +22,7 @@ module io.descoped.lds.core {
     requires org.apache.tika.core;
 
     requires graphql.java;
-    requires io.reactivex.rxjava2;
-    requires org.reactivestreams;
-    requires com.github.akarnokd.rxjava2jdk9interop;
+    requires io.reactivex.rxjava3;
     requires graphql.java.extended.scalars;
 
     opens io.descoped.lds.graphql.graphiql;

@@ -1,7 +1,7 @@
 package io.descoped.lds.api.persistence.reactivex;
 
-import io.reactivex.Flowable;
-import io.reactivex.schedulers.Schedulers;
+import io.reactivex.rxjava3.core.Flowable;
+import io.reactivex.rxjava3.schedulers.Schedulers;
 
 import java.util.LinkedHashMap;
 import java.util.Map;

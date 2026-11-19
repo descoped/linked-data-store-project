@@ -9,7 +9,7 @@ import graphql.schema.DataFetchingEnvironment;
 import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.json.JsonDocument;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
-import io.reactivex.Flowable;
+import io.reactivex.rxjava3.core.Flowable;
 
 import java.util.Collections;
 import java.util.List;

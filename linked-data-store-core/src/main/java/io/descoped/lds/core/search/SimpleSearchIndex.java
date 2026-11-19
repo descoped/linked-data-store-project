@@ -7,9 +7,9 @@ import io.descoped.lds.api.persistence.json.JsonToFlattenedDocument;
 import io.descoped.lds.api.search.SearchIndex;
 import io.descoped.lds.api.search.SearchResponse;
 import io.descoped.lds.api.search.SearchResult;
-import io.reactivex.Completable;
-import io.reactivex.Flowable;
-import io.reactivex.Single;
+import io.reactivex.rxjava3.core.Completable;
+import io.reactivex.rxjava3.core.Flowable;
+import io.reactivex.rxjava3.core.Single;
 
 import java.util.Arrays;
 import java.util.Collection;

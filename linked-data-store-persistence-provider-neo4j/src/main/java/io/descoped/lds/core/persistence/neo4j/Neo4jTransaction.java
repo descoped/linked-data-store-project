@@ -2,8 +2,8 @@ package io.descoped.lds.core.persistence.neo4j;
 
 import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.TransactionStatistics;
-import io.reactivex.BackpressureStrategy;
-import io.reactivex.Flowable;
+import io.reactivex.rxjava3.core.BackpressureStrategy;
+import io.reactivex.rxjava3.core.Flowable;
 import org.neo4j.driver.Record;
 import org.neo4j.driver.Result;
 import org.neo4j.driver.Session;
