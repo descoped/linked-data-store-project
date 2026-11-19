@@ -40,6 +40,9 @@ public class SagaLogPostgresTest {
 
     private static final String BODY = "{\"name\":\"saga log in postgres\",\"contacts\":[]}";
 
+    /** A write waits for its saga without a limit; a saga that never completes must fail the test, not hang it. */
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(60);
+
     private final HttpClient http = HttpClient.newHttpClient();
     private final List<TestServer> servers = new ArrayList<>();
     private PostgreSQLContainer postgres;
@@ -129,6 +132,10 @@ public class SagaLogPostgresTest {
         TestServer second = start("cluster", "02", "saga.recovery.enabled", "true", "saga.number-of-logs", "1",
                 "saga.recovery.interval.seconds.min", "1", "saga.recovery.interval.seconds.max", "1");
         await(Duration.ofSeconds(30), () -> get(second, "/data/provisionagreement/x") == 200);
+        // the recovery is done only when the log of the instance that left is emptied and deleted; until then the
+        // saga would be run again on every pass
+        SagaLogPool pool = second.getApplication().getSec().getSagaLogPool();
+        await(Duration.ofSeconds(30), () -> pool.clusterWideLogIds().stream().noneMatch(logId -> "01".equals(logId.getClusterInstanceId())));
         assertThat(put(second, "/data/provisionagreement/y?sync=true")).isEqualTo(201);
         assertThat(deadEntries(second)).isZero();
     }
@@ -172,12 +179,12 @@ public class SagaLogPostgresTest {
     }
 
     private int put(TestServer server, String uri) throws Exception {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(server.testURL(uri))).PUT(HttpRequest.BodyPublishers.ofString(BODY)).build();
+        HttpRequest request = HttpRequest.newBuilder(URI.create(server.testURL(uri))).timeout(REQUEST_TIMEOUT).PUT(HttpRequest.BodyPublishers.ofString(BODY)).build();
         return http.send(request, HttpResponse.BodyHandlers.discarding()).statusCode();
     }
 
     private int get(TestServer server, String uri) throws Exception {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(server.testURL(uri))).GET().build();
+        HttpRequest request = HttpRequest.newBuilder(URI.create(server.testURL(uri))).timeout(REQUEST_TIMEOUT).GET().build();
         return http.send(request, HttpResponse.BodyHandlers.discarding()).statusCode();
     }
 

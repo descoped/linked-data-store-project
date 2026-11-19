@@ -49,8 +49,6 @@
         <msgpack.version>0.9.12</msgpack.version>
         <hikaricp.version>7.1.0</hikaricp.version>
         <postgresql.version>42.7.14</postgresql.version>
-        <org-json.version>20260814</org-json.version>
-        <everit-json-schema.version>1.14.6</everit-json-schema.version>
         <handy-uri-templates.version>2.1.8</handy-uri-templates.version>
         <commons-math3.version>3.6.1</commons-math3.version>
         <javax-inject.version>1</javax-inject.version>
@@ -75,6 +73,8 @@
         <undertow.version>2.0.30.Final</undertow.version>
         <xnio.version>3.8.0.Final</xnio.version>
         <jboss-threads.version>2.3.3.Final</jboss-threads.version>
+        <everit-json-schema.version>1.14.6</everit-json-schema.version>
+        <org-json.version>20260814</org-json.version>
         <tika.version>1.24.1</tika.version>
         <okhttp.version>3.14.0</okhttp.version>
         <neo4j-java-driver.version>4.0.2</neo4j-java-driver.version>
