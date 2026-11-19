@@ -13,6 +13,12 @@ import org.testng.annotations.Listeners;
 import org.testng.annotations.Test;
 
 import javax.inject.Inject;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
@@ -121,6 +127,84 @@ public class SagaExecutionCoordinatorTest {
             }
         } finally {
             deadSagaLog.truncate();
+        }
+    }
+
+    /**
+     * One saga log, a truncate that takes time, and two clients: when one client's saga completes, the other is
+     * waiting for the log. It must get it empty, so the log may be released only when its truncate has finished.
+     * Otherwise the entries of the finished saga are taken for an unfinished one, and the late truncate removes the
+     * entries of the saga that has the log by then.
+     */
+    @Test
+    @ConfigurationOverride({
+            "saga.recovery.enabled", "false",
+            "sagalog.provider", "io.descoped.lds.core.saga.SlowTruncateSagaLogInitializer",
+            "saga.number-of-logs", "1"
+    })
+    public void thatASagaLogIsReleasedOnlyWhenItsTruncateHasFinished() throws Exception {
+        SlowTruncateSagaLogInitializer.ACQUIRED_WITH_ENTRIES.set(0);
+        ExecutorService clients = Executors.newFixedThreadPool(2);
+        try {
+            List<Future<Integer>> statuses = new ArrayList<>();
+            for (int i = 0; i < 6; i++) {
+                String uri = "/data/provisionagreement/t" + i + "?sync=true";
+                String body = "{\"name\":\"truncate-then-release " + i + "\",\"contacts\":[]}";
+                statuses.add(clients.submit(() -> client.put(uri, body).response().statusCode()));
+            }
+            for (Future<Integer> status : statuses) {
+                Assert.assertEquals(status.get(60, TimeUnit.SECONDS).intValue(), 201);
+            }
+        } finally {
+            clients.shutdownNow();
+        }
+        SagaExecutionCoordinator sec = server.getApplication().getSec();
+        SagaLogPool pool = sec.getSagaLogPool();
+        SagaLog sagaLog = pool.tryAcquire(new SagaLogOwner("core-sec-test"), 10, TimeUnit.SECONDS);
+        try {
+            Assert.assertEquals(SlowTruncateSagaLogInitializer.ACQUIRED_WITH_ENTRIES.get(), 0, "saga logs handed out with entries in them");
+            assertFalse(sagaLog.readIncompleteSagas().anyMatch(e -> true)); // released, so truncated
+            assertFalse(pool.connect(sec.deadSagaLogId).readIncompleteSagas().anyMatch(e -> true));
+            assertTrue(sec.executionIdBySagaLogId.isEmpty());
+        } finally {
+            pool.release(sagaLog.id());
+        }
+    }
+
+    /**
+     * A saga log that cannot be emptied is acquired, recovered, acquired again and given up. Giving it up must
+     * release it: a log that stays acquired is lost to every saga after, and with all logs lost every write waits
+     * for a log and fails.
+     */
+    @Test
+    @ConfigurationOverride({
+            "saga.recovery.enabled", "false",
+            "sagalog.provider", "io.descoped.lds.core.saga.SlowTruncateSagaLogInitializer",
+            "saga.number-of-logs", "1",
+            "saga.commands.enabled", "true"
+    })
+    public void thatASagaLogIsReleasedWhenItCannotBeAcquiredClean() throws Exception {
+        SagaExecutionCoordinator sec = server.getApplication().getSec();
+        SagaLogPool pool = sec.getSagaLogPool();
+        SlowTruncateSagaLogInitializer.TRUNCATES.set(false);
+        try {
+            client.put("/data/provisionagreement/u1?sync=true&saga=failAfter%20S", "{\"name\":\"unfinished\",\"contacts\":[]}").expectAnyOf(500);
+            try {
+                SagaLog acquired = sec.acquireCleanSagaLog(nopAction(), nopAction());
+                pool.release(acquired.id());
+                Assert.fail("Acquired a saga log that cannot be emptied");
+            } catch (RuntimeException e) {
+                assertTrue(e.getMessage().startsWith("Unable to acquire clean saga-log"), e.getMessage());
+            }
+        } finally {
+            SlowTruncateSagaLogInitializer.TRUNCATES.set(true);
+        }
+        SagaLog sagaLog = pool.tryAcquire(new SagaLogOwner("core-sec-test"), 2, TimeUnit.SECONDS);
+        Assert.assertNotNull(sagaLog, "the saga log was not released");
+        try {
+            sagaLog.truncate().join();
+        } finally {
+            pool.release(sagaLog.id());
         }
     }
 

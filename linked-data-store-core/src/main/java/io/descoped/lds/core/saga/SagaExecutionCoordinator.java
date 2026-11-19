@@ -114,26 +114,27 @@ public class SagaExecutionCoordinator {
             }
             return executionId;
         });
-        SagaExecution sagaExecution = new SagaExecution(sagaLog, threadPool, saga, adapterLoader);
-
-        SagaHandoffControl handoffControl = startSagaExecutionWithThrottling(sagaExecution, sagaInput, sagaLog, sagaCommandsEnabled ? commandsByNodeId : Collections.emptyMap());
+        AtomicBoolean sagaLogReleased = new AtomicBoolean(false);
+        Runnable releaseSagaLog = () -> {
+            if (sagaLogReleased.compareAndSet(false, true)) {
+                executionIdBySagaLogId.remove(sagaLog.id());
+                sagaLogPool.release(sagaLog.id());
+            }
+        };
+        SagaHandoffControl handoffControl;
+        try {
+            SagaExecution sagaExecution = new SagaExecution(sagaLog, threadPool, saga, adapterLoader);
+            handoffControl = startSagaExecutionWithThrottling(sagaExecution, sagaInput, sagaLog, sagaCommandsEnabled ? commandsByNodeId : Collections.emptyMap(), releaseSagaLog);
+        } catch (RuntimeException e) {
+            releaseSagaLog.run(); // the saga was not started, so nothing else will release its log
+            throw e;
+        }
 
         sagasObserver.registerSaga(handoffControl);
 
-        SelectableFuture<SagaHandoffResult> completionFuture = handoffControl.getCompletionFuture();
-        SelectableFuture<SagaHandoffResult> handoffFuture = handoffControl.getHandoffFuture();
-
-        SelectableFuture<SagaHandoffResult> future = sync ?
-                completionFuture : // full saga-execution
-                handoffFuture;     // first saga-log write
-
-        completionFuture.handle((v, t) -> {
-            executionIdBySagaLogId.remove(sagaLog.id());
-            sagaLogPool.release(sagaLog.id());
-            return null;
-        });
-
-        return future;
+        return sync ?
+                handoffControl.getCompletionFuture() : // full saga-execution
+                handoffControl.getHandoffFuture();     // first saga-log write
     }
 
     /**
@@ -158,19 +159,28 @@ public class SagaExecutionCoordinator {
         if (sagaLog == null) {
             throw new RuntimeException("Timeout. No available saga-logs, please check configuration.");
         }
-        if (deadLetterSagaPattern.matcher(sagaLog.id().getLogName()).matches()) {
-            throw new RuntimeException("Dead-letter-saga acquired unintentionally");
-        }
-        if (!sagaLog.readIncompleteSagas().anyMatch(e -> true)) {
-            return sagaLog; // sagaLog is empty, all is well
-        }
+        boolean handedOver = false; // to the caller, or to the recovery that releases it
+        try {
+            if (deadLetterSagaPattern.matcher(sagaLog.id().getLogName()).matches()) {
+                throw new RuntimeException("Dead-letter-saga acquired unintentionally");
+            }
+            if (!sagaLog.readIncompleteSagas().anyMatch(e -> true)) {
+                handedOver = true;
+                return sagaLog; // sagaLog is empty, all is well
+            }
 
-        if (!attemptedSagaLogIds.add(sagaLog.id())) {
-            throw new RuntimeException(String.format("Unable to acquire clean saga-log. This is the second time saga-log-id %s was chosen.", sagaLog.id()));
-        }
+            if (!attemptedSagaLogIds.add(sagaLog.id())) {
+                throw new RuntimeException(String.format("Unable to acquire clean saga-log. This is the second time saga-log-id %s was chosen.", sagaLog.id()));
+            }
 
-        // sagaLog contains at least one element
-        asyncAttemptForwardRecoveryOrElseMoveToDeadLetter(sagaLog, forwardRecoveryPreAction, forwardRecoveryPostAction); // will release sagaLog when done
+            // sagaLog contains at least one element
+            asyncAttemptForwardRecoveryOrElseMoveToDeadLetter(sagaLog, forwardRecoveryPreAction, forwardRecoveryPostAction); // will release sagaLog when done
+            handedOver = true;
+        } finally {
+            if (!handedOver) {
+                sagaLogPool.release(sagaLog.id()); // or no saga could ever use this log again
+            }
+        }
 
         return recursiveAcquireCleanSagaLog(attemptedSagaLogIds, forwardRecoveryPreAction, forwardRecoveryPostAction);
     }
@@ -223,7 +233,12 @@ public class SagaExecutionCoordinator {
         return CompletableFuture.allOf(futures.toArray(new CompletableFuture[futures.size()])).thenCompose(v -> from.truncate());
     }
 
-    private SagaHandoffControl startSagaExecutionWithThrottling(SagaExecution sagaExecution, SagaInput sagaInput, SagaLog sagaLog, Map<String, List<SagaCommand>> commandsByNodeId) {
+    /**
+     * Starts the saga. When it completes, its saga log is truncated if it succeeded, and only then released with
+     * {@code releaseSagaLog}: a log that is released before its truncate has finished is handed to the next saga with
+     * the entries of this one still in it. The log and the permit are released also when the truncate fails.
+     */
+    private SagaHandoffControl startSagaExecutionWithThrottling(SagaExecution sagaExecution, SagaInput sagaInput, SagaLog sagaLog, Map<String, List<SagaCommand>> commandsByNodeId, Runnable releaseSagaLog) {
         SagaHandoffControl handoffControl;
         try {
             semaphore.acquire();
@@ -236,11 +251,18 @@ public class SagaExecutionCoordinator {
             String executionId = sagaInput.txId();
             handoffControl = sagaExecution.executeSaga(executionId, sagaInput.asJsonNode(), false,
                     r -> {
-                        if (r.isSuccess()) {
-                            sagaLog.truncate().join();
-                        }
-                        if (permitReleased.compareAndSet(false, true)) {
-                            semaphore.release();
+                        try {
+                            if (r.isSuccess()) {
+                                sagaLog.truncate().join();
+                            }
+                        } finally {
+                            try {
+                                releaseSagaLog.run();
+                            } finally {
+                                if (permitReleased.compareAndSet(false, true)) {
+                                    semaphore.release();
+                                }
+                            }
                         }
                     },
                     sagaExecutionTraversalContext -> {
@@ -268,7 +290,7 @@ public class SagaExecutionCoordinator {
                         }
                     }
             );
-            // permit will be released by sagaPermitReleaseThread
+            // the permit and the saga log are released when the saga completes
         } catch (RuntimeException e) {
             if (permitReleased.compareAndSet(false, true)) {
                 semaphore.release(); // ensure that permit is always released even when saga-execution could not be run
