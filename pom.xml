@@ -52,8 +52,6 @@
         <handy-uri-templates.version>2.1.8</handy-uri-templates.version>
         <commons-math3.version>3.6.1</commons-math3.version>
         <javax-inject.version>1</javax-inject.version>
-        <java-tuple.version>0.1.0</java-tuple.version>
-        <junit.version>6.1.3</junit.version>
         <testng.version>7.12.0</testng.version>
         <assertj.version>3.27.7</assertj.version>
         <jsonassert.version>1.5.3</jsonassert.version>

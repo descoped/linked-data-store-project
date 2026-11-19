@@ -13,7 +13,33 @@
     <packaging>jar</packaging>
 
     <name>Linked Data Store Persistence Provider Memory</name>
-    <description>Persistence provider that keeps documents in memory, for tests and for trying LDS. Nothing survives the process.</description>
+    <description>Persistence provider that keeps documents in memory, for tests and trials.</description>
+
+    <build>
+        <plugins>
+            <!-- Pre-3.0 code: these lint categories are not clean yet. Every other warning fails the build, and
+                 this override goes when the module is revised. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <compilerArgs combine.self="override">
+                        <arg>-Xlint:all,-requires-automatic</arg>
+                        <arg>-Werror</arg>
+                    </compilerArgs>
+                </configuration>
+            </plugin>
+            <!-- Pre-3.0 code has little Javadoc. Doclint checks what is there; missing Javadoc becomes an
+                 error again when the module is revised. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <configuration>
+                    <doclint>all,-missing</doclint>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 
     <dependencies>
         <dependency>
@@ -22,9 +48,33 @@
             <version>${project.version}</version>
         </dependency>
         <dependency>
-            <groupId>io.descoped.tuple</groupId>
-            <artifactId>java-tuple</artifactId>
-            <version>${java-tuple.version}</version>
+            <groupId>io.descoped.lds</groupId>
+            <artifactId>linked-data-store-persistence-provider-foundationdb</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.testng</groupId>
+            <artifactId>testng</artifactId>
+            <version>${testng.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.reactivestreams</groupId>
+            <artifactId>reactive-streams-tck</artifactId>
+            <version>${reactive-streams.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>${slf4j.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <version>${logback.version}</version>
+            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>io.descoped.lds</groupId>

@@ -3,9 +3,7 @@ package io.descoped.lds.core.persistence;
 import io.descoped.config.DynamicConfiguration;
 import io.descoped.lds.api.persistence.PersistenceInitializer;
 import io.descoped.lds.api.persistence.ProviderName;
-import io.descoped.lds.api.persistence.reactivex.PersistenceAdapter;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
-import io.descoped.lds.persistence.api.PersistenceProvider;
 import io.descoped.lds.api.specification.Specification;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,20 +24,6 @@ public class PersistenceConfigurator {
     public static RxJsonPersistence configurePersistence(DynamicConfiguration configuration, Specification specification) {
         final String providerId = configuration.evaluateToString("persistence.provider");
         LOG.info("Using persistence provider: {}", providerId);
-
-        // Providers of the 3.0 interface run behind an adapter until core itself uses that interface.
-        for (PersistenceProvider provider : ServiceLoader.load(PersistenceProvider.class)) {
-            if (providerId.equals(provider.name())) {
-                Map<String, String> providerConfiguration = new LinkedHashMap<>();
-                for (String key : provider.configurationKeys()) {
-                    String value = configuration.evaluateToString(key);
-                    if (value != null) {
-                        providerConfiguration.put(key, value);
-                    }
-                }
-                return new PersistenceAdapter(provider.open(providerConfiguration, specification));
-            }
-        }
 
         ServiceLoader<PersistenceInitializer> loader = ServiceLoader.load(PersistenceInitializer.class);
 

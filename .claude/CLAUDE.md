@@ -13,9 +13,9 @@ reactor, group `io.descoped.lds`.
 |---|---|---|
 | `linked-data-store-project` (root) | n/a | parent and aggregator |
 | `linked-data-store-bom` | n/a | BOM of the modules below |
-| `linked-data-store-persistence-provider-api` | `io.descoped.lds.persistence.api` | the reactive persistence interface, packages `io.descoped.lds.api.persistence..` (`RxJsonPersistence`, `RxPersistence`, the bridge, fragments), and `Specification`. Also the blocking interface of November 2026, package `io.descoped.lds.persistence.api`, see "The two persistence interfaces" |
-| `linked-data-store-persistence-provider-tck` | none yet (class path) | `PersistenceIntegrationTest` (TestNG), the suite for a provider on the reactive interface (PostgreSQL runs it); and `PersistenceTck` (JUnit), the suite for the blocking interface (the memory provider runs it) |
-| `linked-data-store-persistence-provider-memory` | `io.descoped.lds.persistence.memory` | provider `mem`: an ordered map in memory, keys packed with `io.descoped.tuple`. For tests and for trying LDS, not for production |
+| `linked-data-store-persistence-provider-api` | `io.descoped.lds.persistence.api` | the persistence interface, packages `io.descoped.lds.api.persistence..` (`PersistenceInitializer`, `RxJsonPersistence`, `RxPersistence`, the bridge, fragments), and `Specification` |
+| `linked-data-store-persistence-provider-tck` | none yet (class path) | `PersistenceIntegrationTest` (TestNG), the suite every persistence provider extends |
+| `linked-data-store-persistence-provider-memory` | `io.descoped.lds.persistence.memory` | provider `mem`: the FoundationDB provider's logic (`MemoryRxPersistence extends FoundationDBRxPersistence`) on a sorted map in memory, behind the bridge. For tests and for trying LDS, not for production; it is also what tests the FoundationDB provider's streaming logic without a FoundationDB |
 | `linked-data-store-persistence-provider-postgres` | `io.descoped.lds.persistence.postgres` | provider `postgres` |
 | `linked-data-store-persistence-provider-neo4j` | `io.descoped.lds.persistence.neo4j` | provider `neo4j` |
 | `linked-data-store-persistence-provider-foundationdb` | `io.descoped.lds.persistence.foundationdb` | provider `foundationdb` |
@@ -32,24 +32,16 @@ Until 2026-11 every module was a repository of its own; their histories were imp
 `io.descoped.lds` before. 3.0.0 is the first version built from this repository, and the work toward it goes module
 by module: build first, then the persistence API and each provider, search, core, the server image.
 
-## The two persistence interfaces
+## The persistence interface
 
 LDS streams. Its persistence interface is the reactive one in `io.descoped.lds.api.persistence..`, on RxJava 3
 (`Flowable`, `Maybe`, `Single`, `Completable`): `RxPersistence` carries fragments (one leaf value of one version of
 one document; storage order is id, version, path), `RxJsonPersistence` carries documents, and
 `RxJsonPersistenceBridge` with `RxGroupByTools.groupByOrdered` cuts one ordered fragment stream into documents,
-asking the source for more one document at a time. The PostgreSQL and FoundationDB providers read their engine only
-on demand (`ResultSetPublisher`, `AsyncIterablePublisher`, both checked with the Reactive Streams TCK); Neo4j
-implements `RxJsonPersistence` directly. Core and those three providers use this interface. Keep the mechanism when
-changing this code: a stream is not replaced by a call that returns a complete list, and no blocking call is added
-to an interface.
-
-The second interface, `io.descoped.lds.persistence.api` (blocking calls returning lists; `PersistenceTck`; the
-memory provider on it; core reaches it through `PersistenceAdapter`, where `close()` commits), was added in
-November 2026 and is not the direction of 3.0: streaming stays. Write nothing new against it and move no provider
-to it. Core's tests run on that memory provider, so a new test in core still uses it; that is not new code against
-the interface. What becomes of it and of the memory provider is the owner's decision, taken before the next provider is
-revised.
+asking the source for more one document at a time. The PostgreSQL, FoundationDB and memory providers read their
+store only on demand (`ResultSetPublisher`, `AsyncIterablePublisher`, both checked with the Reactive Streams TCK);
+Neo4j implements `RxJsonPersistence` directly. Keep the mechanism when changing this code: a stream is not replaced
+by a call that returns a complete list, and no blocking call is added to an interface.
 
 ## Invariants (never violate)
 
@@ -67,8 +59,7 @@ revised.
   A module that still holds pre-3.0 code overrides them with the exact categories it is not clean of; the override
   is removed, not widened, when the module is revised.
 - **One persistence contract for every provider**: the reactive interface, checked by the shared suite
-  (`PersistenceIntegrationTest`) against the real engine (a container), not a substitute. The memory provider is
-  the exception while it is on the blocking interface (see "The two persistence interfaces").
+  (`PersistenceIntegrationTest`) against the real engine (a container), not a substitute.
 - **No spliced identifiers.** Entity, field, namespace and topic names and user search text are validated and never
   concatenated into SQL, Cypher, Solr queries, keys or file paths.
 - **Time.** Document versions are stored and compared as UTC instants.
@@ -95,7 +86,7 @@ to the latest stable and removes them from this list, from the "held" block in t
 
 | Dependency | Held at | Moves with |
 |---|---|---|
-| fdb-java | 5.2.5 | the FoundationDB provider |
+| fdb-java | 5.2.5 | the FoundationDB provider (the memory provider uses its key, tuple and iterator types too) |
 | neo4j-java-driver | 4.0.2 | the Neo4j provider |
 | solr-solrj, solr-test-framework (and the Restlet repository in the Solr module) | 7.7.1 | the Solr provider |
 | graphql-java, extended scalars | 12.0, 1.0 | core, GraphQL |
@@ -106,20 +97,20 @@ to the latest stable and removes them from this list, from the "held" block in t
 
 ## Testing
 
-- New and revised tests are JUnit 6 with AssertJ. The pre-3.0 tests are TestNG 7; both run in one Surefire run, on
-  the class path (`useModulePath` false), because the pre-3.0 tests share packages with the code. Tests move to
-  JUnit as each module is revised. Until core is revised, a test in core that needs the running application is
-  TestNG, because the test server is started by a TestNG listener: a new test class asserts with AssertJ, a test
-  added to a pre-3.0 class follows that class.
+- New and revised tests are JUnit 6 with AssertJ. The tests there are today are TestNG 7 (the JUnit dependency
+  comes back with the first JUnit test); they run on the class path (`useModulePath` false), because they share
+  packages with the code. Tests move to JUnit as each module is revised. Until core is revised, a test in core
+  that needs the running application is TestNG, because the test server is started by a TestNG listener: a new
+  test class asserts with AssertJ, a test added to an existing class follows that class.
 - The PostgreSQL provider's tests (the shared suite and the Reactive Streams TCK for its publisher) run on a real
   PostgreSQL 18 (`postgres:18-alpine`) through Testcontainers, so **the build needs Docker**.
-- `PersistenceIntegrationTest`, the suite of the reactive interface, runs for PostgreSQL; `PersistenceTck` runs
-  for the memory provider. `Neo4jPersistenceIntegrationTest` and `FoundationDBIntegrationTest` are excluded in
-  their modules' POMs, with the reason, until those providers are revised against a container.
+- The shared suite runs for the memory provider and for PostgreSQL. `Neo4jPersistenceIntegrationTest` and
+  `FoundationDBIntegrationTest` are excluded in their modules' POMs, with the reason, until those providers are
+  revised against a container. The memory provider also runs the Reactive Streams TCK for
+  `AsyncIterablePublisher`.
 - Core's `SagaLogPostgresTest` runs the write path with the saga log in a PostgreSQL 18 container: concurrent
   writes, recovery of an unfinished saga by the next write, after a restart and by another instance of the cluster.
-- Core's tests start the application in the JVM on a random port with the memory provider (`TestServerListener`),
-  which they reach through `PersistenceAdapter`: they do not pass through the bridge.
+- Core's tests start the application in the JVM on a random port with the memory provider (`TestServerListener`).
   13 of them are disabled in the source (`enabled = false`, `@Ignore`), several because they hang; they are
   re-enabled or deleted with a reason when core is revised.
 - A change that switches tests on is run about ten times before it is pushed

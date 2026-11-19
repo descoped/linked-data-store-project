@@ -3,7 +3,6 @@ module io.descoped.lds.persistence.api {
     requires com.fasterxml.jackson.core;
     requires transitive com.fasterxml.jackson.databind;
 
-    exports io.descoped.lds.persistence.api;
     exports io.descoped.lds.api.persistence;
     exports io.descoped.lds.api.persistence.flattened;
     exports io.descoped.lds.api.persistence.streaming;
@@ -11,6 +10,4 @@ module io.descoped.lds.persistence.api {
     exports io.descoped.lds.api.persistence.reactivex;
     exports io.descoped.lds.api.specification;
     exports io.descoped.lds.api.json;
-
-    uses io.descoped.lds.persistence.api.PersistenceProvider;
 }
