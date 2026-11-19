@@ -5,6 +5,7 @@ import org.reactivestreams.Subscriber;
 import org.reactivestreams.Subscription;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -66,6 +67,114 @@ class AsyncIterablePublisherSignalsTest {
         } finally {
             tx.cancel();
             factory.close();
+        }
+    }
+
+    @Test
+    void nothingFollowsTheErrorOfAnIteratorThatFails() throws InterruptedException {
+        AsyncIterable<Integer> failingOnTheSecond = () -> new Counting() {
+            @Override
+            public Integer next() {
+                if (++count == 2) {
+                    throw new IllegalStateException("the second item cannot be read");
+                }
+                return count;
+            }
+        };
+        Recording subscriber = new Recording(Long.MAX_VALUE);
+
+        new AsyncIterablePublisher<>(failingOnTheSecond).subscribe(subscriber);
+
+        assertThat(subscriber.done.await(10, TimeUnit.SECONDS)).isTrue();
+        Thread.sleep(200); // time for anything that would follow
+        assertThat(subscriber.signals).containsExactly("onNext 1", "onError the second item cannot be read");
+    }
+
+    @Test
+    void nothingFollowsTheErrorOfARequestForNothing() throws InterruptedException {
+        AsyncIterable<Integer> endless = Counting::new;
+        Recording subscriber = new Recording(0);
+
+        new AsyncIterablePublisher<>(endless).subscribe(subscriber);
+
+        assertThat(subscriber.done.await(10, TimeUnit.SECONDS)).isTrue();
+        subscriber.subscription.request(1);
+        Thread.sleep(200); // time for anything that would follow
+        assertThat(subscriber.signals).containsExactly("onError requested amount must be > 0");
+    }
+
+    @Test
+    void anIteratorThatCannotTellWhetherThereIsMoreFailsTheStream() throws InterruptedException {
+        AsyncIterable<Integer> broken = () -> new Counting() {
+            @Override
+            public CompletableFuture<Boolean> onHasNext() {
+                return CompletableFuture.failedFuture(new IllegalStateException("the store is gone"));
+            }
+        };
+        Recording subscriber = new Recording(1);
+
+        new AsyncIterablePublisher<>(broken).subscribe(subscriber);
+
+        assertThat(subscriber.done.await(10, TimeUnit.SECONDS)).isTrue();
+        assertThat(subscriber.signals).containsExactly("onError the store is gone");
+    }
+
+    /* Counts from 1 without end, each answer given on another thread, as the store gives its own. */
+    private static class Counting implements AsyncIterator<Integer> {
+        int count;
+
+        @Override
+        public CompletableFuture<Boolean> onHasNext() {
+            return CompletableFuture.supplyAsync(this::hasNext);
+        }
+
+        @Override
+        public boolean hasNext() {
+            return true;
+        }
+
+        @Override
+        public Integer next() {
+            return ++count;
+        }
+    }
+
+    /* Requests once, when it is subscribed, and keeps what it is signalled. It stops asking after three items. */
+    private static final class Recording implements Subscriber<Integer> {
+        final List<String> signals = new CopyOnWriteArrayList<>();
+        final CountDownLatch done = new CountDownLatch(1);
+        final long firstRequest;
+        volatile Subscription subscription;
+
+        Recording(long firstRequest) {
+            this.firstRequest = firstRequest;
+        }
+
+        @Override
+        public void onSubscribe(Subscription subscription) {
+            this.subscription = subscription;
+            subscription.request(firstRequest);
+        }
+
+        @Override
+        public void onNext(Integer item) {
+            signals.add("onNext " + item);
+            if (item == 3) {
+                subscription.cancel();
+                done.countDown();
+            }
+        }
+
+        @Override
+        public void onError(Throwable failure) {
+            signals.add("onError " + failure.getMessage());
+            done.countDown();
+        }
+
+        @Override
+        public void onComplete() {
+            signals.add("onComplete");
+            done.countDown();
         }
     }
 }
