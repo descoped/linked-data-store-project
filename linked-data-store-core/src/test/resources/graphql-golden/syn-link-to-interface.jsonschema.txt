@@ -1,9 +1,7 @@
 ORDER Cat
 ENTITY Cat
 {
-  "#schema" : "http://json-schema.org/draft-04/schema#",
-  "$ref" : "#/definitions/Cat",
-  "definitions" : {
+  "$defs" : {
     "Cat" : {
       "properties" : {
         "friends" : {
@@ -18,5 +16,7 @@ ENTITY Cat
       "required" : [ "name", "name" ],
       "type" : "object"
     }
-  }
+  },
+  "$ref" : "#/$defs/Cat",
+  "$schema" : "https://json-schema.org/draft/2020-12/schema"
 }

@@ -1,6 +1,6 @@
 {
-  "$ref" : "#/definitions/Dog",
-  "definitions" : {
+  "$ref" : "#/$defs/Dog",
+  "$defs" : {
     "Dog" : {
       "type" : "object",
       "properties" : {
@@ -15,5 +15,5 @@
       "additionalProperties" : false
     }
   },
-  "$schema" : "http://json-schema.org/draft-04/schema#"
+  "$schema" : "https://json-schema.org/draft/2020-12/schema"
 }

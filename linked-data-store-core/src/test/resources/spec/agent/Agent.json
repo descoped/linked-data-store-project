@@ -1,6 +1,6 @@
 {
-  "$ref": "#/definitions/Agent",
-  "definitions": {
+  "$ref": "#/$defs/Agent",
+  "$defs": {
     "MultilingualText": {
       "type": "object",
       "properties": {
@@ -95,7 +95,7 @@
         "name": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/MultilingualText"
+            "$ref": "#/$defs/MultilingualText"
           },
           "description": "A term which designates a concept, in this case an information object. The identifying name will be the preferred designation. There will be many terms to designate the same information object, such as synonyms and terms in other languages.",
           "displayName": "Name"
@@ -103,7 +103,7 @@
         "description": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/MultilingualText"
+            "$ref": "#/$defs/MultilingualText"
           },
           "description": "The description of the information object",
           "displayName": "Description"
@@ -144,7 +144,7 @@
         "versionRationale": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/MultilingualText"
+            "$ref": "#/$defs/MultilingualText"
           },
           "description": "The reason for making this version of the information object.",
           "displayName": "Version rationale"
@@ -175,7 +175,7 @@
         "administrativeDetails": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/AdministrativeDetails"
+            "$ref": "#/$defs/AdministrativeDetails"
           },
           "description": "Administrative details (e.g. default language, documentation, localID, ...).",
           "displayName": "Administrative details"
@@ -214,7 +214,7 @@
         "agentDetails": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/AgentDetails"
+            "$ref": "#/$defs/AgentDetails"
           },
           "description": "Agent details (e.g. contackt adress, email, phone, mobile ...).",
           "displayName": "Agent details"
@@ -251,5 +251,5 @@
       "displayName": "Agent"
     }
   },
-  "$schema": "http://json-schema.org/draft-04/schema#"
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
 }

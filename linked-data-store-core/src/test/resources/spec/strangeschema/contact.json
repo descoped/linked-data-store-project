@@ -1,6 +1,6 @@
 {
-  "$ref" : "#/definitions/contact",
-  "definitions" : {
+  "$ref" : "#/$defs/contact",
+  "$defs" : {
     "contact" : {
       "type" : "object",
       "properties" : {
@@ -17,5 +17,5 @@
       "required" : [ "name", "email" ]
     }
   },
-  "$schema" : "http://json-schema.org/draft-04/schema#"
+  "$schema" : "https://json-schema.org/draft/2020-12/schema"
 }

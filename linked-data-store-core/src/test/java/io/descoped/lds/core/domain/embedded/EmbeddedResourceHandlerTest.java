@@ -8,6 +8,7 @@ import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.test.client.TestClient;
 import io.descoped.lds.test.server.TestServer;
 import io.descoped.lds.test.server.TestServerListener;
+import org.json.JSONException;
 import org.skyscreamer.jsonassert.JSONAssert;
 import org.testng.annotations.Listeners;
 import org.testng.annotations.Test;
@@ -52,7 +53,7 @@ public class EmbeddedResourceHandlerTest {
     }
 
     @Test
-    public void thatPutEmbeddedObjectResourceUpdatesSubDocument() {
+    public void thatPutEmbeddedObjectResourceUpdatesSubDocument() throws JSONException {
         createTestResource("provisionagreement", "e3", "{\"id\":\"e3\",\"name\":\"pa-test-name\",\"contacts\":[\"/contact/c1\",\"/contact/c2\"],\"address\":{\"street\":\"Der julenissen bor\",\"country\":\"Nordpolen\"}}");
         client.put("/data/provisionagreement/e3/address?sync=true", "{\"street\":\"Akersveien 26\",\"country\":\"Norway\"}").expect200Ok();
         String response = client.get("/data/provisionagreement/e3").expect200Ok().body();
@@ -60,7 +61,7 @@ public class EmbeddedResourceHandlerTest {
     }
 
     @Test
-    public void thatPutEmbeddedArrayResourceUpdatesSubDocument() {
+    public void thatPutEmbeddedArrayResourceUpdatesSubDocument() throws JSONException {
         createTestResource("provisionagreement", "e4", "{\"id\":\"e4\",\"name\":\"pa-test-name\",\"contacts\":[\"/contact/c1\",\"/contact/c2\"]}");
         client.put("/data/provisionagreement/e4/contacts?sync=true", "[\"/contact/truls\",\"/contact/hans\"]").expect200Ok();
         String response = client.get("/data/provisionagreement/e4").expect200Ok().body();
@@ -68,7 +69,7 @@ public class EmbeddedResourceHandlerTest {
     }
 
     @Test
-    public void thatDeleteEmbeddedObjectResourceUpdatesSubDocument() {
+    public void thatDeleteEmbeddedObjectResourceUpdatesSubDocument() throws JSONException {
         createTestResource("provisionagreement", "e5", "{\"id\":\"e5\",\"name\":\"pa-test-name\",\"contacts\":[\"/contact/c1\",\"/contact/c2\"],\"address\":{\"street\":\"Der julenissen bor\",\"country\":\"Nordpolen\"}}");
         client.delete("/data/provisionagreement/e5/address?sync=true").expect200Ok();
         String response = client.get("/data/provisionagreement/e5").expect200Ok().body();
@@ -76,7 +77,7 @@ public class EmbeddedResourceHandlerTest {
     }
 
     @Test
-    public void thatDeleteEmbeddedArrayResourceUpdatesSubDocument() {
+    public void thatDeleteEmbeddedArrayResourceUpdatesSubDocument() throws JSONException {
         createTestResource("provisionagreement", "e6", "{\"id\":\"e6\",\"name\":\"pa-test-name\",\"contacts\":[\"/contact/c1\",\"/contact/c2\"]}");
         client.delete("/data/provisionagreement/e6/contacts?sync=true").expect200Ok();
         String response = client.get("/data/provisionagreement/e6").expect200Ok().body();
@@ -84,7 +85,7 @@ public class EmbeddedResourceHandlerTest {
     }
 
     @Test
-    public void thatDELETELongResourcePathWorks() {
+    public void thatDELETELongResourcePathWorks() throws JSONException {
         createTestResource("provisionagreement", "e7", "{\"id\":\"e7\",\"name\":\"pa-test-name\",\"support\":{\"technicalSupport\":[\"/contact/s1\",\"/contact/s2\"],\"businessSupport\":[\"/contact/b1\"]}}");
         client.delete("/data/provisionagreement/e7/support/technicalSupport?sync=true").expect200Ok();
         String response = client.get("/data/provisionagreement/e7/support").expect200Ok().body();
@@ -92,7 +93,7 @@ public class EmbeddedResourceHandlerTest {
     }
 
     @Test
-    public void thatPUTLongResourcePathWorks() {
+    public void thatPUTLongResourcePathWorks() throws JSONException {
         createTestResource("provisionagreement", "e8", "{\"id\":\"e8\",\"name\":\"pa-test-name\",\"support\":{\"technicalSupport\":[\"/contact/s1\",\"/contact/s2\"],\"businessSupport\":[\"/contact/b1\"]}}");
         client.put("/data/provisionagreement/e8/support/technicalSupport?sync=true", "[]").expect200Ok();
         String response = client.get("/data/provisionagreement/e8/support").expect200Ok().body();

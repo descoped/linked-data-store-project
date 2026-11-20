@@ -7,14 +7,14 @@ import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.api.search.SearchIndex;
 import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.core.schema.JsonSchema;
-import io.descoped.lds.core.schema.JsonSchema04Builder;
+import io.descoped.lds.core.schema.JsonSchemaBuilder;
 import io.descoped.lds.core.specification.JsonSchemaBasedSpecification;
 import io.descoped.lds.core.specification.SpecificationJsonSchemaBuilder;
 import io.descoped.lds.graphql.jsonSchema.GraphQLToJsonConverter;
-import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.io.File;
 import java.io.IOException;
@@ -125,7 +125,7 @@ class GraphQLSchemaGoldenTest {
             assertSameAsFile("syn-two-directives." + (search ? "search" : "plain") + ".schema.txt",
                     CanonicalText.schema(schema, Set.of("alpha", "zeta")));
         }
-        Map<String, JSONObject> jsonSchema = jsonSchema(schemaFile);
+        Map<String, ObjectNode> jsonSchema = jsonSchema(schemaFile);
         assertSameAsFile("syn-two-directives.jsonschema.txt", CanonicalText.jsonSchema(jsonSchema));
         assertSameAsFile("syn-two-directives.specification.txt", CanonicalText.specification(specification(jsonSchema)));
     }
@@ -140,7 +140,7 @@ class GraphQLSchemaGoldenTest {
 
         assertThatThrownBy(() -> build(schemaFile, false)).isInstanceOf(ClassCastException.class);
         assertThatThrownBy(() -> build(schemaFile, true)).isInstanceOf(ClassCastException.class);
-        Map<String, JSONObject> jsonSchema = jsonSchema(schemaFile);
+        Map<String, ObjectNode> jsonSchema = jsonSchema(schemaFile);
         assertSameAsFile("syn-link-to-interface.jsonschema.txt", CanonicalText.jsonSchema(jsonSchema));
         assertSameAsFile("syn-link-to-interface.specification.txt", CanonicalText.specification(specification(jsonSchema)));
     }
@@ -166,16 +166,16 @@ class GraphQLSchemaGoldenTest {
         return schemaBuilder.getGraphQL(parse(schemaFile));
     }
 
-    private static Map<String, JSONObject> jsonSchema(String schemaFile) {
+    private static Map<String, ObjectNode> jsonSchema(String schemaFile) {
         GraphQLSchema schema = parse(schemaFile);
         return new GraphQLToJsonConverter(schema).createSpecification(schema);
     }
 
-    private static Specification specification(Map<String, JSONObject> jsonMap) {
+    private static Specification specification(Map<String, ObjectNode> jsonMap) {
         JsonSchemaBasedSpecification specification = null;
         JsonSchema jsonSchema = null;
-        for (Map.Entry<String, JSONObject> item : jsonMap.entrySet()) {
-            jsonSchema = new JsonSchema04Builder(jsonSchema, item.getKey(), item.getValue().toString()).build();
+        for (Map.Entry<String, ObjectNode> item : jsonMap.entrySet()) {
+            jsonSchema = new JsonSchemaBuilder(jsonSchema, item.getKey(), item.getValue()).build();
             specification = SpecificationJsonSchemaBuilder.createBuilder(jsonSchema).build();
         }
         return specification;

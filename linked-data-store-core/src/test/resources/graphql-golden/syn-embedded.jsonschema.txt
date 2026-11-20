@@ -1,9 +1,7 @@
 ORDER City,Job,Person
 ENTITY City
 {
-  "#schema" : "http://json-schema.org/draft-04/schema#",
-  "$ref" : "#/definitions/City",
-  "definitions" : {
+  "$defs" : {
     "City" : {
       "properties" : {
         "name" : {
@@ -14,13 +12,13 @@ ENTITY City
       "required" : [ "name" ],
       "type" : "object"
     }
-  }
+  },
+  "$ref" : "#/$defs/City",
+  "$schema" : "https://json-schema.org/draft/2020-12/schema"
 }
 ENTITY Job
 {
-  "#schema" : "http://json-schema.org/draft-04/schema#",
-  "$ref" : "#/definitions/Job",
-  "definitions" : {
+  "$defs" : {
     "Job" : {
       "properties" : {
         "_link_property_boss" : {
@@ -58,13 +56,13 @@ ENTITY Job
       "required" : [ ],
       "type" : "object"
     }
-  }
+  },
+  "$ref" : "#/$defs/Job",
+  "$schema" : "https://json-schema.org/draft/2020-12/schema"
 }
 ENTITY Person
 {
-  "#schema" : "http://json-schema.org/draft-04/schema#",
-  "$ref" : "#/definitions/Person",
-  "definitions" : {
+  "$defs" : {
     "Address" : {
       "properties" : {
         "_link_property_cities" : {
@@ -120,7 +118,7 @@ ENTITY Person
         "homes" : {
           "displayName" : "",
           "items" : {
-            "$ref" : "#/definitions/Address"
+            "$ref" : "#/$defs/Address"
           },
           "type" : "array"
         },
@@ -180,5 +178,7 @@ ENTITY Person
       "required" : [ "code" ],
       "type" : "object"
     }
-  }
+  },
+  "$ref" : "#/$defs/Person",
+  "$schema" : "https://json-schema.org/draft/2020-12/schema"
 }

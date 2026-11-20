@@ -166,7 +166,7 @@ public class ManagedResourceHandler implements HttpHandler {
 
                     try {
                         LinkedDocumentValidator validator = new LinkedDocumentValidator(specification, schemaRepository);
-                        validator.validate(managedDomain, requestBody);
+                        validator.validate(managedDomain, requestData);
                     } catch (LinkedDocumentValidationException ve) {
                         LOG.debug("Schema validation error: {}", ve.getMessage());
                         exchange.setStatusCode(400);

@@ -133,8 +133,7 @@ public class EmbeddedResourceHandler implements HttpHandler {
 
                     try {
                         LinkedDocumentValidator validator = new LinkedDocumentValidator(specification, schemaRepository);
-                        // TODO avoid serialization and de-serialization due to using both jackson and org.json
-                        validator.validate(managedDomain, JsonTools.toJson(managedDocument));
+                        validator.validate(managedDomain, managedDocument);
                     } catch (LinkedDocumentValidationException ve) {
                         LOG.debug("Schema validation error: {}", ve.getMessage());
                         exchange.setStatusCode(400);

@@ -5,7 +5,7 @@ Guidance for Claude Code in this repository.
 ## What this is
 
 Linked Data Store (LDS), a product of Descoped: a server that gives REST and GraphQL access to versioned, linked
-JSON documents described by a model read at start (a GraphQL schema or JSON Schema files). Writes go through a saga
+JSON documents described by a model read at start (a GraphQL schema or JSON Schema 2020-12 files). Writes go through a saga
 (transaction log, then persistence, then the search index). Persistence and search are pluggable. One Maven
 reactor, group `io.descoped.lds`.
 
@@ -74,6 +74,23 @@ written. Jackson 3 refuses a text with something after the document, where Jacks
 ignored the rest: the body of a REST request (`BodyParser`), and the body and the `variables` parameter of a
 GraphQL request (`GraphqlHttpHandler`). The client of Solr brings Jackson 2 for its own use; LDS code does not use
 it.
+
+## The JSON Schema of an entity
+
+Every entity has a JSON Schema, in JSON Schema 2020-12 and nothing earlier: an object with `$defs` and a `$ref` to
+the definition that is the entity (`{"$ref": "#/$defs/Person", "$defs": {"Person": {...}}}`). It is read from a
+file (`specification.schema`), or written from the GraphQL schema (`GraphQLToJsonConverter`), and is what `?schema`
+gives out. `JsonSchemaBuilder` reads it: the definitions the specification is built from, and the schema a
+document is validated with before a write (`LinkedDocumentValidator`, on `com.networknt:json-schema-validator`,
+which validates the Jackson tree of the document). A schema that says it is another draft, or has `definitions`, is
+refused at start, and so is a `$ref` that leads nowhere. Three things are LDS's own and are kept:
+
+- A link is a text field with a sibling `_link_property_<field>`, an object whose properties are the entities the
+  field may link to. The validator of JSON Schema sees two ordinary properties; LDS checks the link itself.
+- `format` is checked (2020-12 only describes with it unless asked), so a text in a `date-time` field must be a
+  date-time of RFC 3339.
+- What is wrong with a document is answered as the place in the document, written as LDS writes a path, and the
+  message of the validator: `$.tags[1]: integer found, string expected`.
 
 ## Invariants (never violate)
 

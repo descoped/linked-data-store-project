@@ -25,14 +25,12 @@ import graphql.schema.GraphQLUnionType;
 import io.descoped.lds.api.json.JsonNavigationPath;
 import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.api.specification.SpecificationElement;
-import org.json.JSONArray;
-import org.json.JSONObject;
+import tools.jackson.databind.JsonNode;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -292,10 +290,10 @@ final class CanonicalText {
      * The JSON Schema of every entity as text: the order of the entities, then each of them with its keys
      * sorted.
      */
-    static String jsonSchema(Map<String, JSONObject> jsonMap) {
+    static String jsonSchema(Map<String, ? extends JsonNode> jsonMap) {
         StringBuilder sb = new StringBuilder();
         sb.append("ORDER ").append(String.join(",", jsonMap.keySet())).append('\n');
-        for (Map.Entry<String, JSONObject> entry : jsonMap.entrySet()) {
+        for (Map.Entry<String, ? extends JsonNode> entry : jsonMap.entrySet()) {
             sb.append("ENTITY ").append(entry.getKey()).append('\n');
             json(sb, "", entry.getValue());
             sb.append('\n');
@@ -306,53 +304,38 @@ final class CanonicalText {
     /**
      * Writes a JSON value: an object over several lines with its keys sorted, an array on the line it starts on.
      */
-    private static void json(StringBuilder sb, String indent, Object json) {
-        if (json instanceof JSONObject object) {
-            if (object.isEmpty()) {
+    private static void json(StringBuilder sb, String indent, JsonNode json) {
+        if (json.isObject()) {
+            if (json.isEmpty()) {
                 sb.append("{ }");
                 return;
             }
             sb.append('{');
             String separator = "\n";
-            for (String key : new TreeSet<>(object.keySet())) {
+            for (String key : new TreeSet<>(json.propertyNames())) {
                 sb.append(separator).append(indent).append("  ").append(quoted(key)).append(" : ");
-                json(sb, indent + "  ", object.get(key));
+                json(sb, indent + "  ", json.get(key));
                 separator = ",\n";
             }
             sb.append('\n').append(indent).append('}');
-        } else if (json instanceof JSONArray array) {
-            jsonArray(sb, indent, elements(array));
-        } else if (json instanceof Collection<?> collection) {
-            jsonArray(sb, indent, collection);
-        } else if (json == null || json == JSONObject.NULL) {
-            sb.append("null");
-        } else if (json instanceof String string) {
-            sb.append(quoted(string));
+        } else if (json.isArray()) {
+            if (json.isEmpty()) {
+                sb.append("[ ]");
+                return;
+            }
+            String separator = "[ ";
+            for (JsonNode element : json) {
+                sb.append(separator);
+                json(sb, indent, element);
+                separator = ", ";
+            }
+            sb.append(" ]");
+        } else if (json.isString()) {
+            sb.append(quoted(json.stringValue()));
         } else {
+            // a number, true, false or null
             sb.append(json);
         }
-    }
-
-    private static List<Object> elements(JSONArray array) {
-        List<Object> elements = new ArrayList<>();
-        for (Object element : array) {
-            elements.add(element);
-        }
-        return elements;
-    }
-
-    private static void jsonArray(StringBuilder sb, String indent, Collection<?> elements) {
-        if (elements.isEmpty()) {
-            sb.append("[ ]");
-            return;
-        }
-        String separator = "[ ";
-        for (Object element : elements) {
-            sb.append(separator);
-            json(sb, indent, element);
-            separator = ", ";
-        }
-        sb.append(" ]");
     }
 
     private static String quoted(String text) {

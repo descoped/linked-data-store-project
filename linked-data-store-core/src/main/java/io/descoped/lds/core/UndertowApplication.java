@@ -17,7 +17,7 @@ import io.descoped.lds.core.saga.SagaRecoveryTrigger;
 import io.descoped.lds.core.saga.SagaRepository;
 import io.descoped.lds.core.saga.SagasObserver;
 import io.descoped.lds.core.schema.JsonSchema;
-import io.descoped.lds.core.schema.JsonSchema04Builder;
+import io.descoped.lds.core.schema.JsonSchemaBuilder;
 import io.descoped.lds.core.search.SearchIndexConfigurator;
 import io.descoped.lds.core.specification.JsonSchemaBasedSpecification;
 import io.descoped.lds.core.specification.SpecificationJsonSchemaBuilder;
@@ -37,13 +37,12 @@ import io.undertow.util.StatusCodes;
 import no.cantara.concurrent.futureselector.SelectableThreadPoolExecutor;
 import no.cantara.sagalog.SagaLogInitializer;
 import no.cantara.sagalog.SagaLogPool;
-import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.io.File;
 import java.net.URL;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -220,7 +219,7 @@ public class UndertowApplication {
 
             GraphQLSchema schema = GraphQLSchemaBuilder.parseSchema(definitionRegistry);
             GraphQLToJsonConverter graphQLToJsonConverter = new GraphQLToJsonConverter(schema);
-            LinkedHashMap<String, JSONObject> jsonMap = graphQLToJsonConverter.createSpecification(schema);
+            LinkedHashMap<String, ObjectNode> jsonMap = graphQLToJsonConverter.createSpecification(schema);
 
             LOG.info("Creating specification using GraphQL schema: {}", graphQLSchemaPath.get());
             specification = createJsonSpecification(jsonMap);
@@ -336,15 +335,11 @@ public class UndertowApplication {
                 searchIndex, configuration, txlogRawdataPool);
     }
 
-    private static JsonSchemaBasedSpecification createJsonSpecification(LinkedHashMap<String, JSONObject> jsonMap) {
+    private static JsonSchemaBasedSpecification createJsonSpecification(LinkedHashMap<String, ObjectNode> jsonMap) {
         JsonSchemaBasedSpecification jsonSchemaBasedSpecification = null;
-        Set<Map.Entry<String, JSONObject>> entries = jsonMap.entrySet();
-        Iterator<Map.Entry<String, JSONObject>> iterator = entries.iterator();
-
         JsonSchema jsonSchema = null;
-        while (iterator.hasNext()) {
-            Map.Entry item = iterator.next();
-            jsonSchema = new JsonSchema04Builder(jsonSchema, item.getKey().toString(), item.getValue().toString()).build();
+        for (Map.Entry<String, ObjectNode> item : jsonMap.entrySet()) {
+            jsonSchema = new JsonSchemaBuilder(jsonSchema, item.getKey(), item.getValue()).build();
             jsonSchemaBasedSpecification = SpecificationJsonSchemaBuilder.createBuilder(jsonSchema).build();
         }
 

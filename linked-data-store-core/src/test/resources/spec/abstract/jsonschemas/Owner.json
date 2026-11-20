@@ -1,6 +1,6 @@
 {
-  "$ref" : "#/definitions/Owner",
-  "definitions" : {
+  "$ref" : "#/$defs/Owner",
+  "$defs" : {
     "Owner" : {
       "type" : "object",
       "properties" : {
@@ -49,5 +49,5 @@
       "additionalProperties" : false
     }
   },
-  "$schema" : "http://json-schema.org/draft-04/schema#"
+  "$schema" : "https://json-schema.org/draft/2020-12/schema"
 }

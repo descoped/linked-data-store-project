@@ -8,6 +8,7 @@ import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.test.client.TestClient;
 import io.descoped.lds.test.server.TestServer;
 import io.descoped.lds.test.server.TestServerListener;
+import org.json.JSONException;
 import org.skyscreamer.jsonassert.JSONAssert;
 import org.testng.annotations.Listeners;
 import org.testng.annotations.Test;
@@ -150,7 +151,7 @@ public class ReferenceResourceHandlerTest {
     }
 
     @Test
-    public void thatDELETELongResourcePathWorks() {
+    public void thatDELETELongResourcePathWorks() throws JSONException {
         createTestResource("provisionagreement", "r13", "{\"id\":\"r13\",\"name\":\"pa-test-name\",\"support\":{\"technicalSupport\":[\"/contact/s1\",\"/contact/s2\"],\"businessSupport\":[\"/contact/b1\"]}}");
         client.delete("/data/provisionagreement/r13/support/technicalSupport/contact/s1?sync=true").expect200Ok();
         String response = client.get("/data/provisionagreement/r13/support").expect200Ok().body();
@@ -158,7 +159,7 @@ public class ReferenceResourceHandlerTest {
     }
 
     @Test
-    public void thatPUTLongResourcePathWorks() {
+    public void thatPUTLongResourcePathWorks() throws JSONException {
         createTestResource("provisionagreement", "r14", "{\"id\":\"r14\",\"name\":\"pa-test-name\",\"support\":{\"technicalSupport\":[\"/contact/s1\",\"/contact/s2\"],\"businessSupport\":[\"/contact/b1\"]}}");
         client.put("/data/provisionagreement/r14/support/technicalSupport/contact/s3?sync=true", "[]").expect200Ok();
         String response = client.get("/data/provisionagreement/r14/support").expect200Ok().body();

@@ -13,8 +13,7 @@ module io.descoped.lds.core {
     requires org.slf4j;
     requires undertow.core;
     requires xnio.api;
-    requires org.json;
-    requires everit.json.schema;
+    requires com.networknt.schema;
     requires java.xml; // TODO this should be in test-scope only!
     requires tools.jackson.core;
     requires tools.jackson.databind;

@@ -3,6 +3,7 @@ package io.descoped.lds.core.domain.managed;
 import io.descoped.lds.test.client.TestClient;
 import io.descoped.lds.test.server.TestServer;
 import io.descoped.lds.test.server.TestServerListener;
+import org.json.JSONException;
 import org.skyscreamer.jsonassert.JSONAssert;
 import org.testng.annotations.Listeners;
 import org.testng.annotations.Test;
@@ -19,7 +20,7 @@ public class ManagedTimeBasedVersioningTest {
     private TestServer server;
 
     @Test
-    public void thatCorrectVersionIsReturned() {
+    public void thatCorrectVersionIsReturned() throws JSONException {
         String body2016 = "{\"name\":\"version2016\"}";
         String body2017 = "{\"name\":\"version2017\"}";
         String body2018 = "{\"name\":\"version2018\"}";

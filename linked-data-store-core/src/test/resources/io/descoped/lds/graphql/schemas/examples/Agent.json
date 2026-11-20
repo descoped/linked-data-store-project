@@ -1,6 +1,6 @@
 {
-  "$ref" : "#/definitions/Agent",
-  "definitions" : {
+  "$ref" : "#/$defs/Agent",
+  "$defs" : {
     "MultilingualText" : {
       "type" : "object",
       "properties" : {
@@ -48,13 +48,13 @@
         "name" : {
           "type" : "array",
           "items" : {
-            "$ref" : "#/definitions/MultilingualText"
+            "$ref" : "#/$defs/MultilingualText"
           }
         },
         "description" : {
           "type" : "array",
           "items" : {
-            "$ref" : "#/definitions/MultilingualText"
+            "$ref" : "#/$defs/MultilingualText"
           }
         },
         "administrativeStatus" : {
@@ -77,7 +77,7 @@
         "versionRationale" : {
           "type" : "array",
           "items" : {
-            "$ref" : "#/definitions/MultilingualText"
+            "$ref" : "#/$defs/MultilingualText"
           }
         },
         "lastUpdatedDate" : {
@@ -98,7 +98,7 @@
         "administrativeDetails" : {
           "type" : "array",
           "items" : {
-            "$ref" : "#/definitions/AdministrativeDetails"
+            "$ref" : "#/$defs/AdministrativeDetails"
           }
         },
         "agentInRoles" : {
@@ -127,12 +127,12 @@
         "agentDetails" : {
           "type" : "array",
           "items" : {
-            "$ref" : "#/definitions/AgentDetails"
+            "$ref" : "#/$defs/AgentDetails"
           }
         }
       },
       "required" : [ "id", "name", "description", "createdDate", "createdBy", "versionValidFrom", "validFrom", "agentType", "isExternal" ]
     }
   },
-  "$schema" : "http://json-schema.org/draft-04/schema#"
+  "$schema" : "https://json-schema.org/draft/2020-12/schema"
 }

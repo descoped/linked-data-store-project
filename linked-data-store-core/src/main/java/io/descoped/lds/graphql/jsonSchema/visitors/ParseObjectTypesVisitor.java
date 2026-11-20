@@ -7,12 +7,13 @@ import graphql.schema.GraphQLSchemaElement;
 import graphql.schema.GraphQLTypeVisitorStub;
 import graphql.util.TraversalControl;
 import graphql.util.TraverserContext;
+import io.descoped.lds.core.schema.JsonSchemaBuilder;
 import io.descoped.lds.graphql.schemas.TypeTraverser;
-import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.stream.Stream;
@@ -23,24 +24,24 @@ public class ParseObjectTypesVisitor extends GraphQLTypeVisitorStub {
     private static final Logger LOG = LoggerFactory.getLogger(ParseObjectTypesVisitor.class);
     private static final TypeTraverser TRAVERSER = new TypeTraverser();
     private final Map<String, GraphQLNamedType> typeMap;
-    private final LinkedHashMap<String, JSONObject> jsonMap;
+    private final LinkedHashMap<String, ObjectNode> jsonMap;
     private String visitedDefinition;
 
-    public ParseObjectTypesVisitor(Map<String, GraphQLNamedType> typeMap, LinkedHashMap<String, JSONObject> jsonMap) {
+    public ParseObjectTypesVisitor(Map<String, GraphQLNamedType> typeMap, LinkedHashMap<String, ObjectNode> jsonMap) {
         this.typeMap = typeMap;
         this.jsonMap = jsonMap;
     }
 
     @Override
     public TraversalControl visitGraphQLObjectType(GraphQLObjectType node, TraverserContext<GraphQLSchemaElement> context) {
-        JSONObject jsonElements = new JSONObject();
-        JSONObject jsonDefinitions = new JSONObject();
-        JSONObject definitionValues = new JSONObject();
+        ObjectNode jsonElements = JsonNodeFactory.instance.objectNode();
+        ObjectNode jsonDefinitions = JsonNodeFactory.instance.objectNode();
+        ObjectNode definitionValues = JsonNodeFactory.instance.objectNode();
 
         if (hasDomainDirective(node)) {
             definitionValues.put("type", "object");
-            definitionValues.put("properties", new JSONObject());
-            definitionValues.put("required", new ArrayList<>());
+            definitionValues.putObject("properties");
+            definitionValues.putArray("required");
 
             String description = node.getDescription();
             // Using the first line of the description as display name if possible.
@@ -53,10 +54,10 @@ public class ParseObjectTypesVisitor extends GraphQLTypeVisitorStub {
             }
 
 
-            jsonDefinitions.put(node.getName(), definitionValues);
-            jsonElements.put("$ref", "#/definitions/" + node.getName());
-            jsonElements.put("definitions", jsonDefinitions);
-            jsonElements.put("#schema", "http://json-schema.org/draft-04/schema#");
+            jsonDefinitions.set(node.getName(), definitionValues);
+            jsonElements.put("$schema", JsonSchemaBuilder.DIALECT);
+            jsonElements.put("$ref", "#/$defs/" + node.getName());
+            jsonElements.set("$defs", jsonDefinitions);
 
             visitedDefinition = node.getName();
 

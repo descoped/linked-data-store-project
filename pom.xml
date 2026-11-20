@@ -67,8 +67,7 @@
         <undertow.version>2.4.4.Final</undertow.version>
         <xnio.version>3.8.17.Final</xnio.version>
         <jboss-threads.version>3.11.1</jboss-threads.version>
-        <everit-json-schema.version>1.14.6</everit-json-schema.version>
-        <org-json.version>20260814</org-json.version>
+        <json-schema-validator.version>3.0.9</json-schema-validator.version>
         <tika.version>4.2.0</tika.version>
         <okhttp.version>5.5.1</okhttp.version>
         <solr.version>10.1.0</solr.version>

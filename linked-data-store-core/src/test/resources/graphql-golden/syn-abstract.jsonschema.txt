@@ -1,9 +1,7 @@
 ORDER Ball,Cat,Dog,Mouse
 ENTITY Ball
 {
-  "#schema" : "http://json-schema.org/draft-04/schema#",
-  "$ref" : "#/definitions/Ball",
-  "definitions" : {
+  "$defs" : {
     "Ball" : {
       "properties" : {
         "colour" : {
@@ -14,13 +12,13 @@ ENTITY Ball
       "required" : [ ],
       "type" : "object"
     }
-  }
+  },
+  "$ref" : "#/$defs/Ball",
+  "$schema" : "https://json-schema.org/draft/2020-12/schema"
 }
 ENTITY Cat
 {
-  "#schema" : "http://json-schema.org/draft-04/schema#",
-  "$ref" : "#/definitions/Cat",
-  "definitions" : {
+  "$defs" : {
     "Cat" : {
       "properties" : {
         "_link_property_friends" : {
@@ -94,13 +92,13 @@ ENTITY Cat
       "required" : [ "name" ],
       "type" : "object"
     }
-  }
+  },
+  "$ref" : "#/$defs/Cat",
+  "$schema" : "https://json-schema.org/draft/2020-12/schema"
 }
 ENTITY Dog
 {
-  "#schema" : "http://json-schema.org/draft-04/schema#",
-  "$ref" : "#/definitions/Dog",
-  "definitions" : {
+  "$defs" : {
     "Dog" : {
       "properties" : {
         "_link_property_friends" : {
@@ -145,13 +143,13 @@ ENTITY Dog
       "required" : [ "name", "name", "owners" ],
       "type" : "object"
     }
-  }
+  },
+  "$ref" : "#/$defs/Dog",
+  "$schema" : "https://json-schema.org/draft/2020-12/schema"
 }
 ENTITY Mouse
 {
-  "#schema" : "http://json-schema.org/draft-04/schema#",
-  "$ref" : "#/definitions/Mouse",
-  "definitions" : {
+  "$defs" : {
     "Mouse" : {
       "properties" : {
         "size" : {
@@ -161,5 +159,7 @@ ENTITY Mouse
       "required" : [ "size" ],
       "type" : "object"
     }
-  }
+  },
+  "$ref" : "#/$defs/Mouse",
+  "$schema" : "https://json-schema.org/draft/2020-12/schema"
 }
