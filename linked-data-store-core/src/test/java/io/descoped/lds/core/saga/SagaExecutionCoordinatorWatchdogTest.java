@@ -24,6 +24,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static io.descoped.lds.api.persistence.json.JsonTools.mapper;
 import static org.testng.Assert.assertEquals;
@@ -92,15 +93,18 @@ public class SagaExecutionCoordinatorWatchdogTest {
             JsonNode provisionAgreementSirius = resource("provisionagreement_sirius.json");
 
             CountDownLatch requestsHandled = new CountDownLatch(sagaThreadPoolCoreSize);
+            AtomicInteger requestsFailed = new AtomicInteger();
             for (int i = 0; i < sagaThreadPoolCoreSize; i++) {
                 CompletableFuture.runAsync(() -> {
                     try {
                         client.put("/data/provisionagreement/100", provisionAgreementSirius.toString()).expect201Created();
                     } catch (Throwable t) {
+                        requestsFailed.incrementAndGet();
                         t.printStackTrace();
                     }
                     requestsHandled.countDown();
                 }, executor).exceptionally(t -> {
+                    requestsFailed.incrementAndGet();
                     requestsHandled.countDown();
                     t.printStackTrace();
                     return null;
@@ -146,14 +150,15 @@ public class SagaExecutionCoordinatorWatchdogTest {
 
             LOG.debug("Waiting for sagas to complete after deadlock resolution attempt");
             releaseSlowNodes.countDown();
-            shutdownAndAwaitTermination(executor);
 
-            boolean allCompleted = requestsHandled.await(10, TimeUnit.SECONDS);
+            boolean allCompleted = requestsHandled.await(30, TimeUnit.SECONDS);
             if (allCompleted) {
                 LOG.debug("All sagas completed after deadlock resolution");
             } else {
                 Assert.fail("Not all sagas completed");
             }
+            assertEquals(requestsFailed.get(), 0, "requests that failed");
+            shutdownAndAwaitTermination(executor);
         } finally {
             releaseSlowNodes.countDown();
             if (!executor.isShutdown()) {
