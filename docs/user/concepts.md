@@ -144,6 +144,7 @@ Each was answered `201` with a `saga-execution-id`. What a read gives depends on
 On the timeline:
 
 ```mermaid
+%%{init: {"gantt": {"leftPadding": 150, "fontSize": 15, "sectionFontSize": 15, "barHeight": 28, "barGap": 8}}}%%
 gantt
     title Company/fjord on the timeline
     dateFormat YYYY-MM-DD
@@ -220,6 +221,7 @@ The answer is `204` with no body. After it:
 On the timeline:
 
 ```mermaid
+%%{init: {"gantt": {"leftPadding": 150, "fontSize": 15, "sectionFontSize": 15, "barHeight": 28, "barGap": 8}}}%%
 gantt
     title Company/fjord with a delete from 2025
     dateFormat YYYY-MM-DD
@@ -399,6 +401,7 @@ curl "$LDS/graphql" -H 'Content-Type: application/graphql' \
 On the timeline:
 
 ```mermaid
+%%{init: {"gantt": {"leftPadding": 150, "fontSize": 15, "sectionFontSize": 15, "barHeight": 28, "barGap": 8}}}%%
 gantt
     title A link is followed at the time of the read
     dateFormat YYYY-MM-DD
@@ -452,7 +455,7 @@ flowchart LR
     classDef value fill:#f1f5f9,stroke:#64748b,color:#0f172a
     classDef link fill:#dbeafe,stroke:#2563eb,color:#0f172a
     classDef addr fill:#ffffff,stroke:#334155,color:#0f172a
-    style kari fill:#f0fdf4,stroke:#16a34a,color:#0f172a
+    linkStyle 2,3 stroke:#64748b,stroke-width:2px
 ```
 
 A write of a part or of a link is a write of the whole document:
@@ -460,6 +463,7 @@ A write of a part or of a link is a write of the whole document:
 ```mermaid
 flowchart LR
     put["PUT /ns/Person/kari/employer/Company/acme"] --> read["read kari as it is<br/>at the time of the write"] --> change["put /Company/acme<br/>in employer"] --> write["write the whole of kari<br/>as a new version from that time"]
+    linkStyle default stroke:#64748b,stroke-width:2px
 ```
 
 Write the person `kari` and read a part of that document:
@@ -559,8 +563,8 @@ flowchart LR
     classDef value fill:#f1f5f9,stroke:#64748b,color:#0f172a
     classDef link fill:#dbeafe,stroke:#2563eb,color:#0f172a
     classDef doc fill:#dcfce7,stroke:#16a34a,color:#0f172a
-    style ola fill:#ffffff,stroke:#334155,color:#0f172a
     style address fill:#fef9c3,stroke:#ca8a04,color:#0f172a
+    linkStyle 2,3 stroke:#64748b,stroke-width:2px
 ```
 
 - **A value**: a text, a number, `true` or `false`, a date-time, the name of an enum, or a list of them.
@@ -623,6 +627,7 @@ and every link followed at that time. A read asks for a snapshot by its time: `t
 `snapshot` in the GraphQL API, and now when no time is given. T1, T2 and Tn are three snapshots of one history:
 
 ```mermaid
+%%{init: {"gantt": {"leftPadding": 150, "fontSize": 15, "sectionFontSize": 15, "barHeight": 28, "barGap": 8}}}%%
 gantt
     title Five writes, each valid from its time
     dateFormat YYYY-MM-DD
@@ -674,9 +679,7 @@ flowchart TB
     classDef doc fill:#dcfce7,stroke:#16a34a,color:#0f172a
     classDef gone fill:#f8fafc,stroke:#94a3b8,color:#475569,stroke-dasharray: 4 3
     style model fill:#fef9c3,stroke:#ca8a04,color:#0f172a
-    style T1 fill:#ffffff,stroke:#64748b,color:#0f172a
-    style T2 fill:#ffffff,stroke:#64748b,color:#0f172a
-    style Tn fill:#ffffff,stroke:#64748b,color:#0f172a
+    linkStyle default stroke:#64748b,stroke-width:2px
 ```
 
 These are the five writes, and the GraphQL query that was sent at T1, T2 and Tn:
@@ -857,6 +860,7 @@ flowchart TB
     txlog --> search["3 — search index, when search is on"]
     classDef bad fill:#fee2e2,stroke:#dc2626,color:#0f172a
     class refused bad
+    linkStyle default stroke:#64748b,stroke-width:2px
 ```
 
 LDS records the start of a saga, with the whole request, and the start and the end of each step in a **saga log**.

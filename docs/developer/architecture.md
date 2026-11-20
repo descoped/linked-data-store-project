@@ -248,8 +248,7 @@ flowchart LR
     model --> v
     model --> g["one GraphQL schema, for every T"] --> gq
     style model fill:#fef9c3,stroke:#ca8a04,color:#0f172a
-    style write fill:#ffffff,stroke:#64748b,color:#0f172a
-    style read fill:#ffffff,stroke:#64748b,color:#0f172a
+    linkStyle default stroke:#64748b,stroke-width:2px
 ```
 
 The model is not on the timeline. `SagaInput` has a field `schema`, which goes into the transaction log with every
