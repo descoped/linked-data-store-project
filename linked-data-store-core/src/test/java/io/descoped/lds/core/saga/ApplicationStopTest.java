@@ -1,7 +1,6 @@
 package io.descoped.lds.core.saga;
 
 import io.descoped.config.DynamicConfiguration;
-import io.descoped.config.StoreBasedDynamicConfiguration;
 import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.core.UndertowApplication;
 import io.descoped.lds.test.server.TestServer;
@@ -16,6 +15,7 @@ import no.cantara.sagalog.SagaLogOwner;
 import no.cantara.sagalog.SagaPoolShutdownException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import java.util.Map;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -391,13 +391,13 @@ class ApplicationStopTest {
     }
 
     private TestServer start() {
-        DynamicConfiguration configuration = new StoreBasedDynamicConfiguration.Builder()
-                .propertiesResource(UndertowApplication.getDefaultConfigurationResourcePath())
-                .propertiesResource("application_test.properties")
-                .values(
+        DynamicConfiguration configuration = DynamicConfiguration.builder()
+                .classpath(UndertowApplication.getDefaultConfigurationResourcePath())
+                .classpath("application_test.properties")
+                .values(Map.of(
                         "sagalog.provider", SlowTruncateSagaLogInitializer.class.getName(),
                         "saga.recovery.enabled", "false",
-                        "saga.number-of-logs", "1")
+                        "saga.number-of-logs", "1"))
                 .build();
         TestServer started = new TestServer(configuration, TestServerListener.findFreePort(new Random(), 9500, 9999));
         started.getApplication().start();

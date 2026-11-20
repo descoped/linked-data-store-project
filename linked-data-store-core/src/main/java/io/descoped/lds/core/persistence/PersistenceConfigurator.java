@@ -22,7 +22,7 @@ public class PersistenceConfigurator {
     private static final Logger LOG = LoggerFactory.getLogger(PersistenceConfigurator.class);
 
     public static RxJsonPersistence configurePersistence(DynamicConfiguration configuration, Specification specification) {
-        final String providerId = configuration.evaluateToString("persistence.provider");
+        final String providerId = configuration.find("persistence.provider").orElse(null);
         LOG.info("Using persistence provider: {}", providerId);
 
         ServiceLoader<PersistenceInitializer> loader = ServiceLoader.load(PersistenceInitializer.class);
@@ -50,7 +50,7 @@ public class PersistenceConfigurator {
         Set<String> configurationKeys = initializer.configurationKeys();
         Set<String> missingConfigurationKeys = new LinkedHashSet<>();
         for (String key : configurationKeys) {
-            if (configuration.evaluateToString(key) == null) {
+            if (configuration.find(key).isEmpty()) {
                 missingConfigurationKeys.add(key);
             }
         }
@@ -60,18 +60,15 @@ public class PersistenceConfigurator {
 
         Map<String, String> configurationByKey = new LinkedHashMap<>();
         for (String key : configurationKeys) {
-            String value = configuration.evaluateToString(key);
-            if (value != null) {
-                configurationByKey.put(key, value);
-            }
+            configuration.find(key).ifPresent(value -> configurationByKey.put(key, value));
         }
 
-        int maxWaitSeconds = configuration.evaluateToInt("persistence.initialization.max-wait-seconds");
+        int maxWaitSeconds = configuration.getInt("persistence.initialization.max-wait-seconds");
         long start = System.currentTimeMillis();
         for (int i = 1; ; i++) {
             try {
                 LOG.info("Persistence provider initialization attempt # {}", i);
-                RxJsonPersistence persistence = initializer.initialize(configuration.evaluateToString("namespace.default"), configurationByKey, specification.getManagedDomains());
+                RxJsonPersistence persistence = initializer.initialize(configuration.find("namespace.default").orElse(null), configurationByKey, specification.getManagedDomains());
                 LOG.info("Persistence service-provider configured");
                 return persistence;
             } catch (RuntimeException e) {

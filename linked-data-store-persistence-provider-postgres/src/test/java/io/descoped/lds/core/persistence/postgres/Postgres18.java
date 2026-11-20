@@ -26,6 +26,7 @@ final class Postgres18 {
                 .withUsername("lds")
                 .withPassword("lds");
         container.start();
+        LoopbackPorts.check(container);
         return container;
     }
 

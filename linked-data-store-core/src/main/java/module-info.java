@@ -21,9 +21,9 @@ module io.descoped.lds.core {
     requires jackson.dataformat.msgpack;
     requires org.apache.tika.core;
 
-    requires graphql.java;
+    requires com.graphqljava;
     requires io.reactivex.rxjava3;
-    requires graphql.java.extended.scalars;
+    requires com.graphqljava.extendedscalars;
 
     opens io.descoped.lds.graphql.graphiql;
 

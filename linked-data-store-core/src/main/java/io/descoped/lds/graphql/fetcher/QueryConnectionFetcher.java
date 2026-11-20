@@ -59,7 +59,7 @@ public class QueryConnectionFetcher extends ConnectionFetcher<Map<String, Object
 
     @Override
     Connection<Map<String, Object>> getConnection(DataFetchingEnvironment environment, ConnectionParameters connectionParameters) {
-        GraphQLContext context = environment.getContext();
+        GraphQLContext context = environment.getGraphQlContext().get(GraphQLContext.class);
         return search(environment.getArgument("query"), environment.getArgument("filter"), context.getSnapshot(),
                 connectionParameters.getRange());
     }

@@ -1,0 +1,33 @@
+directive @domain(searchable: Boolean) on OBJECT
+directive @link(pagination: Boolean, reverseName: String) on FIELD_DEFINITION
+"""A person
+with two lines"""
+type Person @domain {
+  "the name"
+  name: String!
+  friends: [Person] @link
+  pets: [Pet!]! @link(pagination: false)
+  best: Pet @link(reverseName: "bestOf")
+  worst: Pet! @link
+  houses: [House!] @link(pagination: true, reverseName: "owners")
+  tags: [String]
+  nick: [String!]!
+  codes: [String!]
+  born: Date
+  seen: DateTime!
+  at: Time
+  age: Int
+  height: Float!
+  ok: Boolean
+  key: ID!
+  kind: Kind!
+  kinds: [Kind]
+}
+type Pet @domain(searchable: false) { name: String }
+type House @domain(searchable: true) { street: String! }
+enum Kind { B A }
+type Query { x: String }
+
+scalar Date
+scalar DateTime
+scalar Time

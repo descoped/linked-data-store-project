@@ -1,0 +1,14 @@
+directive @domain on OBJECT
+directive @link on FIELD_DEFINITION
+interface Named { name: String! friends: [Cat] @link mate: Dog @link }
+interface Aged { age: Int }
+type Cat implements Named & Aged @domain { name: String! friends: [Cat] @link mate: Dog @link age: Int prey: [Thing] @link toy: Thing @link }
+type Dog implements Named @domain { name: String! friends: [Cat] @link mate: Dog @link owner: Named owners: [Named!]! }
+type Mouse @domain { size: Int! }
+type Ball @domain { colour: String }
+union Thing = Mouse | Ball
+type Query { x: String }
+
+scalar Date
+scalar DateTime
+scalar Time

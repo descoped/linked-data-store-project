@@ -1,0 +1,5 @@
+directive @domain on OBJECT
+directive @link on FIELD_DEFINITION
+interface Named { name: String! }
+type Cat implements Named @domain { name: String! friends: [Named] @link }
+type Query { x: String }

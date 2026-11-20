@@ -1,7 +1,6 @@
 package io.descoped.lds.core.saga;
 
 import io.descoped.config.DynamicConfiguration;
-import io.descoped.config.StoreBasedDynamicConfiguration;
 import io.descoped.lds.core.UndertowApplication;
 import io.descoped.lds.test.server.TestServer;
 import io.descoped.lds.test.server.TestServerListener;
@@ -54,6 +53,7 @@ public class SagaLogPostgresTest {
                 .withUsername("lds")
                 .withPassword("lds");
         postgres.start();
+        LoopbackPorts.check(postgres);
     }
 
     @AfterClass(alwaysRun = true)
@@ -161,11 +161,13 @@ public class SagaLogPostgresTest {
                 "sagalog.config.connection-pool.max-size", "10",
                 "saga.commands.enabled", "true"));
         values.addAll(List.of(overrides));
-        DynamicConfiguration configuration = new StoreBasedDynamicConfiguration.Builder()
-                .propertiesResource(UndertowApplication.getDefaultConfigurationResourcePath())
-                .propertiesResource("application_test.properties")
-                .values(values.toArray(String[]::new))
-                .build();
+        DynamicConfiguration.Builder builder = DynamicConfiguration.builder()
+                .classpath(UndertowApplication.getDefaultConfigurationResourcePath())
+                .classpath("application_test.properties");
+        for (int i = 0; i < values.size(); i += 2) {
+            builder.value(values.get(i), values.get(i + 1)); // a later value of a key is the one that counts
+        }
+        DynamicConfiguration configuration = builder.build();
         TestServer server = new TestServer(configuration, TestServerListener.findFreePort(new Random(), 9500, 9999));
         servers.add(server);
         server.getApplication().start();

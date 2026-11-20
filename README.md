@@ -43,6 +43,17 @@ order, later sources winning: the defaults in
 (in-memory persistence), `conf/application.properties`, `conf_dev/application.properties`, environment variables
 prefixed `LDS_`, and system properties.
 
+The configuration is read with dynamic-configuration 3, which has these rules:
+
+- An environment variable is the key in upper case with `_` for every other character, after the prefix:
+  `LDS_HTTP_PORT` sets `http.port`.
+- An environment variable or a system property (`-Dhttp.port=8080`) sets only a key that one of the properties
+  files has. The keys of a provider (`postgres.driver.*`, `neo4j.driver.*`, `search.index.url`, `sagalog.config.*`,
+  `txlog.config.*`) are in no default file: give them in `conf/application.properties`, and they can be set from
+  outside as well.
+- `${key}` in a value is the value of another key, and `${key:default}` gives it a default.
+- A boolean is `true` or `false`; anything else stops LDS at start with the name of the key.
+
 The `conf/` and `conf_dev/` files, the Dockerfiles and the compose file in `linked-data-store-server` are from
 before the merge: they expect Neo4j, PostgreSQL and Solr from that compose file and a schema folder that a script
 used to fetch. They are being rebuilt with the server module, so there is no supported way to start a full LDS from

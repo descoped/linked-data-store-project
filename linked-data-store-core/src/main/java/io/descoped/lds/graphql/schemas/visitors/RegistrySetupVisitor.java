@@ -7,8 +7,10 @@ import graphql.schema.GraphQLDirectiveContainer;
 import graphql.schema.GraphQLFieldDefinition;
 import graphql.schema.GraphQLFieldsContainer;
 import graphql.schema.GraphQLInterfaceType;
+import graphql.schema.GraphQLNamedType;
 import graphql.schema.GraphQLObjectType;
 import graphql.schema.GraphQLOutputType;
+import graphql.schema.GraphQLSchemaElement;
 import graphql.schema.GraphQLType;
 import graphql.schema.GraphQLTypeVisitorStub;
 import graphql.schema.GraphQLUnionType;
@@ -41,6 +43,9 @@ import static graphql.schema.GraphQLTypeUtil.isNotWrapped;
 import static graphql.schema.GraphQLTypeUtil.simplePrint;
 import static graphql.schema.GraphQLTypeUtil.unwrapAll;
 import static graphql.schema.GraphQLTypeUtil.unwrapType;
+import static io.descoped.lds.graphql.schemas.SchemaElements.name;
+import static io.descoped.lds.graphql.schemas.SchemaElements.value;
+import static io.descoped.lds.graphql.schemas.visitors.AddSearchTypesVisitor.SEARCH_NAME;
 import static io.descoped.lds.graphql.schemas.visitors.ReverseLinkBuildingVisitor.computePath;
 
 public class RegistrySetupVisitor extends GraphQLTypeVisitorStub {
@@ -79,7 +84,7 @@ public class RegistrySetupVisitor extends GraphQLTypeVisitorStub {
     private static Boolean isConnection(GraphQLOutputType type) {
         Stack<GraphQLType> types = unwrapType(type);
         for (GraphQLType currentType : types) {
-            if (isNotWrapped(currentType) && currentType.getName().endsWith("Connection")) {
+            if (isNotWrapped(currentType) && name(currentType).endsWith("Connection")) {
                 return true;
             }
         }
@@ -110,15 +115,15 @@ public class RegistrySetupVisitor extends GraphQLTypeVisitorStub {
                 return true;
             }
         }
-        return false;
+        return container.getAppliedDirective(SEARCH_NAME) != null;
     }
 
-    private static boolean isOneToMany(GraphQLFieldDefinition field, TraverserContext<GraphQLType> context) {
+    private static boolean isOneToMany(GraphQLFieldDefinition field, TraverserContext<GraphQLSchemaElement> context) {
         GraphQLOutputType targetType = field.getType();
         return isMany(targetType);
     }
 
-    private static boolean isOneToOne(GraphQLFieldDefinition field, TraverserContext<GraphQLType> context) {
+    private static boolean isOneToOne(GraphQLFieldDefinition field, TraverserContext<GraphQLSchemaElement> context) {
         return !isOneToMany(field, context);
     }
 
@@ -126,7 +131,7 @@ public class RegistrySetupVisitor extends GraphQLTypeVisitorStub {
         return registry.build();
     }
 
-    private TraversalControl visitLinkField(GraphQLFieldDefinition field, TraverserContext<GraphQLType> context) {
+    private TraversalControl visitLinkField(GraphQLFieldDefinition field, TraverserContext<GraphQLSchemaElement> context) {
         if (hasSearchDirective(field)) {
             return visitSearchLink(field, context);
         } else if (isOneToMany(field, context) && !isConnection(field, context)) {
@@ -140,14 +145,14 @@ public class RegistrySetupVisitor extends GraphQLTypeVisitorStub {
         }
     }
 
-    private TraversalControl visitSearchLink(GraphQLFieldDefinition field, TraverserContext<GraphQLType> context) {
+    private TraversalControl visitSearchLink(GraphQLFieldDefinition field, TraverserContext<GraphQLSchemaElement> context) {
         registry.dataFetcher(FieldCoordinates.coordinates((GraphQLFieldsContainer) context.getParentNode(), field),
-                new QueryConnectionFetcher(searchIndex, persistence, namespace, field.getType().getName())
+                new QueryConnectionFetcher(searchIndex, persistence, namespace, name(field.getType()))
         );
         return TraversalControl.CONTINUE;
     }
 
-    private TraversalControl visitConnectionLink(GraphQLFieldDefinition field, TraverserContext<GraphQLType> context) {
+    private TraversalControl visitConnectionLink(GraphQLFieldDefinition field, TraverserContext<GraphQLSchemaElement> context) {
         GraphQLFieldsContainer sourceObject = (GraphQLFieldsContainer) context.getParentNode();
         GraphQLOutputType targetType = field.getType();
 
@@ -192,24 +197,24 @@ public class RegistrySetupVisitor extends GraphQLTypeVisitorStub {
         return TraversalControl.CONTINUE;
     }
 
-    private boolean isConnection(GraphQLFieldDefinition field, TraverserContext<GraphQLType> context) {
+    private boolean isConnection(GraphQLFieldDefinition field, TraverserContext<GraphQLSchemaElement> context) {
         GraphQLOutputType targetType = field.getType();
         return isConnection(targetType);
     }
 
-    private JsonNavigationPath getReverseJsonNavigationPath(GraphQLFieldDefinition field, TraverserContext<GraphQLType> context) {
-        String mappedBy = (String) field.getDirective(ReverseLinkDirective.NAME)
-                .getArgument(ReverseLinkDirective.MAPPED_BY_NAME).getValue();
+    private JsonNavigationPath getReverseJsonNavigationPath(GraphQLFieldDefinition field, TraverserContext<GraphQLSchemaElement> context) {
+        String mappedBy = (String) value(field.getDirective(ReverseLinkDirective.NAME)
+                .getArgument(ReverseLinkDirective.MAPPED_BY_NAME));
         return JsonNavigationPath.from(mappedBy);
     }
 
-    private JsonNavigationPath getJsonNavigationPath(GraphQLFieldDefinition field, TraverserContext<GraphQLType> context) {
+    private JsonNavigationPath getJsonNavigationPath(GraphQLFieldDefinition field, TraverserContext<GraphQLSchemaElement> context) {
         Collection<String> parts = computePath(field, context);
         return JsonNavigationPath.from(parts);
     }
 
 
-    private TraversalControl visitOneToManyLink(GraphQLFieldDefinition field, TraverserContext<GraphQLType> context) {
+    private TraversalControl visitOneToManyLink(GraphQLFieldDefinition field, TraverserContext<GraphQLSchemaElement> context) {
         GraphQLFieldsContainer sourceObject = (GraphQLFieldsContainer) context.getParentNode();
         GraphQLOutputType targetType = field.getType();
         if (sourceObject.getName().equals("Query")) {
@@ -241,7 +246,7 @@ public class RegistrySetupVisitor extends GraphQLTypeVisitorStub {
         return TraversalControl.CONTINUE;
     }
 
-    private TraversalControl visitOneToOneLink(GraphQLFieldDefinition field, TraverserContext<GraphQLType> context) {
+    private TraversalControl visitOneToOneLink(GraphQLFieldDefinition field, TraverserContext<GraphQLSchemaElement> context) {
         GraphQLFieldsContainer sourceObject = (GraphQLFieldsContainer) context.getParentNode();
         GraphQLUnmodifiedType targetType = unwrapAll(field.getType());
 
@@ -249,7 +254,7 @@ public class RegistrySetupVisitor extends GraphQLTypeVisitorStub {
         String targetTypeName;
         if (targetType instanceof GraphQLUnionType) {
             targetTypeName = ((GraphQLUnionType) targetType).getTypes().stream()
-                    .map(GraphQLType::getName)
+                    .map(GraphQLNamedType::getName)
                     .collect(Collectors.joining("|", "(", ")"));
         } else {
             targetTypeName = targetType.getName();
@@ -275,7 +280,7 @@ public class RegistrySetupVisitor extends GraphQLTypeVisitorStub {
     }
 
     @Override
-    public TraversalControl visitGraphQLInterfaceType(GraphQLInterfaceType node, TraverserContext<GraphQLType> context) {
+    public TraversalControl visitGraphQLInterfaceType(GraphQLInterfaceType node, TraverserContext<GraphQLSchemaElement> context) {
         registry.typeResolver(node, env -> {
             Map<String, Object> object = env.getObject();
             return (GraphQLObjectType) env.getSchema().getType(((DocumentKey) object.get("__graphql_internal_document_key")).entity());
@@ -284,7 +289,7 @@ public class RegistrySetupVisitor extends GraphQLTypeVisitorStub {
     }
 
     @Override
-    public TraversalControl visitGraphQLUnionType(GraphQLUnionType node, TraverserContext<GraphQLType> context) {
+    public TraversalControl visitGraphQLUnionType(GraphQLUnionType node, TraverserContext<GraphQLSchemaElement> context) {
         registry.typeResolver(node, env -> {
             Map<String, Object> object = env.getObject();
             return (GraphQLObjectType) env.getSchema().getType(((DocumentKey) object.get("__graphql_internal_document_key")).entity());
@@ -293,7 +298,7 @@ public class RegistrySetupVisitor extends GraphQLTypeVisitorStub {
     }
 
     @Override
-    public TraversalControl visitGraphQLFieldDefinition(GraphQLFieldDefinition field, TraverserContext<GraphQLType> context) {
+    public TraversalControl visitGraphQLFieldDefinition(GraphQLFieldDefinition field, TraverserContext<GraphQLSchemaElement> context) {
         if (hasReverseLinkDirective(field) || hasLinkDirective(field) | hasSearchDirective(field)) {
             return visitLinkField(field, context);
         } else {

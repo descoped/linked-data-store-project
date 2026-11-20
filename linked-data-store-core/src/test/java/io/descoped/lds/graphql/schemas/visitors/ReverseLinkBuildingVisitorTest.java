@@ -1,13 +1,13 @@
 package io.descoped.lds.graphql.schemas.visitors;
 
+import graphql.schema.GraphQLNamedType;
 import graphql.schema.GraphQLSchema;
-import graphql.schema.GraphQLType;
-import graphql.schema.TypeTraverser;
 import graphql.schema.idl.RuntimeWiring;
 import graphql.schema.idl.SchemaGenerator;
 import graphql.schema.idl.SchemaParser;
 import graphql.schema.idl.SchemaPrinter;
 import graphql.schema.idl.TypeDefinitionRegistry;
+import io.descoped.lds.graphql.schemas.TypeTraverser;
 import org.assertj.core.api.Assertions;
 import org.testng.annotations.Test;
 
@@ -36,7 +36,7 @@ public class ReverseLinkBuildingVisitorTest {
         RuntimeWiring runtimeWiring = RuntimeWiring.newRuntimeWiring().build();
         GraphQLSchema schema = new SchemaGenerator().makeExecutableSchema(definitionRegistry, runtimeWiring);
 
-        Map<String, GraphQLType> typeMap = new HashMap<>(schema.getTypeMap());
+        Map<String, GraphQLNamedType> typeMap = new HashMap<>(schema.getTypeMap());
         new TypeTraverser().depthFirst(
                 new ReverseLinkBuildingVisitor(typeMap),
                 typeMap.values()

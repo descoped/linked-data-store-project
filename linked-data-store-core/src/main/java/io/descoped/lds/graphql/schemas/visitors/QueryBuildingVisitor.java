@@ -5,7 +5,7 @@ import graphql.schema.GraphQLFieldDefinition;
 import graphql.schema.GraphQLList;
 import graphql.schema.GraphQLNonNull;
 import graphql.schema.GraphQLObjectType;
-import graphql.schema.GraphQLType;
+import graphql.schema.GraphQLSchemaElement;
 import graphql.schema.GraphQLTypeVisitorStub;
 import graphql.util.TraversalControl;
 import graphql.util.TraverserContext;
@@ -13,6 +13,8 @@ import io.descoped.lds.graphql.directives.LinkDirective;
 
 import static graphql.Scalars.GraphQLID;
 import static io.descoped.lds.graphql.directives.DomainDirective.hasDomainDirective;
+import static io.descoped.lds.graphql.schemas.SchemaElements.newFieldDefinition;
+import static io.descoped.lds.graphql.schemas.SchemaElements.newObject;
 
 /**
  * A visitor that adds root fields to a Query definition
@@ -28,11 +30,11 @@ public class QueryBuildingVisitor extends GraphQLTypeVisitorStub {
     }
 
     public QueryBuildingVisitor(GraphQLObjectType originalQuery) {
-        this(GraphQLObjectType.newObject(originalQuery));
+        this(newObject(originalQuery));
     }
 
     private GraphQLFieldDefinition createUnaryField(GraphQLObjectType type) {
-        return GraphQLFieldDefinition.newFieldDefinition()
+        return newFieldDefinition()
                 .name(type.getName() + "ById")
                 .argument(
                         GraphQLArgument.newArgument()
@@ -40,7 +42,7 @@ public class QueryBuildingVisitor extends GraphQLTypeVisitorStub {
                                 .type(new GraphQLNonNull(GraphQLID))
                                 .build()
                 )
-                .withDirective(LinkDirective.newLinkDirective(false))
+                .withDirective(LinkDirective.newLinkDirective(false).getDirective())
                 .type(GraphQLNonNull.nonNull(type)).build();
     }
 
@@ -50,16 +52,16 @@ public class QueryBuildingVisitor extends GraphQLTypeVisitorStub {
 
     private GraphQLFieldDefinition createNaryField(GraphQLObjectType type) {
 
-        return GraphQLFieldDefinition.newFieldDefinition()
+        return newFieldDefinition()
                 .name(type.getName())
-                .withDirective(LinkDirective.newLinkDirective(true))
+                .withDirective(LinkDirective.newLinkDirective(true).getDirective())
                 .type(GraphQLNonNull.nonNull(GraphQLList.list(GraphQLNonNull.nonNull(type))))
                 .build();
     }
 
 
     @Override
-    public TraversalControl visitGraphQLObjectType(GraphQLObjectType node, TraverserContext<GraphQLType> context) {
+    public TraversalControl visitGraphQLObjectType(GraphQLObjectType node, TraverserContext<GraphQLSchemaElement> context) {
         if (hasDomainDirective(node)) {
             query.field(createUnaryField(node));
             query.field(createNaryField(node));

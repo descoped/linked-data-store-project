@@ -1,13 +1,18 @@
 package io.descoped.lds.graphql.schemas;
 
+import graphql.Directives;
+import graphql.language.FieldDefinition;
+import graphql.language.ObjectTypeDefinition;
+import graphql.language.TypeName;
 import graphql.scalars.ExtendedScalars;
 import graphql.schema.GraphQLDirective;
+import graphql.schema.GraphQLNamedType;
 import graphql.schema.GraphQLObjectType;
+import graphql.schema.GraphQLScalarType;
 import graphql.schema.GraphQLSchema;
+import graphql.schema.GraphQLSchemaElement;
 import graphql.schema.GraphQLType;
-import graphql.schema.GraphQLTypeCollectingVisitor;
 import graphql.schema.GraphQLTypeResolvingVisitor;
-import graphql.schema.TypeTraverser;
 import graphql.schema.idl.EchoingWiringFactory;
 import graphql.schema.idl.RuntimeWiring;
 import graphql.schema.idl.SchemaGenerator;
@@ -28,9 +33,13 @@ import io.descoped.lds.graphql.schemas.visitors.TypeReferencerVisitor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 
@@ -43,7 +52,7 @@ public class GraphQLSchemaBuilder {
     private final RxJsonPersistence persistence;
     private final SearchIndex searchIndex;
     private final String namespace;
-    private final GraphQLObjectType.Builder query = GraphQLObjectType.newObject().name(QUERY_NAME);
+    private final GraphQLObjectType.Builder query = SchemaElements.newObject().name(QUERY_NAME);
 
     public GraphQLSchemaBuilder(String namespace, RxJsonPersistence persistence,
                                 SearchIndex searchIndex) {
@@ -56,7 +65,7 @@ public class GraphQLSchemaBuilder {
         return PRINTER.print(type);
     }
 
-    private static String printSchema(Collection<GraphQLType> types) {
+    private static String printSchema(Collection<? extends GraphQLType> types) {
         StringBuilder builder = new StringBuilder();
         for (GraphQLType type : types) {
             builder.append(printSchema(type));
@@ -67,30 +76,68 @@ public class GraphQLSchemaBuilder {
     public static GraphQLSchema parseSchema(TypeDefinitionRegistry registry) {
 
         RuntimeWiring.Builder runtime = RuntimeWiring.newRuntimeWiring()
-                .scalar(ExtendedScalars.DateTime)
+                .comparatorRegistry(SchemaElements.ORDER)
+                .scalar(DateTimeScalar.INSTANCE)
                 .scalar(ExtendedScalars.Date)
                 .scalar(ExtendedScalars.Time);
 
         runtime.wiringFactory(new EchoingWiringFactory());
 
         return new SchemaGenerator().makeExecutableSchema(
-                SchemaGenerator.Options.defaultOptions().enforceSchemaDirectives(true),
-                registry,
+                SchemaGenerator.Options.defaultOptions(),
+                withFieldInEmptyQuery(registry),
                 runtime.build()
         );
     }
 
+    /**
+     * graphql-java no longer builds a schema whose Query type has no fields. LDS makes the Query type itself and
+     * does not use the one of the schema file, which is there because a schema must have one and is often
+     * empty. An empty one is given a field here, in a copy of the registry.
+     */
+    private static TypeDefinitionRegistry withFieldInEmptyQuery(TypeDefinitionRegistry registry) {
+        Optional<ObjectTypeDefinition> query = registry.getType(QUERY_NAME, ObjectTypeDefinition.class);
+        if (query.isEmpty() || !query.get().getFieldDefinitions().isEmpty()) {
+            return registry;
+        }
+        TypeDefinitionRegistry copy = new TypeDefinitionRegistry().merge(registry);
+        copy.remove(query.get());
+        copy.add(query.get().transform(builder -> builder.fieldDefinition(
+                FieldDefinition.newFieldDefinition().name("_empty").type(new TypeName("String")).build())));
+        return copy;
+    }
+
+    /**
+     * The names of the types that a type or a directive of the schema uses. graphql-java now keeps a scalar
+     * that the schema file declares as a type of the schema even when nothing uses it. It did not when LDS was
+     * written, and LDS still leaves such a scalar out.
+     */
+    private static Set<String> typesInUse(GraphQLSchema schema) {
+        List<GraphQLSchemaElement> roots = new ArrayList<>();
+        for (GraphQLNamedType type : schema.getTypeMap().values()) {
+            if (!(type instanceof GraphQLScalarType)) {
+                roots.add(type);
+            }
+        }
+        roots.addAll(schema.getDirectives());
+        TypeCollectingVisitor typeCollectingVisitor = new TypeCollectingVisitor();
+        TRAVERSER.depthFirst(typeCollectingVisitor, roots);
+        return typeCollectingVisitor.getResult().keySet();
+    }
+
     public GraphQLSchema getGraphQL(GraphQLSchema schema) {
 
-        Map<String, GraphQLType> graphQLTypes = new TreeMap<>(schema.getTypeMap());
+        Map<String, GraphQLNamedType> graphQLTypes = new TreeMap<>(schema.getTypeMap());
         graphQLTypes.remove("Query");
         graphQLTypes.keySet().removeIf(key -> key.startsWith("__"));
+        Set<String> typesInUse = typesInUse(schema);
+        graphQLTypes.values().removeIf(type -> type instanceof GraphQLScalarType && !typesInUse.contains(type.getName()));
 
         // Collect all the types in a type map.
         log.info("Collecting types into type map");
-        GraphQLTypeCollectingVisitor graphQLTypeCollectingVisitor = new GraphQLTypeCollectingVisitor();
+        TypeCollectingVisitor graphQLTypeCollectingVisitor = new TypeCollectingVisitor();
         TRAVERSER.depthFirst(graphQLTypeCollectingVisitor, graphQLTypes.values());
-        Map<String, GraphQLType> typeMap = graphQLTypeCollectingVisitor.getResult();
+        Map<String, GraphQLNamedType> typeMap = graphQLTypeCollectingVisitor.getResult();
 
         // Reference and Resolve
         TRAVERSER.depthFirst(new TypeReferencerVisitor(typeMap), typeMap.values());
@@ -141,11 +188,19 @@ public class GraphQLSchemaBuilder {
             log.debug("Final schema:\n{}", printSchema(typeMap.values()));
         }
 
-        Set<GraphQLDirective> directives = Set.of(
-                DomainDirective.INSTANCE,
-                LinkDirective.INSTANCE,
-                ReverseLinkDirective.INSTANCE
-        );
+        Set<GraphQLDirective> directives = new LinkedHashSet<>(Set.of(
+                DomainDirective.INSTANCE.getDirective(),
+                LinkDirective.INSTANCE.getDirective(),
+                ReverseLinkDirective.INSTANCE.getDirective()
+        ));
+        // graphql-java no longer builds a schema that has a directive on an element and no definition of it, so
+        // the other directives the schema file defines stay defined.
+        for (GraphQLDirective directive : schema.getDirectives()) {
+            if (!Directives.isBuiltInDirective(directive)
+                    && directives.stream().noneMatch(defined -> defined.getName().equals(directive.getName()))) {
+                directives.add(directive);
+            }
+        }
 
         // Resolve references before using RegistrySetupVisitor
         log.info("Resolving type references");
@@ -155,7 +210,7 @@ public class GraphQLSchemaBuilder {
         RegistrySetupVisitor fetcherSetupVisitor = new RegistrySetupVisitor(persistence, namespace, searchIndex);
         TRAVERSER.depthFirst(fetcherSetupVisitor, typeMap.values());
 
-        GraphQLType queryType = typeMap.remove("Query");
+        GraphQLNamedType queryType = typeMap.remove("Query");
 
         return GraphQLSchema.newSchema()
                 .query((GraphQLObjectType) queryType)

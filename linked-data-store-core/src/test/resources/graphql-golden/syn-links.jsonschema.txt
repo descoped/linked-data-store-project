@@ -1,0 +1,178 @@
+ORDER House,Person,Pet
+ENTITY House
+{
+  "#schema" : "http://json-schema.org/draft-04/schema#",
+  "$ref" : "#/definitions/House",
+  "definitions" : {
+    "House" : {
+      "properties" : {
+        "street" : {
+          "displayName" : "",
+          "type" : "string"
+        }
+      },
+      "required" : [ "street" ],
+      "type" : "object"
+    }
+  }
+}
+ENTITY Person
+{
+  "#schema" : "http://json-schema.org/draft-04/schema#",
+  "$ref" : "#/definitions/Person",
+  "definitions" : {
+    "Person" : {
+      "description" : "A person\nwith two lines",
+      "displayName" : "A person",
+      "properties" : {
+        "_link_property_best" : {
+          "properties" : {
+            "Pet" : {
+              "type" : "null"
+            }
+          },
+          "type" : "object"
+        },
+        "_link_property_friends" : {
+          "properties" : {
+            "Person" : {
+              "type" : "null"
+            }
+          },
+          "type" : "object"
+        },
+        "_link_property_houses" : {
+          "properties" : {
+            "House" : {
+              "type" : "null"
+            }
+          },
+          "type" : "object"
+        },
+        "_link_property_pets" : {
+          "properties" : {
+            "Pet" : {
+              "type" : "null"
+            }
+          },
+          "type" : "object"
+        },
+        "_link_property_worst" : {
+          "properties" : {
+            "Pet" : {
+              "type" : "null"
+            }
+          },
+          "type" : "object"
+        },
+        "age" : {
+          "displayName" : ""
+        },
+        "at" : {
+          "displayName" : ""
+        },
+        "best" : {
+          "displayName" : "",
+          "type" : "string"
+        },
+        "born" : {
+          "displayName" : ""
+        },
+        "codes" : {
+          "displayName" : "",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "friends" : {
+          "displayName" : "",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "height" : {
+          "displayName" : ""
+        },
+        "houses" : {
+          "displayName" : "",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "key" : {
+          "displayName" : ""
+        },
+        "kind" : {
+          "displayName" : "",
+          "enum" : [ "A", "B" ],
+          "type" : "string"
+        },
+        "kinds" : {
+          "displayName" : "",
+          "type" : "array"
+        },
+        "name" : {
+          "description" : "the name",
+          "displayName" : "",
+          "type" : "string"
+        },
+        "nick" : {
+          "displayName" : "",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "ok" : {
+          "displayName" : "",
+          "type" : "boolean"
+        },
+        "pets" : {
+          "displayName" : "",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "seen" : {
+          "displayName" : "",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "tags" : {
+          "displayName" : "",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "worst" : {
+          "displayName" : "",
+          "type" : "string"
+        }
+      },
+      "required" : [ "height", "key", "kind", "name", "nick", "pets", "seen", "worst" ],
+      "type" : "object"
+    }
+  }
+}
+ENTITY Pet
+{
+  "#schema" : "http://json-schema.org/draft-04/schema#",
+  "$ref" : "#/definitions/Pet",
+  "definitions" : {
+    "Pet" : {
+      "properties" : {
+        "name" : {
+          "displayName" : "",
+          "type" : "string"
+        }
+      },
+      "required" : [ ],
+      "type" : "object"
+    }
+  }
+}

@@ -1,0 +1,7 @@
+directive @domain on OBJECT
+directive @link on FIELD_DEFINITION
+type A @domain { b: [B] @link c: B @link }
+type B @domain { name: String }
+type Query {
+
+}

@@ -15,19 +15,6 @@
     <name>Linked Data Store Search Provider Solr</name>
     <description>Search provider that indexes documents in Apache Solr.</description>
 
-    <!-- solr-test-framework 7 depends on Restlet 2.3.0, which is not on Maven Central, and names an http repository
-         for it that Maven blocks. This repository goes with the move to Solr 10. -->
-    <repositories>
-        <repository>
-            <id>maven-restlet</id>
-            <name>Restlet repository</name>
-            <url>https://maven.restlet.talend.com</url>
-            <snapshots>
-                <enabled>false</enabled>
-            </snapshots>
-        </repository>
-    </repositories>
-
     <build>
         <plugins>
             <!-- Pre-3.0 code: these lint categories are not clean yet. Every other warning fails the build, and
@@ -65,7 +52,7 @@
             <artifactId>linked-data-store-persistence-provider-api</artifactId>
             <version>${project.version}</version>
         </dependency>
-        <!-- Named here so Solr 7's older transitive Jackson does not win over the version the persistence API needs. -->
+        <!-- Named here so the older Jackson that Solr's client brings does not win over the version the persistence API needs. -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-annotations</artifactId>
@@ -87,32 +74,26 @@
             <version>${solr.version}</version>
         </dependency>
         <dependency>
-            <groupId>org.apache.solr</groupId>
-            <artifactId>solr-test-framework</artifactId>
-            <version>${solr.version}</version>
-            <scope>test</scope>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.apache.logging.log4j</groupId>
-                    <artifactId>log4j-slf4j-impl</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-        <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
             <version>${slf4j.version}</version>
         </dependency>
         <dependency>
-            <groupId>org.testng</groupId>
-            <artifactId>testng</artifactId>
-            <version>${testng.version}</version>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>org.reactivestreams</groupId>
-            <artifactId>reactive-streams-tck</artifactId>
-            <version>${reactive-streams.version}</version>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <version>${assertj.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers</artifactId>
+            <version>${testcontainers.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>

@@ -12,9 +12,9 @@ import io.descoped.lds.api.search.SearchResult;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Single;
 import org.apache.solr.client.solrj.SolrClient;
-import org.apache.solr.client.solrj.SolrQuery;
-import org.apache.solr.client.solrj.impl.ConcurrentUpdateSolrClient;
-import org.apache.solr.client.solrj.impl.HttpSolrClient;
+import org.apache.solr.client.solrj.impl.ConcurrentUpdateJdkSolrClient;
+import org.apache.solr.client.solrj.impl.HttpJdkSolrClient;
+import org.apache.solr.client.solrj.request.SolrQuery;
 import org.apache.solr.common.SolrDocumentList;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.params.CommonParams;
@@ -45,7 +45,14 @@ public class SolrSearchIndex implements SearchIndex {
     private static final String ENTITY_FIELD = "entity";
 
     public SolrSearchIndex(String urlString) {
-        this(new ConcurrentUpdateSolrClient.Builder(urlString).build(), new HttpSolrClient.Builder(urlString).build());
+        this(new HttpJdkSolrClient.Builder(urlString).build());
+    }
+
+    /*
+     * Updates are queued and sent by threads of the update client, over the connection of the query client.
+     */
+    private SolrSearchIndex(HttpJdkSolrClient solrQueryClient) {
+        this(new ConcurrentUpdateJdkSolrClient.Builder(solrQueryClient.getBaseURL(), solrQueryClient).build(), solrQueryClient);
     }
 
     SolrSearchIndex(SolrClient solrUpdateClient, SolrClient solrQueryClient) {

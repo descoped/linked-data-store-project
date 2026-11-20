@@ -31,7 +31,7 @@ public abstract class ConnectionFetcher<T> implements DataFetcher<Connection<T>>
     }
 
     private static ZonedDateTime getSnapshotFrom(DataFetchingEnvironment environment) {
-        GraphQLContext context = environment.getContext();
+        GraphQLContext context = environment.getGraphQlContext().get(GraphQLContext.class);
         return context.getSnapshot();
     }
 

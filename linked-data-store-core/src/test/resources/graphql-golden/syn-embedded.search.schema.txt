@@ -1,0 +1,282 @@
+query=Query mutation=null subscription=null
+directive-definition @domain locations=[OBJECT] description="Marks a type definition as a managed domain object"
+  arg searchable: Boolean default=Boolean:true value=null description=null
+directive-definition @link locations=[FIELD_DEFINITION] description="Defines a field as a link to another managed domain"
+  arg pagination: Boolean default=Boolean:true value=null description=null
+  arg reverseName: String default=null value=null description=null
+directive-definition @reverseLink locations=[FIELD_DEFINITION] description="Defines a field as a reverse link to another managed domain"
+  arg mappedBy: String default=null value=null description=null
+  arg pagination: Boolean default=Boolean:true value=null description=null
+GraphQLObjectType Address
+  description=null
+  interfaces=[]
+  field cities: CityConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+    fetcher=PersistenceLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.cities[], sourceEntityName=Address, targetEntityName=City}}
+  field city: City description=null deprecated=null
+    @link
+    fetcher=PersistenceLinkFetcher{{field=city, namespace=ns, pattern=pattern:/(?<type>City)/(?<id>.*), persistence=persistence}}
+  field lines: [String!]! description=null deprecated=null
+    fetcher=default
+  field street: String! description=null deprecated=null
+    fetcher=default
+  field zip: Zip description=null deprecated=null
+    fetcher=default
+GraphQLObjectType AddressConnection
+  description=null
+  interfaces=[]
+  field edges: [AddressEdge!]! description=null deprecated=null
+    fetcher=default
+  field pageInfo: PageInfo! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType AddressEdge
+  description=null
+  interfaces=[]
+  field cursor: String! description=null deprecated=null
+    fetcher=default
+  field node: Address! description=null deprecated=null
+    fetcher=default
+GraphQLScalarType Boolean
+  description="Built-in Boolean"
+GraphQLObjectType City
+  description=null
+  interfaces=[]
+  @domain
+  field name: String! description=null deprecated=null
+    fetcher=default
+  field reverseCities: AddressConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @reverseLink
+      mappedBy: String value="$.cities[]" default=null
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceReverseLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.cities[], sourceEntityName=Address, targetEntityName=City}}
+  field reverseCity: AddressConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @reverseLink
+      mappedBy: String value="$.city" default=null
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceReverseLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.city, sourceEntityName=Address, targetEntityName=City}}
+  field reverseZipArea: ZipConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @reverseLink
+      mappedBy: String value="$.area[]" default=null
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceReverseLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.area[], sourceEntityName=Zip, targetEntityName=City}}
+GraphQLObjectType CityConnection
+  description=null
+  interfaces=[]
+  field edges: [CityEdge!]! description=null deprecated=null
+    fetcher=default
+  field pageInfo: PageInfo! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType CityEdge
+  description=null
+  interfaces=[]
+  field cursor: String! description=null deprecated=null
+    fetcher=default
+  field node: City! description=null deprecated=null
+    fetcher=default
+GraphQLScalarType ID
+  description="Built-in ID"
+GraphQLScalarType Int
+  description="Built-in Int"
+GraphQLObjectType Job
+  description=null
+  interfaces=[]
+  @domain
+  field boss: Person description=null deprecated=null
+    @link
+    fetcher=PersistenceLinkFetcher{{field=boss, namespace=ns, pattern=pattern:/(?<type>Person)/(?<id>.*), persistence=persistence}}
+  field staff: PersonConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+    fetcher=PersistenceLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.staff[], sourceEntityName=Job, targetEntityName=Person}}
+  field title: String description=null deprecated=null
+    fetcher=default
+GraphQLObjectType JobConnection
+  description=null
+  interfaces=[]
+  field edges: [JobEdge!]! description=null deprecated=null
+    fetcher=default
+  field pageInfo: PageInfo! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType JobEdge
+  description=null
+  interfaces=[]
+  field cursor: String! description=null deprecated=null
+    fetcher=default
+  field node: Job! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType PageInfo
+  description=null
+  interfaces=[]
+  field hasNextPage: Boolean! description=null deprecated=null
+    fetcher=default
+  field hasPreviousPage: Boolean! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType Person
+  description=null
+  interfaces=[]
+  @domain
+  field home: Address description=null deprecated=null
+    fetcher=default
+  field homes: [Address!]! description=null deprecated=null
+    fetcher=default
+  field jobs: [Job] description=null deprecated=null
+    fetcher=default
+  field name: String! description=null deprecated=null
+    fetcher=default
+  field reverseJobBoss: JobConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @reverseLink
+      mappedBy: String value="$.boss" default=null
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceReverseLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.boss, sourceEntityName=Job, targetEntityName=Person}}
+  field reverseJobStaff: JobConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @reverseLink
+      mappedBy: String value="$.staff[]" default=null
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceReverseLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.staff[], sourceEntityName=Job, targetEntityName=Person}}
+  field work: Address! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType PersonConnection
+  description=null
+  interfaces=[]
+  field edges: [PersonEdge!]! description=null deprecated=null
+    fetcher=default
+  field pageInfo: PageInfo! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType PersonEdge
+  description=null
+  interfaces=[]
+  field cursor: String! description=null deprecated=null
+    fetcher=default
+  field node: Person! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType Query
+  description=null
+  interfaces=[]
+  field City: CityConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceRootConnectionFetcher{{entityName=City, nameSpace=ns, persistence=persistence}}
+  field CityById: City! description=null deprecated=null
+    arg id: ID! default=null description=null
+    @link
+      pagination: Boolean value=Boolean:false default=Boolean:true
+    fetcher=PersistenceFetcher{{backend=persistence, entity=City, nameSpace=ns}}
+  field Job: JobConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceRootConnectionFetcher{{entityName=Job, nameSpace=ns, persistence=persistence}}
+  field JobById: Job! description=null deprecated=null
+    arg id: ID! default=null description=null
+    @link
+      pagination: Boolean value=Boolean:false default=Boolean:true
+    fetcher=PersistenceFetcher{{backend=persistence, entity=Job, nameSpace=ns}}
+  field Person: PersonConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceRootConnectionFetcher{{entityName=Person, nameSpace=ns, persistence=persistence}}
+  field PersonById: Person! description=null deprecated=null
+    arg id: ID! default=null description=null
+    @link
+      pagination: Boolean value=Boolean:false default=Boolean:true
+    fetcher=PersistenceFetcher{{backend=persistence, entity=Person, nameSpace=ns}}
+  field Search: SearchResultConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg filter: [TypeFilters] default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    arg query: String! default=null description=null
+    @search
+    fetcher=QueryConnectionFetcher{{entity=SearchResultConnection, nameSpace=ns, persistence=persistence, searchIndex=searchIndex}}
+GraphQLUnionType SearchResult
+  description="Union type for possible search results"
+  members=[City, Job, Person]
+  typeResolver=true
+GraphQLObjectType SearchResultConnection
+  description=null
+  interfaces=[]
+  field edges: [SearchResultEdge!]! description=null deprecated=null
+    fetcher=default
+  field pageInfo: PageInfo! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType SearchResultEdge
+  description=null
+  interfaces=[]
+  field cursor: String! description=null deprecated=null
+    fetcher=default
+  field node: SearchResult! description=null deprecated=null
+    fetcher=default
+GraphQLScalarType String
+  description="Built-in String"
+GraphQLEnumType TypeFilters
+  description="Defines valid type filters"
+  value City = "City" description=null deprecated=null
+  value Job = "Job" description=null deprecated=null
+  value Person = "Person" description=null deprecated=null
+GraphQLObjectType Zip
+  description=null
+  interfaces=[]
+  field area: CityConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+      reverseName: String value="reverseZipArea" default=null
+    fetcher=PersistenceLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.reverseZipArea[].edges[][].node.area[], sourceEntityName=Zip, targetEntityName=City}}
+  field code: String! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType ZipConnection
+  description=null
+  interfaces=[]
+  field edges: [ZipEdge!]! description=null deprecated=null
+    fetcher=default
+  field pageInfo: PageInfo! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType ZipEdge
+  description=null
+  interfaces=[]
+  field cursor: String! description=null deprecated=null
+    fetcher=default
+  field node: Zip! description=null deprecated=null
+    fetcher=default

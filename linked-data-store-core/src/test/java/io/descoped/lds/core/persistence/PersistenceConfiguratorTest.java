@@ -1,7 +1,6 @@
 package io.descoped.lds.core.persistence;
 
 import io.descoped.config.DynamicConfiguration;
-import io.descoped.config.StoreBasedDynamicConfiguration;
 import io.descoped.lds.api.persistence.PersistenceInitializer;
 import io.descoped.lds.api.persistence.ProviderName;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
@@ -9,6 +8,7 @@ import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.core.specification.JsonSchemaBasedSpecification;
 import org.testng.Assert;
 import org.testng.annotations.Test;
+import java.util.Map;
 
 import java.util.List;
 import java.util.ServiceLoader;
@@ -18,10 +18,10 @@ public class PersistenceConfiguratorTest {
 
     @Test
     public void thatServiceLoadingWorks() {
-        DynamicConfiguration configuration = new StoreBasedDynamicConfiguration.Builder()
-                .values("persistence.provider", "mem",
+        DynamicConfiguration configuration = DynamicConfiguration.builder()
+                .values(Map.of("persistence.provider", "mem",
                         "persistence.initialization.max-wait-seconds", "0",
-                        "persistence.fragment.capacity", "1024")
+                        "persistence.fragment.capacity", "1024"))
                 .build();
         Specification specification = JsonSchemaBasedSpecification.create("spec/schemas/contact.json", "spec/schemas/provisionagreement.json");
         RxJsonPersistence persistence = PersistenceConfigurator.configurePersistence(configuration, specification);
@@ -30,8 +30,8 @@ public class PersistenceConfiguratorTest {
 
     @Test
     public void thatInitializationFailsWhenConfigurationsAreMissing() {
-        DynamicConfiguration configuration = new StoreBasedDynamicConfiguration.Builder()
-                .values("persistence.provider", "mem")
+        DynamicConfiguration configuration = DynamicConfiguration.builder()
+                .values(Map.of("persistence.provider", "mem"))
                 .build();
         Specification specification = JsonSchemaBasedSpecification.create("spec/schemas/contact.json", "spec/schemas/provisionagreement.json");
         try {
@@ -44,8 +44,8 @@ public class PersistenceConfiguratorTest {
 
     @Test
     public void thatAnUnknownProviderIsRejected() {
-        DynamicConfiguration configuration = new StoreBasedDynamicConfiguration.Builder()
-                .values("persistence.provider", "no-such-provider")
+        DynamicConfiguration configuration = DynamicConfiguration.builder()
+                .values(Map.of("persistence.provider", "no-such-provider"))
                 .build();
         Specification specification = JsonSchemaBasedSpecification.create("spec/schemas/contact.json", "spec/schemas/provisionagreement.json");
         try {

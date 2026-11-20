@@ -1,0 +1,244 @@
+query=Query mutation=null subscription=null
+directive-definition @domain locations=[OBJECT] description="Marks a type definition as a managed domain object"
+  arg searchable: Boolean default=Boolean:true value=null description=null
+directive-definition @link locations=[FIELD_DEFINITION] description="Defines a field as a link to another managed domain"
+  arg pagination: Boolean default=Boolean:true value=null description=null
+  arg reverseName: String default=null value=null description=null
+directive-definition @reverseLink locations=[FIELD_DEFINITION] description="Defines a field as a reverse link to another managed domain"
+  arg mappedBy: String default=null value=null description=null
+  arg pagination: Boolean default=Boolean:true value=null description=null
+GraphQLScalarType Boolean
+  description="Built-in Boolean"
+GraphQLObjectType Cat
+  description="This is a cat\n\nAnd this is a long description of what a cat is. It contains\nnew lines."
+  interfaces=[]
+  @domain
+  field age: Float description=null deprecated=null
+    fetcher=default
+  field alive: Boolean description=null deprecated=null
+    fetcher=default
+  field name: String! description=null deprecated=null
+    fetcher=default
+  field reverseOwnerAnimals: OwnerConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @reverseLink
+      mappedBy: String value="$.animals[]" default=null
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceReverseLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.animals[], sourceEntityName=Owner, targetEntityName=Cat}}
+  field reverseOwnerFavorite: OwnerConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @reverseLink
+      mappedBy: String value="$.favorite" default=null
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceReverseLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.favorite, sourceEntityName=Owner, targetEntityName=Cat}}
+GraphQLObjectType CatConnection
+  description=null
+  interfaces=[]
+  field edges: [CatEdge!]! description=null deprecated=null
+    fetcher=default
+  field pageInfo: PageInfo! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType CatEdge
+  description=null
+  interfaces=[]
+  field cursor: String! description=null deprecated=null
+    fetcher=default
+  field node: Cat! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType Dog
+  description=" This is a dog\n Kinda like a cat."
+  interfaces=[]
+  @domain
+  field age: Float description=null deprecated=null
+    fetcher=default
+  field friendly: Boolean! description=null deprecated=null
+    fetcher=default
+  field name: String! description=null deprecated=null
+    fetcher=default
+  field reverseOwnerAnimals: OwnerConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @reverseLink
+      mappedBy: String value="$.animals[]" default=null
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceReverseLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.animals[], sourceEntityName=Owner, targetEntityName=Dog}}
+  field reverseOwnerFavorite: OwnerConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @reverseLink
+      mappedBy: String value="$.favorite" default=null
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceReverseLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.favorite, sourceEntityName=Owner, targetEntityName=Dog}}
+GraphQLObjectType DogConnection
+  description=null
+  interfaces=[]
+  field edges: [DogEdge!]! description=null deprecated=null
+    fetcher=default
+  field pageInfo: PageInfo! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType DogEdge
+  description=null
+  interfaces=[]
+  field cursor: String! description=null deprecated=null
+    fetcher=default
+  field node: Dog! description=null deprecated=null
+    fetcher=default
+GraphQLScalarType Float
+  description="Built-in Float"
+GraphQLScalarType ID
+  description="Built-in ID"
+GraphQLScalarType Int
+  description="Built-in Int"
+GraphQLObjectType Owner
+  description=null
+  interfaces=[]
+  @domain
+  field age: Float description=null deprecated=null
+    fetcher=default
+  field animals: animalsConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+      reverseName: String value="reverseOwnerAnimals" default=null
+    fetcher=PersistenceLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.animals[], sourceEntityName=Owner, targetEntityName=animals}}
+  field email: String! description=null deprecated=null
+    fetcher=default
+  field favorite: favorite description=null deprecated=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+      reverseName: String value="reverseOwnerFavorite" default=null
+    fetcher=PersistenceLinkFetcher{{field=favorite, namespace=ns, pattern=pattern:/(?<type>(Cat|Dog))/(?<id>.*), persistence=persistence}}
+  field name: String! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType OwnerConnection
+  description=null
+  interfaces=[]
+  field edges: [OwnerEdge!]! description=null deprecated=null
+    fetcher=default
+  field pageInfo: PageInfo! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType OwnerEdge
+  description=null
+  interfaces=[]
+  field cursor: String! description=null deprecated=null
+    fetcher=default
+  field node: Owner! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType PageInfo
+  description=null
+  interfaces=[]
+  field hasNextPage: Boolean! description=null deprecated=null
+    fetcher=default
+  field hasPreviousPage: Boolean! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType Query
+  description=null
+  interfaces=[]
+  field Cat: CatConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceRootConnectionFetcher{{entityName=Cat, nameSpace=ns, persistence=persistence}}
+  field CatById: Cat! description=null deprecated=null
+    arg id: ID! default=null description=null
+    @link
+      pagination: Boolean value=Boolean:false default=Boolean:true
+    fetcher=PersistenceFetcher{{backend=persistence, entity=Cat, nameSpace=ns}}
+  field Dog: DogConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceRootConnectionFetcher{{entityName=Dog, nameSpace=ns, persistence=persistence}}
+  field DogById: Dog! description=null deprecated=null
+    arg id: ID! default=null description=null
+    @link
+      pagination: Boolean value=Boolean:false default=Boolean:true
+    fetcher=PersistenceFetcher{{backend=persistence, entity=Dog, nameSpace=ns}}
+  field Owner: OwnerConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceRootConnectionFetcher{{entityName=Owner, nameSpace=ns, persistence=persistence}}
+  field OwnerById: Owner! description=null deprecated=null
+    arg id: ID! default=null description=null
+    @link
+      pagination: Boolean value=Boolean:false default=Boolean:true
+    fetcher=PersistenceFetcher{{backend=persistence, entity=Owner, nameSpace=ns}}
+  field Search: SearchResultConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg filter: [TypeFilters] default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    arg query: String! default=null description=null
+    @search
+    fetcher=QueryConnectionFetcher{{entity=SearchResultConnection, nameSpace=ns, persistence=persistence, searchIndex=searchIndex}}
+GraphQLUnionType SearchResult
+  description="Union type for possible search results"
+  members=[Cat, Dog, Owner]
+  typeResolver=true
+GraphQLObjectType SearchResultConnection
+  description=null
+  interfaces=[]
+  field edges: [SearchResultEdge!]! description=null deprecated=null
+    fetcher=default
+  field pageInfo: PageInfo! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType SearchResultEdge
+  description=null
+  interfaces=[]
+  field cursor: String! description=null deprecated=null
+    fetcher=default
+  field node: SearchResult! description=null deprecated=null
+    fetcher=default
+GraphQLScalarType String
+  description="Built-in String"
+GraphQLEnumType TypeFilters
+  description="Defines valid type filters"
+  value Cat = "Cat" description=null deprecated=null
+  value Dog = "Dog" description=null deprecated=null
+  value Owner = "Owner" description=null deprecated=null
+GraphQLUnionType animals
+  description="Automatically generated because of anonymous type in RAML\nPlease consider defining your own union types or use an interface type.\nThe list of types are [Cat, Dog]."
+  members=[Cat, Dog]
+  typeResolver=true
+GraphQLObjectType animalsConnection
+  description=null
+  interfaces=[]
+  field edges: [animalsEdge!]! description=null deprecated=null
+    fetcher=default
+  field pageInfo: PageInfo! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType animalsEdge
+  description=null
+  interfaces=[]
+  field cursor: String! description=null deprecated=null
+    fetcher=default
+  field node: animals! description=null deprecated=null
+    fetcher=default
+GraphQLUnionType favorite
+  description="Automatically generated because of anonymous type in RAML\nPlease consider defining your own union types or use an interface type.\nThe list of types are [Cat, Dog]."
+  members=[Cat, Dog]
+  typeResolver=true

@@ -1,0 +1,6 @@
+directive @domain on OBJECT
+directive @link on FIELD_DEFINITION
+type A @domain { old: String @deprecated(reason: "gone") b: [B] @link name(upper: Boolean = false, n: Int = 3): String }
+type B @domain { name: String in(i: In): String }
+input In { z: String a: Int = 1 }
+type Query { x: String }

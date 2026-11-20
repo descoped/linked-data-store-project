@@ -1,0 +1,8 @@
+MANAGED [Cat]
+root elementType=ROOT jsonTypes=[object] refTypes=[] required=[] isRequired=false description=null
+  property Cat
+    Cat elementType=MANAGED jsonTypes=[object] refTypes=[] required=[name] isRequired=false description=""
+      property friends
+        friends elementType=EMBEDDED jsonTypes=[array] refTypes=[] required=[] isRequired=false description=""
+      property name
+        name elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description=""
