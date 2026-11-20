@@ -254,7 +254,10 @@ one document for each part of the code). `docs/README.md` is the index. Keep the
 - **Examples are formatted.** A JSON body and a JSON answer are pretty-printed (two spaces; an object with one
   field, or two plain ones, and a list of plain values may stay on one line), with the fields in the order LDS
   sent them. A GraphQL query without variables is sent as `application/graphql` and formatted, one field on a
-  line. A session of several commands and their answers is a `console` block with `$` before each command.
+  line. A request body opens on the line of `-d` and its fields are indented under it. A session of several
+  commands and their answers is a `console` block with `$` before each command. An answer is an `http` block only
+  when its body is JSON; an answer of text or HTML is a plain block, which GitHub does not colour as invalid.
+  Every page is looked at as GitHub draws it, in light and dark, before it is pushed for review.
 - Lines of at most 120 characters, except a row of a table. A link to another document is a relative path, and
   a link to a section names the id GitHub gives its heading, so a heading that is renamed has its links renamed.
 
