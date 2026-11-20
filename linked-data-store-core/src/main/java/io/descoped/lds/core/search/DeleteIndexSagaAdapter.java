@@ -15,13 +15,13 @@ import java.util.Map;
 
 public class DeleteIndexSagaAdapter extends Adapter<JsonNode> {
 
-    public static final String NAME = "Persistence-Index-Delete";
+    public static final String ADAPTER_NAME = "Persistence-Index-Delete";
 
     private final SearchIndex indexer;
     private final Specification specification;
 
     public DeleteIndexSagaAdapter(SearchIndex indexer, Specification specification) {
-        super(JsonNode.class, NAME);
+        super(JsonNode.class, ADAPTER_NAME);
         this.indexer = indexer;
         this.specification = specification;
     }

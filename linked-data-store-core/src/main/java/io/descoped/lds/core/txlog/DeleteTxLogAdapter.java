@@ -10,12 +10,12 @@ import java.util.Map;
 
 public class DeleteTxLogAdapter extends Adapter<JsonNode> {
 
-    public static final String NAME = "TxLog-delete-entry";
+    public static final String ADAPTER_NAME = "TxLog-delete-entry";
 
     final TxlogRawdataPool pool;
 
     public DeleteTxLogAdapter(TxlogRawdataPool pool) {
-        super(JsonNode.class, NAME);
+        super(JsonNode.class, ADAPTER_NAME);
         this.pool = pool;
     }
 

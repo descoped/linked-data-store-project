@@ -21,6 +21,10 @@ public class SagaRepository {
     public static final String SAGA_CREATE_OR_UPDATE_MANAGED_RESOURCE = "Create or update managed resource";
     public static final String SAGA_DELETE_MANAGED_RESOURCE = "Delete managed resource";
 
+    /* The ids of the two nodes both sagas have: the transaction log, then the store. */
+    private static final String TXLOG = "txlog";
+    private static final String PERSISTENCE = "persistence";
+
     final Map<String, Saga> sagaByName = new ConcurrentHashMap<>();
 
     final AdapterLoader adapterLoader;
@@ -42,27 +46,27 @@ public class SagaRepository {
 
     private Saga buildCreateOrUpdateSaga(SearchIndex indexer) {
         Saga.SagaBuilder createSagaBuilder = Saga.start(SAGA_CREATE_OR_UPDATE_MANAGED_RESOURCE)
-                .linkTo("txlog");
+                .linkTo(TXLOG);
         if (indexer != null) {
-            createSagaBuilder.id("txlog").adapter(AppendTxLogAdapter.NAME).linkTo("persistence", "search-index-update");
-            createSagaBuilder.id("search-index-update").adapter(UpdateIndexSagaAdapter.NAME).linkToEnd();
+            createSagaBuilder.id(TXLOG).adapter(AppendTxLogAdapter.ADAPTER_NAME).linkTo(PERSISTENCE, "search-index-update");
+            createSagaBuilder.id("search-index-update").adapter(UpdateIndexSagaAdapter.ADAPTER_NAME).linkToEnd();
         } else {
-            createSagaBuilder.id("txlog").adapter(AppendTxLogAdapter.NAME).linkTo("persistence");
+            createSagaBuilder.id(TXLOG).adapter(AppendTxLogAdapter.ADAPTER_NAME).linkTo(PERSISTENCE);
         }
-        createSagaBuilder.id("persistence").adapter(PersistenceCreateOrOverwriteSagaAdapter.NAME).linkToEnd();
+        createSagaBuilder.id(PERSISTENCE).adapter(PersistenceCreateOrOverwriteSagaAdapter.ADAPTER_NAME).linkToEnd();
         return createSagaBuilder.end();
     }
 
     private Saga buildDeleteSaga(SearchIndex indexer) {
         Saga.SagaBuilder deleteSagaBuilder = Saga.start(SAGA_DELETE_MANAGED_RESOURCE)
-                .linkTo("txlog");
+                .linkTo(TXLOG);
         if (indexer != null) {
-            deleteSagaBuilder.id("txlog").adapter(DeleteTxLogAdapter.NAME).linkTo("persistence", "search-index-delete");
-            deleteSagaBuilder.id("search-index-delete").adapter(DeleteIndexSagaAdapter.NAME).linkToEnd();
+            deleteSagaBuilder.id(TXLOG).adapter(DeleteTxLogAdapter.ADAPTER_NAME).linkTo(PERSISTENCE, "search-index-delete");
+            deleteSagaBuilder.id("search-index-delete").adapter(DeleteIndexSagaAdapter.ADAPTER_NAME).linkToEnd();
         } else {
-            deleteSagaBuilder.id("txlog").adapter(DeleteTxLogAdapter.NAME).linkTo("persistence");
+            deleteSagaBuilder.id(TXLOG).adapter(DeleteTxLogAdapter.ADAPTER_NAME).linkTo(PERSISTENCE);
         }
-        deleteSagaBuilder.id("persistence").adapter(PersistenceDeleteSagaAdapter.NAME).linkToEnd();
+        deleteSagaBuilder.id(PERSISTENCE).adapter(PersistenceDeleteSagaAdapter.ADAPTER_NAME).linkToEnd();
         return deleteSagaBuilder.end();
     }
 

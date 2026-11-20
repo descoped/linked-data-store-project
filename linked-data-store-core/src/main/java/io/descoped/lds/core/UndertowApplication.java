@@ -159,7 +159,7 @@ public class UndertowApplication {
         LOG.info("Initializing CORS-handler ...");
 
         List<Pattern> corsAllowOrigin = Stream.of(configuration.find("http.cors.allow.origin").orElse(null)
-                .split(",")).map(Pattern::compile).collect(Collectors.toUnmodifiableList());
+                .split(",")).map(Pattern::compile).toList();
         Set<String> corsAllowMethods = Set.of(configuration.find("http.cors.allow.methods").orElse(null)
                 .split(","));
         Set<String> corsAllowHeaders = Set.of(configuration.find("http.cors.allow.header").orElse(null)
@@ -283,10 +283,7 @@ public class UndertowApplication {
                 runnable -> {
                     Thread thread = new Thread(runnable);
                     thread.setName("sec-" + nextWorkerId.getAndIncrement());
-                    thread.setUncaughtExceptionHandler((t, e) -> {
-                        System.err.println("Uncaught exception in thread " + thread.getName());
-                        e.printStackTrace();
-                    });
+                    thread.setUncaughtExceptionHandler((_, e) -> LOG.error("Uncaught exception in thread {}", thread.getName(), e));
                     return thread;
                 },
                 new ThreadPoolExecutor.AbortPolicy()
@@ -367,8 +364,8 @@ public class UndertowApplication {
                 long remainingMs = TimeUnit.SECONDS.toMillis(maxWaitSeconds) - durationMs;
                 if (remainingMs > 0) {
                     try {
-                        Thread.sleep(Math.min(retryIntervalSeconds * 1000, remainingMs));
-                    } catch (InterruptedException ie) {
+                        Thread.sleep(Math.min(retryIntervalSeconds * 1000L, remainingMs));
+                    } catch (InterruptedException _) {
                         Thread.currentThread().interrupt();
                         throw new RuntimeException("Interrupted while attempting to sleep, interrupt status preserved.", e);
                     }
@@ -399,8 +396,8 @@ public class UndertowApplication {
                 long remainingMs = TimeUnit.SECONDS.toMillis(maxWaitSeconds) - durationMs;
                 if (remainingMs > 0) {
                     try {
-                        Thread.sleep(Math.min(retryIntervalSeconds * 1000, remainingMs));
-                    } catch (InterruptedException ie) {
+                        Thread.sleep(Math.min(retryIntervalSeconds * 1000L, remainingMs));
+                    } catch (InterruptedException _) {
                         Thread.currentThread().interrupt();
                         throw new RuntimeException("Interrupted while attempting to sleep, interrupt status preserved.", e);
                     }
@@ -413,8 +410,8 @@ public class UndertowApplication {
 
     public static Map<String, String> subMapFromPrefix(Map<String, String> configMap, String prefix) {
         NavigableMap<String, String> navConf;
-        if (configMap instanceof NavigableMap) {
-            navConf = (NavigableMap) configMap;
+        if (configMap instanceof NavigableMap<String, String> navigableMap) {
+            navConf = navigableMap;
         } else {
             navConf = new TreeMap<>(configMap);
         }
@@ -431,7 +428,7 @@ public class UndertowApplication {
                     LOG.error("Pool did not terminate");
                 }
             }
-        } catch (InterruptedException ie) {
+        } catch (InterruptedException _) {
             pool.shutdownNow();
             Thread.currentThread().interrupt();
         }
@@ -461,7 +458,7 @@ public class UndertowApplication {
                 }
                 LOG.info("Starting saga-recovery-trigger ...");
                 sagaRecoveryTrigger.start();
-                return (Void) null;
+                return null;
             });
         }
         LOG.info("Started Linked Data Store server. PID {}", ProcessHandle.current().pid());
@@ -531,10 +528,10 @@ public class UndertowApplication {
 
     static final int RUNNING_SAGAS_TIMEOUT_SECONDS = 10;
 
-    /* A part of the application that is stopped; closing a store may throw anything. */
+    /* A part of the application that is stopped; waiting for the requests may be interrupted. */
     @FunctionalInterface
     private interface Stopping {
-        void stop() throws Exception;
+        void stop() throws InterruptedException;
     }
 
     private static void stop(String part, Stopping action) {
@@ -547,10 +544,6 @@ public class UndertowApplication {
         } catch (Exception e) {
             LOG.error("Error while shutting down: {}", part, e);
         }
-    }
-
-    public Undertow getServer() {
-        return server;
     }
 
     public RxJsonPersistence getPersistence() {

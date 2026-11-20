@@ -47,7 +47,7 @@ public class SagaRecoveryTriggerTest {
         try {
             handoff.join(); // wait for saga-execution to fail
             Assert.fail("Saga execution did no fail on first attempt");
-        } catch (CompletionException e) {
+        } catch (CompletionException _) {
             // expected, ignore
         }
 

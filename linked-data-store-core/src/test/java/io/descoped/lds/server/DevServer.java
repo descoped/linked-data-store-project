@@ -12,7 +12,7 @@ public class DevServer {
 
     private static final Logger LOG = LoggerFactory.getLogger(DevServer.class);
 
-    public static void main(String[] args) {
+    public static void main() {
         long now = System.currentTimeMillis();
 
         DynamicConfiguration configuration = DynamicConfiguration.builder()
@@ -43,7 +43,8 @@ public class DevServer {
             // wait for termination signal
             try {
                 Thread.currentThread().join();
-            } catch (InterruptedException e) {
+            } catch (InterruptedException _) {
+                // the wait is over: the server is stopped below
             }
         } finally {
             application.stop();

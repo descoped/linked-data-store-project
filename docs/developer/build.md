@@ -285,11 +285,11 @@ Not finished: the descriptor of core has three things that are there for tests.
 
 - It provides `SearchIndexProvider` with `TestSearchIndex`, a class in `src/main/java`. The file in
   `META-INF/services` that names it is in the test resources of core, so the jar of core does not have it.
-- It exports `io.descoped.lds.test.server`. In `src/main/java` that package holds the empty class `Dummy`; the
+- It exports `io.descoped.lds.test.server`. In `src/main/java` that package holds the empty interface `Dummy`; the
   classes that matter (`TestServer`, `TestServerListener`) are in `src/test/java`. The comment says the export is
   needed to run tests in IntelliJ.
-- It has `requires java.xml` with the comment `TODO this should be in test-scope only!`. No class of core, in
-  the main code or in the tests, names a type of `java.xml`.
+- It has `requires java.xml` with the comment that it belongs in test scope only. No class of core, in the main
+  code or in the tests, names a type of `java.xml`.
 
 ### Libraries that are left out or pinned in core
 

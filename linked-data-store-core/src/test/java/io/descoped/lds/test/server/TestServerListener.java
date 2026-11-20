@@ -63,31 +63,32 @@ public class TestServerListener implements ITestListener, IInvokedMethodListener
     }
 
     public TestServerListener() {
+        // created by TestNG; the servers start on demand
     }
 
     @Override
     public void onTestStart(ITestResult result) {
-
+        // nothing to do for a single test
     }
 
     @Override
     public void onTestSuccess(ITestResult result) {
-
+        // nothing to do for a single test
     }
 
     @Override
     public void onTestFailure(ITestResult result) {
-
+        // nothing to do for a single test
     }
 
     @Override
     public void onTestSkipped(ITestResult result) {
-
+        // nothing to do for a single test
     }
 
     @Override
     public void onTestFailedButWithinSuccessPercentage(ITestResult result) {
-
+        // nothing to do for a single test
     }
 
     @Override
@@ -106,9 +107,9 @@ public class TestServerListener implements ITestListener, IInvokedMethodListener
                     .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue,
                             (oldValue, newValue) -> oldValue, LinkedHashMap::new))
                     .forEach((k, v) -> {
-                        sb.append(String.format("\t%s: %sms\n", shortName(k), v));
+                        sb.append(String.format("\t%s: %sms%n", shortName(k), v));
                     });
-            if (LOG.isDebugEnabled()) LOG.debug("Test execution time profiling:{}", sb.toString());
+            if (LOG.isDebugEnabled()) LOG.debug("Test execution time profiling:{}", sb);
         }
     }
 
@@ -146,7 +147,7 @@ public class TestServerListener implements ITestListener, IInvokedMethodListener
             new ServerSocket(port).close();
             new ServerSocket(port, 1, InetAddress.getLoopbackAddress()).close();
             return true;
-        } catch (IOException e) {
+        } catch (IOException _) {
             return false;
         }
     }

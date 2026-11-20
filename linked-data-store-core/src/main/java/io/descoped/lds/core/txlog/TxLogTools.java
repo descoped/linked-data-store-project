@@ -11,7 +11,6 @@ import tools.jackson.databind.node.ObjectNode;
 
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Date;
 import java.util.UUID;
 
 import static java.util.Optional.ofNullable;
@@ -19,6 +18,9 @@ import static java.util.Optional.ofNullable;
 public class TxLogTools {
 
     static final ObjectMapper mapper = new MessagePackMapper();
+
+    private TxLogTools() {
+    }
 
     public static RawdataMessage sagaInputToTxEntry(SagaInput sagaInput) {
         ObjectNode meta = mapper.createObjectNode();
@@ -35,7 +37,7 @@ public class TxLogTools {
             meta.put("sourceId", sagaInput.sourceId());
         }
 
-        String uri = String.format("%s/%s/%s", sagaInput.entity(), sagaInput.resourceId(), Date.from(sagaInput.version().toInstant()).getTime());
+        String uri = String.format("%s/%s/%s", sagaInput.entity(), sagaInput.resourceId(), sagaInput.version().toInstant().toEpochMilli());
 
         RawdataMessage.Builder builder = RawdataMessage.builder();
         builder.id(UUID.fromString(sagaInput.txId()))

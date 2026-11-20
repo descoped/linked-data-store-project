@@ -23,10 +23,10 @@ public class SagaRecoveryTrigger {
     private final int intervalMaxSec;
     private final AtomicBoolean stopped = new AtomicBoolean(false);
 
-    private final int MAX_LEGAL_INTERVAL_SEC = 60 * 60 * 24;
+    private static final int MAX_LEGAL_INTERVAL_SEC = 60 * 60 * 24;
     private final Random random = new Random();
 
-    private final static AtomicInteger triggerThreadId = new AtomicInteger();
+    private static final AtomicInteger triggerThreadId = new AtomicInteger();
     private final ScheduledExecutorService recoveryTriggerSingleThreadedPool = Executors.newScheduledThreadPool(1, runnable -> new Thread(runnable, "saga-recovery-trigger-" + triggerThreadId.incrementAndGet()));
     private final AtomicReference<ScheduledFuture<?>> triggerScheduleRef = new AtomicReference<>();
     private final ExecutorService recoveryThreadPool;
@@ -92,7 +92,7 @@ public class SagaRecoveryTrigger {
     }
 
     private long randomizedWaitSec() {
-        return intervalMinSec + random.nextInt(1 + intervalMaxSec - intervalMinSec);
+        return (long) intervalMinSec + random.nextInt(1 + intervalMaxSec - intervalMinSec);
     }
 
     public void stop() {
@@ -117,7 +117,7 @@ public class SagaRecoveryTrigger {
                     LOG.error("Pool did not terminate");
                 }
             }
-        } catch (InterruptedException ie) {
+        } catch (InterruptedException _) {
             pool.shutdownNow();
             Thread.currentThread().interrupt();
         }

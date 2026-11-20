@@ -15,13 +15,13 @@ import java.util.Map;
 
 public class UpdateIndexSagaAdapter extends Adapter<JsonNode> {
 
-    public static final String NAME = "Persistence-Index-Create-or-Overwrite";
+    public static final String ADAPTER_NAME = "Persistence-Index-Create-or-Overwrite";
 
     private final SearchIndex indexer;
     private final Specification specification;
 
     public UpdateIndexSagaAdapter(SearchIndex indexer, Specification specification) {
-        super(JsonNode.class, NAME);
+        super(JsonNode.class, ADAPTER_NAME);
         this.indexer = indexer;
         this.specification = specification;
     }

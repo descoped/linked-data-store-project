@@ -563,8 +563,8 @@ The module is `io.descoped.lds.core` (`src/main/java/module-info.java`).
 LDS runs on the class path, so the descriptor is checked when the module is compiled and is not used at run time.
 
 Not finished: the descriptor has parts that wait for the revision of core. `java.xml` is required with the
-comment that it belongs in test scope. `io.descoped.lds.test.server` is exported for one empty class, `Dummy`,
-with the comment that it is needed to run tests in an IDE. No `requires` is `transitive`, though the public
+comment that it belongs in test scope. `io.descoped.lds.test.server` is exported for one empty interface,
+`Dummy`, with the comment that it is needed to run tests in an IDE. No `requires` is `transitive`, though the public
 methods of `UndertowApplication` return types of other modules and of packages that are not exported. The
 compiler does not report this, because the lint categories `exports` and `requires-automatic` are among those
 the POM of core turns off.

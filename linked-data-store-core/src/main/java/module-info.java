@@ -14,7 +14,7 @@ module io.descoped.lds.core {
     requires undertow.core;
     requires xnio.api;
     requires com.networknt.schema;
-    requires java.xml; // TODO this should be in test-scope only!
+    requires java.xml; // belongs in test scope only; no class of core uses it
     requires tools.jackson.core;
     requires tools.jackson.databind;
     requires jackson.dataformat.msgpack;

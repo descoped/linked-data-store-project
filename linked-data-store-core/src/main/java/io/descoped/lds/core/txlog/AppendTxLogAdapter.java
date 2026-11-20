@@ -10,12 +10,12 @@ import java.util.Map;
 
 public class AppendTxLogAdapter extends Adapter<JsonNode> {
 
-    public static final String NAME = "TxLog-put-entry";
+    public static final String ADAPTER_NAME = "TxLog-put-entry";
 
     final TxlogRawdataPool pool;
 
     public AppendTxLogAdapter(TxlogRawdataPool pool) {
-        super(JsonNode.class, NAME);
+        super(JsonNode.class, ADAPTER_NAME);
         this.pool = pool;
     }
 
