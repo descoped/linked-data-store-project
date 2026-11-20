@@ -508,10 +508,13 @@ file uses the images the tests of the providers use, so compare the two by hand 
 
 ## The documentation site
 
-The documents in `docs/` are also a site, which GitHub Pages serves at
-<https://descoped.github.io/linked-data-store-project/>, with a landing page in front of them. The site is in `site/`,
-outside the reactor: a static site made with krantho and Next.js, which Maven does not build. `site/README.md` says
-how to build it and where each page comes from.
+The documents in `docs/` are also a site, which GitHub Pages serves at <https://lds.descoped.io/>, with a landing
+page in front of them. The site is in `site/`, outside the reactor: a static site made with krantho and Next.js,
+which Maven does not build. `site/README.md` says how to build it and where each page comes from.
+
+`lds.descoped.io` is the custom domain of the repository's Pages, set in its settings, with HTTPS enforced. Its DNS
+record, a CNAME to `descoped.github.io`, is kept outside this repository. The site is on the root of the domain, and
+GitHub forwards the address it had before, `descoped.github.io/linked-data-store-project/`, to it.
 
 `.github/workflows/pages.yml` builds the site with pnpm on Node 26 and publishes it to Pages on a push to `master`
 that changes `docs/`, `site/` or the workflow, and on a start by hand. It has two jobs: `build`, with the permission

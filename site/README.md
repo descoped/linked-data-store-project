@@ -1,6 +1,6 @@
 # The site of Linked Data Store
 
-The site that GitHub Pages serves at <https://descoped.github.io/linked-data-store-project/>: a landing page, and
+The site that GitHub Pages serves at <https://lds.descoped.io/>: a landing page, and
 the documentation in `../docs` as pages. It is a static site made with [krantho](https://krantho.com) and Next.js;
 nothing of it runs on a server.
 
