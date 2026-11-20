@@ -152,12 +152,11 @@ missing node, and the validator answers `[$: unknown found, object expected]`.
 
 ```sh
 curl -i -X PUT 'http://localhost:19108/ns/Person/ola?sync=true&timestamp=2020-01-01T00:00:00Z' \
-     -H 'Content-Type: application/json' -d '
-{
-  "name": "Ola",
-  "employer": "/Company/acme"
-}
-'
+     -H 'Content-Type: application/json' \
+     -d '{
+       "name": "Ola",
+       "employer": "/Company/acme"
+     }'
 ```
 
 ```http
@@ -350,15 +349,14 @@ past and the future, and a link may point at a document that is written later.
 
 ```sh
 curl -i -X PUT 'http://localhost:19108/ns/Person/per?sync=true' \
-     -H 'Content-Type: application/json' -d '
-{
-  "name": "Per",
-  "employer": "/Person/ola"
-}
-'
+     -H 'Content-Type: application/json' \
+     -d '{
+       "name": "Per",
+       "employer": "/Person/ola"
+     }'
 ```
 
-```http
+```
 HTTP/1.1 400 Bad Request
 Content-Type: text/plain
 

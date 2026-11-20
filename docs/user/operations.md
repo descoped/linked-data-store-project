@@ -566,17 +566,15 @@ The run with Solr away, with search on and nothing listening at `search.index.ur
 
 ```console
 $ curl -s -i -X PUT 'http://localhost:9090/ns/Company/brew?sync=true' -H 'Content-Type: application/json' \
-       -d '
-{
-  "name": "Nordic Brewing",
-  "about": [
-    {
-      "languageCode": "en",
-      "languageText": "A small brewery by the fjord"
-    }
-  ]
-}
-'
+       -d '{
+         "name": "Nordic Brewing",
+         "about": [
+           {
+             "languageCode": "en",
+             "languageText": "A small brewery by the fjord"
+           }
+         ]
+       }'
 HTTP/1.1 201 Created
 
 {"saga-execution-id": "01a1f9f5-cb3f-7a97-8b60-ebb3970e5696"}

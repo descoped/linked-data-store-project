@@ -143,7 +143,7 @@ library model below, shortened:
 curl -i 'http://localhost:9090/ns/Book?schema'
 ```
 
-```http
+```
 HTTP/1.1 200 OK
 
 {"$schema":"https://json-schema.org/draft/2020-12/schema","$ref":"#/$defs/Book","$defs":{"Book":{"type":"object",
@@ -296,24 +296,22 @@ curl -i -X PUT 'http://localhost:9090/ns/Publisher/north?sync=true' -H 'Content-
 curl -i -X PUT 'http://localhost:9090/ns/Author/ada?sync=true' -H 'Content-Type: application/json' \
      -d '{"name": "Ada"}'
 curl -i -X PUT 'http://localhost:9090/ns/Book/winter?sync=true' -H 'Content-Type: application/json' \
-     -d '
-{
-  "title": "Winter",
-  "inPrint": true,
-  "published": "2026-11-20T10:00:00Z",
-  "pages": 212,
-  "state": "PUBLISHED",
-  "keywords": ["snow", "north"],
-  "chapters": [
-    {"title": "One", "summary": "It snows."},
-    {"title": "Two"}
-  ],
-  "cover": {"colour": "white"},
-  "publisher": "/Publisher/north",
-  "authors": ["/Author/ada", "/Author/not-written-yet"],
-  "rights": "/Author/ada"
-}
-'
+     -d '{
+       "title": "Winter",
+       "inPrint": true,
+       "published": "2026-11-20T10:00:00Z",
+       "pages": 212,
+       "state": "PUBLISHED",
+       "keywords": ["snow", "north"],
+       "chapters": [
+         {"title": "One", "summary": "It snows."},
+         {"title": "Two"}
+       ],
+       "cover": {"colour": "white"},
+       "publisher": "/Publisher/north",
+       "authors": ["/Author/ada", "/Author/not-written-yet"],
+       "rights": "/Author/ada"
+     }'
 ```
 
 Each of the three is answered like this, with an id of its own:
@@ -393,14 +391,12 @@ checked. This document was written, and read back as it was:
 
 ```sh
 curl -i -X PUT 'http://localhost:9090/ns/Book/spring?sync=true' -H 'Content-Type: application/json' \
-     -d '
-{
-  "title": "Spring",
-  "pages": "many",
-  "cover": "none",
-  "weight": 300
-}
-'
+     -d '{
+       "title": "Spring",
+       "pages": "many",
+       "cover": "none",
+       "weight": 300
+     }'
 ```
 
 ```http
@@ -439,20 +435,18 @@ With `publisher: Publisher @link(reverseName: "books")` a publisher has the fiel
 
 ```sh
 curl -i 'http://localhost:9090/graphql' -H 'Content-Type: application/graphql' \
-     -d '
-{
-  PublisherById(id: "north") {
-    name
-    books {
-      edges {
-        node {
-          title
-        }
-      }
-    }
-  }
-}
-'
+     -d '{
+       PublisherById(id: "north") {
+         name
+         books {
+           edges {
+             node {
+               title
+             }
+           }
+         }
+       }
+     }'
 ```
 
 ```http
@@ -692,25 +686,23 @@ A document that fits it:
 
 ```sh
 curl -i -X PUT 'http://localhost:9090/ns/Book/winter?sync=true' -H 'Content-Type: application/json' \
-     -d '
-{
-  "title": "Winter",
-  "inPrint": true,
-  "published": "2026-11-20T10:00:00Z",
-  "firstSold": "2026-12-01",
-  "pages": 212,
-  "state": "PUBLISHED",
-  "keywords": ["snow", "north"],
-  "chapters": [
-    {"title": "One", "summary": "It snows."},
-    {"title": "Two"}
-  ],
-  "cover": {"colour": "white", "designer": "/Author/ada"},
-  "publisher": null,
-  "authors": ["/Author/ada"],
-  "rights": "/Publisher/north"
-}
-'
+     -d '{
+       "title": "Winter",
+       "inPrint": true,
+       "published": "2026-11-20T10:00:00Z",
+       "firstSold": "2026-12-01",
+       "pages": 212,
+       "state": "PUBLISHED",
+       "keywords": ["snow", "north"],
+       "chapters": [
+         {"title": "One", "summary": "It snows."},
+         {"title": "Two"}
+       ],
+       "cover": {"colour": "white", "designer": "/Author/ada"},
+       "publisher": null,
+       "authors": ["/Author/ada"],
+       "rights": "/Publisher/north"
+     }'
 ```
 
 ```http
@@ -823,20 +815,18 @@ With the GraphQL schema of the library as the model:
 
 ```sh
 curl -i -X PUT 'http://localhost:9090/ns/Book/spring?sync=true' -H 'Content-Type: application/json' \
-     -d '
-{
-  "inPrint": "yes",
-  "published": "20 November",
-  "state": "SOLD",
-  "keywords": "snow",
-  "chapters": [
-    {"summary": "No title"}
-  ]
-}
-'
+     -d '{
+       "inPrint": "yes",
+       "published": "20 November",
+       "state": "SOLD",
+       "keywords": "snow",
+       "chapters": [
+         {"summary": "No title"}
+       ]
+     }'
 ```
 
-```http
+```
 HTTP/1.1 400 Bad Request
 
 Schema validation error: [$.chapters[0]: required property 'title' not found, $.inPrint: string found, boolean
@@ -849,18 +839,16 @@ With the JSON Schema files of the library as the model:
 
 ```sh
 curl -i -X PUT 'http://localhost:9090/ns/Book/spring?sync=true' -H 'Content-Type: application/json' \
-     -d '
-{
-  "title": "",
-  "firstSold": "1 December",
-  "pages": 0,
-  "cover": {"designer": "/Author/ada"},
-  "weight": 300
-}
-'
+     -d '{
+       "title": "",
+       "firstSold": "1 December",
+       "pages": 0,
+       "cover": {"designer": "/Author/ada"},
+       "weight": 300
+     }'
 ```
 
-```http
+```
 HTTP/1.1 400 Bad Request
 
 Schema validation error: [$.title: must be at least 1 characters long, $.firstSold: does not match the date

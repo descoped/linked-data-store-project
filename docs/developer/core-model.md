@@ -409,16 +409,14 @@ Seen on a running LDS with the example model:
 
 ```sh
 curl -s -i -X PUT 'http://localhost:19110/ns/Person/p1?sync=true' -H 'Content-Type: application/json' \
-     -d '
-{
-  "name": 7,
-  "born": "yesterday",
-  "friends": "x"
-}
-'
+     -d '{
+       "name": 7,
+       "born": "yesterday",
+       "friends": "x"
+     }'
 ```
 
-```http
+```
 HTTP/1.1 400 Bad Request
 Content-Type: text/plain
 
@@ -428,15 +426,13 @@ $.friends: string found, array expected, $.name: integer found, string expected]
 
 ```sh
 curl -s -i -X PUT 'http://localhost:19110/ns/Person/p1?sync=true' -H 'Content-Type: application/json' \
-     -d '
-{
-  "name": "Per",
-  "friends": ["/Person/ola", "/Company/acme"]
-}
-'
+     -d '{
+       "name": "Per",
+       "friends": ["/Person/ola", "/Company/acme"]
+     }'
 ```
 
-```http
+```
 HTTP/1.1 400 Bad Request
 Content-Type: text/plain
 

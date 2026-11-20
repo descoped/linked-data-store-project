@@ -216,13 +216,11 @@ Content-Type: application/json
 {"saga-execution-id": "01a1f9d4-f304-7991-96af-673510969d06"}
 
 $ curl -i -X PUT "$LDS/ns/Person/ola" -H "$J" \
-    -d '
-{
-  "name": "Ola",
-  "address": {"street": "Storgata 1", "city": "Oslo"},
-  "employer": "/Company/acme"
-}
-'
+    -d '{
+      "name": "Ola",
+      "address": {"street": "Storgata 1", "city": "Oslo"},
+      "employer": "/Company/acme"
+    }'
 HTTP/1.1 201 Created
 Content-Type: application/json
 
@@ -745,12 +743,10 @@ sync](#when-lds-answers-a-write-sync).
 
 ```console
 $ curl -i -X PUT "$LDS/ns/Person/ola/address?sync=true" -H "$J" \
-    -d '
-{
-  "street": "Karl Johans gate 2",
-  "city": "Oslo"
-}
-'
+    -d '{
+      "street": "Karl Johans gate 2",
+      "city": "Oslo"
+    }'
 HTTP/1.1 200 OK
 Content-Type: application/json
 
@@ -780,12 +776,10 @@ Content-Type: text/plain
 Schema validation error: [$.born: does not match the date-time pattern must be a valid RFC 3339 date-time]
 
 $ curl -i -X PUT "$LDS/ns/Person/ola/address?sync=true&timestamp=2019-01-01T00:00:00Z" -H "$J" \
-    -d '
-{
-  "street": "Too early",
-  "city": "Oslo"
-}
-'
+    -d '{
+      "street": "Too early",
+      "city": "Oslo"
+    }'
 HTTP/1.1 404 Not Found
 ```
 
@@ -849,12 +843,10 @@ With a model of JSON Schema files, deeper paths work. The requests below ran on 
 
 ```console
 $ curl -i -X PUT "$LDS/ns/Company/acme" -H "$J" \
-    -d '
-{
-  "name": "Acme",
-  "address": {"street": "Storgata 1", "city": "Oslo"}
-}
-'
+    -d '{
+      "name": "Acme",
+      "address": {"street": "Storgata 1", "city": "Oslo"}
+    }'
 HTTP/1.1 201 Created
 Content-Type: application/json
 
@@ -1080,36 +1072,30 @@ of 2021 and not in the version of 2022. A write at 2019 is answered 404, because
 
 ```console
 $ curl -i -X PUT "$LDS/ns/Person/tm?timestamp=2020-01-01T00:00:00Z" -H "$J" \
-    -d '
-{
-  "name": "T",
-  "address": {"street": "Old", "city": "Oslo"}
-}
-'
+    -d '{
+      "name": "T",
+      "address": {"street": "Old", "city": "Oslo"}
+    }'
 HTTP/1.1 201 Created
 Content-Type: application/json
 
 {"saga-execution-id": "01a1f9d0-051d-7ed0-b7b7-6c2e91d577e7"}
 
 $ curl -i -X PUT "$LDS/ns/Person/tm/address?sync=true&timestamp=2022-01-01T00:00:00Z" -H "$J" \
-    -d '
-{
-  "street": "New",
-  "city": "Oslo"
-}
-'
+    -d '{
+      "street": "New",
+      "city": "Oslo"
+    }'
 HTTP/1.1 200 OK
 Content-Type: application/json
 
 {"saga-execution-id": "01a1f9d0-052d-71be-b99a-16ddd2a248d1"}
 
 $ curl -i -X PUT "$LDS/ns/Person/tm/address?sync=true&timestamp=2019-01-01T00:00:00Z" -H "$J" \
-    -d '
-{
-  "street": "Too early",
-  "city": "Oslo"
-}
-'
+    -d '{
+      "street": "Too early",
+      "city": "Oslo"
+    }'
 HTTP/1.1 404 Not Found
 
 $ curl -i -X PUT "$LDS/ns/Person/tm/employer/Company/acme?sync=true&timestamp=2021-01-01T00:00:00Z"
@@ -1186,12 +1172,11 @@ of the delete of a link does (see [Remove a link](#remove-a-link)).
 A write to a part without `sync`, and a read one second later:
 
 ```console
-$ curl -i -X PUT "$LDS/ns/Person/ola/address" -H "$J" -d '
-{
-  "street": "Torggata 5",
-  "city": "Oslo"
-}
-'
+$ curl -i -X PUT "$LDS/ns/Person/ola/address" -H "$J" \
+     -d '{
+       "street": "Torggata 5",
+       "city": "Oslo"
+     }'
 HTTP/1.1 200 OK
 Content-Type: application/json
 

@@ -289,12 +289,10 @@ Write a person whose `employer` is a company that does not exist:
 
 ```sh
 curl -X PUT "$LDS/ns/Person/ola?timestamp=2020-01-01T00:00:00Z" -H 'Content-Type: application/json' \
-     -d '
-{
-  "name": "Ola",
-  "employer": "/Company/nordlys"
-}
-'
+     -d '{
+       "name": "Ola",
+       "employer": "/Company/nordlys"
+     }'
 ```
 
 The write is answered `201`. The REST API gives the link as the text it is. The GraphQL API follows it, and here
@@ -302,16 +300,14 @@ it leads nowhere:
 
 ```sh
 curl "$LDS/graphql" -H 'Content-Type: application/graphql' \
-     -d '
-{
-  PersonById(id: "ola") {
-    name
-    employer {
-      name
-    }
-  }
-}
-'
+     -d '{
+       PersonById(id: "ola") {
+         name
+         employer {
+           name
+         }
+       }
+     }'
 ```
 
 ```json
@@ -346,16 +342,14 @@ The same query as of the middle of 2020, when Ola had the link and the company w
 
 ```sh
 curl "$LDS/graphql?snapshot=2020-06-01T00:00:00Z" -H 'Content-Type: application/graphql' \
-     -d '
-{
-  PersonById(id: "ola") {
-    name
-    employer {
-      name
-    }
-  }
-}
-'
+     -d '{
+       PersonById(id: "ola") {
+         name
+         employer {
+           name
+         }
+       }
+     }'
 ```
 
 ```json
@@ -371,20 +365,18 @@ A link can be read from the other end too. The example model gives the other end
 
 ```sh
 curl "$LDS/graphql" -H 'Content-Type: application/graphql' \
-     -d '
-{
-  CompanyById(id: "nordlys") {
-    name
-    employees {
-      edges {
-        node {
-          name
-        }
-      }
-    }
-  }
-}
-'
+     -d '{
+       CompanyById(id: "nordlys") {
+         name
+         employees {
+           edges {
+             node {
+               name
+             }
+           }
+         }
+       }
+     }'
 ```
 
 ```json
@@ -474,12 +466,10 @@ Write the person `kari` and read a part of that document:
 
 ```sh
 curl -X PUT "$LDS/ns/Person/kari" -H 'Content-Type: application/json' \
-     -d '
-{
-  "name": "Kari",
-  "address": {"street": "Storgata 1", "city": "Oslo"}
-}
-'
+     -d '{
+       "name": "Kari",
+       "address": {"street": "Storgata 1", "city": "Oslo"}
+     }'
 curl "$LDS/ns/Person/kari/address"
 ```
 
@@ -603,12 +593,10 @@ Before a document is written, LDS checks it against the model. A document that d
 ```sh
 curl -X PUT "$LDS/ns/Person/per" -H 'Content-Type: application/json' -d '{"name": 7}'
 curl -X PUT "$LDS/ns/Person/per" -H 'Content-Type: application/json' \
-     -d '
-{
-  "name": "Per",
-  "employer": "/Person/ola"
-}
-'
+     -d '{
+       "name": "Per",
+       "employer": "/Person/ola"
+     }'
 ```
 
 ```
@@ -697,48 +685,42 @@ These are the five writes, and the GraphQL query that was sent at T1, T2 and Tn:
 curl -X PUT "$LDS/ns/Company/acme?sync=true&timestamp=2020-01-01T00:00:00Z" -H 'Content-Type: application/json' \
      -d '{"name": "Acme"}'
 curl -X PUT "$LDS/ns/Person/ola?sync=true&timestamp=2020-01-01T00:00:00Z" -H 'Content-Type: application/json' \
-     -d '
-{
-  "name": "Ola",
-  "address": {"city": "Bergen"},
-  "employer": "/Company/nordlys"
-}
-'
+     -d '{
+       "name": "Ola",
+       "address": {"city": "Bergen"},
+       "employer": "/Company/nordlys"
+     }'
 curl -X PUT "$LDS/ns/Company/nordlys?sync=true&timestamp=2021-01-01T00:00:00Z" -H 'Content-Type: application/json' \
      -d '{"name": "Nordlys"}'
 curl -X PUT "$LDS/ns/Person/ola?sync=true&timestamp=2023-01-01T00:00:00Z" -H 'Content-Type: application/json' \
-     -d '
-{
-  "name": "Ola",
-  "address": {"city": "Oslo"},
-  "employer": "/Company/acme"
-}
-'
+     -d '{
+       "name": "Ola",
+       "address": {"city": "Oslo"},
+       "employer": "/Company/acme"
+     }'
 curl -X DELETE "$LDS/ns/Company/nordlys?sync=true&timestamp=2025-01-01T00:00:00Z"
 curl "$LDS/graphql?snapshot=2020-06-01T00:00:00Z" -H 'Content-Type: application/graphql' \
-     -d '
-{
-  PersonById(id: "ola") {
-    name
-    address {
-      city
-    }
-    employer {
-      name
-    }
-  }
-  CompanyById(id: "acme") {
-    name
-    employees {
-      edges {
-        node {
-          name
-        }
-      }
-    }
-  }
-}
-'
+     -d '{
+       PersonById(id: "ola") {
+         name
+         address {
+           city
+         }
+         employer {
+           name
+         }
+       }
+       CompanyById(id: "acme") {
+         name
+         employees {
+           edges {
+             node {
+               name
+             }
+           }
+         }
+       }
+     }'
 ```
 
 The writes were answered `201`, and the delete `204`. The answers to the query, at T1, at T2

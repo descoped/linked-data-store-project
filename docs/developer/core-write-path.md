@@ -194,7 +194,7 @@ curl -s -i -X PUT 'http://localhost:19109/ns/Person/f1?sync=true&saga=failBefore
      -H 'Content-Type: application/json' -d '{"name": "F1"}'
 ```
 
-```http
+```
 HTTP/1.1 500 Internal Server Error
 Connection: keep-alive
 Content-Length: 0

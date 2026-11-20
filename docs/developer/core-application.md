@@ -288,7 +288,7 @@ Date: Fri, 20 Nov 2026 15:29:14 GMT
 curl -s -i http://localhost:19107/bad/Person/1
 ```
 
-```http
+```
 HTTP/1.1 400 Bad Request
 Connection: keep-alive
 Content-Type: text/plain
@@ -361,7 +361,7 @@ curl -s -i -X OPTIONS -H 'Origin: https://app.example' -H 'Access-Control-Reques
   http://localhost:19107/ns/Person/1
 ```
 
-```http
+```
 HTTP/1.1 400 Bad Request
 Connection: keep-alive
 Content-Type: text/plain

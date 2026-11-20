@@ -126,7 +126,7 @@ under [The path of a write](#the-path-of-a-write). Run that request first: on an
 curl -i 'http://localhost:19308/ns/Person/ola?timestamp=2021-06-01T00:00:00Z'
 ```
 
-```http
+```
 HTTP/1.1 200 OK
 Content-Type: application/json; charset=utf-8
 ...
@@ -173,15 +173,14 @@ of a read. The steps below follow them.
 
 ```sh
 curl -i -X PUT 'http://localhost:19308/ns/Person/ola?timestamp=2020-01-01T00:00:00Z' \
-     -H 'Content-Type: application/json' -d '
-{
-  "name": "Ola",
-  "employer": "/Company/acme"
-}
-'
+     -H 'Content-Type: application/json' \
+     -d '{
+       "name": "Ola",
+       "employer": "/Company/acme"
+     }'
 ```
 
-```http
+```
 HTTP/1.1 201 Created
 Content-Type: application/json
 ...
@@ -266,34 +265,29 @@ now. The second block has the answers of the queries.
 curl -X PUT 'http://localhost:19308/ns/Company/acme?timestamp=2020-01-01T00:00:00Z' \
      -H 'Content-Type: application/json' -d '{"name": "Acme"}'
 curl -X PUT 'http://localhost:19308/ns/Person/ola?timestamp=2022-01-01T00:00:00Z' \
-     -H 'Content-Type: application/json' -d '
-{
-  "name": "Ola Nordmann",
-  "employer": "/Company/later"
-}
-'
+     -H 'Content-Type: application/json' \
+     -d '{
+       "name": "Ola Nordmann",
+       "employer": "/Company/later"
+     }'
 curl 'http://localhost:19308/graphql?snapshot=2021-06-01T00:00:00Z' -H 'Content-Type: application/graphql' \
-     -d '
-{
-  PersonById(id: "ola") {
-    name
-    employer {
-      name
-    }
-  }
-}
-'
+     -d '{
+       PersonById(id: "ola") {
+         name
+         employer {
+           name
+         }
+       }
+     }'
 curl 'http://localhost:19308/graphql' -H 'Content-Type: application/graphql' \
-     -d '
-{
-  PersonById(id: "ola") {
-    name
-    employer {
-      name
-    }
-  }
-}
-'
+     -d '{
+       PersonById(id: "ola") {
+         name
+         employer {
+           name
+         }
+       }
+     }'
 ```
 
 ```json

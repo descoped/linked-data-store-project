@@ -199,12 +199,10 @@ says that it is JSON:
 
 ```sh
 curl -i -X PUT 'http://localhost:9090/ns/Company/acme?sync=true' -H 'Content-Type: application/json' \
-     -d '
-{
-  "name": "Acme",
-  "founded": "1990-05-17T00:00:00Z"
-}
-'
+     -d '{
+       "name": "Acme",
+       "founded": "1990-05-17T00:00:00Z"
+     }'
 ```
 
 ```http
@@ -221,12 +219,10 @@ Now a person with the id `ola`:
 
 ```sh
 curl -i -X PUT 'http://localhost:9090/ns/Person/ola?sync=true' -H 'Content-Type: application/json' \
-     -d '
-{
-  "name": "Ola",
-  "address": {"street": "Storgata 1", "city": "Oslo"}
-}
-'
+     -d '{
+       "name": "Ola",
+       "address": {"street": "Storgata 1", "city": "Oslo"}
+     }'
 ```
 
 ```http
@@ -243,7 +239,7 @@ curl -i -X PUT 'http://localhost:9090/ns/Person/kari?sync=true' -H 'Content-Type
      -d '{"name": 7}'
 ```
 
-```http
+```
 HTTP/1.1 400 Bad Request
 
 Schema validation error: [$.name: integer found, string expected]
@@ -307,12 +303,10 @@ lived in Bergen from 2020. Write that as a version that is valid from 1 January 
 ```sh
 curl -i -X PUT 'http://localhost:9090/ns/Person/ola?sync=true&timestamp=2020-01-01T00:00:00Z' \
      -H 'Content-Type: application/json' \
-     -d '
-{
-  "name": "Ola",
-  "address": {"street": "Bryggen 3", "city": "Bergen"}
-}
-'
+     -d '{
+       "name": "Ola",
+       "address": {"street": "Bryggen 3", "city": "Bergen"}
+     }'
 ```
 
 ```http
@@ -443,13 +437,11 @@ A link can also be written as a field of the document. Kari works for the same c
 
 ```sh
 curl -i -X PUT 'http://localhost:9090/ns/Person/kari?sync=true' -H 'Content-Type: application/json' \
-     -d '
-{
-  "name": "Kari",
-  "employer": "/Company/acme",
-  "friends": ["/Person/ola"]
-}
-'
+     -d '{
+       "name": "Kari",
+       "employer": "/Company/acme",
+       "friends": ["/Person/ola"]
+     }'
 ```
 
 ```http
@@ -478,12 +470,10 @@ later. Per works for a company that LDS does not have:
 
 ```sh
 curl -i -X PUT 'http://localhost:9090/ns/Person/per?sync=true' -H 'Content-Type: application/json' \
-     -d '
-{
-  "name": "Per",
-  "employer": "/Company/not-yet"
-}
-'
+     -d '{
+       "name": "Per",
+       "employer": "/Company/not-yet"
+     }'
 ```
 
 ```http
@@ -504,20 +494,18 @@ A query follows links by itself. One request gives the person and the company th
 
 ```sh
 curl -i 'http://localhost:9090/graphql' -H 'Content-Type: application/graphql' \
-     -d '
-{
-  PersonById(id: "ola") {
-    name
-    address {
-      city
-    }
-    employer {
-      name
-      founded
-    }
-  }
-}
-'
+     -d '{
+       PersonById(id: "ola") {
+         name
+         address {
+           city
+         }
+         employer {
+           name
+           founded
+         }
+       }
+     }'
 ```
 
 ```http
@@ -539,20 +527,18 @@ so a company has a field `employees` with the persons that link to it:
 
 ```sh
 curl -i 'http://localhost:9090/graphql' -H 'Content-Type: application/graphql' \
-     -d '
-{
-  CompanyById(id: "acme") {
-    name
-    employees {
-      edges {
-        node {
-          name
-        }
-      }
-    }
-  }
-}
-'
+     -d '{
+       CompanyById(id: "acme") {
+         name
+         employees {
+           edges {
+             node {
+               name
+             }
+           }
+         }
+       }
+     }'
 ```
 
 ```http
@@ -584,16 +570,14 @@ A link that points at a document that does not exist gives `null`:
 
 ```sh
 curl -i 'http://localhost:9090/graphql' -H 'Content-Type: application/graphql' \
-     -d '
-{
-  PersonById(id: "per") {
-    name
-    employer {
-      name
-    }
-  }
-}
-'
+     -d '{
+       PersonById(id: "per") {
+         name
+         employer {
+           name
+         }
+       }
+     }'
 ```
 
 ```http
@@ -611,16 +595,14 @@ error and no data:
 
 ```sh
 curl -i 'http://localhost:9090/graphql' -H 'Content-Type: application/graphql' \
-     -d '
-{
-  PersonById(id: "nobody") {
-    name
-  }
-}
-'
+     -d '{
+       PersonById(id: "nobody") {
+         name
+       }
+     }'
 ```
 
-```http
+```
 HTTP/1.1 200 OK
 
 {"errors":[{"message":"The field at path '/PersonById' was declared as a non null type, but ...",...}],
@@ -632,16 +614,14 @@ with the links it follows, is answered as of that time:
 
 ```sh
 curl -i 'http://localhost:9090/graphql?snapshot=2021-06-01T00:00:00Z' -H 'Content-Type: application/graphql' \
-     -d '
-{
-  PersonById(id: "ola") {
-    name
-    address {
-      city
-    }
-  }
-}
-'
+     -d '{
+       PersonById(id: "ola") {
+         name
+         address {
+           city
+         }
+       }
+     }'
 ```
 
 ```http
@@ -665,19 +645,17 @@ field gets an error for the field. The version of Ola from 2020 has no `employer
 
 ```sh
 curl -i 'http://localhost:9090/graphql?snapshot=2021-06-01T00:00:00Z' -H 'Content-Type: application/graphql' \
-     -d '
-{
-  PersonById(id: "ola") {
-    name
-    employer {
-      name
-    }
-  }
-}
-'
+     -d '{
+       PersonById(id: "ola") {
+         name
+         employer {
+           name
+         }
+       }
+     }'
 ```
 
-```http
+```
 HTTP/1.1 200 OK
 
 {"errors":[{"message":"Exception while fetching data (/PersonById/employer) : ...",...}],

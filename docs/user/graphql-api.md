@@ -169,14 +169,12 @@ The body is a JSON object, and the content type is `application/json`.
 
 ```sh
 curl -i 'http://localhost:9090/graphql' -H 'Content-Type: application/graphql' \
-     -d '
-{
-  CompanyById(id: "acme") {
-    name
-    founded
-  }
-}
-'
+     -d '{
+       CompanyById(id: "acme") {
+         name
+         founded
+       }
+     }'
 ```
 
 ```http
@@ -202,13 +200,12 @@ Date: Fri, 20 Nov 2026 16:55:50 GMT
 A request with variables and an operation name:
 
 ```sh
-curl 'http://localhost:9090/graphql' -H 'Content-Type: application/json' -d '
-{
-  "query": "query One($id: ID!) { PersonById(id: $id) { name } } query All { Person { edges { cursor } } }",
-  "variables": {"id": "per"},
-  "operationName": "One"
-}
-'
+curl 'http://localhost:9090/graphql' -H 'Content-Type: application/json' \
+     -d '{
+       "query": "query One($id: ID!) { PersonById(id: $id) { name } } query All { Person { edges { cursor } } }",
+       "variables": {"id": "per"},
+       "operationName": "One"
+     }'
 ```
 
 ```json
@@ -1180,21 +1177,19 @@ The time is the query parameter `snapshot` of the address. It works for GET and 
 
 ```sh
 curl 'http://localhost:9090/graphql?snapshot=2021-06-01T00:00:00Z' -H 'Content-Type: application/graphql' \
-     -d '
-{
-  PersonById(id: "ola") {
-    name
-    employer {
-      name
-    }
-    friends {
-      edges {
-        cursor
-      }
-    }
-  }
-}
-'
+     -d '{
+       PersonById(id: "ola") {
+         name
+         employer {
+           name
+         }
+         friends {
+           edges {
+             cursor
+           }
+         }
+       }
+     }'
 ```
 
 ```json
@@ -1217,12 +1212,11 @@ The time can also be given as the GraphQL variable `__snapshot`, with two unders
 declare the variable. A query that declares it and does not use it is refused.
 
 ```sh
-curl 'http://localhost:9090/graphql' -H 'Content-Type: application/json' -d '
-{
-  "query": "{ CompanyById(id: \"acme\") { employees { edges { cursor } } } }",
-  "variables": {"__snapshot": "2021-06-01T00:00:00Z"}
-}
-'
+curl 'http://localhost:9090/graphql' -H 'Content-Type: application/json' \
+     -d '{
+       "query": "{ CompanyById(id: \"acme\") { employees { edges { cursor } } } }",
+       "variables": {"__snapshot": "2021-06-01T00:00:00Z"}
+     }'
 ```
 
 ```json

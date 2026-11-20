@@ -279,27 +279,25 @@ map (a `DocumentKey`) and answers the object type with the name of the entity of
 
 ```sh
 curl -s http://localhost:19111/graphql -H 'Content-Type: application/graphql' \
-  -d '
-{
-  __schema {
-    queryType {
-      fields {
-        name
-        args {
+  -d '{
+    __schema {
+      queryType {
+        fields {
           name
-        }
-        type {
-          kind
-          name
-          ofType {
+          args {
             name
+          }
+          type {
+            kind
+            name
+            ofType {
+              name
+            }
           }
         }
       }
     }
-  }
-}
-'
+  }'
 ```
 
 ```json
@@ -376,25 +374,23 @@ uses them.
 
 ```sh
 curl -s http://localhost:19111/graphql -H 'Content-Type: application/graphql' \
-  -d '
-{
-  __type(name: "Person") {
-    fields {
-      name
-      args {
+  -d '{
+    __type(name: "Person") {
+      fields {
         name
-      }
-      type {
-        kind
-        name
-        ofType {
+        args {
           name
+        }
+        type {
+          kind
+          name
+          ofType {
+            name
+          }
         }
       }
     }
-  }
-}
-'
+  }'
 ```
 
 ```json
@@ -484,18 +480,16 @@ graphql-java-extended-scalars. That scalar writes three digits always, which is 
 
 ```sh
 curl -s -i http://localhost:19111/graphql -H 'Content-Type: application/graphql' \
-  -d '
-{
-  PersonById(id: "ola") {
-    name
-    born
-    employer {
+  -d '{
+    PersonById(id: "ola") {
       name
-      founded
+      born
+      employer {
+        name
+        founded
+      }
     }
-  }
-}
-'
+  }'
 ```
 
 ```http
@@ -594,21 +588,19 @@ The snapshot is computed once, when the context is made, and every fetcher of th
 
 ```sh
 curl -s 'http://localhost:19111/graphql?snapshot=2021-06-01T00:00:00Z' -H 'Content-Type: application/graphql' \
-  -d '
-{
-  PersonById(id: "ola") {
-    name
-    employer {
+  -d '{
+    PersonById(id: "ola") {
       name
-    }
-    friends {
-      edges {
-        cursor
+      employer {
+        name
+      }
+      friends {
+        edges {
+          cursor
+        }
       }
     }
-  }
-}
-'
+  }'
 ```
 
 ```json
@@ -631,12 +623,10 @@ curl -s 'http://localhost:19111/graphql?snapshot=2021-06-01T00:00:00Z' -H 'Conte
 
 ```sh
 curl -s http://localhost:19111/graphql -H 'Content-Type: application/json' \
-  -d '
-{
-  "query": "{ PersonById(id: \"ola\") { name employer { name } } }",
-  "variables": {"__snapshot": "2021-06-01T00:00:00Z"}
-}
-'
+  -d '{
+    "query": "{ PersonById(id: \"ola\") { name employer { name } } }",
+    "variables": {"__snapshot": "2021-06-01T00:00:00Z"}
+  }'
 ```
 
 ```json
@@ -655,27 +645,23 @@ the same link gives the document at a time when it exists:
 
 ```sh
 curl -s http://localhost:19111/graphql -H 'Content-Type: application/graphql' \
-  -d '
-{
-  PersonById(id: "early") {
-    name
-    employer {
+  -d '{
+    PersonById(id: "early") {
       name
+      employer {
+        name
+      }
     }
-  }
-}
-'; echo
+  }'; echo
 curl -s 'http://localhost:19111/graphql?snapshot=2031-01-01T00:00:00Z' -H 'Content-Type: application/graphql' \
-  -d '
-{
-  PersonById(id: "early") {
-    name
-    employer {
+  -d '{
+    PersonById(id: "early") {
       name
+      employer {
+        name
+      }
     }
-  }
-}
-'
+  }'
 ```
 
 ```json
@@ -724,13 +710,11 @@ and `data` is `null` for the whole request:
 
 ```sh
 curl -s -i http://localhost:19111/graphql -H 'Content-Type: application/graphql' \
-  -d '
-{
-  PersonById(id: "nobody") {
-    name
-  }
-}
-'
+  -d '{
+    PersonById(id: "nobody") {
+      name
+    }
+  }'
 ```
 
 ```http
@@ -793,7 +777,7 @@ curl -s -o /dev/null -w '%{http_code} %{content_type}\n' http://localhost:19111/
 curl -s http://localhost:19111/graphiql/ | grep -o 'unpkg.com/[^"]*'
 ```
 
-```http
+```
 HTTP/1.1 302 Found
 Connection: keep-alive
 Location: http://localhost:19111/graphiql/
@@ -857,19 +841,17 @@ which graphql-java reports in `errors`. The cursor of an edge is the id of its d
 
 ```sh
 curl -s http://localhost:19111/graphql -H 'Content-Type: application/graphql' \
-  -d '
-{
-  Person(first: 2, after: "early") {
-    edges {
-      cursor
+  -d '{
+    Person(first: 2, after: "early") {
+      edges {
+        cursor
+      }
+      pageInfo {
+        hasNextPage
+        hasPreviousPage
+      }
     }
-    pageInfo {
-      hasNextPage
-      hasPreviousPage
-    }
-  }
-}
-'
+  }'
 ```
 
 ```json
@@ -894,25 +876,23 @@ A reverse link reads the documents that hold the link, at the snapshot:
 
 ```sh
 curl -s http://localhost:19111/graphql -H 'Content-Type: application/graphql' \
-  -d '
-{
-  CompanyById(id: "acme") {
-    name
-    employees {
-      edges {
-        cursor
-        node {
-          name
+  -d '{
+    CompanyById(id: "acme") {
+      name
+      employees {
+        edges {
+          cursor
+          node {
+            name
+          }
+        }
+        pageInfo {
+          hasNextPage
+          hasPreviousPage
         }
       }
-      pageInfo {
-        hasNextPage
-        hasPreviousPage
-      }
     }
-  }
-}
-'
+  }'
 ```
 
 ```json
@@ -968,28 +948,26 @@ the class path. The model had the entities `Cat`, `Dog`, `Owner` and `Car`. Solr
 
 ```sh
 curl -s http://localhost:19111/graphql -H 'Content-Type: application/graphql' \
-  -d '
-{
-  Search(query: "the") {
-    edges {
-      cursor
-      node {
-        __typename
-        ... on Cat {
-          name
-        }
-        ... on Dog {
-          name
+  -d '{
+    Search(query: "the") {
+      edges {
+        cursor
+        node {
+          __typename
+          ... on Cat {
+            name
+          }
+          ... on Dog {
+            name
+          }
         }
       }
+      pageInfo {
+        hasNextPage
+        hasPreviousPage
+      }
     }
-    pageInfo {
-      hasNextPage
-      hasPreviousPage
-    }
-  }
-}
-'
+  }'
 ```
 
 ```json
@@ -1195,11 +1173,9 @@ gives an error and `null` for the field:
 
 ```sh
 curl -s http://localhost:19111/graphql -H 'Content-Type: application/json' \
-  -d '
-{
-  "query": "{ PersonById(id: \"anne\") { name employer { name } } }"
-}
-'
+  -d '{
+    "query": "{ PersonById(id: \"anne\") { name employer { name } } }"
+  }'
 ```
 
 ```json
@@ -1226,19 +1202,17 @@ Not finished: with `last`, or with `before` alone, `PersistenceRootConnectionFet
 
 ```sh
 curl -s http://localhost:19111/graphql -H 'Content-Type: application/graphql' \
-  -d '
-{
-  Person(last: 2) {
-    edges {
-      cursor
+  -d '{
+    Person(last: 2) {
+      edges {
+        cursor
+      }
+      pageInfo {
+        hasNextPage
+        hasPreviousPage
+      }
     }
-    pageInfo {
-      hasNextPage
-      hasPreviousPage
-    }
-  }
-}
-'
+  }'
 ```
 
 ```json
@@ -1261,21 +1235,19 @@ first:
 
 ```sh
 curl -s 'http://localhost:19111/graphql?snapshot=2021-06-01T00:00:00Z' -H 'Content-Type: application/graphql' \
-  -d '
-{
-  PersonById(id: "ola") {
-    friends(first: 1, after: "anne") {
-      edges {
-        cursor
-      }
-      pageInfo {
-        hasNextPage
-        hasPreviousPage
+  -d '{
+    PersonById(id: "ola") {
+      friends(first: 1, after: "anne") {
+        edges {
+          cursor
+        }
+        pageInfo {
+          hasNextPage
+          hasPreviousPage
+        }
       }
     }
-  }
-}
-'
+  }'
 ```
 
 ```json
