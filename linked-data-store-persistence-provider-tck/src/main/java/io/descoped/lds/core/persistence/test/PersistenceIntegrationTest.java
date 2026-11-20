@@ -665,6 +665,224 @@ public abstract class PersistenceIntegrationTest {
         }
     }
 
+    // ---- deleting a version, and marking a document as deleted: the same answers from every provider
+
+    private static final ZonedDateTime Y1700 = of(1700, 1, 1, 0, 0, 0, 0, ZoneId.of("Etc/UTC"));
+    private static final ZonedDateTime Y1701 = Y1700.plusYears(1);
+    private static final ZonedDateTime Y1702 = Y1700.plusYears(2);
+    private static final ZonedDateTime Y1703 = Y1700.plusYears(3);
+
+    /**
+     * Writes a version of an address, with the year of the version as its city.
+     */
+    private void writeAddressVersion(Transaction tx, String id, ZonedDateTime version) {
+        persistence.createOrOverwrite(tx, toDocument(namespace, "Address", id, createAddress(String.valueOf(version.getYear()), "", ""), version), specification).blockingAwait();
+    }
+
+    /**
+     * The city of the address that is read at the time: the year of the version that is valid then, or null when
+     * there is no document at that time.
+     */
+    private String cityAt(Transaction tx, String id, ZonedDateTime snapshot) {
+        JsonDocument document = persistence.readDocument(tx, snapshot, namespace, "Address", id).blockingGet();
+        return document == null ? null : document.jackson().get("city").asText();
+    }
+
+    /**
+     * Every version of the address, in order of time: the city of a version, or "{}" for an empty document.
+     */
+    private List<String> versionsOf(Transaction tx, String id) {
+        return persistence.readDocumentVersions(tx, namespace, "Address", id, Range.unbounded())
+                .map(document -> document.key().timestamp().getYear() + ":" + (document.jackson().has("city") ? document.jackson().get("city").asText() : document.jackson().toString()))
+                .toList().blockingGet();
+    }
+
+    private void deleteAddressVersion(Transaction tx, String id, ZonedDateTime version) {
+        persistence.deleteDocument(tx, namespace, "Address", id, version, PersistenceDeletePolicy.FAIL_IF_INCOMING_LINKS).blockingAwait();
+    }
+
+    private void markAddressDeleted(Transaction tx, String id, ZonedDateTime version) {
+        persistence.markDocumentDeleted(tx, namespace, "Address", id, version, PersistenceDeletePolicy.FAIL_IF_INCOMING_LINKS).blockingAwait();
+    }
+
+    private void forget(Transaction tx, String entity, String id) {
+        persistence.deleteAllDocumentVersions(tx, namespace, entity, id, PersistenceDeletePolicy.FAIL_IF_INCOMING_LINKS).blockingAwait();
+    }
+
+    private List<String> idsOfAddressesAt(Transaction tx, ZonedDateTime snapshot, String id) {
+        return persistence.readDocuments(tx, snapshot, namespace, "Address", Range.unbounded())
+                .map(document -> document.key().id()).filter(id::equals).toList().blockingGet();
+    }
+
+    /**
+     * The time machine: when a version is deleted, the version before it is the document from its own time until
+     * the next version, as if the deleted version was never written.
+     */
+    @Test
+    public void thatAVersionThatIsDeletedLeavesTheVersionBeforeItValid() {
+        try (Transaction tx = persistence.createTransaction(false)) {
+            forget(tx, "Address", "deletedVersion");
+            writeAddressVersion(tx, "deletedVersion", Y1700);
+            writeAddressVersion(tx, "deletedVersion", Y1701);
+            writeAddressVersion(tx, "deletedVersion", Y1702);
+
+            deleteAddressVersion(tx, "deletedVersion", Y1701);
+
+            assertEquals(versionsOf(tx, "deletedVersion"), List.of("1700:1700", "1702:1702"));
+            assertEquals(cityAt(tx, "deletedVersion", Y1700.plusMonths(6)), "1700");
+            assertEquals(cityAt(tx, "deletedVersion", Y1701), "1700");
+            assertEquals(cityAt(tx, "deletedVersion", Y1701.plusMonths(6)), "1700");
+            assertEquals(cityAt(tx, "deletedVersion", Y1702.plusMonths(6)), "1702");
+            assertEquals(idsOfAddressesAt(tx, Y1701.plusMonths(6), "deletedVersion"), List.of("deletedVersion"));
+
+            // a version written into the time the first version has got back is valid until the next one
+            writeAddressVersion(tx, "deletedVersion", Y1701.plusMonths(3));
+            assertEquals(cityAt(tx, "deletedVersion", Y1701.plusMonths(1)), "1700");
+            assertEquals(cityAt(tx, "deletedVersion", Y1701.plusMonths(6)), "1701");
+            assertEquals(cityAt(tx, "deletedVersion", Y1702.plusMonths(6)), "1702");
+            deleteAddressVersion(tx, "deletedVersion", Y1701.plusMonths(3));
+
+            // the last version deleted: the one before it is the document from then on
+            deleteAddressVersion(tx, "deletedVersion", Y1702);
+            assertEquals(cityAt(tx, "deletedVersion", Y1703), "1700");
+
+            // the first version deleted: there is no document before the next one
+            writeAddressVersion(tx, "deletedVersion", Y1702);
+            deleteAddressVersion(tx, "deletedVersion", Y1700);
+            assertNull(cityAt(tx, "deletedVersion", Y1701));
+            assertEquals(cityAt(tx, "deletedVersion", Y1703), "1702");
+
+            forget(tx, "Address", "deletedVersion");
+        }
+    }
+
+    /**
+     * A document that is marked as deleted is not there from the time of the mark until its next version: not
+     * when it is read, listed or searched for. With the versions of the document the mark is an empty document.
+     */
+    @Test
+    public void thatADocumentMarkedAsDeletedIsNotReadFromTheTimeOfTheMark() {
+        try (Transaction tx = persistence.createTransaction(false)) {
+            forget(tx, "Address", "marked");
+            writeAddressVersion(tx, "marked", Y1700);
+            writeAddressVersion(tx, "marked", Y1702);
+
+            markAddressDeleted(tx, "marked", Y1701);
+
+            assertEquals(versionsOf(tx, "marked"), List.of("1700:1700", "1701:{}", "1702:1702"));
+            assertEquals(cityAt(tx, "marked", Y1700.plusMonths(6)), "1700");
+            assertNull(cityAt(tx, "marked", Y1701));
+            assertNull(cityAt(tx, "marked", Y1701.plusMonths(6)));
+            assertEquals(cityAt(tx, "marked", Y1703), "1702");
+            assertEquals(idsOfAddressesAt(tx, Y1700.plusMonths(6), "marked"), List.of("marked"));
+            assertEquals(idsOfAddressesAt(tx, Y1701.plusMonths(6), "marked"), List.of());
+            assertEquals(persistence.findDocument(tx, Y1701.plusMonths(6), namespace, "Address", JsonNavigationPath.from("$.city"), "1700", Range.unbounded())
+                    .map(document -> document.key().id()).filter("marked"::equals).toList().blockingGet(), List.of());
+
+            // the mark deleted: the version before it is the document again
+            deleteAddressVersion(tx, "marked", Y1701);
+            assertEquals(versionsOf(tx, "marked"), List.of("1700:1700", "1702:1702"));
+            assertEquals(cityAt(tx, "marked", Y1701.plusMonths(6)), "1700");
+
+            forget(tx, "Address", "marked");
+        }
+    }
+
+    /**
+     * A mark at the time of a version takes the place of that version, and a version written at the time of a mark
+     * takes the place of the mark. The versions around them are valid as before.
+     */
+    @Test
+    public void thatADeleteMarkerAndAVersionAtTheSameTimeReplaceEachOther() {
+        try (Transaction tx = persistence.createTransaction(false)) {
+            forget(tx, "Address", "sameTime");
+            writeAddressVersion(tx, "sameTime", Y1700);
+            writeAddressVersion(tx, "sameTime", Y1701);
+            writeAddressVersion(tx, "sameTime", Y1702);
+
+            markAddressDeleted(tx, "sameTime", Y1701);
+
+            assertEquals(versionsOf(tx, "sameTime"), List.of("1700:1700", "1701:{}", "1702:1702"));
+            assertEquals(cityAt(tx, "sameTime", Y1700.plusMonths(6)), "1700");
+            assertNull(cityAt(tx, "sameTime", Y1701));
+            assertNull(cityAt(tx, "sameTime", Y1701.plusMonths(6)));
+            assertEquals(cityAt(tx, "sameTime", Y1702.plusMonths(6)), "1702");
+
+            writeAddressVersion(tx, "sameTime", Y1701);
+
+            assertEquals(versionsOf(tx, "sameTime"), List.of("1700:1700", "1701:1701", "1702:1702"));
+            assertEquals(cityAt(tx, "sameTime", Y1700.plusMonths(6)), "1700");
+            assertEquals(cityAt(tx, "sameTime", Y1701.plusMonths(6)), "1701");
+            assertEquals(cityAt(tx, "sameTime", Y1702.plusMonths(6)), "1702");
+
+            // marked again, and the mark deleted: the version of that time is gone with it
+            markAddressDeleted(tx, "sameTime", Y1701);
+            deleteAddressVersion(tx, "sameTime", Y1701);
+            assertEquals(versionsOf(tx, "sameTime"), List.of("1700:1700", "1702:1702"));
+            assertEquals(cityAt(tx, "sameTime", Y1701.plusMonths(6)), "1700");
+
+            forget(tx, "Address", "sameTime");
+        }
+    }
+
+    /**
+     * A document may be marked as deleted before it is written: the time machine does not ask for an order.
+     */
+    @Test
+    public void thatADocumentMayBeMarkedAsDeletedBeforeItIsWritten() {
+        try (Transaction tx = persistence.createTransaction(false)) {
+            forget(tx, "Address", "markedFirst");
+
+            markAddressDeleted(tx, "markedFirst", Y1701);
+
+            assertEquals(versionsOf(tx, "markedFirst"), List.of("1701:{}"));
+            assertNull(cityAt(tx, "markedFirst", Y1702));
+            assertEquals(idsOfAddressesAt(tx, Y1702, "markedFirst"), List.of());
+
+            writeAddressVersion(tx, "markedFirst", Y1700);
+            writeAddressVersion(tx, "markedFirst", Y1702);
+
+            assertEquals(versionsOf(tx, "markedFirst"), List.of("1700:1700", "1701:{}", "1702:1702"));
+            assertEquals(cityAt(tx, "markedFirst", Y1700.plusMonths(6)), "1700");
+            assertNull(cityAt(tx, "markedFirst", Y1701.plusMonths(6)));
+            assertEquals(cityAt(tx, "markedFirst", Y1703), "1702");
+
+            forget(tx, "Address", "markedFirst");
+        }
+    }
+
+    /**
+     * A link is followed to the document it points at as that document is at the time: a document that is marked
+     * as deleted then is not read, and a document that links from a version it no longer has is not a source.
+     */
+    @Test
+    public void thatALinkToOrFromADocumentMarkedAsDeletedReadsNothing() {
+        JsonNavigationPath currentAddress = JsonNavigationPath.from("$.history.currentAddress");
+        try (Transaction tx = persistence.createTransaction(false)) {
+            forget(tx, "Person", "linker");
+            forget(tx, "Address", "linked");
+            writeAddressVersion(tx, "linked", Y1700);
+            persistence.createOrOverwrite(tx, toDocument(namespace, "Person", "linker", createPerson("Link", "Er", "/Address/linked", "/Address/linked", List.of()), Y1700), specification).blockingAwait();
+
+            markAddressDeleted(tx, "linked", Y1701);
+
+            assertEquals(persistence.readTargetDocuments(tx, Y1700.plusMonths(6), namespace, "Person", "linker", currentAddress, "Address", Range.unbounded())
+                    .map(document -> document.key().id()).toList().blockingGet(), List.of("linked"));
+            assertEquals(persistence.readTargetDocuments(tx, Y1702, namespace, "Person", "linker", currentAddress, "Address", Range.unbounded())
+                    .map(document -> document.key().id()).toList().blockingGet(), List.of());
+
+            persistence.markDocumentDeleted(tx, namespace, "Person", "linker", Y1702, PersistenceDeletePolicy.FAIL_IF_INCOMING_LINKS).blockingAwait();
+
+            assertEquals(persistence.readSourceDocuments(tx, Y1701.plusMonths(6), namespace, "Address", "linked", currentAddress, "Person", Range.unbounded())
+                    .map(document -> document.key().id()).toList().blockingGet(), List.of("linker"));
+            assertEquals(persistence.readSourceDocuments(tx, Y1703, namespace, "Address", "linked", currentAddress, "Person", Range.unbounded())
+                    .map(document -> document.key().id()).toList().blockingGet(), List.of());
+
+            forget(tx, "Person", "linker");
+            forget(tx, "Address", "linked");
+        }
+    }
+
     @Test
     public void thatReadVersionsInRangeWorks() {
         try (Transaction transaction = persistence.createTransaction(false)) {
