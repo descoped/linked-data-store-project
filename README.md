@@ -1,3 +1,5 @@
+[![Quality gate status](https://sonarcloud.io/api/project_badges/measure?project=descoped_linked-data-store-project&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=descoped_linked-data-store-project) [![Reliability rating](https://sonarcloud.io/api/project_badges/measure?project=descoped_linked-data-store-project&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=descoped_linked-data-store-project)
+
 # Linked Data Store
 
 Linked Data Store (LDS) is a server that gives REST and GraphQL access to versioned, linked JSON documents. The
