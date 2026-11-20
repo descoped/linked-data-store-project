@@ -1,5 +1,6 @@
 package io.descoped.lds.core.saga;
 
+import no.cantara.sagalog.SagaPoolShutdownException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -67,10 +68,27 @@ public class SagaRecoveryTrigger {
                 sec.completeClusterWideIncompleteSagas(recoveryThreadPool).join();
                 LOG.debug("Saga recovery task complete.");
             } catch (Throwable t) {
+                if (stopped.get() || shuttingDown(t)) {
+                    LOG.info("Saga recovery ended, the application is shutting down: {}", String.valueOf(t));
+                    return;
+                }
                 LOG.error("Error while attempting to run cluster-wide saga recovery", t);
+            }
+            if (stopped.get()) {
+                return; // nothing is scheduled after stop()
             }
             triggerScheduleRef.set(recoveryTriggerSingleThreadedPool.schedule(triggerRecoveryTask(), randomizedWaitSec(), TimeUnit.SECONDS));
         };
+    }
+
+    /* The saga log pool is shut down: that is the application stopping, not a fault of the recovery. */
+    private static boolean shuttingDown(Throwable t) {
+        for (Throwable cause = t; cause != null; cause = cause.getCause()) {
+            if (cause instanceof SagaPoolShutdownException) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private long randomizedWaitSec() {

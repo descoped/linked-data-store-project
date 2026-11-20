@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.rawdata.api.RawdataIds;
 import no.cantara.concurrent.futureselector.SelectableFuture;
-import no.cantara.concurrent.futureselector.SelectableThreadPoolExectutor;
+import no.cantara.concurrent.futureselector.SelectableThreadPoolExecutor;
 import no.cantara.saga.api.Saga;
 import no.cantara.saga.execution.SagaExecution;
 import no.cantara.saga.execution.SagaExecutionTraversalContext;
@@ -34,9 +34,11 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -51,22 +53,39 @@ public class SagaExecutionCoordinator {
 
     static final Pattern deadLetterSagaPattern = Pattern.compile("dead-saga");
 
+    /**
+     * A saga log and the owner that took it from the pool. The pool releases a log for its owner only, so the two
+     * stay together from the acquire to the release, which is often done by another thread.
+     */
+    record OwnedSagaLog(SagaLog sagaLog, SagaLogOwner owner) {
+        SagaLogId id() {
+            return sagaLog.id();
+        }
+    }
+
+    /* The owner a thread takes a saga log as. */
+    private static SagaLogOwner ownerOfThisThread() {
+        return new SagaLogOwner("Thread::" + Thread.currentThread().getName());
+    }
+
     final AtomicReference<UUID> previousTxId = new AtomicReference<>(RawdataIds.generate());
 
     final int numberOfSagaLogs;
     final SagaLogPool sagaLogPool;
     final SagaLogId deadSagaLogId;
     final Map<SagaLogId, String> executionIdBySagaLogId = new ConcurrentHashMap<>();
+    /** The completion of every saga that is running: started by a write or by recovery, and not completed. */
+    final Set<CompletableFuture<SagaHandoffResult>> runningSagas = ConcurrentHashMap.newKeySet();
     final boolean sagaCommandsEnabled;
 
     final SagaRepository sagaRepository;
     final SagasObserver sagasObserver;
-    final SelectableThreadPoolExectutor threadPool;
+    final SelectableThreadPoolExecutor threadPool;
     final Semaphore semaphore;
     final ThreadPoolWatchDog threadPoolWatchDog;
     final ExecutorService recoveryThreadPool;
 
-    public SagaExecutionCoordinator(SagaLogPool sagaLogPool, int numberOfSagaLogs, SagaRepository sagaRepository, SagasObserver sagasObserver, SelectableThreadPoolExectutor threadPool, boolean sagaCommandsEnabled, ExecutorService recoveryThreadPool) {
+    public SagaExecutionCoordinator(SagaLogPool sagaLogPool, int numberOfSagaLogs, SagaRepository sagaRepository, SagasObserver sagasObserver, SelectableThreadPoolExecutor threadPool, boolean sagaCommandsEnabled, ExecutorService recoveryThreadPool) {
         this.sagaLogPool = sagaLogPool;
         this.numberOfSagaLogs = numberOfSagaLogs;
         this.sagaCommandsEnabled = sagaCommandsEnabled;
@@ -98,23 +117,24 @@ public class SagaExecutionCoordinator {
         return sagaLogPool;
     }
 
-    public SelectableThreadPoolExectutor getThreadPool() {
+    public SelectableThreadPoolExecutor getThreadPool() {
         return threadPool;
     }
 
     public SelectableFuture<SagaHandoffResult> handoff(boolean sync, AdapterLoader adapterLoader, Saga saga, SagaInput sagaInput, Map<String, List<SagaCommand>> commandsByNodeId) {
         String executionId = sagaInput.txId();
 
-        SagaLog sagaLog = acquireCleanSagaLog(c -> {
+        OwnedSagaLog owned = acquireCleanSagaLog(c -> {
         }, c -> {
         });
+        SagaLog sagaLog = owned.sagaLog();
         AtomicBoolean sagaLogReleased = new AtomicBoolean(false);
         Runnable releaseSagaLog = () -> {
             if (sagaLogReleased.compareAndSet(false, true)) {
                 try {
                     executionIdBySagaLogId.remove(sagaLog.id(), executionId); // not the entry of another execution
                 } finally {
-                    sagaLogPool.release(sagaLog.id());
+                    sagaLogPool.releaseOwnership(owned.owner(), sagaLog.id());
                 }
             }
         };
@@ -133,6 +153,7 @@ public class SagaExecutionCoordinator {
             throw e;
         }
 
+        track(handoffControl);
         sagasObserver.registerSaga(handoffControl);
 
         return sync ?
@@ -148,20 +169,58 @@ public class SagaExecutionCoordinator {
         return previousTxId.updateAndGet(RawdataIds::next);
     }
 
-    SagaLog acquireCleanSagaLog(Consumer<SagaExecutionTraversalContext> forwardRecoveryPreAction, Consumer<SagaExecutionTraversalContext> forwardRecoveryPostAction) {
+    private void track(SagaHandoffControl handoffControl) {
+        CompletableFuture<SagaHandoffResult> completion = handoffControl.getCompletionFuture();
+        runningSagas.add(completion);
+        completion.whenComplete((r, t) -> runningSagas.remove(completion));
+    }
+
+    /**
+     * Waits until every saga that is running has completed, or until the time is up. A saga that fails has
+     * completed too. A saga has released its saga log when it has completed. Used when the application stops,
+     * after it has stopped taking writes and before the thread pool of the sagas is shut down: a saga hands each of
+     * its steps to that pool, and a pool that is shut down refuses them.
+     *
+     * @param timeout the longest time to wait
+     * @param unit    the unit of the timeout
+     * @return true when no saga is running
+     */
+    public boolean awaitRunningSagas(long timeout, TimeUnit unit) {
+        long deadline = System.nanoTime() + unit.toNanos(timeout);
+        while (true) {
+            CompletableFuture<?>[] running = runningSagas.stream().filter(saga -> !saga.isDone()).toArray(CompletableFuture<?>[]::new);
+            if (running.length == 0) {
+                return true;
+            }
+            try {
+                CompletableFuture.allOf(running).get(Math.max(0, deadline - System.nanoTime()), TimeUnit.NANOSECONDS);
+            } catch (ExecutionException e) {
+                // one of them failed; all of them have completed
+            } catch (TimeoutException e) {
+                return false;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+    }
+
+    OwnedSagaLog acquireCleanSagaLog(Consumer<SagaExecutionTraversalContext> forwardRecoveryPreAction, Consumer<SagaExecutionTraversalContext> forwardRecoveryPostAction) {
         return recursiveAcquireCleanSagaLog(new LinkedHashSet<>(), forwardRecoveryPreAction, forwardRecoveryPostAction);
     }
 
-    private SagaLog recursiveAcquireCleanSagaLog(Set<SagaLogId> attemptedSagaLogIds, Consumer<SagaExecutionTraversalContext> forwardRecoveryPreAction, Consumer<SagaExecutionTraversalContext> forwardRecoveryPostAction) {
+    private OwnedSagaLog recursiveAcquireCleanSagaLog(Set<SagaLogId> attemptedSagaLogIds, Consumer<SagaExecutionTraversalContext> forwardRecoveryPreAction, Consumer<SagaExecutionTraversalContext> forwardRecoveryPostAction) {
+        SagaLogOwner owner = ownerOfThisThread();
         SagaLog sagaLog;
         try {
-            sagaLog = sagaLogPool.tryAcquire(new SagaLogOwner("Thread::" + Thread.currentThread().getName()), 10, TimeUnit.SECONDS);
+            sagaLog = sagaLogPool.tryAcquire(owner, 10, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
         if (sagaLog == null) {
             throw new RuntimeException("Timeout. No available saga-logs, please check configuration.");
         }
+        OwnedSagaLog owned = new OwnedSagaLog(sagaLog, owner);
         boolean handedOver = false; // to the caller, or to the recovery that releases it
         try {
             if (deadLetterSagaPattern.matcher(sagaLog.id().getLogName()).matches()) {
@@ -169,7 +228,7 @@ public class SagaExecutionCoordinator {
             }
             if (!sagaLog.readIncompleteSagas().anyMatch(e -> true)) {
                 handedOver = true;
-                return sagaLog; // sagaLog is empty, all is well
+                return owned; // sagaLog is empty, all is well
             }
 
             if (!attemptedSagaLogIds.add(sagaLog.id())) {
@@ -177,22 +236,23 @@ public class SagaExecutionCoordinator {
             }
 
             // sagaLog contains at least one element
-            asyncAttemptForwardRecoveryOrElseMoveToDeadLetter(sagaLog, forwardRecoveryPreAction, forwardRecoveryPostAction); // will release sagaLog when done
+            asyncAttemptForwardRecoveryOrElseMoveToDeadLetter(owned, forwardRecoveryPreAction, forwardRecoveryPostAction); // will release sagaLog when done
             handedOver = true;
         } finally {
             if (!handedOver) {
-                sagaLogPool.release(sagaLog.id()); // or no saga could ever use this log again
+                sagaLogPool.releaseOwnership(owner, sagaLog.id()); // or no saga could ever use this log again
             }
         }
 
         return recursiveAcquireCleanSagaLog(attemptedSagaLogIds, forwardRecoveryPreAction, forwardRecoveryPostAction);
     }
 
-    CompletableFuture<Void> asyncAttemptForwardRecoveryOrElseMoveToDeadLetter(SagaLog sagaLog, Consumer<SagaExecutionTraversalContext> preAction, Consumer<SagaExecutionTraversalContext> postAction) {
+    CompletableFuture<Void> asyncAttemptForwardRecoveryOrElseMoveToDeadLetter(OwnedSagaLog owned, Consumer<SagaExecutionTraversalContext> preAction, Consumer<SagaExecutionTraversalContext> postAction) {
+        SagaLog sagaLog = owned.sagaLog();
         return CompletableFuture.runAsync(() -> {
             CompletableFuture<Void> future;
             try {
-                future = doCompleteSagaLog(sagaLog, false, false, preAction, postAction);
+                future = doCompleteSagaLog(owned, false, false, preAction, postAction);
             } catch (Throwable t) {
                 future = CompletableFuture.failedFuture(t); // wrap
             }
@@ -202,7 +262,8 @@ public class SagaExecutionCoordinator {
                 try {
                     String msg = String.format("Failed to retry saga-executions from saga-log %s, moving all entries to dead-saga-log.", sagaLog.id());
                     LOG.warn(msg, t);
-                    SagaLog deadLetterSagaLog = sagaLogPool.tryTakeOwnership(new SagaLogOwner("Thread::" + Thread.currentThread().getName()), deadSagaLogId, 30, TimeUnit.SECONDS);
+                    SagaLogOwner deadLetterOwner = ownerOfThisThread();
+                    SagaLog deadLetterSagaLog = sagaLogPool.tryTakeOwnership(deadLetterOwner, deadSagaLogId, 30, TimeUnit.SECONDS);
                     if (deadLetterSagaLog == null) {
                         throw new RuntimeException(String.format("Timeout while attempting to take ownership of %s", deadSagaLogId));
                     }
@@ -210,13 +271,13 @@ public class SagaExecutionCoordinator {
                         moveAllEntries(sagaLog, deadLetterSagaLog).join();
                         LOG.info("Moved all saga-log-entries from {} to {}", sagaLog.id(), deadSagaLogId);
                     } finally {
-                        sagaLogPool.releaseOwnership(deadSagaLogId);
+                        sagaLogPool.releaseOwnership(deadLetterOwner, deadSagaLogId);
                     }
                 } catch (Throwable tx) {
                     LOG.error(String.format("Error while attempting to move saga-log-entries from %s to dead-saga", sagaLog.id()), tx);
                 }
             } finally {
-                sagaLogPool.release(sagaLog.id());
+                sagaLogPool.releaseOwnership(owned.owner(), sagaLog.id());
             }
         }, recoveryThreadPool);
     }
@@ -329,9 +390,10 @@ public class SagaExecutionCoordinator {
             try {
                 tasks.add(CompletableFuture.supplyAsync(() -> {
                     boolean nonClusterLocalSagaLog = nonLocalClusterSagaLogs.contains(logId);
+                    SagaLogOwner owner = ownerOfThisThread();
                     SagaLog sagaLog;
                     try {
-                        sagaLog = sagaLogPool.tryTakeOwnership(new SagaLogOwner("Thread::" + Thread.currentThread().getName()), logId);
+                        sagaLog = sagaLogPool.tryTakeOwnership(owner, logId);
                         if (sagaLog == null) {
                             return CompletableFuture.completedFuture(null);
                             // unable to take ownership
@@ -343,7 +405,7 @@ public class SagaExecutionCoordinator {
                         return CompletableFuture.completedFuture(null);
                     }
                     try {
-                        return doCompleteSagaLog(sagaLog, true, nonClusterLocalSagaLog, c -> {
+                        return doCompleteSagaLog(new OwnedSagaLog(sagaLog, owner), true, nonClusterLocalSagaLog, c -> {
                         }, c -> {
                         });
                     } catch (Throwable t) {
@@ -351,7 +413,7 @@ public class SagaExecutionCoordinator {
                         if (nonClusterLocalSagaLog) {
                             sagaLogPool.remove(logId);
                         }
-                        sagaLogPool.release(logId);
+                        sagaLogPool.releaseOwnership(owner, logId);
                         return CompletableFuture.failedFuture(t);
                     }
                 }, executorService));
@@ -367,7 +429,9 @@ public class SagaExecutionCoordinator {
         return CompletableFuture.allOf(innerTasks.toArray(new CompletableFuture[innerTasks.size()]));
     }
 
-    CompletableFuture<Void> doCompleteSagaLog(SagaLog sagaLog, boolean releaseSagaLogWhenDone, boolean removeFromPoolWhenDone, Consumer<SagaExecutionTraversalContext> preAction, Consumer<SagaExecutionTraversalContext> postAction) {
+    CompletableFuture<Void> doCompleteSagaLog(OwnedSagaLog owned, boolean releaseSagaLogWhenDone, boolean removeFromPoolWhenDone, Consumer<SagaExecutionTraversalContext> preAction, Consumer<SagaExecutionTraversalContext> postAction) {
+        SagaLog sagaLog = owned.sagaLog();
+        SagaLogOwner owner = owned.owner();
         SagaLogId logId = sagaLog.id();
         Map<String, List<SagaLogEntry>> entriesByExecutionId = sagaLog.readIncompleteSagas().collect(groupingBy(SagaLogEntry::getExecutionId));
         if (entriesByExecutionId.isEmpty()) {
@@ -376,7 +440,7 @@ public class SagaExecutionCoordinator {
                 deleteExternalResourceAssociatedWithSagaLog(logId); // not in use
             }
             if (releaseSagaLogWhenDone) {
-                sagaLogPool.release(logId);
+                sagaLogPool.releaseOwnership(owner, logId);
             }
             return CompletableFuture.completedFuture(null);
         }
@@ -392,7 +456,7 @@ public class SagaExecutionCoordinator {
                     sagaLogPool.remove(logId);
                 }
                 if (releaseSagaLogWhenDone) {
-                    sagaLogPool.release(logId);
+                    sagaLogPool.releaseOwnership(owner, logId);
                 }
                 return CompletableFuture.failedFuture(t);
             }
@@ -430,7 +494,7 @@ public class SagaExecutionCoordinator {
                             failure.addSuppressed(e); // the first failure is the one to report
                         } finally {
                             if (releaseSagaLogWhenDone) {
-                                sagaLogPool.release(logId);
+                                sagaLogPool.releaseOwnership(owner, logId);
                             }
                         }
                     }
@@ -466,6 +530,7 @@ public class SagaExecutionCoordinator {
         SagaHandoffControl handoffControl = sagaExecution.executeSaga(executionId, sagaInput, true, r -> future.complete(r),
                 preAction, postAction
         );
+        track(handoffControl);
         sagasObserver.registerSaga(handoffControl);
         LOG.info("Started recovery of saga with sagaLog: {} and executionId: {}", sagaLog.id(), executionId);
         return future.thenCompose(r -> {
