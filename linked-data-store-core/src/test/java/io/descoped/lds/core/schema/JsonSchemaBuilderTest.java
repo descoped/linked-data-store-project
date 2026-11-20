@@ -1,7 +1,11 @@
 package io.descoped.lds.core.schema;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import io.descoped.lds.api.persistence.json.JsonTools;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import tools.jackson.databind.JsonNode;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -105,6 +109,31 @@ class JsonSchemaBuilderTest {
 
         assertThat(schema.validate("T", json("{\"n\":1.5}"))).isEmpty();
         assertThat(schema.validate("T", json("{\"n\":\"1.5\"}"))).containsExactly("$.n: string found, number expected");
+    }
+
+    /**
+     * LDS writes {@code displayName} into the schema it makes from a GraphQL schema. The validator warns about
+     * a keyword it does not know, at every start; this one it is told about.
+     */
+    @Test
+    void displayNameIsAKeywordOfLdsAndAnotherUnknownKeywordIsWarnedAbout() {
+        Logger logger = (Logger) LoggerFactory.getLogger("com.networknt.schema.keyword.UnknownKeywordFactory");
+        ListAppender<ILoggingEvent> warnings = new ListAppender<>();
+        warnings.start();
+        logger.addAppender(warnings);
+        try {
+            JsonSchema schema = read("T", "{\"$ref\":\"#/$defs/T\",\"$defs\":{\"T\":{\"type\":\"object\",\"displayName\":\"A thing\","
+                    + "\"properties\":{\"n\":{\"type\":\"number\",\"displayName\":\"\"}}}}}");
+
+            assertThat(schema.validate("T", json("{\"n\":\"1\"}"))).containsExactly("$.n: string found, number expected");
+            assertThat(warnings.list).isEmpty();
+
+            read("U", "{\"$ref\":\"#/$defs/U\",\"$defs\":{\"U\":{\"type\":\"object\",\"shownAs\":\"A thing\"}}}");
+
+            assertThat(warnings.list).extracting(ILoggingEvent::getFormattedMessage).singleElement().asString().contains("Unknown keyword shownAs");
+        } finally {
+            logger.detachAppender(warnings);
+        }
     }
 
     @Test

@@ -4,6 +4,9 @@ import com.networknt.schema.Schema;
 import com.networknt.schema.SchemaRegistry;
 import com.networknt.schema.SchemaRegistryConfig;
 import com.networknt.schema.SpecificationVersion;
+import com.networknt.schema.dialect.Dialect;
+import com.networknt.schema.dialect.Dialects;
+import com.networknt.schema.keyword.AnnotationKeyword;
 import com.networknt.schema.path.PathType;
 import tools.jackson.databind.JsonNode;
 
@@ -31,9 +34,17 @@ public class JsonSchemaBuilder {
     public static final String DIALECT = SpecificationVersion.DRAFT_2020_12.getDialectId();
 
     /*
+     * JSON Schema 2020-12, and the one keyword LDS writes of its own: displayName, a name of an entity or a field
+     * to show to people. It says nothing about what is valid. A keyword that is not known is still warned about.
+     */
+    private static final Dialect DIALECT_OF_LDS = Dialect.builder(Dialects.getDraft202012())
+            .keyword(new AnnotationKeyword("displayName"))
+            .build();
+
+    /*
      * A place in a document is written as LDS writes it everywhere else: $.name[1].first
      */
-    private static final SchemaRegistry REGISTRY = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12,
+    private static final SchemaRegistry REGISTRY = SchemaRegistry.withDialect(DIALECT_OF_LDS,
             registry -> registry.schemaRegistryConfig(SchemaRegistryConfig.builder().pathType(PathType.JSON_PATH).build()));
 
     private static final Pattern REF = Pattern.compile("#/\\$defs/(.*)");
