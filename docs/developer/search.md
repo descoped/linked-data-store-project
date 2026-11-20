@@ -214,12 +214,26 @@ indexed when it is a text (`FragmentType.STRING`) and its path contains `languag
 This document, with the key `ns`, `Company`, `brew` and the version `2026-11-20T15:29:31.800Z[Etc/UTC]`:
 
 ```json
-{"name":"Nordic Brewing","founded":"2001-05-01T00:00:00Z","employees":12,
- "about":[{"languageCode":"en","languageText":"A small brewery by the fjord"},
-          {"languageCode":"nb","languageText":"Et lite bryggeri ved fjorden"}],
- "languageTextual":"a text field whose name only starts with languageText",
- "notes":{"languageText":42},
- "languageTextBlock":{"inner":"a text under an object whose name starts with languageText"}}
+{
+  "name": "Nordic Brewing",
+  "founded": "2001-05-01T00:00:00Z",
+  "employees": 12,
+  "about": [
+    {
+      "languageCode": "en",
+      "languageText": "A small brewery by the fjord"
+    },
+    {
+      "languageCode": "nb",
+      "languageText": "Et lite bryggeri ved fjorden"
+    }
+  ],
+  "languageTextual": "a text field whose name only starts with languageText",
+  "notes": {"languageText": 42},
+  "languageTextBlock": {
+    "inner": "a text under an object whose name starts with languageText"
+  }
+}
 ```
 
 was given to the provider while a program that prints every request stood where Solr is. The provider sent

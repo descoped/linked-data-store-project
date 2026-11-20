@@ -126,12 +126,15 @@ under [The path of a write](#the-path-of-a-write). Run that request first: on an
 curl -i 'http://localhost:19308/ns/Person/ola?timestamp=2021-06-01T00:00:00Z'
 ```
 
-```
+```http
 HTTP/1.1 200 OK
 Content-Type: application/json; charset=utf-8
 ...
 
-{"employer":"/Company/acme","name":"Ola"}
+{
+  "employer": "/Company/acme",
+  "name": "Ola"
+}
 ```
 
 A read through GraphQL takes another way to step 5. `GraphqlHttpHandler` moves the request to a worker thread and
@@ -170,15 +173,20 @@ of a read. The steps below follow them.
 
 ```sh
 curl -i -X PUT 'http://localhost:19308/ns/Person/ola?timestamp=2020-01-01T00:00:00Z' \
-     -H 'Content-Type: application/json' -d '{"name":"Ola","employer":"/Company/acme"}'
+     -H 'Content-Type: application/json' -d '
+{
+  "name": "Ola",
+  "employer": "/Company/acme"
+}
+'
 ```
 
-```
+```http
 HTTP/1.1 201 Created
 Content-Type: application/json
 ...
 
-{"saga-execution-id":"01a1f9cf-eb7e-7e14-925d-370c74a909fb"}
+{"saga-execution-id": "01a1f9cf-eb7e-7e14-925d-370c74a909fb"}
 ```
 
 Every write ends in this saga, also a write of a part of a document or of a link: the handler reads the document
@@ -224,15 +232,25 @@ call to the provider. There is no "current" document in a store:
 - A link is the text `/Entity/id` in a field. No write checks that the target exists, so a link may point at a
   document that is written later. A link is followed at the time of the read.
 
-```text
-WRITE   PUT /ns/Person/ola?timestamp=T   -> validated against the model of the running LDS
-                                         -> SagaInput {..., "schema": "TODO", ...} -> transaction log entry
-                                         -> provider: the version DocumentKey(ns, Person, ola, T)
-
-READ    GET /ns/Person/ola?timestamp=T   -> provider: the latest version of ola whose time is not after T
-        POST /graphql?snapshot=T         -> the same for every document the query reaches; links followed at T
-
-MODEL   read once at start: one specification and one GraphQL schema, for every T
+```mermaid
+flowchart LR
+    model[["model, read once at start"]]
+    subgraph write["a write at T"]
+        direction LR
+        w["PUT /ns/Person/ola?timestamp=T"] --> v["validated against the model"] --> s["saga"]
+        s --> tx["transaction log entry<br/>schema: #quot;TODO#quot;"]
+        s --> p["provider: the version<br/>DocumentKey(ns, Person, ola, T)"]
+    end
+    subgraph read["a read at T"]
+        direction LR
+        rest["GET /ns/Person/ola?timestamp=T"] --> q["provider: the latest version<br/>whose time is not after T"]
+        gq["POST /graphql?snapshot=T"] --> q2["the same for every document<br/>the query reaches; links followed at T"]
+    end
+    model --> v
+    model --> g["one GraphQL schema, for every T"] --> gq
+    style model fill:#fef9c3,stroke:#ca8a04,color:#0f172a
+    style write fill:#ffffff,stroke:#64748b,color:#0f172a
+    style read fill:#ffffff,stroke:#64748b,color:#0f172a
 ```
 
 The model is not on the timeline. `SagaInput` has a field `schema`, which goes into the transaction log with every
@@ -246,18 +264,52 @@ now. The second block has the answers of the queries.
 
 ```sh
 curl -X PUT 'http://localhost:19308/ns/Company/acme?timestamp=2020-01-01T00:00:00Z' \
-     -H 'Content-Type: application/json' -d '{"name":"Acme"}'
+     -H 'Content-Type: application/json' -d '{"name": "Acme"}'
 curl -X PUT 'http://localhost:19308/ns/Person/ola?timestamp=2022-01-01T00:00:00Z' \
-     -H 'Content-Type: application/json' -d '{"name":"Ola Nordmann","employer":"/Company/later"}'
-curl 'http://localhost:19308/graphql?snapshot=2021-06-01T00:00:00Z' -H 'Content-Type: application/json' \
-     -d '{"query":"{ PersonById(id: \"ola\") { name employer { name } } }"}'
-curl 'http://localhost:19308/graphql' -H 'Content-Type: application/json' \
-     -d '{"query":"{ PersonById(id: \"ola\") { name employer { name } } }"}'
+     -H 'Content-Type: application/json' -d '
+{
+  "name": "Ola Nordmann",
+  "employer": "/Company/later"
+}
+'
+curl 'http://localhost:19308/graphql?snapshot=2021-06-01T00:00:00Z' -H 'Content-Type: application/graphql' \
+     -d '
+{
+  PersonById(id: "ola") {
+    name
+    employer {
+      name
+    }
+  }
+}
+'
+curl 'http://localhost:19308/graphql' -H 'Content-Type: application/graphql' \
+     -d '
+{
+  PersonById(id: "ola") {
+    name
+    employer {
+      name
+    }
+  }
+}
+'
 ```
 
 ```json
-{"data":{"PersonById":{"name":"Ola","employer":{"name":"Acme"}}}}
-{"data":{"PersonById":{"name":"Ola Nordmann","employer":null}}}
+{
+  "data": {
+    "PersonById": {
+      "name": "Ola",
+      "employer": {"name": "Acme"}
+    }
+  }
+}
+{
+  "data": {
+    "PersonById": {"name": "Ola Nordmann", "employer": null}
+  }
+}
 ```
 
 ### Providers found as services

@@ -103,8 +103,17 @@ union in that order.
 type with `@domain` it starts a schema
 
 ```json
-{"$schema": "https://json-schema.org/draft/2020-12/schema", "$ref": "#/$defs/Person",
- "$defs": {"Person": {"type": "object", "properties": {}, "required": []}}}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/Person",
+  "$defs": {
+    "Person": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  }
+}
 ```
 
 puts `displayName` (the first line of the description of the type) and `description` on the definition when the
@@ -148,20 +157,61 @@ curl -s 'http://localhost:19110/ns/Person?schema'
 ```
 
 ```json
-{"$schema":"https://json-schema.org/draft/2020-12/schema","$ref":"#/$defs/Person","$defs":{
- "Person":{"type":"object","properties":{
-   "address":{"displayName":""},
-   "born":{"type":"string","format":"date-time","displayName":""},
-   "employer":{"displayName":"","type":"string","description":"A company"},
-   "_link_property_employer":{"properties":{"Company":{"type":"null"}},"type":"object"},
-   "friends":{"displayName":"","type":"array","items":{"type":"string"}},
-   "_link_property_friends":{"properties":{"Person":{"type":"null"}},"type":"object"},
-   "name":{"type":"string","displayName":""}},
-  "required":["name"],"displayName":"A person","description":"A person"},
- "Address":{"type":"object","properties":{
-   "city":{"type":"string","displayName":""},
-   "street":{"type":"string","displayName":""}},
-  "required":["city"]}}}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/Person",
+  "$defs": {
+    "Person": {
+      "type": "object",
+      "properties": {
+        "address": {"displayName": ""},
+        "born": {
+          "type": "string",
+          "format": "date-time",
+          "displayName": ""
+        },
+        "employer": {
+          "displayName": "",
+          "type": "string",
+          "description": "A company"
+        },
+        "_link_property_employer": {
+          "properties": {
+            "Company": {
+              "type": "null"
+            }
+          },
+          "type": "object"
+        },
+        "friends": {
+          "displayName": "",
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "_link_property_friends": {
+          "properties": {
+            "Person": {
+              "type": "null"
+            }
+          },
+          "type": "object"
+        },
+        "name": {"type": "string", "displayName": ""}
+      },
+      "required": ["name"],
+      "displayName": "A person",
+      "description": "A person"
+    },
+    "Address": {
+      "type": "object",
+      "properties": {
+        "city": {"type": "string", "displayName": ""},
+        "street": {"type": "string", "displayName": ""}
+      },
+      "required": ["city"]
+    }
+  }
+}
 ```
 
 ### What follows from the walk of a GraphQL schema
@@ -283,17 +333,14 @@ change afterwards.
 
 What each part of a model becomes:
 
-```text
-In the model                         In the JSON Schema that is read     Element of the specification
------------------------------------  ----------------------------------  -----------------------------------
-type Person @domain, or Person.json  a definition named as an entity     MANAGED, a child of ROOT
-type Address  (no @domain)           any other definition                EMBEDDED, a child of ROOT
-name: String!          (a value)     a property                          EMBEDDED
-address: Address       (embedded)    a property                          EMBEDDED
-employer: Company @link              "employer" and                      REF, getRefTypes [Company]
-                                     "_link_property_employer"
-employer: Company      (no @link)    the same as with @link              REF
-```
+| In the model | In the JSON Schema that is read | Element of the specification |
+|---|---|---|
+| `type Person @domain`, or the file `Person.json` | a definition named as an entity | `MANAGED`, a child of `ROOT` |
+| `type Address`, without `@domain` | any other definition | `EMBEDDED`, a child of `ROOT` |
+| `name: String!`, a value | a property | `EMBEDDED` |
+| `address: Address`, an embedded object | a property | `EMBEDDED` |
+| `employer: Company @link` | `employer` and `_link_property_employer` | `REF`, with `getRefTypes` `[Company]` |
+| `employer: Company`, without `@link` | the same as with `@link` | `REF` |
 
 The specification of the example model, printed by walking `getRootElement()`:
 
@@ -362,10 +409,16 @@ Seen on a running LDS with the example model:
 
 ```sh
 curl -s -i -X PUT 'http://localhost:19110/ns/Person/p1?sync=true' -H 'Content-Type: application/json' \
-     -d '{"name":7,"born":"yesterday","friends":"x"}'
+     -d '
+{
+  "name": 7,
+  "born": "yesterday",
+  "friends": "x"
+}
+'
 ```
 
-```
+```http
 HTTP/1.1 400 Bad Request
 Content-Type: text/plain
 
@@ -375,10 +428,15 @@ $.friends: string found, array expected, $.name: integer found, string expected]
 
 ```sh
 curl -s -i -X PUT 'http://localhost:19110/ns/Person/p1?sync=true' -H 'Content-Type: application/json' \
-     -d '{"name":"Per","friends":["/Person/ola","/Company/acme"]}'
+     -d '
+{
+  "name": "Per",
+  "friends": ["/Person/ola", "/Company/acme"]
+}
+'
 ```
 
-```
+```http
 HTTP/1.1 400 Bad Request
 Content-Type: text/plain
 

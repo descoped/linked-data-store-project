@@ -152,25 +152,33 @@ missing node, and the validator answers `[$: unknown found, object expected]`.
 
 ```sh
 curl -i -X PUT 'http://localhost:19108/ns/Person/ola?sync=true&timestamp=2020-01-01T00:00:00Z' \
-     -H 'Content-Type: application/json' -d '{"name":"Ola","employer":"/Company/acme"}'
+     -H 'Content-Type: application/json' -d '
+{
+  "name": "Ola",
+  "employer": "/Company/acme"
+}
+'
 ```
 
-```
+```http
 HTTP/1.1 201 Created
 Content-Type: application/json
 
-{"saga-execution-id":"01a1f996-a2fa-70bc-9813-014051609244"}
+{"saga-execution-id": "01a1f996-a2fa-70bc-9813-014051609244"}
 ```
 
 ```sh
 curl -i 'http://localhost:19108/ns/Person/ola?timestamp=2021-06-01T00:00:00Z'
 ```
 
-```
+```http
 HTTP/1.1 200 OK
 Content-Type: application/json; charset=utf-8
 
-{"employer":"/Company/acme","name":"Ola"}
+{
+  "employer": "/Company/acme",
+  "name": "Ola"
+}
 ```
 
 A DELETE does not look for the document first. A DELETE of a document that does not exist is answered 204 as
@@ -196,7 +204,7 @@ The body `null` is a value: where the schema allows it, the field is set to null
 curl -i 'http://localhost:19108/ns/Person/ola/name'
 ```
 
-```
+```http
 HTTP/1.1 200 OK
 Content-Type: application/json; charset=utf-8
 
@@ -208,11 +216,11 @@ curl -i -X PUT 'http://localhost:19108/ns/Person/ola/born?sync=true&timestamp=20
      -H 'Content-Type: application/json' -d '"1990-05-17T00:00:00Z"'
 ```
 
-```
+```http
 HTTP/1.1 200 OK
 Content-Type: application/json
 
-{"saga-execution-id":"01a1f996-a32c-7800-b3c6-e4fc44007c40"}
+{"saga-execution-id": "01a1f996-a32c-7800-b3c6-e4fc44007c40"}
 ```
 
 A write to a part makes a new version of the whole document at the time of the request. It is built from the
@@ -234,11 +242,11 @@ that the document does not have. An array that becomes empty stays in the docume
 curl -i -X PUT 'http://localhost:19108/ns/Person/ola/friends/Person/kari?sync=true&timestamp=2023-01-01T00:00:00Z'
 ```
 
-```
+```http
 HTTP/1.1 200 OK
 Content-Type: application/json
 
-{"saga-execution-id":"01a1f996-a33a-72cc-8a99-78d0a8d4c231"}
+{"saga-execution-id": "01a1f996-a33a-72cc-8a99-78d0a8d4c231"}
 ```
 
 ```sh
@@ -246,12 +254,29 @@ curl -i 'http://localhost:19108/ns/Person/ola?timeline'
 ```
 
 ```json
-[{"version":"2020-01-01T00:00Z[Etc/UTC]",
-  "document":{"employer":"/Company/acme","name":"Ola"}},
- {"version":"2022-01-01T00:00Z[Etc/UTC]",
-  "document":{"born":"1990-05-17T00:00:00Z","employer":"/Company/acme","name":"Ola"}},
- {"version":"2023-01-01T00:00Z[Etc/UTC]",
-  "document":{"born":"1990-05-17T00:00:00Z","employer":"/Company/acme","name":"Ola","friends":["/Person/kari"]}}]
+[
+  {
+    "version": "2020-01-01T00:00Z[Etc/UTC]",
+    "document": {"employer": "/Company/acme", "name": "Ola"}
+  },
+  {
+    "version": "2022-01-01T00:00Z[Etc/UTC]",
+    "document": {
+      "born": "1990-05-17T00:00:00Z",
+      "employer": "/Company/acme",
+      "name": "Ola"
+    }
+  },
+  {
+    "version": "2023-01-01T00:00Z[Etc/UTC]",
+    "document": {
+      "born": "1990-05-17T00:00:00Z",
+      "employer": "/Company/acme",
+      "name": "Ola",
+      "friends": ["/Person/kari"]
+    }
+  }
+]
 ```
 
 The answer is one line; it is broken here to be read. There is no document `Person/kari` in this LDS. A link may
@@ -325,10 +350,15 @@ past and the future, and a link may point at a document that is written later.
 
 ```sh
 curl -i -X PUT 'http://localhost:19108/ns/Person/per?sync=true' \
-     -H 'Content-Type: application/json' -d '{"name":"Per","employer":"/Person/ola"}'
+     -H 'Content-Type: application/json' -d '
+{
+  "name": "Per",
+  "employer": "/Person/ola"
+}
+'
 ```
 
-```
+```http
 HTTP/1.1 400 Bad Request
 Content-Type: text/plain
 

@@ -119,7 +119,13 @@ provider. The document, of the entity `Person` with the id `ola` in the namespac
 `2020-01-02T03:04:05.006Z`:
 
 ```json
-{"name":"Ola Nordmann","age":42,"alive":true,"friends":["/Person/kari"],"none":null}
+{
+  "name": "Ola Nordmann",
+  "age": 42,
+  "alive": true,
+  "friends": ["/Person/kari"],
+  "none": null
+}
 ```
 
 The deletion marker is at `2021-01-01T00:00:00Z`.

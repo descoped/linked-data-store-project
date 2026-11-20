@@ -126,7 +126,7 @@ LDS_HTTP_PORT=19113 java -cp "lib/*" io.descoped.lds.server.Server
 curl -i http://127.0.0.1:19113/ping
 ```
 
-```
+```http
 HTTP/1.1 200 OK
 Connection: keep-alive
 Content-Length: 0

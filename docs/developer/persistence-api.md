@@ -192,9 +192,23 @@ given.
 This document, flattened with a fragment capacity of 8 bytes:
 
 ```json
-{"name":"Ola Nordmann","born":1998,"weight":3.82,"human":true,"nothing":null,"address":{"city":"Oslo"},
- "tags":["a","b"],"grid":[[1,2],[3]],"empty":{},"none":[],"friends":["/Person/kari"],
- "many":[0,1,2,3,4,5,6,7,8,9,10]}
+{
+  "name": "Ola Nordmann",
+  "born": 1998,
+  "weight": 3.82,
+  "human": true,
+  "nothing": null,
+  "address": {"city": "Oslo"},
+  "tags": ["a", "b"],
+  "grid": [
+    [1, 2],
+    [3]
+  ],
+  "empty": {},
+  "none": [],
+  "friends": ["/Person/kari"],
+  "many": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+}
 ```
 
 ```java
@@ -452,20 +466,34 @@ From outside, with LDS in memory on port 19101, three versions and a delete in b
 
 ```sh
 curl -X PUT 'http://localhost:19101/ns/Company/acme?sync=true&timestamp=2020-01-01T00:00:00Z' \
-     -H 'Content-Type: application/json' -d '{"name":"Acme 2020"}'
+     -H 'Content-Type: application/json' -d '{"name": "Acme 2020"}'
 curl -X PUT 'http://localhost:19101/ns/Company/acme?sync=true&timestamp=2022-01-01T00:00:00Z' \
-     -H 'Content-Type: application/json' -d '{"name":"Acme 2022"}'
+     -H 'Content-Type: application/json' -d '{"name": "Acme 2022"}'
 curl -X PUT 'http://localhost:19101/ns/Company/acme?sync=true&timestamp=2021-01-01T00:00:00Z' \
-     -H 'Content-Type: application/json' -d '{"name":"Acme 2021"}'
+     -H 'Content-Type: application/json' -d '{"name": "Acme 2021"}'
 curl -X DELETE 'http://localhost:19101/ns/Company/acme?sync=true&timestamp=2021-06-01T00:00:00Z'
 curl 'http://localhost:19101/ns/Company/acme?timeline'
 ```
 
 ```json
-[{"version":"2020-01-01T00:00Z[Etc/UTC]","document":{"name":"Acme 2020"}},
- {"version":"2021-01-01T00:00Z[Etc/UTC]","document":{"name":"Acme 2021"}},
- {"version":"2021-06-01T00:00Z[Etc/UTC]","document":{}},
- {"version":"2022-01-01T00:00Z[Etc/UTC]","document":{"name":"Acme 2022"}}]
+[
+  {
+    "version": "2020-01-01T00:00Z[Etc/UTC]",
+    "document": {"name": "Acme 2020"}
+  },
+  {
+    "version": "2021-01-01T00:00Z[Etc/UTC]",
+    "document": {"name": "Acme 2021"}
+  },
+  {
+    "version": "2021-06-01T00:00Z[Etc/UTC]",
+    "document": {}
+  },
+  {
+    "version": "2022-01-01T00:00Z[Etc/UTC]",
+    "document": {"name": "Acme 2022"}
+  }
+]
 ```
 
 A read with `timestamp=2021-03-01T00:00:00Z` answers `{"name":"Acme 2021"}`, a read with

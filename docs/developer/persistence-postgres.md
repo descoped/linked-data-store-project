@@ -128,11 +128,17 @@ with a part (`address`), a link (`employer`) and an array of links (`friends`):
 ```sh
 curl -s -i -X PUT 'http://127.0.0.1:19104/ns/Person/ola?sync=true&timestamp=2020-01-01T00:00:00Z' \
   -H 'Content-Type: application/json' \
-  -d '{"name":"Ola","address":{"street":"Storgata 1","city":"Oslo"},"employer":"/Company/acme",'\
-'"friends":["/Person/kari","/Person/per"]}'
+  -d '
+{
+  "name": "Ola",
+  "address": {"street": "Storgata 1", "city": "Oslo"},
+  "employer": "/Company/acme",
+  "friends": ["/Person/kari", "/Person/per"]
+}
+'
 ```
 
-```
+```http
 HTTP/1.1 201 Created
 ...
 ```
@@ -680,8 +686,21 @@ one company ran the `find` statement with `ORDER BY m.id LIMIT $8`. `PostgresPer
 ```
 
 ```json
-{"data":{"Company":{"edges":[{"node":{"name":"Acme"}},{"node":{"name":"Big"}}],
-"pageInfo":{"hasNextPage":true,"hasPreviousPage":false}}}}
+{
+  "data": {
+    "Company": {
+      "edges": [
+        {
+          "node": {"name": "Acme"}
+        },
+        {
+          "node": {"name": "Big"}
+        }
+      ],
+      "pageInfo": {"hasNextPage": true, "hasPreviousPage": false}
+    }
+  }
+}
 ```
 
 Not finished: the order of ids can differ between PostgreSQL and the bridge. PostgreSQL orders ids by their

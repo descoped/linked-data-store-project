@@ -106,9 +106,17 @@ The document `ola` of the entity `Person` of the example model (`linked-data-sto
 in the namespace `ns`, written with the version `2026-11-20T10:15:30+01:00[Europe/Oslo]`:
 
 ```json
-{"name":"Ola","born":"1990-05-17T00:00:00Z","address":{"street":"Storgata 1","city":"Oslo"},
- "employer":"/Company/acme","friends":["/Person/kari","not a link"],"shoe":43,"vegetarian":false,
- "nickname":null,"motto":"A text of more than forty characters is looked up by its hash."}
+{
+  "name": "Ola",
+  "born": "1990-05-17T00:00:00Z",
+  "address": {"street": "Storgata 1", "city": "Oslo"},
+  "employer": "/Company/acme",
+  "friends": ["/Person/kari", "not a link"],
+  "shoe": 43,
+  "vegetarian": false,
+  "nickname": null,
+  "motto": "A text of more than forty characters is looked up by its hash."
+}
 ```
 
 `Neo4jDocumentWriter.record` makes these parameters of it. `employer` and `friends` are link fields in the

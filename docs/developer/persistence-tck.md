@@ -140,13 +140,23 @@ The memory provider does not give the fields of an object back in the order they
 was written to it:
 
 ```json
-{"zz":"1","city":"C","aa":"2","mm":{"y":1,"x":2}}
+{
+  "zz": "1",
+  "city": "C",
+  "aa": "2",
+  "mm": {"y": 1, "x": 2}
+}
 ```
 
 It was read back as:
 
 ```json
-{"aa":"2","city":"C","zz":"1","mm":{"x":2,"y":1}}
+{
+  "aa": "2",
+  "city": "C",
+  "zz": "1",
+  "mm": {"x": 2, "y": 1}
+}
 ```
 
 ## The contract

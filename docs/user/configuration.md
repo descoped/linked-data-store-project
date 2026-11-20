@@ -72,7 +72,7 @@ curl -s 'http://localhost:19306/data?schema'
 ```
 
 ```json
-["/data/Company?schema","/data/Person?schema"]
+["/data/Company?schema", "/data/Person?schema"]
 ```
 
 ### Environment variables
@@ -104,7 +104,7 @@ curl -s 'http://localhost:19306/test?schema'
 ```
 
 ```json
-["/test/Company?schema","/test/Person?schema"]
+["/test/Company?schema", "/test/Person?schema"]
 ```
 
 A variable that is set and empty sets the key to an empty value. `LDS_GRAPHQL_SCHEMA=` is used that way in
@@ -360,13 +360,13 @@ transaction log, LDS can tell the `sourceId` of the last write (see [the REST AP
 LDS_TXLOG_RAWDATA_PROVIDER=memory LDS_HTTP_PORT=19306 \
   java -cp "target/*:target/lib/*" io.descoped.lds.server.Server
 curl -s -X PUT 'http://localhost:19306/ns/Company/acme?sync=true&source=billing&sourceId=b-17' \
-     -H 'Content-Type: application/json' -d '{"name":"Acme"}'
+     -H 'Content-Type: application/json' -d '{"name": "Acme"}'
 curl -s 'http://localhost:19306/source/default'
 ```
 
-```
-{"saga-execution-id":"01a1f9e0-e0f7-75ca-9fad-619a8920b3ad"}
-{"lastSourceId":"b-17"}
+```json
+{"saga-execution-id": "01a1f9e0-e0f7-75ca-9fad-619a8920b3ad"}
+{"lastSourceId": "b-17"}
 ```
 
 The write names the source `billing` and is found under the source `default`: as it comes, LDS keeps one
@@ -433,7 +433,7 @@ curl -s 'http://localhost:19306/lds/ns?schema'
 ```
 404
 200
-["/ns/Company?schema","/ns/Person?schema"]
+["/ns/Company?schema", "/ns/Person?schema"]
 ```
 
 Not finished: with a prefix other than `/`, the addresses in the answer to `?schema` are without the prefix, as
@@ -450,7 +450,7 @@ curl -s -i -X OPTIONS 'http://localhost:19306/ns/Company/acme' -H 'Origin: https
      -H 'Access-Control-Request-Method: PUT' -H 'Access-Control-Request-Headers: Content-Type'
 ```
 
-```
+```http
 HTTP/1.1 204 No Content
 Access-Control-Allow-Origin: https://app.example
 Vary: Origin
@@ -490,7 +490,7 @@ curl -s 'http://localhost:19306/ns?schema'
 ```
 
 ```json
-["/ns/Company?schema","/ns/Person?schema"]
+["/ns/Company?schema", "/ns/Person?schema"]
 ```
 
 With such a model LDS has no GraphQL API: a request to `/graphql` is answered `400` with

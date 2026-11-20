@@ -41,7 +41,9 @@ LDS=http://localhost:9090
 ```
 
 The examples were run in the order they stand, on 20 November 2026, and a later example uses the documents of an
-earlier one. A long answer is broken over several lines here.
+earlier one. LDS sends a JSON answer on one line; here it is shown formatted, with the fields in the order LDS
+sent them. A GraphQL query is sent as `application/graphql`, the query itself as the body, so that it can be shown
+formatted. A query with variables is sent as JSON.
 
 ## Document, entity, namespace and id
 
@@ -62,24 +64,24 @@ does not make ids.
 
 Together they are the address of a document:
 
-```text
-/{namespace}/{Entity}/{id}
-
-/ns/Company/acme
- |     |     |
- |     |     +---- id: chosen by the one who writes the document
- |     +---------- entity: the kind of document, named as the model names it
- +---------------- namespace: the one the running LDS serves
 ```
+/{namespace}/{Entity}/{id}
+```
+
+| Part | In `/ns/Company/acme` | What it is |
+|---|---|---|
+| namespace | `ns` | The namespace the running LDS serves. |
+| entity | `Company` | The kind of document, named as the model names it. |
+| id | `acme` | Chosen by the one who writes the document. |
 
 Write a document of the entity `Company` with the id `acme`, and read it:
 
 ```sh
-curl -X PUT "$LDS/ns/Company/acme" -H 'Content-Type: application/json' -d '{"name":"Acme"}'
+curl -X PUT "$LDS/ns/Company/acme" -H 'Content-Type: application/json' -d '{"name": "Acme"}'
 ```
 
 ```json
-{"saga-execution-id":"01a1f9de-1074-7733-a1ad-9ebe08cc9a57"}
+{"saga-execution-id": "01a1f9de-1074-7733-a1ad-9ebe08cc9a57"}
 ```
 
 ```sh
@@ -87,7 +89,7 @@ curl "$LDS/ns/Company/acme"
 ```
 
 ```json
-{"name":"Acme"}
+{"name": "Acme"}
 ```
 
 The write is answered `201`. Its answer is not the document. It is the id of the saga that carried the write,
@@ -123,11 +125,11 @@ in the middle:
 
 ```sh
 curl -X PUT "$LDS/ns/Company/fjord?timestamp=2020-01-01T00:00:00Z" -H 'Content-Type: application/json' \
-     -d '{"name":"Fjord Fish"}'
+     -d '{"name": "Fjord Fish"}'
 curl -X PUT "$LDS/ns/Company/fjord?timestamp=2030-01-01T00:00:00Z" -H 'Content-Type: application/json' \
-     -d '{"name":"Fjord Group"}'
+     -d '{"name": "Fjord Group"}'
 curl -X PUT "$LDS/ns/Company/fjord?timestamp=2023-01-01T00:00:00Z" -H 'Content-Type: application/json' \
-     -d '{"name":"Fjord Seafood"}'
+     -d '{"name": "Fjord Seafood"}'
 ```
 
 Each was answered `201` with a `saga-execution-id`. What a read gives depends on the time it asks for:
@@ -141,15 +143,21 @@ Each was answered `201` with a `saga-execution-id`. What a read gives depends on
 
 On the timeline:
 
-```text
-              written 1st             written 3rd             written 2nd
-              2020-01-01              2023-01-01              2030-01-01
-time  -------------+-----------------------+-----------------------+---------------------------->
-no document        | Fjord Fish            | Fjord Seafood         | Fjord Group
-                   |=======================|=======================|==========================>
-                   valid until 2023        valid until 2030        valid from 2030 on
-
-read at   2019-06: 404   2021-06: Fjord Fish   now (2026-11): Fjord Seafood   2031-06: Fjord Group
+```mermaid
+gantt
+    title Company/fjord on the timeline
+    dateFormat YYYY-MM-DD
+    axisFormat %Y
+    todayMarker off
+    section Versions
+    Fjord Fish, written 1st       : 2020-01-01, 2023-01-01
+    Fjord Seafood, written 3rd    : 2023-01-01, 2030-01-01
+    Fjord Group, written 2nd      : 2030-01-01, 2033-01-01
+    section A read at
+    2019-06 gives 404             : milestone, 2019-06-01, 0d
+    2021-06 gives Fjord Fish      : milestone, 2021-06-01, 0d
+    now (2026-11) gives Fjord Seafood      : milestone, 2026-11-20, 0d
+    2031-06 gives Fjord Group     : milestone, 2031-06-01, 0d
 ```
 
 Every version of a document, oldest first, is its timeline:
@@ -159,9 +167,20 @@ curl "$LDS/ns/Company/fjord?timeline"
 ```
 
 ```json
-[{"version":"2020-01-01T00:00Z[Etc/UTC]","document":{"name":"Fjord Fish"}},
- {"version":"2023-01-01T00:00Z[Etc/UTC]","document":{"name":"Fjord Seafood"}},
- {"version":"2030-01-01T00:00Z[Etc/UTC]","document":{"name":"Fjord Group"}}]
+[
+  {
+    "version": "2020-01-01T00:00Z[Etc/UTC]",
+    "document": {"name": "Fjord Fish"}
+  },
+  {
+    "version": "2023-01-01T00:00Z[Etc/UTC]",
+    "document": {"name": "Fjord Seafood"}
+  },
+  {
+    "version": "2030-01-01T00:00Z[Etc/UTC]",
+    "document": {"name": "Fjord Group"}
+  }
+]
 ```
 
 A time is written with an offset or with `Z`, as in `2020-01-01T00:00:00Z`. A time without one is refused with
@@ -200,22 +219,44 @@ The answer is `204` with no body. After it:
 
 On the timeline:
 
-```text
-              2020-01-01         2023-01-01         2025-01-01         2030-01-01
-time  -------------+------------------+------------------+------------------+--------------------->
-                   | Fjord Fish       | Fjord Seafood    | deleted          | Fjord Group
-                   |==================|==================|                  |======================>
-
-read at   2024-06: Fjord Seafood   now (2026-11): 404, and not in the list   2031-06: Fjord Group
+```mermaid
+gantt
+    title Company/fjord with a delete from 2025
+    dateFormat YYYY-MM-DD
+    axisFormat %Y
+    todayMarker off
+    section Versions
+    Fjord Fish                    : 2020-01-01, 2023-01-01
+    Fjord Seafood                 : 2023-01-01, 2025-01-01
+    deleted                       : crit, 2025-01-01, 2030-01-01
+    Fjord Group                   : 2030-01-01, 2033-01-01
+    section A read at
+    2024-06 gives Fjord Seafood   : milestone, 2024-06-01, 0d
+    now (2026-11) gives 404       : milestone, 2026-11-20, 0d
+    2031-06 gives Fjord Group     : milestone, 2031-06-01, 0d
 ```
 
 In the timeline the delete is a version with an empty document:
 
 ```json
-[{"version":"2020-01-01T00:00Z[Etc/UTC]","document":{"name":"Fjord Fish"}},
- {"version":"2023-01-01T00:00Z[Etc/UTC]","document":{"name":"Fjord Seafood"}},
- {"version":"2025-01-01T00:00Z[Etc/UTC]","document":{}},
- {"version":"2030-01-01T00:00Z[Etc/UTC]","document":{"name":"Fjord Group"}}]
+[
+  {
+    "version": "2020-01-01T00:00Z[Etc/UTC]",
+    "document": {"name": "Fjord Fish"}
+  },
+  {
+    "version": "2023-01-01T00:00Z[Etc/UTC]",
+    "document": {"name": "Fjord Seafood"}
+  },
+  {
+    "version": "2025-01-01T00:00Z[Etc/UTC]",
+    "document": {}
+  },
+  {
+    "version": "2030-01-01T00:00Z[Etc/UTC]",
+    "document": {"name": "Fjord Group"}
+  }
+]
 ```
 
 A delete at the time of a version replaces that version, as a write does, and a write at the time of a delete
@@ -248,71 +289,144 @@ Write a person whose `employer` is a company that does not exist:
 
 ```sh
 curl -X PUT "$LDS/ns/Person/ola?timestamp=2020-01-01T00:00:00Z" -H 'Content-Type: application/json' \
-     -d '{"name":"Ola","employer":"/Company/nordlys"}'
+     -d '
+{
+  "name": "Ola",
+  "employer": "/Company/nordlys"
+}
+'
 ```
 
 The write is answered `201`. The REST API gives the link as the text it is. The GraphQL API follows it, and here
 it leads nowhere:
 
 ```sh
-curl "$LDS/graphql" -H 'Content-Type: application/json' \
-     -d '{"query":"{ PersonById(id: \"ola\") { name employer { name } } }"}'
+curl "$LDS/graphql" -H 'Content-Type: application/graphql' \
+     -d '
+{
+  PersonById(id: "ola") {
+    name
+    employer {
+      name
+    }
+  }
+}
+'
 ```
 
 ```json
-{"data":{"PersonById":{"name":"Ola","employer":null}}}
+{
+  "data": {
+    "PersonById": {"name": "Ola", "employer": null}
+  }
+}
 ```
 
 Now write the company, valid from 2021, and send the same query again:
 
 ```sh
 curl -X PUT "$LDS/ns/Company/nordlys?timestamp=2021-01-01T00:00:00Z" -H 'Content-Type: application/json' \
-     -d '{"name":"Nordlys"}'
+     -d '{"name": "Nordlys"}'
 ```
 
 The write is answered `201`, and the query now gives:
 
 ```json
-{"data":{"PersonById":{"name":"Ola","employer":{"name":"Nordlys"}}}}
+{
+  "data": {
+    "PersonById": {
+      "name": "Ola",
+      "employer": {"name": "Nordlys"}
+    }
+  }
+}
 ```
 
 The same query as of the middle of 2020, when Ola had the link and the company was not there yet:
 
 ```sh
-curl "$LDS/graphql?snapshot=2020-06-01T00:00:00Z" -H 'Content-Type: application/json' \
-     -d '{"query":"{ PersonById(id: \"ola\") { name employer { name } } }"}'
+curl "$LDS/graphql?snapshot=2020-06-01T00:00:00Z" -H 'Content-Type: application/graphql' \
+     -d '
+{
+  PersonById(id: "ola") {
+    name
+    employer {
+      name
+    }
+  }
+}
+'
 ```
 
 ```json
-{"data":{"PersonById":{"name":"Ola","employer":null}}}
+{
+  "data": {
+    "PersonById": {"name": "Ola", "employer": null}
+  }
+}
 ```
 
 A link can be read from the other end too. The example model gives the other end of `employer` the name
 `employees`, so a company can be asked who links to it:
 
 ```sh
-curl "$LDS/graphql" -H 'Content-Type: application/json' \
-     -d '{"query":"{ CompanyById(id: \"nordlys\") { name employees { edges { node { name } } } } }"}'
+curl "$LDS/graphql" -H 'Content-Type: application/graphql' \
+     -d '
+{
+  CompanyById(id: "nordlys") {
+    name
+    employees {
+      edges {
+        node {
+          name
+        }
+      }
+    }
+  }
+}
+'
 ```
 
 ```json
-{"data":{"CompanyById":{"name":"Nordlys","employees":{"edges":[{"node":{"name":"Ola"}}]}}}}
+{
+  "data": {
+    "CompanyById": {
+      "name": "Nordlys",
+      "employees": {
+        "edges": [
+          {
+            "node": {"name": "Ola"}
+          }
+        ]
+      }
+    }
+  }
+}
 ```
 
 On the timeline:
 
-```text
-                     2020-01-01                      2021-01-01                     now (2026-11)
-time  --------------------+-------------------------------+-------------------------------+------->
-Person/ola                | name: Ola, employer: "/Company/nordlys" ..................................
-Company/nordlys                                           | name: Nordlys ...........................
-                                         ^                                                ^
-                                a query at 2020-06-01                                a query now
-
-at 2020-06-01   ola --employer--> nordlys has no version yet     "employer": null
-now             ola --employer--> nordlys as it is now           "employer": {"name":"Nordlys"}
-                nordlys --employees--> ola                       the reverse link: who links to nordlys
+```mermaid
+gantt
+    title A link is followed at the time of the read
+    dateFormat YYYY-MM-DD
+    axisFormat %Y
+    todayMarker off
+    section Person/ola
+    employer /Company/nordlys     : 2020-01-01, 2027-06-01
+    section Company/nordlys
+    Nordlys                       : 2021-01-01, 2027-06-01
+    section A query at
+    2020-06 gives employer null   : milestone, 2020-06-01, 0d
+    now (2026-11) gives Nordlys   : milestone, 2026-11-20, 0d
 ```
+
+| A query at | `ola` → `employer` leads to | Answer |
+|---|---|---|
+| 2020-06-01 | `nordlys`, which has no version yet | `"employer": null` |
+| now | `nordlys` as it is now | `"employer": {"name": "Nordlys"}` |
+
+Asked from the other end, `nordlys` has `ola` among its `employees`: that is the reverse link.
 
 A delete does not look at links either. A document that other documents link to can be deleted. The links stay
 in those documents as they are, and lead nowhere from the time of the delete.
@@ -330,32 +444,51 @@ above.
 
 In its own messages LDS calls them a managed resource, an embedded resource and a reference resource.
 
-```text
-/ns/Person/kari ................................. the whole document: read, written and deleted as one
- {"name": "Kari",
-  "address": {"street": "Storgata 1",  <......... /ns/Person/kari/address                 a part, by its path
-              "city": "Oslo"},
-  "employer": "/Company/acme"}         <......... /ns/Person/kari/employer/Company/acme   a link: there or not
+```mermaid
+flowchart LR
+    subgraph kari["/ns/Person/kari — the whole document: read, written and deleted as one"]
+        direction TB
+        name["name: Kari"]:::value
+        address["address: {street: Storgata 1, city: Oslo}"]:::value
+        employer["employer: /Company/acme"]:::link
+        name ~~~ address ~~~ employer
+    end
+    part["<b>/ns/Person/kari/address</b><br/>a part of the document, by its path"]:::addr
+    link["<b>/ns/Person/kari/employer/Company/acme</b><br/>a link: there or not"]:::addr
+    part --> address
+    link --> employer
+    classDef value fill:#f1f5f9,stroke:#64748b,color:#0f172a
+    classDef link fill:#dbeafe,stroke:#2563eb,color:#0f172a
+    classDef addr fill:#ffffff,stroke:#334155,color:#0f172a
+    style kari fill:#f0fdf4,stroke:#16a34a,color:#0f172a
+```
 
 A write of a part or of a link is a write of the whole document:
 
-PUT /ns/Person/kari/employer/Company/acme
-  -> read kari as it is at the time of the write
-  -> put "/Company/acme" in employer
-  -> write the whole of kari as a new version, valid from that time
+```mermaid
+flowchart LR
+    put["PUT /ns/Person/kari/employer/Company/acme"] --> read["read kari as it is<br/>at the time of the write"] --> change["put /Company/acme<br/>in employer"] --> write["write the whole of kari<br/>as a new version from that time"]
 ```
 
 Write the person `kari` and read a part of that document:
 
 ```sh
 curl -X PUT "$LDS/ns/Person/kari" -H 'Content-Type: application/json' \
-     -d '{"name":"Kari","address":{"street":"Storgata 1","city":"Oslo"}}'
+     -d '
+{
+  "name": "Kari",
+  "address": {"street": "Storgata 1", "city": "Oslo"}
+}
+'
 curl "$LDS/ns/Person/kari/address"
 ```
 
 ```json
-{"saga-execution-id":"01a1f9de-1286-7220-912c-c551bc2ca161"}
-{"city":"Oslo","street":"Storgata 1"}
+{"saga-execution-id": "01a1f9de-1286-7220-912c-c551bc2ca161"}
+{
+  "city": "Oslo",
+  "street": "Storgata 1"
+}
 ```
 
 Then add a link to the document and read the whole document. (`sync=true` makes the answer to the write of the
@@ -367,8 +500,12 @@ curl "$LDS/ns/Person/kari"
 ```
 
 ```json
-{"saga-execution-id":"01a1f9de-12a0-72ac-8c2a-d60619db82d6"}
-{"employer":"/Company/acme","name":"Kari","address":{"city":"Oslo","street":"Storgata 1"}}
+{"saga-execution-id": "01a1f9de-12a0-72ac-8c2a-d60619db82d6"}
+{
+  "employer": "/Company/acme",
+  "name": "Kari",
+  "address": {"city": "Oslo", "street": "Storgata 1"}
+}
 ```
 
 A write to a part or to a link is a write of the whole document. LDS reads the document as it is at the time of
@@ -414,20 +551,26 @@ type Person @domain {
 
 This is the heart of a model. A field of a document holds one of three things:
 
-```text
-/ns/Person/ola       a document of the entity Person: an id, an address and versions of its own
-+-------------------------------------------+
-| "name": "Ola"                             |   VALUE      a text, a number, true or false, a date-time,
-| "born": "1990-05-17T00:00:00Z"            |              the name of an enum, or a list of them
-|                                           |
-| "address": {                              |   EMBEDDED   an object of an embedded type, or a list of them.
-|     "street": "Storgata 1",               |              It is part of this document: no id, no versions of
-|     "city": "Oslo"                        |              its own, reached by its path. It holds values,
-| }                                         |              embedded objects and links in its turn.
-|                                           |
-| "employer": "/Company/acme" --------------+-- LINK --> /ns/Company/acme   a document of its own:
-| "friends": ["/Person/kari"] --------------+-- LINK --> /ns/Person/kari    an id and versions of its own
-+-------------------------------------------+
+```mermaid
+flowchart LR
+    subgraph ola["Person/ola — a document: an id, an address and versions of its own"]
+        direction TB
+        values["<b>values</b><br/>name: Ola<br/>born: 1990-05-17T00:00:00Z"]:::value
+        subgraph address["address — an embedded object, part of ola"]
+            addr["street: Storgata 1<br/>city: Oslo"]:::value
+        end
+        links["<b>links</b><br/>employer: /Company/acme<br/>friends: [/Person/kari]"]:::link
+        values ~~~ address ~~~ links
+    end
+    acme["<b>Company/acme</b><br/>a document of its own"]:::doc
+    kari["<b>Person/kari</b><br/>a document of its own"]:::doc
+    links -- employer --> acme
+    links -- friends --> kari
+    classDef value fill:#f1f5f9,stroke:#64748b,color:#0f172a
+    classDef link fill:#dbeafe,stroke:#2563eb,color:#0f172a
+    classDef doc fill:#dcfce7,stroke:#16a34a,color:#0f172a
+    style ola fill:#ffffff,stroke:#334155,color:#0f172a
+    style address fill:#fef9c3,stroke:#ca8a04,color:#0f172a
 ```
 
 - **A value**: a text, a number, `true` or `false`, a date-time, the name of an enum, or a list of them.
@@ -458,9 +601,14 @@ Before a document is written, LDS checks it against the model. A document that d
 `400` and a text that says what is wrong, and nothing is written:
 
 ```sh
-curl -X PUT "$LDS/ns/Person/per" -H 'Content-Type: application/json' -d '{"name":7}'
+curl -X PUT "$LDS/ns/Person/per" -H 'Content-Type: application/json' -d '{"name": 7}'
 curl -X PUT "$LDS/ns/Person/per" -H 'Content-Type: application/json' \
-     -d '{"name":"Per","employer":"/Person/ola"}'
+     -d '
+{
+  "name": "Per",
+  "employer": "/Person/ola"
+}
+'
 ```
 
 ```
@@ -486,55 +634,166 @@ A **snapshot** is what LDS keeps, as it was at one time: every document in the v
 and every link followed at that time. A read asks for a snapshot by its time: `timestamp` in the REST API,
 `snapshot` in the GraphQL API, and now when no time is given. T1, T2 and Tn are three snapshots of one history:
 
-```text
-THE HISTORY: five writes, each valid from its time
-                    2020-01-01            2021-01-01          2023-01-01           2025-01-01
-time  -------------------+---------------------+-------------------+--------------------+--------------------->
-Person/ola               | Bergen, employer /Company/nordlys       | Oslo, employer /Company/acme .............
-Company/acme             | Acme ...............................................................................
-Company/nordlys                                | Nordlys .............................  | deleted .............
-                                    ^                    ^                                                  ^
-                          T1 = 2020-06-01         T2 = 2022-06-01                                  Tn = now
+```mermaid
+gantt
+    title Five writes, each valid from its time
+    dateFormat YYYY-MM-DD
+    axisFormat %Y
+    todayMarker off
+    section Person/ola
+    Bergen, employer nordlys      : 2020-01-01, 2023-01-01
+    Oslo, employer acme           : 2023-01-01, 2027-06-01
+    section Company/acme
+    Acme                          : 2020-01-01, 2027-06-01
+    section Company/nordlys
+    Nordlys                       : 2021-01-01, 2025-01-01
+    deleted                       : crit, 2025-01-01, 2027-06-01
+    section Snapshots
+    T1                            : milestone, 2020-06-01, 0d
+    T2                            : milestone, 2022-06-01, 0d
+    Tn = now (2026-11)            : milestone, 2026-11-20, 0d
+```
 
-THE SNAPSHOTS: every document as it was at T, and every link followed at T
+The snapshots of that history: every document as it was at T, and every link followed at T.
 
-T1                                  T2                                    Tn
-ola      city: Bergen               ola      city: Bergen                 ola      city: Oslo
-         employer -> nothing yet             employer -> nordlys                   employer -> acme
-acme     Acme                       acme     Acme                         acme     Acme
-         employees: none                     employees: none                       employees: ola
-                                    nordlys  Nordlys                      nordlys  deleted: 404
-                                             employees: ola
-
-THE MODEL: one, read when LDS starts, the same for T1, T2 and Tn
+```mermaid
+flowchart TB
+    model[["<b>The model</b> — one, read when LDS starts"]]
+    subgraph T1["T1 = 2020-06-01"]
+        direction TB
+        ola1["<b>ola</b><br/>city: Bergen"]:::doc
+        none1["no nordlys yet"]:::gone
+        acme1["<b>acme</b><br/>employees: none"]:::doc
+        ola1 -. employer .-> none1
+    end
+    subgraph T2["T2 = 2022-06-01"]
+        direction TB
+        ola2["<b>ola</b><br/>city: Bergen"]:::doc
+        nordlys2["<b>nordlys</b><br/>employees: ola"]:::doc
+        acme2["<b>acme</b><br/>employees: none"]:::doc
+        ola2 -- employer --> nordlys2
+    end
+    subgraph Tn["Tn = now"]
+        direction TB
+        ola3["<b>ola</b><br/>city: Oslo"]:::doc
+        acme3["<b>acme</b><br/>employees: ola"]:::doc
+        nordlys3["nordlys: deleted, 404"]:::gone
+        ola3 -- employer --> acme3
+    end
+    model -. checks and serves .-> T1
+    model -. checks and serves .-> T2
+    model -. checks and serves .-> Tn
+    classDef doc fill:#dcfce7,stroke:#16a34a,color:#0f172a
+    classDef gone fill:#f8fafc,stroke:#94a3b8,color:#475569,stroke-dasharray: 4 3
+    style model fill:#fef9c3,stroke:#ca8a04,color:#0f172a
+    style T1 fill:#ffffff,stroke:#64748b,color:#0f172a
+    style T2 fill:#ffffff,stroke:#64748b,color:#0f172a
+    style Tn fill:#ffffff,stroke:#64748b,color:#0f172a
 ```
 
 These are the five writes, and the GraphQL query that was sent at T1, T2 and Tn:
 
 ```sh
 curl -X PUT "$LDS/ns/Company/acme?sync=true&timestamp=2020-01-01T00:00:00Z" -H 'Content-Type: application/json' \
-     -d '{"name":"Acme"}'
+     -d '{"name": "Acme"}'
 curl -X PUT "$LDS/ns/Person/ola?sync=true&timestamp=2020-01-01T00:00:00Z" -H 'Content-Type: application/json' \
-     -d '{"name":"Ola","address":{"city":"Bergen"},"employer":"/Company/nordlys"}'
+     -d '
+{
+  "name": "Ola",
+  "address": {"city": "Bergen"},
+  "employer": "/Company/nordlys"
+}
+'
 curl -X PUT "$LDS/ns/Company/nordlys?sync=true&timestamp=2021-01-01T00:00:00Z" -H 'Content-Type: application/json' \
-     -d '{"name":"Nordlys"}'
+     -d '{"name": "Nordlys"}'
 curl -X PUT "$LDS/ns/Person/ola?sync=true&timestamp=2023-01-01T00:00:00Z" -H 'Content-Type: application/json' \
-     -d '{"name":"Ola","address":{"city":"Oslo"},"employer":"/Company/acme"}'
+     -d '
+{
+  "name": "Ola",
+  "address": {"city": "Oslo"},
+  "employer": "/Company/acme"
+}
+'
 curl -X DELETE "$LDS/ns/Company/nordlys?sync=true&timestamp=2025-01-01T00:00:00Z"
-curl "$LDS/graphql?snapshot=2020-06-01T00:00:00Z" -H 'Content-Type: application/json' \
-     -d '{"query":"{ PersonById(id: \"ola\") { name address { city } employer { name } } CompanyById(id: \"acme\") { name employees { edges { node { name } } } } }"}'
+curl "$LDS/graphql?snapshot=2020-06-01T00:00:00Z" -H 'Content-Type: application/graphql' \
+     -d '
+{
+  PersonById(id: "ola") {
+    name
+    address {
+      city
+    }
+    employer {
+      name
+    }
+  }
+  CompanyById(id: "acme") {
+    name
+    employees {
+      edges {
+        node {
+          name
+        }
+      }
+    }
+  }
+}
+'
 ```
 
 The writes were answered `201`, and the delete `204`. The answers to the query, at T1, at T2
 (`snapshot=2022-06-01T00:00:00Z`) and now (no `snapshot`):
 
 ```json
-{"data":{"PersonById":{"name":"Ola","address":{"city":"Bergen"},"employer":null},
-         "CompanyById":{"name":"Acme","employees":{"edges":[]}}}}
-{"data":{"PersonById":{"name":"Ola","address":{"city":"Bergen"},"employer":{"name":"Nordlys"}},
-         "CompanyById":{"name":"Acme","employees":{"edges":[]}}}}
-{"data":{"PersonById":{"name":"Ola","address":{"city":"Oslo"},"employer":{"name":"Acme"}},
-         "CompanyById":{"name":"Acme","employees":{"edges":[{"node":{"name":"Ola"}}]}}}}
+{
+  "data": {
+    "PersonById": {
+      "name": "Ola",
+      "address": {"city": "Bergen"},
+      "employer": null
+    },
+    "CompanyById": {
+      "name": "Acme",
+      "employees": {
+        "edges": []
+      }
+    }
+  }
+}
+{
+  "data": {
+    "PersonById": {
+      "name": "Ola",
+      "address": {"city": "Bergen"},
+      "employer": {"name": "Nordlys"}
+    },
+    "CompanyById": {
+      "name": "Acme",
+      "employees": {
+        "edges": []
+      }
+    }
+  }
+}
+{
+  "data": {
+    "PersonById": {
+      "name": "Ola",
+      "address": {"city": "Oslo"},
+      "employer": {"name": "Acme"}
+    },
+    "CompanyById": {
+      "name": "Acme",
+      "employees": {
+        "edges": [
+          {
+            "node": {"name": "Ola"}
+          }
+        ]
+      }
+    }
+  }
+}
 ```
 
 A snapshot is whole: a link is not followed to the document as it is now, but as it was at the time of the
@@ -547,7 +806,7 @@ A person written for 2019 without the `name` that the model asks for is refused 
 
 ```sh
 curl -X PUT "$LDS/ns/Person/per?sync=true&timestamp=2019-01-01T00:00:00Z" -H 'Content-Type: application/json' \
-     -d '{"born":"1970-01-01T00:00:00Z"}'
+     -d '{"born": "1970-01-01T00:00:00Z"}'
 ```
 
 ```
@@ -605,21 +864,17 @@ and of a link. The steps are:
 
 Step 1 is done first. Steps 2 and 3 both come after it, and neither waits for the other.
 
-```text
-PUT /ns/Person/ola  {...}
-  |
-  v
-checked against the model ---- does not fit ----> 400, nothing is written
-  | fits
-  v
-saga, recorded in the saga log -----------------> the answer {"saga-execution-id":"..."}, sent when the saga
-  |                                               is recorded, or when its steps have ended (see sync below)
-  v
-1. transaction log
-  |
-  +---------------------------+     side by side: neither waits for the other
-  v                           v
-2. persistence provider     3. search index, when search is on
+```mermaid
+flowchart TB
+    put["PUT /ns/Person/ola"] --> check{"checked against<br/>the model"}
+    check -- "does not fit" --> refused["400, nothing is written"]
+    check -- fits --> saga["saga, recorded in the saga log"]
+    saga -. "the answer: when the saga is recorded,<br/>or when its steps have ended (sync)" .-> answer["{#quot;saga-execution-id#quot;: #quot;...#quot;}"]
+    saga --> txlog["1 — transaction log"]
+    txlog --> store["2 — persistence provider"]
+    txlog --> search["3 — search index, when search is on"]
+    classDef bad fill:#fee2e2,stroke:#dc2626,color:#0f172a
+    class refused bad
 ```
 
 LDS records the start of a saga, with the whole request, and the start and the end of each step in a **saga log**.
@@ -678,16 +933,21 @@ The same write sent twice with a `timestamp`, and the timeline after it:
 
 ```sh
 curl -X PUT "$LDS/ns/Company/hav?timestamp=2024-03-01T00:00:00Z" -H 'Content-Type: application/json' \
-     -d '{"name":"Hav"}'
+     -d '{"name": "Hav"}'
 curl -X PUT "$LDS/ns/Company/hav?timestamp=2024-03-01T00:00:00Z" -H 'Content-Type: application/json' \
-     -d '{"name":"Hav"}'
+     -d '{"name": "Hav"}'
 curl "$LDS/ns/Company/hav?timeline"
 ```
 
 ```json
-{"saga-execution-id":"01a1f9de-132e-7ff3-881c-4244047f7318"}
-{"saga-execution-id":"01a1f9de-133b-7fe7-a137-63ec95e5e356"}
-[{"version":"2024-03-01T00:00Z[Etc/UTC]","document":{"name":"Hav"}}]
+{"saga-execution-id": "01a1f9de-132e-7ff3-881c-4244047f7318"}
+{"saga-execution-id": "01a1f9de-133b-7fe7-a137-63ec95e5e356"}
+[
+  {
+    "version": "2024-03-01T00:00Z[Etc/UTC]",
+    "document": {"name": "Hav"}
+  }
+]
 ```
 
 One thing follows from time. A write without a `timestamp` gets the time at which LDS receives it, so each time it
@@ -696,16 +956,24 @@ has one version more. A delete without a `timestamp` adds a deleted version each
 write sent twice without a `timestamp`:
 
 ```sh
-curl -X PUT "$LDS/ns/Company/vind" -H 'Content-Type: application/json' -d '{"name":"Vind"}'
-curl -X PUT "$LDS/ns/Company/vind" -H 'Content-Type: application/json' -d '{"name":"Vind"}'
+curl -X PUT "$LDS/ns/Company/vind" -H 'Content-Type: application/json' -d '{"name": "Vind"}'
+curl -X PUT "$LDS/ns/Company/vind" -H 'Content-Type: application/json' -d '{"name": "Vind"}'
 curl "$LDS/ns/Company/vind?timeline"
 ```
 
 ```json
-{"saga-execution-id":"01a1f9de-1353-7e41-830b-28eb4c54befc"}
-{"saga-execution-id":"01a1f9de-1360-7964-9445-947a2c18689a"}
-[{"version":"2026-11-20T16:50:43.155Z[Etc/UTC]","document":{"name":"Vind"}},
- {"version":"2026-11-20T16:50:43.168Z[Etc/UTC]","document":{"name":"Vind"}}]
+{"saga-execution-id": "01a1f9de-1353-7e41-830b-28eb4c54befc"}
+{"saga-execution-id": "01a1f9de-1360-7964-9445-947a2c18689a"}
+[
+  {
+    "version": "2026-11-20T16:50:43.155Z[Etc/UTC]",
+    "document": {"name": "Vind"}
+  },
+  {
+    "version": "2026-11-20T16:50:43.168Z[Etc/UTC]",
+    "document": {"name": "Vind"}
+  }
+]
 ```
 
 A caller that wants a write to be exactly the same when it is sent again gives it a `timestamp`.

@@ -191,10 +191,10 @@ answers `500` with an empty body. This was run with `saga.commands.enabled=true`
 
 ```sh
 curl -s -i -X PUT 'http://localhost:19109/ns/Person/f1?sync=true&saga=failBefore%20persistence' \
-     -H 'Content-Type: application/json' -d '{"name":"F1"}'
+     -H 'Content-Type: application/json' -d '{"name": "F1"}'
 ```
 
-```
+```http
 HTTP/1.1 500 Internal Server Error
 Connection: keep-alive
 Content-Length: 0
@@ -211,14 +211,14 @@ recovery. So after a `500` the write can still be done later:
 ```sh
 curl -s -o /dev/null -w '%{http_code}\n' 'http://localhost:19109/ns/Person/f1'
 curl -s -X PUT 'http://localhost:19109/ns/Person/n1?sync=true' \
-     -H 'Content-Type: application/json' -d '{"name":"N1"}'
+     -H 'Content-Type: application/json' -d '{"name": "N1"}'
 curl -s 'http://localhost:19109/ns/Person/f1'
 ```
 
 ```
 404
-{"saga-execution-id":"01a1f994-9f04-767a-9376-64287ae7c4ee"}
-{"name":"F1"}
+{"saga-execution-id": "01a1f994-9f04-767a-9376-64287ae7c4ee"}
+{"name": "F1"}
 ```
 
 The second write got the only saga log, found the entries of the first, and recovery completed the first saga
@@ -458,18 +458,18 @@ the log (`TxlogRawdataPool.getLastMessage`). Run with the `memory` provider and 
 
 ```sh
 curl -s -X PUT 'http://localhost:19109/ns/Person/s1?source=A&sourceId=a1' \
-     -H 'Content-Type: application/json' -d '{"name":"S1"}'
+     -H 'Content-Type: application/json' -d '{"name": "S1"}'
 curl -s -X PUT 'http://localhost:19109/ns/Person/s1/address?sync=true&source=A&sourceId=a2' \
-     -H 'Content-Type: application/json' -d '{"city":"Oslo"}'
+     -H 'Content-Type: application/json' -d '{"city": "Oslo"}'
 curl -s 'http://localhost:19109/source/A'
 curl -s 'http://localhost:19109/source/nobody'
 ```
 
-```
-{"saga-execution-id":"01a1f994-d061-712b-982a-c4ddaecaa42a"}
-{"saga-execution-id":"01a1f994-d07c-729b-95d6-8a409ff022a0"}
-{"lastSourceId":"a2"}
-{"lastSourceId":null}
+```json
+{"saga-execution-id": "01a1f994-d061-712b-982a-c4ddaecaa42a"}
+{"saga-execution-id": "01a1f994-d07c-729b-95d6-8a409ff022a0"}
+{"lastSourceId": "a2"}
+{"lastSourceId": null}
 ```
 
 Run in the same way: a write with `source=A` and no `sourceId` after these made `GET /source/A` answer

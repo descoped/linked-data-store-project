@@ -85,7 +85,7 @@ Server started in 457ms..
 curl -i 'http://localhost:9090/ping'
 ```
 
-```
+```http
 HTTP/1.1 200 OK
 ```
 
@@ -95,8 +95,8 @@ Give LDS another port with the environment variable `LDS_HTTP_PORT`: write `LDS_
 below. [Configuration](configuration.md) has every setting.
 
 The answers in this guide come from LDS started on the JDK, in memory. Each answer is shown as its status line
-and its body; the headers are left out. LDS sends a body on one line; a long body is broken into several lines
-here.
+and its body; the headers are left out. LDS sends a body on one line; here it is shown
+formatted, with the fields in the order LDS sent them.
 
 ## The example model
 
@@ -134,27 +134,39 @@ type Company @domain {
 
 The whole model, drawn:
 
-```text
-+------------------------------+         employer: a link          +------------------------------+
-| Person                entity | --------------------------------> | Company               entity |
-|------------------------------| <................................ |------------------------------|
-| name     : String!           |   employees: the reverse link,    | name    : String!            |
-| born     : DateTime          |   in the GraphQL API only         | founded : DateTime           |
-| address  : Address           |---+                               | about   : [Text]             |---+
-| employer : Company @link     |   |                               +------------------------------+   |
-| friends  : [Person] @link    |-+ |                                                                  |
-+------------------------------+ | |                                                                  v
-     ^                           | |                                                 +----------------------------+
-     +---------------------------+ |   friends: links to other persons               | Text              embedded |
-                                   v                                                 | languageCode : String      |
-                    +----------------------------+                                   | languageText : String!     |
-                    | Address           embedded |                                   +----------------------------+
-                    | street : String            |
-                    | city   : String!           |
-                    +----------------------------+
-
----->  a link: the document holds the text "/Entity/id"       ---+--> an embedded type: part of the document
+```mermaid
+classDiagram
+    direction LR
+    class Person {
+        <<entity>>
+        name : String!
+        born : DateTime
+    }
+    class Company {
+        <<entity>>
+        name : String!
+        founded : DateTime
+    }
+    class Address {
+        <<embedded>>
+        street : String
+        city : String!
+    }
+    class Text {
+        <<embedded>>
+        languageCode : String
+        languageText : String!
+    }
+    Person *-- Address : address
+    Company *-- "0..*" Text : about
+    Person --> Company : employer
+    Person --> "0..*" Person : friends
+    Company ..> "0..*" Person : employees (reverse link)
 ```
+
+A filled diamond is an embedded type: its values are part of the document they are in. An arrow is a link: the
+document holds the text `/Entity/id`, and what it points at is a document of its own. A dotted arrow back is the
+reverse link, which only the GraphQL API has.
 
 Ask LDS which entities it has:
 
@@ -162,10 +174,10 @@ Ask LDS which entities it has:
 curl -i 'http://localhost:9090/ns?schema'
 ```
 
-```
+```http
 HTTP/1.1 200 OK
 
-["/ns/Company?schema","/ns/Person?schema"]
+["/ns/Company?schema", "/ns/Person?schema"]
 ```
 
 Each of the two addresses gives the JSON Schema that LDS checks a document of that entity against.
@@ -187,13 +199,18 @@ says that it is JSON:
 
 ```sh
 curl -i -X PUT 'http://localhost:9090/ns/Company/acme?sync=true' -H 'Content-Type: application/json' \
-     -d '{"name":"Acme","founded":"1990-05-17T00:00:00Z"}'
+     -d '
+{
+  "name": "Acme",
+  "founded": "1990-05-17T00:00:00Z"
+}
+'
 ```
 
-```
+```http
 HTTP/1.1 201 Created
 
-{"saga-execution-id":"01a1f9d3-cc1f-70f5-aade-e0b3674393c3"}
+{"saga-execution-id": "01a1f9d3-cc1f-70f5-aade-e0b3674393c3"}
 ```
 
 LDS carries out every write as a *saga*, and the answer gives the id of that saga. The id is new for every
@@ -204,13 +221,18 @@ Now a person with the id `ola`:
 
 ```sh
 curl -i -X PUT 'http://localhost:9090/ns/Person/ola?sync=true' -H 'Content-Type: application/json' \
-     -d '{"name":"Ola","address":{"street":"Storgata 1","city":"Oslo"}}'
+     -d '
+{
+  "name": "Ola",
+  "address": {"street": "Storgata 1", "city": "Oslo"}
+}
+'
 ```
 
-```
+```http
 HTTP/1.1 201 Created
 
-{"saga-execution-id":"01a1f9d3-cc42-7abc-916b-4f732f1d54f1"}
+{"saga-execution-id": "01a1f9d3-cc42-7abc-916b-4f732f1d54f1"}
 ```
 
 LDS checks a document against the model before it writes it. A document that fails the check is refused with a
@@ -218,10 +240,10 @@ text that says what is wrong, and nothing is written. Here the name is a number:
 
 ```sh
 curl -i -X PUT 'http://localhost:9090/ns/Person/kari?sync=true' -H 'Content-Type: application/json' \
-     -d '{"name":7}'
+     -d '{"name": 7}'
 ```
 
-```
+```http
 HTTP/1.1 400 Bad Request
 
 Schema validation error: [$.name: integer found, string expected]
@@ -245,10 +267,13 @@ type.
 curl -i 'http://localhost:9090/ns/Person/ola'
 ```
 
-```
+```http
 HTTP/1.1 200 OK
 
-{"name":"Ola","address":{"city":"Oslo","street":"Storgata 1"}}
+{
+  "name": "Ola",
+  "address": {"city": "Oslo", "street": "Storgata 1"}
+}
 ```
 
 The fields can come in another order than you sent them.
@@ -259,10 +284,15 @@ The address of the entity gives all its documents. The answer has the documents 
 curl -i 'http://localhost:9090/ns/Person'
 ```
 
-```
+```http
 HTTP/1.1 200 OK
 
-[{"name":"Ola","address":{"city":"Oslo","street":"Storgata 1"}}]
+[
+  {
+    "name": "Ola",
+    "address": {"city": "Oslo", "street": "Storgata 1"}
+  }
+]
 ```
 
 ## Write a second version and read the document as it was
@@ -277,13 +307,18 @@ lived in Bergen from 2020. Write that as a version that is valid from 1 January 
 ```sh
 curl -i -X PUT 'http://localhost:9090/ns/Person/ola?sync=true&timestamp=2020-01-01T00:00:00Z' \
      -H 'Content-Type: application/json' \
-     -d '{"name":"Ola","address":{"street":"Bryggen 3","city":"Bergen"}}'
+     -d '
+{
+  "name": "Ola",
+  "address": {"street": "Bryggen 3", "city": "Bergen"}
+}
+'
 ```
 
-```
+```http
 HTTP/1.1 201 Created
 
-{"saga-execution-id":"01a1f9d3-cc98-79ba-894c-af5628927cec"}
+{"saga-execution-id": "01a1f9d3-cc98-79ba-894c-af5628927cec"}
 ```
 
 A read without `timestamp` gives the document as it is now. That is still the version you wrote first: it is
@@ -293,10 +328,13 @@ the newest version that is valid now.
 curl -i 'http://localhost:9090/ns/Person/ola'
 ```
 
-```
+```http
 HTTP/1.1 200 OK
 
-{"name":"Ola","address":{"city":"Oslo","street":"Storgata 1"}}
+{
+  "name": "Ola",
+  "address": {"city": "Oslo", "street": "Storgata 1"}
+}
 ```
 
 A read with `timestamp` gives the document as it was at that time. On 1 June 2021 Ola lived in Bergen:
@@ -305,10 +343,13 @@ A read with `timestamp` gives the document as it was at that time. On 1 June 202
 curl -i 'http://localhost:9090/ns/Person/ola?timestamp=2021-06-01T00:00:00Z'
 ```
 
-```
+```http
 HTTP/1.1 200 OK
 
-{"name":"Ola","address":{"city":"Bergen","street":"Bryggen 3"}}
+{
+  "name": "Ola",
+  "address": {"city": "Bergen", "street": "Bryggen 3"}
+}
 ```
 
 Before 2020 the document has no version, so LDS answers that it is not there:
@@ -317,7 +358,7 @@ Before 2020 the document has no version, so LDS answers that it is not there:
 curl -i 'http://localhost:9090/ns/Person/ola?timestamp=2019-06-01T00:00:00Z'
 ```
 
-```
+```http
 HTTP/1.1 404 Not Found
 ```
 
@@ -330,13 +371,25 @@ is the time of your own write:
 curl -i 'http://localhost:9090/ns/Person/ola?timeline'
 ```
 
-```
+```http
 HTTP/1.1 200 OK
 
-[{"version":"2020-01-01T00:00Z[Etc/UTC]",
-  "document":{"name":"Ola","address":{"city":"Bergen","street":"Bryggen 3"}}},
- {"version":"2026-11-20T16:39:29.602Z[Etc/UTC]",
-  "document":{"name":"Ola","address":{"city":"Oslo","street":"Storgata 1"}}}]
+[
+  {
+    "version": "2020-01-01T00:00Z[Etc/UTC]",
+    "document": {
+      "name": "Ola",
+      "address": {"city": "Bergen", "street": "Bryggen 3"}
+    }
+  },
+  {
+    "version": "2026-11-20T16:39:29.602Z[Etc/UTC]",
+    "document": {
+      "name": "Ola",
+      "address": {"city": "Oslo", "street": "Storgata 1"}
+    }
+  }
+]
 ```
 
 A `timestamp` is a date and a time with `Z` (UTC) or an offset at the end. The `+` of an offset is written `%2B`
@@ -362,10 +415,10 @@ document it points at. A `PUT` to that address adds the link. It needs no body:
 curl -i -X PUT 'http://localhost:9090/ns/Person/ola/employer/Company/acme?sync=true'
 ```
 
-```
+```http
 HTTP/1.1 200 OK
 
-{"saga-execution-id":"01a1f9d3-ccf5-7449-b686-9b6a044a52ae"}
+{"saga-execution-id": "01a1f9d3-ccf5-7449-b686-9b6a044a52ae"}
 ```
 
 This is a write like the others: it makes a new version of the person, valid from now, with the link in it. Send
@@ -376,23 +429,33 @@ document that gets the link must be there: for a person that LDS does not have, 
 curl -i 'http://localhost:9090/ns/Person/ola'
 ```
 
-```
+```http
 HTTP/1.1 200 OK
 
-{"employer":"/Company/acme","name":"Ola","address":{"city":"Oslo","street":"Storgata 1"}}
+{
+  "employer": "/Company/acme",
+  "name": "Ola",
+  "address": {"city": "Oslo", "street": "Storgata 1"}
+}
 ```
 
 A link can also be written as a field of the document. Kari works for the same company and has Ola as a friend:
 
 ```sh
 curl -i -X PUT 'http://localhost:9090/ns/Person/kari?sync=true' -H 'Content-Type: application/json' \
-     -d '{"name":"Kari","employer":"/Company/acme","friends":["/Person/ola"]}'
+     -d '
+{
+  "name": "Kari",
+  "employer": "/Company/acme",
+  "friends": ["/Person/ola"]
+}
+'
 ```
 
-```
+```http
 HTTP/1.1 201 Created
 
-{"saga-execution-id":"01a1f9d3-cd18-7e1c-aabb-1aa6badf5a2c"}
+{"saga-execution-id": "01a1f9d3-cd18-7e1c-aabb-1aa6badf5a2c"}
 ```
 
 To follow a link with REST, read the document at the address the link gives, with the namespace in front:
@@ -401,10 +464,13 @@ To follow a link with REST, read the document at the address the link gives, wit
 curl -i 'http://localhost:9090/ns/Company/acme'
 ```
 
-```
+```http
 HTTP/1.1 200 OK
 
-{"founded":"1990-05-17T00:00:00Z","name":"Acme"}
+{
+  "founded": "1990-05-17T00:00:00Z",
+  "name": "Acme"
+}
 ```
 
 LDS does not check that the document a link points at exists. A link can point at a document that is written
@@ -412,13 +478,18 @@ later. Per works for a company that LDS does not have:
 
 ```sh
 curl -i -X PUT 'http://localhost:9090/ns/Person/per?sync=true' -H 'Content-Type: application/json' \
-     -d '{"name":"Per","employer":"/Company/not-yet"}'
+     -d '
+{
+  "name": "Per",
+  "employer": "/Company/not-yet"
+}
+'
 ```
 
-```
+```http
 HTTP/1.1 201 Created
 
-{"saga-execution-id":"01a1f9d3-cd3b-7722-9537-23bd467f0772"}
+{"saga-execution-id": "01a1f9d3-cd3b-7722-9537-23bd467f0772"}
 ```
 
 ## Ask with GraphQL
@@ -432,29 +503,78 @@ without it LDS answers `415 Unsupported Media Type`.
 A query follows links by itself. One request gives the person and the company the person links to:
 
 ```sh
-curl -i 'http://localhost:9090/graphql' -H 'Content-Type: application/json' \
-     -d '{"query":"{ PersonById(id: \"ola\") { name address { city } employer { name founded } } }"}'
+curl -i 'http://localhost:9090/graphql' -H 'Content-Type: application/graphql' \
+     -d '
+{
+  PersonById(id: "ola") {
+    name
+    address {
+      city
+    }
+    employer {
+      name
+      founded
+    }
+  }
+}
+'
 ```
 
-```
+```http
 HTTP/1.1 200 OK
 
-{"data":{"PersonById":{"name":"Ola","address":{"city":"Oslo"},
- "employer":{"name":"Acme","founded":"1990-05-17T00:00:00Z"}}}}
+{
+  "data": {
+    "PersonById": {
+      "name": "Ola",
+      "address": {"city": "Oslo"},
+      "employer": {"name": "Acme", "founded": "1990-05-17T00:00:00Z"}
+    }
+  }
+}
 ```
 
 A link can be followed from the other end too. The model gives the link `employer` the reverse name `employees`,
 so a company has a field `employees` with the persons that link to it:
 
 ```sh
-curl -i 'http://localhost:9090/graphql' -H 'Content-Type: application/json' \
-     -d '{"query":"{ CompanyById(id: \"acme\") { name employees { edges { node { name } } } } }"}'
+curl -i 'http://localhost:9090/graphql' -H 'Content-Type: application/graphql' \
+     -d '
+{
+  CompanyById(id: "acme") {
+    name
+    employees {
+      edges {
+        node {
+          name
+        }
+      }
+    }
+  }
+}
+'
 ```
 
-```
+```http
 HTTP/1.1 200 OK
 
-{"data":{"CompanyById":{"name":"Acme","employees":{"edges":[{"node":{"name":"Kari"}},{"node":{"name":"Ola"}}]}}}}
+{
+  "data": {
+    "CompanyById": {
+      "name": "Acme",
+      "employees": {
+        "edges": [
+          {
+            "node": {"name": "Kari"}
+          },
+          {
+            "node": {"name": "Ola"}
+          }
+        ]
+      }
+    }
+  }
+}
 ```
 
 A list comes as `edges`, and the `node` of each edge is a document. Per is not in the list: his link points at
@@ -463,25 +583,44 @@ another company.
 A link that points at a document that does not exist gives `null`:
 
 ```sh
-curl -i 'http://localhost:9090/graphql' -H 'Content-Type: application/json' \
-     -d '{"query":"{ PersonById(id: \"per\") { name employer { name } } }"}'
+curl -i 'http://localhost:9090/graphql' -H 'Content-Type: application/graphql' \
+     -d '
+{
+  PersonById(id: "per") {
+    name
+    employer {
+      name
+    }
+  }
+}
+'
 ```
 
-```
+```http
 HTTP/1.1 200 OK
 
-{"data":{"PersonById":{"name":"Per","employer":null}}}
+{
+  "data": {
+    "PersonById": {"name": "Per", "employer": null}
+  }
+}
 ```
 
 An id that LDS has no document for is answered in another way than with REST. The answer is `200 OK`, with an
 error and no data:
 
 ```sh
-curl -i 'http://localhost:9090/graphql' -H 'Content-Type: application/json' \
-     -d '{"query":"{ PersonById(id: \"nobody\") { name } }"}'
+curl -i 'http://localhost:9090/graphql' -H 'Content-Type: application/graphql' \
+     -d '
+{
+  PersonById(id: "nobody") {
+    name
+  }
+}
+'
 ```
 
-```
+```http
 HTTP/1.1 200 OK
 
 {"errors":[{"message":"The field at path '/PersonById' was declared as a non null type, but ...",...}],
@@ -492,14 +631,30 @@ GraphQL reads at a time too. The time is the query parameter `snapshot` in the a
 with the links it follows, is answered as of that time:
 
 ```sh
-curl -i 'http://localhost:9090/graphql?snapshot=2021-06-01T00:00:00Z' -H 'Content-Type: application/json' \
-     -d '{"query":"{ PersonById(id: \"ola\") { name address { city } } }"}'
+curl -i 'http://localhost:9090/graphql?snapshot=2021-06-01T00:00:00Z' -H 'Content-Type: application/graphql' \
+     -d '
+{
+  PersonById(id: "ola") {
+    name
+    address {
+      city
+    }
+  }
+}
+'
 ```
 
-```
+```http
 HTTP/1.1 200 OK
 
-{"data":{"PersonById":{"name":"Ola","address":{"city":"Bergen"}}}}
+{
+  "data": {
+    "PersonById": {
+      "name": "Ola",
+      "address": {"city": "Bergen"}
+    }
+  }
+}
 ```
 
 Not finished: a `snapshot` that LDS cannot read as a time, a date alone for example, is not refused. The query
@@ -509,11 +664,20 @@ Not finished: a query that asks for a single link, such as `employer`, of a docu
 field gets an error for the field. The version of Ola from 2020 has no `employer`:
 
 ```sh
-curl -i 'http://localhost:9090/graphql?snapshot=2021-06-01T00:00:00Z' -H 'Content-Type: application/json' \
-     -d '{"query":"{ PersonById(id: \"ola\") { name employer { name } } }"}'
+curl -i 'http://localhost:9090/graphql?snapshot=2021-06-01T00:00:00Z' -H 'Content-Type: application/graphql' \
+     -d '
+{
+  PersonById(id: "ola") {
+    name
+    employer {
+      name
+    }
+  }
+}
+'
 ```
 
-```
+```http
 HTTP/1.1 200 OK
 
 {"errors":[{"message":"Exception while fetching data (/PersonById/employer) : ...",...}],

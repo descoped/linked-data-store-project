@@ -246,9 +246,15 @@ one document for each part of the code). `docs/README.md` is the index. Keep the
   the fault is corrected, the paragraph goes.
 - **Plain words, present tense, no history**: not how the code got this way, no earlier hosts or models.
 - **One word for one thing**: document, entity, namespace, id, version, link, model, provider, saga.
-- **Figures are text**, in a `text` block, and show what the code does, as everything else does. What a model can
-  say (a value, an embedded object, a link) and the timeline of versions and snapshots are drawn where they are
+- **Figures are Mermaid** (` ```mermaid `, which GitHub draws in light and dark), and show what the code does,
+  as everything else does: a model as a class diagram (a filled diamond for an embedded type, an arrow for a
+  link), a timeline as a Gantt chart without the marker of today, a path as a flowchart. What is a table is a
+  Markdown table. What a model can say and the timeline of versions and snapshots are drawn where they are
   explained; a change to them changes the figure.
+- **Examples are formatted.** A JSON body and a JSON answer are pretty-printed (two spaces; an object with one
+  field, or two plain ones, and a list of plain values may stay on one line), with the fields in the order LDS
+  sent them. A GraphQL query without variables is sent as `application/graphql` and formatted, one field on a
+  line. A session of several commands and their answers is a `console` block with `$` before each command.
 - Lines of at most 120 characters, except a row of a table. A link to another document is a relative path, and
   a link to a section names the id GitHub gives its heading, so a heading that is renamed has its links renamed.
 

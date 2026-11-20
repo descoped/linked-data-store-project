@@ -96,16 +96,54 @@ put() {
 The documents:
 
 ```sh
-put Company/acme 2020-01-01T00:00:00Z '{"name":"Acme","founded":"1999-05-01T08:00:00Z",
-    "about":[{"languageCode":"en","languageText":"Makes anvils and rockets"}]}'
-put Company/globex 2020-01-01T00:00:00Z '{"name":"Globex","founded":"2001-09-09T09:09:09.120+02:00"}'
-put Person/kari 2020-01-01T00:00:00Z '{"name":"Kari","employer":"/Company/acme"}'
+put Company/acme 2020-01-01T00:00:00Z '
+{
+  "name": "Acme",
+  "founded": "1999-05-01T08:00:00Z",
+  "about": [
+    {
+      "languageCode": "en",
+      "languageText": "Makes anvils and rockets"
+    }
+  ]
+}
+'
+put Company/globex 2020-01-01T00:00:00Z '
+{
+  "name": "Globex",
+  "founded": "2001-09-09T09:09:09.120+02:00"
+}
+'
+put Person/kari 2020-01-01T00:00:00Z '
+{
+  "name": "Kari",
+  "employer": "/Company/acme"
+}
+'
 put Person/per 2020-01-01T00:00:00Z \
-    '{"name":"Per","employer":"/Company/acme","address":{"street":"Storgata 1","city":"Oslo"}}'
-put Person/anne 2020-01-01T00:00:00Z '{"name":"Anne"}'
-put Person/ola 2020-01-01T00:00:00Z '{"name":"Ola","employer":"/Company/acme","friends":["/Person/kari"]}'
-put Person/ola 2022-01-01T00:00:00Z '{"name":"Ola Nordmann","born":"1980-02-03T04:05:06.123456Z",
-    "employer":"/Company/globex","friends":["/Person/kari","/Person/per","/Person/anne"]}'
+    '
+{
+  "name": "Per",
+  "employer": "/Company/acme",
+  "address": {"street": "Storgata 1", "city": "Oslo"}
+}
+'
+put Person/anne 2020-01-01T00:00:00Z '{"name": "Anne"}'
+put Person/ola 2020-01-01T00:00:00Z '
+{
+  "name": "Ola",
+  "employer": "/Company/acme",
+  "friends": ["/Person/kari"]
+}
+'
+put Person/ola 2022-01-01T00:00:00Z '
+{
+  "name": "Ola Nordmann",
+  "born": "1980-02-03T04:05:06.123456Z",
+  "employer": "/Company/globex",
+  "friends": ["/Person/kari", "/Person/per", "/Person/anne"]
+}
+'
 ```
 
 ```
@@ -130,18 +168,29 @@ A query is sent with POST or with GET. The answer is the same for both.
 The body is a JSON object, and the content type is `application/json`.
 
 ```sh
-curl -i 'http://localhost:9090/graphql' -H 'Content-Type: application/json' \
-     -d '{"query":"{ CompanyById(id: \"acme\") { name founded } }"}'
+curl -i 'http://localhost:9090/graphql' -H 'Content-Type: application/graphql' \
+     -d '
+{
+  CompanyById(id: "acme") {
+    name
+    founded
+  }
+}
+'
 ```
 
-```
+```http
 HTTP/1.1 200 OK
 Connection: keep-alive
 Content-Type: application/json
 Content-Length: 73
 Date: Fri, 20 Nov 2026 16:55:50 GMT
 
-{"data":{"CompanyById":{"name":"Acme","founded":"1999-05-01T08:00:00Z"}}}
+{
+  "data": {
+    "CompanyById": {"name": "Acme", "founded": "1999-05-01T08:00:00Z"}
+  }
+}
 ```
 
 | Field of the body | Value | Meaning |
@@ -153,15 +202,21 @@ Date: Fri, 20 Nov 2026 16:55:50 GMT
 A request with variables and an operation name:
 
 ```sh
-curl 'http://localhost:9090/graphql' -H 'Content-Type: application/json' -d '{
+curl 'http://localhost:9090/graphql' -H 'Content-Type: application/json' -d '
+{
   "query": "query One($id: ID!) { PersonById(id: $id) { name } } query All { Person { edges { cursor } } }",
   "variables": {"id": "per"},
   "operationName": "One"
-}'
+}
+'
 ```
 
-```
-{"data":{"PersonById":{"name":"Per"}}}
+```json
+{
+  "data": {
+    "PersonById": {"name": "Per"}
+  }
+}
 ```
 
 Only the body of a POST is read. `query`, `variables` and `operationName` in the address of a POST are ignored.
@@ -178,8 +233,12 @@ curl -G 'http://localhost:9090/graphql' \
      --data-urlencode 'operationName=One'
 ```
 
-```
-{"data":{"PersonById":{"name":"Kari"}}}
+```json
+{
+  "data": {
+    "PersonById": {"name": "Kari"}
+  }
+}
 ```
 
 ### POST with the query as the body
@@ -191,8 +250,12 @@ operation name.
 curl 'http://localhost:9090/graphql' -H 'Content-Type: application/graphql' -d '{ CompanyById(id: "acme") { name } }'
 ```
 
-```
-{"data":{"CompanyById":{"name":"Acme"}}}
+```json
+{
+  "data": {
+    "CompanyById": {"name": "Acme"}
+  }
+}
 ```
 
 ### Content types
@@ -218,7 +281,7 @@ A person with such an id, and a query for it:
 ```sh
 curl -s -o /dev/null -w '%{http_code}\n' -X PUT \
      'http://localhost:9090/ns/Person/%C3%A5se?sync=true&timestamp=2020-01-01T00:00:00Z' \
-     -H 'Content-Type: application/json; charset=utf-8' -d '{"name":"Åse"}'
+     -H 'Content-Type: application/json; charset=utf-8' -d '{"name": "Åse"}'
 ```
 
 ```
@@ -227,11 +290,15 @@ curl -s -o /dev/null -w '%{http_code}\n' -X PUT \
 
 ```sh
 curl 'http://localhost:9090/graphql' -H 'Content-Type: application/json; charset=utf-8' \
-     -d '{"query":"{ PersonById(id: \"åse\") { name } }"}'
+     -d '{"query": "{ PersonById(id: \"åse\") { name } }"}'
 ```
 
-```
-{"data":{"PersonById":{"name":"Åse"}}}
+```json
+{
+  "data": {
+    "PersonById": {"name": "Åse"}
+  }
+}
 ```
 
 The same request with `Content-Type: application/json` does not find the document.
@@ -239,7 +306,7 @@ The same request with `Content-Type: application/json` does not find the documen
 ### The answer
 
 - The answer is JSON, on one line and without spaces, in UTF-8, with `Content-Type: application/json`. In this
-  document long answers are shown with line breaks and spaces so that they can be read.
+  document answers are shown formatted so that they can be read.
 - The status is `200 OK` whenever LDS could read the request, also when the query is wrong or a field fails. What went
   wrong is then in `errors` of the answer. [Errors and status codes](#errors-and-status-codes) has the other status
   codes.
@@ -391,7 +458,11 @@ document, a text. It must be there. A whole number is read as its text: `id: 42`
 ```json
 {
   "data": {
-    "PersonById": {"name": "Ola Nordmann", "born": "1980-02-03T04:05:06.123456Z", "address": null}
+    "PersonById": {
+      "name": "Ola Nordmann",
+      "born": "1980-02-03T04:05:06.123456Z",
+      "address": null
+    }
   }
 }
 ```
@@ -418,10 +489,18 @@ document, a text. It must be there. A whole number is read as its text: `id: 42`
 ```json
 {
   "data": {
-    "PersonById": {"name": "Per", "address": {"street": "Storgata 1", "city": "Oslo"}},
+    "PersonById": {
+      "name": "Per",
+      "address": {"street": "Storgata 1", "city": "Oslo"}
+    },
     "CompanyById": {
       "name": "Acme",
-      "about": [{"languageCode": "en", "languageText": "Makes anvils and rockets"}]
+      "about": [
+        {
+          "languageCode": "en",
+          "languageText": "Makes anvils and rockets"
+        }
+      ]
     }
   }
 }
@@ -482,10 +561,22 @@ The field `X` of `Query` gives the documents of the entity `X` as a connection.
   "data": {
     "Person": {
       "edges": [
-        {"cursor": "anne", "node": {"name": "Anne"}},
-        {"cursor": "kari", "node": {"name": "Kari"}},
-        {"cursor": "ola", "node": {"name": "Ola Nordmann"}},
-        {"cursor": "per", "node": {"name": "Per"}}
+        {
+          "cursor": "anne",
+          "node": {"name": "Anne"}
+        },
+        {
+          "cursor": "kari",
+          "node": {"name": "Kari"}
+        },
+        {
+          "cursor": "ola",
+          "node": {"name": "Ola Nordmann"}
+        },
+        {
+          "cursor": "per",
+          "node": {"name": "Per"}
+        }
       ],
       "pageInfo": {"hasNextPage": false, "hasPreviousPage": false}
     }
@@ -542,8 +633,14 @@ To read a list page by page, ask for the first page with `first`:
   "data": {
     "Person": {
       "edges": [
-        {"cursor": "anne", "node": {"name": "Anne"}},
-        {"cursor": "kari", "node": {"name": "Kari"}}
+        {
+          "cursor": "anne",
+          "node": {"name": "Anne"}
+        },
+        {
+          "cursor": "kari",
+          "node": {"name": "Kari"}
+        }
       ],
       "pageInfo": {"hasNextPage": true, "hasPreviousPage": false}
     }
@@ -567,8 +664,14 @@ Then ask for the next page with the cursor of the last edge as `after`, until `h
   "data": {
     "Person": {
       "edges": [
-        {"cursor": "ola", "node": {"name": "Ola Nordmann"}},
-        {"cursor": "per", "node": {"name": "Per"}}
+        {
+          "cursor": "ola",
+          "node": {"name": "Ola Nordmann"}
+        },
+        {
+          "cursor": "per",
+          "node": {"name": "Per"}
+        }
       ],
       "pageInfo": {"hasNextPage": false, "hasPreviousPage": true}
     }
@@ -627,7 +730,10 @@ for, its links too, link after link. [Limits](#limits) tells how deep a query ca
   "data": {
     "PersonById": {
       "name": "Ola Nordmann",
-      "employer": {"name": "Globex", "founded": "2001-09-09T09:09:09.12+02:00"}
+      "employer": {
+        "name": "Globex",
+        "founded": "2001-09-09T09:09:09.12+02:00"
+      }
     }
   }
 }
@@ -650,12 +756,16 @@ error for it. The rest of the answer is there. Anne has no `employer`:
   "errors": [
     {
       "message": "Exception while fetching data (/PersonById/employer) : Cannot invoke \"java.lang. ...",
-      "locations": [{"line": 4, "column": 5}],
+      "locations": [
+        {"line": 4, "column": 5}
+      ],
       "path": ["PersonById", "employer"],
       "extensions": {"classification": "DataFetchingException"}
     }
   ],
-  "data": {"PersonById": {"name": "Anne", "employer": null}}
+  "data": {
+    "PersonById": {"name": "Anne", "employer": null}
+  }
 }
 ```
 
@@ -682,9 +792,18 @@ A field that holds a list of links is a connection, with edges, cursors and the 
     "PersonById": {
       "friends": {
         "edges": [
-          {"cursor": "anne", "node": {"name": "Anne"}},
-          {"cursor": "kari", "node": {"name": "Kari"}},
-          {"cursor": "per", "node": {"name": "Per"}}
+          {
+            "cursor": "anne",
+            "node": {"name": "Anne"}
+          },
+          {
+            "cursor": "kari",
+            "node": {"name": "Kari"}
+          },
+          {
+            "cursor": "per",
+            "node": {"name": "Per"}
+          }
         ]
       }
     }
@@ -733,13 +852,30 @@ whose `employer` is the company, and `Person.reversePersonFriends` gives the per
       "name": "Acme",
       "employees": {
         "edges": [
-          {"cursor": "kari", "node": {"name": "Kari"}},
-          {"cursor": "per", "node": {"name": "Per"}}
+          {
+            "cursor": "kari",
+            "node": {"name": "Kari"}
+          },
+          {
+            "cursor": "per",
+            "node": {"name": "Per"}
+          }
         ],
-        "pageInfo": {"hasNextPage": false, "hasPreviousPage": false}
+        "pageInfo": {
+          "hasNextPage": false,
+          "hasPreviousPage": false
+        }
       }
     },
-    "PersonById": {"reversePersonFriends": {"edges": [{"node": {"name": "Ola Nordmann"}}]}}
+    "PersonById": {
+      "reversePersonFriends": {
+        "edges": [
+          {
+            "node": {"name": "Ola Nordmann"}
+          }
+        ]
+      }
+    }
   }
 }
 ```
@@ -766,7 +902,13 @@ This person links to a company and to a person that were never written:
 
 ```sh
 put Person/nils 2020-01-01T00:00:00Z \
-    '{"name":"Nils","employer":"/Company/initech","friends":["/Person/kari","/Person/nobody"]}'
+    '
+{
+  "name": "Nils",
+  "employer": "/Company/initech",
+  "friends": ["/Person/kari", "/Person/nobody"]
+}
+'
 ```
 
 ```
@@ -786,7 +928,15 @@ put Person/nils 2020-01-01T00:00:00Z \
 ```json
 {
   "data": {
-    "PersonById": {"name": "Nils", "employer": null, "friends": {"edges": [{"cursor": "kari"}]}}
+    "PersonById": {
+      "name": "Nils",
+      "employer": null,
+      "friends": {
+        "edges": [
+          {"cursor": "kari"}
+        ]
+      }
+    }
   }
 }
 ```
@@ -860,15 +1010,28 @@ The documents, written with the function `put` of [The examples of this document
 owner links to a car, `/Car/zz`, that is not written.
 
 ```sh
-put Cat/tom 2020-01-01T00:00:00Z '{"name":"Tom"}'
-put Dog/fido 2020-01-01T00:00:00Z '{"name":"Fido"}'
-put Dog/rex 2020-01-01T00:00:00Z '{"name":"Rex"}'
-put Car/a1 2020-01-01T00:00:00Z '{"plate":"A1"}'
-put Car/b2 2020-01-01T00:00:00Z '{"plate":"B2"}'
-put Owner/eva 2020-01-01T00:00:00Z '{"name":"Eva","key":"k-1","kind":"LARGE","age":41,"height":1.72,
-    "member":true,"since":"2019-03-11","wakes":"06:30:00+01:00","seen":"2019-03-11T10:15:30.120+01:00",
-    "tags":["a","b"],
-    "favourite":"/Cat/tom","pets":["/Dog/fido","/Cat/tom","/Dog/rex"],"cars":["/Car/a1","/Car/zz","/Car/b2"]}'
+put Cat/tom 2020-01-01T00:00:00Z '{"name": "Tom"}'
+put Dog/fido 2020-01-01T00:00:00Z '{"name": "Fido"}'
+put Dog/rex 2020-01-01T00:00:00Z '{"name": "Rex"}'
+put Car/a1 2020-01-01T00:00:00Z '{"plate": "A1"}'
+put Car/b2 2020-01-01T00:00:00Z '{"plate": "B2"}'
+put Owner/eva 2020-01-01T00:00:00Z '
+{
+  "name": "Eva",
+  "key": "k-1",
+  "kind": "LARGE",
+  "age": 41,
+  "height": 1.72,
+  "member": true,
+  "since": "2019-03-11",
+  "wakes": "06:30:00+01:00",
+  "seen": "2019-03-11T10:15:30.120+01:00",
+  "tags": ["a", "b"],
+  "favourite": "/Cat/tom",
+  "pets": ["/Dog/fido", "/Cat/tom", "/Dog/rex"],
+  "cars": ["/Car/a1", "/Car/zz", "/Car/b2"]
+}
+'
 ```
 
 ```
@@ -892,7 +1055,17 @@ document. It takes no arguments.
 ```
 
 ```json
-{"data": {"OwnerById": {"cars": [{"plate": "A1"}, null, {"plate": "B2"}]}}}
+{
+  "data": {
+    "OwnerById": {
+      "cars": [
+        {"plate": "A1"},
+        null,
+        {"plate": "B2"}
+      ]
+    }
+  }
+}
 ```
 
 Not finished: a document that comes from a list without pages cannot be asked for its connections. With
@@ -931,9 +1104,18 @@ document, and for the fields of each entity with `... on`:
       "favourite": {"__typename": "Cat", "name": "Tom"},
       "pets": {
         "edges": [
-          {"cursor": "fido", "node": {"__typename": "Dog", "name": "Fido"}},
-          {"cursor": "rex", "node": {"__typename": "Dog", "name": "Rex"}},
-          {"cursor": "tom", "node": {"__typename": "Cat", "name": "Tom"}}
+          {
+            "cursor": "fido",
+            "node": {"__typename": "Dog", "name": "Fido"}
+          },
+          {
+            "cursor": "rex",
+            "node": {"__typename": "Dog", "name": "Rex"}
+          },
+          {
+            "cursor": "tom",
+            "node": {"__typename": "Cat", "name": "Tom"}
+          }
         ]
       }
     }
@@ -959,8 +1141,16 @@ have `reverseOwnerFavourite` and `reverseOwnerPets`:
   "data": {
     "DogById": {
       "name": "Rex",
-      "reverseOwnerPets": {"edges": [{"node": {"name": "Eva"}}]},
-      "reverseOwnerFavourite": {"edges": []}
+      "reverseOwnerPets": {
+        "edges": [
+          {
+            "node": {"name": "Eva"}
+          }
+        ]
+      },
+      "reverseOwnerFavourite": {
+        "edges": []
+      }
     }
   }
 }
@@ -989,26 +1179,66 @@ that time. Without a time in the request the time is now.
 The time is the query parameter `snapshot` of the address. It works for GET and for POST.
 
 ```sh
-curl 'http://localhost:9090/graphql?snapshot=2021-06-01T00:00:00Z' -H 'Content-Type: application/json' \
-     -d '{"query":"{ PersonById(id: \"ola\") { name employer { name } friends { edges { cursor } } } }"}'
+curl 'http://localhost:9090/graphql?snapshot=2021-06-01T00:00:00Z' -H 'Content-Type: application/graphql' \
+     -d '
+{
+  PersonById(id: "ola") {
+    name
+    employer {
+      name
+    }
+    friends {
+      edges {
+        cursor
+      }
+    }
+  }
+}
+'
 ```
 
-```
-{"data":{"PersonById":{"name":"Ola","employer":{"name":"Acme"},"friends":{"edges":[{"cursor":"kari"}]}}}}
+```json
+{
+  "data": {
+    "PersonById": {
+      "name": "Ola",
+      "employer": {"name": "Acme"},
+      "friends": {
+        "edges": [
+          {"cursor": "kari"}
+        ]
+      }
+    }
+  }
+}
 ```
 
 The time can also be given as the GraphQL variable `__snapshot`, with two underscores. The query does not
 declare the variable. A query that declares it and does not use it is refused.
 
 ```sh
-curl 'http://localhost:9090/graphql' -H 'Content-Type: application/json' -d '{
+curl 'http://localhost:9090/graphql' -H 'Content-Type: application/json' -d '
+{
   "query": "{ CompanyById(id: \"acme\") { employees { edges { cursor } } } }",
   "variables": {"__snapshot": "2021-06-01T00:00:00Z"}
-}'
+}
+'
 ```
 
-```
-{"data":{"CompanyById":{"employees":{"edges":[{"cursor":"kari"},{"cursor":"ola"},{"cursor":"per"}]}}}}
+```json
+{
+  "data": {
+    "CompanyById": {
+      "employees": {
+        "edges": [
+          {"cursor": "kari"},
+          {"cursor": "ola"},
+          {"cursor": "per"}
+        ]
+      }
+    }
+  }
+}
 ```
 
 In 2021 Ola worked at Acme. Now the employees of Acme are `kari` and `per`, as in [Follow links](#follow-links).
@@ -1177,12 +1407,44 @@ document](#the-examples-of-this-document):
 
 ```sh
 put Company/acme 2020-01-01T00:00:00Z \
-    '{"name":"Acme","about":[{"languageCode":"en","languageText":"Makes anvils and rockets"}]}'
-put Company/globex 2020-01-01T00:00:00Z '{"name":"Globex","about":[
-    {"languageCode":"en","languageText":"Sells rockets"},{"languageCode":"nb","languageText":"Selger raketter"}]}'
+    '
+{
+  "name": "Acme",
+  "about": [
+    {
+      "languageCode": "en",
+      "languageText": "Makes anvils and rockets"
+    }
+  ]
+}
+'
+put Company/globex 2020-01-01T00:00:00Z '
+{
+  "name": "Globex",
+  "about": [
+    {"languageCode": "en", "languageText": "Sells rockets"},
+    {"languageCode": "nb", "languageText": "Selger raketter"}
+  ]
+}
+'
 put Company/initech 2020-01-01T00:00:00Z \
-    '{"name":"Initech","about":[{"languageCode":"en","languageText":"Writes software for rockets"}]}'
-put Person/kari 2020-01-01T00:00:00Z '{"name":"Kari","employer":"/Company/acme"}'
+    '
+{
+  "name": "Initech",
+  "about": [
+    {
+      "languageCode": "en",
+      "languageText": "Writes software for rockets"
+    }
+  ]
+}
+'
+put Person/kari 2020-01-01T00:00:00Z '
+{
+  "name": "Kari",
+  "employer": "/Company/acme"
+}
+'
 ```
 
 ```
@@ -1216,9 +1478,18 @@ A node of the result is a document of any entity, so the query says which fields
   "data": {
     "Search": {
       "edges": [
-        {"cursor": "cWM6MA", "node": {"__typename": "Company", "name": "Acme"}},
-        {"cursor": "cWM6MQ", "node": {"__typename": "Company", "name": "Globex"}},
-        {"cursor": "cWM6Mg", "node": {"__typename": "Company", "name": "Initech"}}
+        {
+          "cursor": "cWM6MA",
+          "node": {"__typename": "Company", "name": "Acme"}
+        },
+        {
+          "cursor": "cWM6MQ",
+          "node": {"__typename": "Company", "name": "Globex"}
+        },
+        {
+          "cursor": "cWM6Mg",
+          "node": {"__typename": "Company", "name": "Initech"}
+        }
       ],
       "pageInfo": {"hasNextPage": false, "hasPreviousPage": false}
     }
@@ -1245,8 +1516,14 @@ A search with a filter and a page size:
   "data": {
     "Search": {
       "edges": [
-        {"cursor": "cWM6MA", "node": {"name": "Acme"}},
-        {"cursor": "cWM6MQ", "node": {"name": "Globex"}}
+        {
+          "cursor": "cWM6MA",
+          "node": {"name": "Acme"}
+        },
+        {
+          "cursor": "cWM6MQ",
+          "node": {"name": "Globex"}
+        }
       ],
       "pageInfo": {"hasNextPage": true, "hasPreviousPage": false}
     }
@@ -1299,8 +1576,14 @@ as the first edge of the next page:
   "data": {
     "Search": {
       "edges": [
-        {"cursor": "cWM6MQ", "node": {"name": "Globex"}},
-        {"cursor": "cWM6Mg", "node": {"name": "Initech"}}
+        {
+          "cursor": "cWM6MQ",
+          "node": {"name": "Globex"}
+        },
+        {
+          "cursor": "cWM6Mg",
+          "node": {"name": "Initech"}
+        }
       ],
       "pageInfo": {"hasNextPage": false, "hasPreviousPage": true}
     }
@@ -1365,7 +1648,9 @@ sent (line and column) where there is one, the `path` to the field in the answer
   "errors": [
     {
       "message": "Validation error (FieldUndefined@[PersonById/nmae]) : Field 'nmae' in type 'Person' is undefined",
-      "locations": [{"line": 2, "column": 27}],
+      "locations": [
+        {"line": 2, "column": 27}
+      ],
       "extensions": {"classification": "ValidationError"}
     }
   ]

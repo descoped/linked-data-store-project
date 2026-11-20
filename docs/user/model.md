@@ -18,19 +18,12 @@ The model says what LDS keeps:
 
 [Concepts](concepts.md#what-a-field-holds) explains these ideas. This document shows how they are written:
 
-```text
-A field holds ...     in a GraphQL schema                     in a JSON Schema file of the entity
---------------------  --------------------------------------  ---------------------------------------------------
-a value               title: String!                          "title": { "type": "string" },
-                                                              and "title" in "required"
-an embedded object    cover: Cover                            "cover": { "$ref": "#/$defs/Cover" },
-                      and  type Cover { ... }  (no @domain)   and "Cover" as a further definition in the file
-a link                publisher: Publisher @link              "publisher": { "type": "string" },
-                                                              "_link_property_publisher": { "type": "object",
-                                                                "properties": { "Publisher": { "type": "null" } } }
-
-A document of its own is an entity:  type Book @domain { ... }  in the schema, or the file Book.json.
-```
+| A field holds | In a GraphQL schema | In a JSON Schema file of the entity |
+|---|---|---|
+| a value | `title: String!` | `"title": {"type": "string"}`, and `"title"` in `"required"` |
+| an embedded object | `cover: Cover`, with `type Cover { ... }` without `@domain` | `"cover": {"$ref": "#/$defs/Cover"}`, with `Cover` as a further definition in the same file |
+| a link | `publisher: Publisher @link` | `"publisher": {"type": "string"}` and `"_link_property_publisher": {"type": "object", "properties": {"Publisher": {"type": "null"}}}` |
+| a document of its own | `type Book @domain { ... }` | the file `Book.json`, which defines `Book` |
 
 A model is written in one of two forms. LDS uses one of them, never both.
 
@@ -53,7 +46,7 @@ The examples use a small model of a library, with the entities `Book`, `Author` 
 both forms below: as a GraphQL schema, here the file `/models/library/schema.graphql`, and as JSON Schema files,
 here in the folder `/models/library-json`. Every request was run against LDS started on the JDK, in memory, with
 the model shown. An answer is shown as its status line and its body; the headers are left out. LDS sends a body
-on one line; a long body is broken into several lines here.
+on one line; here it is shown formatted, with the fields in the order LDS sent them.
 
 The addresses have the port 9090 and the namespace `ns`, as LDS comes. `sync=true` in a write makes LDS answer
 when the document is written, and the answer of a write is the id of its saga. [The REST API](rest-api.md)
@@ -135,10 +128,10 @@ The address of the namespace with `?schema` after it lists the entities LDS has 
 curl -i 'http://localhost:9090/ns?schema'
 ```
 
-```
+```http
 HTTP/1.1 200 OK
 
-["/ns/Author?schema","/ns/Book?schema","/ns/Publisher?schema"]
+["/ns/Author?schema", "/ns/Book?schema", "/ns/Publisher?schema"]
 ```
 
 The address of an entity with `?schema` after it gives the JSON Schema of the entity. With a GraphQL schema as
@@ -150,7 +143,7 @@ library model below, shortened:
 curl -i 'http://localhost:9090/ns/Book?schema'
 ```
 
-```
+```http
 HTTP/1.1 200 OK
 
 {"$schema":"https://json-schema.org/draft/2020-12/schema","$ref":"#/$defs/Book","$defs":{"Book":{"type":"object",
@@ -243,52 +236,92 @@ scalar DateTime
 `Book`, `Author` and `Publisher` are entities. `Chapter` and `Cover` are embedded types. `publisher`, `authors`
 and `rights` are links:
 
-```text
-+-------------------------------------+
-| Book                         entity |
-|-------------------------------------|      values
-| title     : String!                 |
-| inPrint   : Boolean                 |
-| published : DateTime                |
-| pages     : Int                     |
-| keywords  : [String]                |
-| state     : State                   |-----> enum State: DRAFT | PUBLISHED
-|                                     |
-|                                     |      embedded types: parts of the book
-| chapters  : [Chapter]               |-----> Chapter: title!, summary
-| cover     : Cover                   |-----> Cover:   colour!
-|                                     |
-|                                     |      links: documents of their own
-| publisher : Publisher @link         |=====> one link ============> Publisher: name!
-|                                     |<..... books: the reverse link, in the GraphQL API
-| authors   : [Author] @link          |=====> a list of links =====> Author:    name!
-| rights    : RightsHolder @link      |=====> one link, to one ====> Author or Publisher (union RightsHolder)
-|                                     |       entity of a union
-+-------------------------------------+
-
------>  kept in the book                =====>  a link: the book holds the text "/Entity/id"
+```mermaid
+classDiagram
+    direction LR
+    class Book {
+        <<entity>>
+        title : String!
+        inPrint : Boolean
+        published : DateTime
+        pages : Int
+        keywords : [String]
+        state : State
+    }
+    class State {
+        <<enumeration>>
+        DRAFT
+        PUBLISHED
+    }
+    class Chapter {
+        <<embedded>>
+        title : String!
+        summary : String
+    }
+    class Cover {
+        <<embedded>>
+        colour : String!
+    }
+    class Publisher {
+        <<entity>>
+        name : String!
+    }
+    class Author {
+        <<entity>>
+        name : String!
+    }
+    class RightsHolder {
+        <<union>>
+    }
+    Book ..> State : state
+    Book *-- "0..*" Chapter : chapters
+    Book *-- Cover : cover
+    Book --> Publisher : publisher
+    Book --> "0..*" Author : authors
+    Book --> RightsHolder : rights
+    RightsHolder <|.. Author
+    RightsHolder <|.. Publisher
+    Publisher ..> "0..*" Book : books (reverse link)
 ```
+
+A filled diamond is an embedded type: its values are part of the document they are in. An arrow is a link: the
+document holds the text `/Entity/id`, and what it points at is a document of its own. A dotted arrow back is the
+reverse link, which only the GraphQL API has.
 
 These three documents fit the model: a publisher, an author and a book.
 
 ```sh
 curl -i -X PUT 'http://localhost:9090/ns/Publisher/north?sync=true' -H 'Content-Type: application/json' \
-     -d '{"name":"North Press"}'
+     -d '{"name": "North Press"}'
 curl -i -X PUT 'http://localhost:9090/ns/Author/ada?sync=true' -H 'Content-Type: application/json' \
-     -d '{"name":"Ada"}'
+     -d '{"name": "Ada"}'
 curl -i -X PUT 'http://localhost:9090/ns/Book/winter?sync=true' -H 'Content-Type: application/json' \
-     -d '{"title":"Winter","inPrint":true,"published":"2026-11-20T10:00:00Z","pages":212,"state":"PUBLISHED",
-          "keywords":["snow","north"],"chapters":[{"title":"One","summary":"It snows."},{"title":"Two"}],
-          "cover":{"colour":"white"},"publisher":"/Publisher/north",
-          "authors":["/Author/ada","/Author/not-written-yet"],"rights":"/Author/ada"}'
+     -d '
+{
+  "title": "Winter",
+  "inPrint": true,
+  "published": "2026-11-20T10:00:00Z",
+  "pages": 212,
+  "state": "PUBLISHED",
+  "keywords": ["snow", "north"],
+  "chapters": [
+    {"title": "One", "summary": "It snows."},
+    {"title": "Two"}
+  ],
+  "cover": {"colour": "white"},
+  "publisher": "/Publisher/north",
+  "authors": ["/Author/ada", "/Author/not-written-yet"],
+  "rights": "/Author/ada"
+}
+'
 ```
 
 Each of the three is answered like this, with an id of its own:
 
-```
+```http
 HTTP/1.1 201 Created
 
-{"saga-execution-id":"01a1f9d7-22e3-7aac-9590-538bf9593e80"}
+{"saga-execution-id": "01a1f9d7-22e3-7aac-9590-538bf9593e80"}
 ```
 
 The book is written although there is no document `/ns/Author/not-written-yet`: LDS does not check that the
@@ -360,13 +393,20 @@ checked. This document was written, and read back as it was:
 
 ```sh
 curl -i -X PUT 'http://localhost:9090/ns/Book/spring?sync=true' -H 'Content-Type: application/json' \
-     -d '{"title":"Spring","pages":"many","cover":"none","weight":300}'
+     -d '
+{
+  "title": "Spring",
+  "pages": "many",
+  "cover": "none",
+  "weight": 300
+}
+'
 ```
 
-```
+```http
 HTTP/1.1 201 Created
 
-{"saga-execution-id":"01a1f9d7-23c2-727e-99c7-ea1607e5299e"}
+{"saga-execution-id": "01a1f9d7-23c2-727e-99c7-ea1607e5299e"}
 ```
 
 ### Links
@@ -398,14 +438,40 @@ documents that link to a document: the reverse link. It is not a field of the do
 With `publisher: Publisher @link(reverseName: "books")` a publisher has the field `books`:
 
 ```sh
-curl -i 'http://localhost:9090/graphql' -H 'Content-Type: application/json' \
-     -d '{"query":"{ PublisherById(id: \"north\") { name books { edges { node { title } } } } }"}'
+curl -i 'http://localhost:9090/graphql' -H 'Content-Type: application/graphql' \
+     -d '
+{
+  PublisherById(id: "north") {
+    name
+    books {
+      edges {
+        node {
+          title
+        }
+      }
+    }
+  }
+}
+'
 ```
 
-```
+```http
 HTTP/1.1 200 OK
 
-{"data":{"PublisherById":{"name":"North Press","books":{"edges":[{"node":{"title":"Winter"}}]}}}}
+{
+  "data": {
+    "PublisherById": {
+      "name": "North Press",
+      "books": {
+        "edges": [
+          {
+            "node": {"title": "Winter"}
+          }
+        ]
+      }
+    }
+  }
+}
 ```
 
 Without `reverseName` the name is `reverse`, the name of the entity and the name of the field, each with a
@@ -515,7 +581,7 @@ that points at that definition. The definition has the same name as the file. Th
     "Author": {
       "type": "object",
       "properties": {
-        "name": { "type": "string" }
+        "name": {"type": "string"}
       },
       "required": ["name"]
     }
@@ -537,23 +603,58 @@ This is `Book.json`. It says the same as the GraphQL schema above, and more:
       "type": "object",
       "description": "A book",
       "properties": {
-        "title": { "type": "string", "minLength": 1 },
-        "inPrint": { "type": "boolean" },
-        "published": { "type": "string", "format": "date-time" },
-        "firstSold": { "type": "string", "format": "date" },
-        "pages": { "type": "integer", "minimum": 1 },
-        "state": { "type": "string", "enum": ["DRAFT", "PUBLISHED"] },
-        "keywords": { "type": "array", "items": { "type": "string" } },
-        "chapters": { "type": "array", "items": { "$ref": "#/$defs/Chapter" } },
-        "cover": { "$ref": "#/$defs/Cover" },
-        "publisher": { "type": ["string", "null"] },
-        "_link_property_publisher": { "type": "object", "properties": { "Publisher": { "type": "null" } } },
-        "authors": { "type": "array", "items": { "type": "string" } },
-        "_link_property_authors": { "type": "object", "properties": { "Author": { "type": "null" } } },
-        "rights": { "type": "string" },
+        "title": {"type": "string", "minLength": 1},
+        "inPrint": {"type": "boolean"},
+        "published": {"type": "string", "format": "date-time"},
+        "firstSold": {"type": "string", "format": "date"},
+        "pages": {"type": "integer", "minimum": 1},
+        "state": {
+          "type": "string",
+          "enum": ["DRAFT", "PUBLISHED"]
+        },
+        "keywords": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "chapters": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/Chapter"}
+        },
+        "cover": {"$ref": "#/$defs/Cover"},
+        "publisher": {
+          "type": ["string", "null"]
+        },
+        "_link_property_publisher": {
+          "type": "object",
+          "properties": {
+            "Publisher": {
+              "type": "null"
+            }
+          }
+        },
+        "authors": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "_link_property_authors": {
+          "type": "object",
+          "properties": {
+            "Author": {
+              "type": "null"
+            }
+          }
+        },
+        "rights": {"type": "string"},
         "_link_property_rights": {
           "type": "object",
-          "properties": { "Author": { "type": "null" }, "Publisher": { "type": "null" } }
+          "properties": {
+            "Author": {
+              "type": "null"
+            },
+            "Publisher": {
+              "type": "null"
+            }
+          }
         }
       },
       "required": ["title"],
@@ -562,17 +663,24 @@ This is `Book.json`. It says the same as the GraphQL schema above, and more:
     "Chapter": {
       "type": "object",
       "properties": {
-        "title": { "type": "string" },
-        "summary": { "type": "string" }
+        "title": {"type": "string"},
+        "summary": {"type": "string"}
       },
       "required": ["title"]
     },
     "Cover": {
       "type": "object",
       "properties": {
-        "colour": { "type": "string" },
-        "designer": { "type": "string" },
-        "_link_property_designer": { "type": "object", "properties": { "Author": { "type": "null" } } }
+        "colour": {"type": "string"},
+        "designer": {"type": "string"},
+        "_link_property_designer": {
+          "type": "object",
+          "properties": {
+            "Author": {
+              "type": "null"
+            }
+          }
+        }
       },
       "required": ["colour"]
     }
@@ -584,17 +692,31 @@ A document that fits it:
 
 ```sh
 curl -i -X PUT 'http://localhost:9090/ns/Book/winter?sync=true' -H 'Content-Type: application/json' \
-     -d '{"title":"Winter","inPrint":true,"published":"2026-11-20T10:00:00Z","firstSold":"2026-12-01",
-          "pages":212,"state":"PUBLISHED","keywords":["snow","north"],
-          "chapters":[{"title":"One","summary":"It snows."},{"title":"Two"}],
-          "cover":{"colour":"white","designer":"/Author/ada"},"publisher":null,
-          "authors":["/Author/ada"],"rights":"/Publisher/north"}'
+     -d '
+{
+  "title": "Winter",
+  "inPrint": true,
+  "published": "2026-11-20T10:00:00Z",
+  "firstSold": "2026-12-01",
+  "pages": 212,
+  "state": "PUBLISHED",
+  "keywords": ["snow", "north"],
+  "chapters": [
+    {"title": "One", "summary": "It snows."},
+    {"title": "Two"}
+  ],
+  "cover": {"colour": "white", "designer": "/Author/ada"},
+  "publisher": null,
+  "authors": ["/Author/ada"],
+  "rights": "/Publisher/north"
+}
+'
 ```
 
-```
+```http
 HTTP/1.1 201 Created
 
-{"saga-execution-id":"01a1f9d7-27cf-7820-9af5-5799970f3f1f"}
+{"saga-execution-id": "01a1f9d7-27cf-7820-9af5-5799970f3f1f"}
 ```
 
 What to know about the form:
@@ -701,11 +823,20 @@ With the GraphQL schema of the library as the model:
 
 ```sh
 curl -i -X PUT 'http://localhost:9090/ns/Book/spring?sync=true' -H 'Content-Type: application/json' \
-     -d '{"inPrint":"yes","published":"20 November","state":"SOLD","keywords":"snow",
-          "chapters":[{"summary":"No title"}]}'
+     -d '
+{
+  "inPrint": "yes",
+  "published": "20 November",
+  "state": "SOLD",
+  "keywords": "snow",
+  "chapters": [
+    {"summary": "No title"}
+  ]
+}
+'
 ```
 
-```
+```http
 HTTP/1.1 400 Bad Request
 
 Schema validation error: [$.chapters[0]: required property 'title' not found, $.inPrint: string found, boolean
@@ -718,10 +849,18 @@ With the JSON Schema files of the library as the model:
 
 ```sh
 curl -i -X PUT 'http://localhost:9090/ns/Book/spring?sync=true' -H 'Content-Type: application/json' \
-     -d '{"title":"","firstSold":"1 December","pages":0,"cover":{"designer":"/Author/ada"},"weight":300}'
+     -d '
+{
+  "title": "",
+  "firstSold": "1 December",
+  "pages": 0,
+  "cover": {"designer": "/Author/ada"},
+  "weight": 300
+}
+'
 ```
 
-```
+```http
 HTTP/1.1 400 Bad Request
 
 Schema validation error: [$.title: must be at least 1 characters long, $.firstSold: does not match the date

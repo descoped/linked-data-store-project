@@ -229,7 +229,7 @@ was ended with `kill`. A container with such an LDS runs and its health check ne
 | `/health/ready` | `200` | The same as `/ping`. |
 | `/health/alive` | `200`, or `503` when the check fails | LDS can reach the store of the documents. The saga log, the transaction log and Solr are not asked. |
 
-```sh
+```console
 $ curl -s -i 'http://localhost:9090/ping'
 HTTP/1.1 200 OK
 
@@ -273,7 +273,7 @@ to Solr at that moment is not waited for.
 In this run a `PUT` had sent half of its body when LDS was told to stop with `kill <pid>`. It sent the rest
 two seconds later and was answered `201 Created`. A request sent in between:
 
-```sh
+```console
 $ curl -s -i 'http://localhost:9090/ping'
 HTTP/1.1 503 Service Unavailable
 ```
@@ -486,9 +486,9 @@ The first two need `saga.recovery.enabled=true`, which is the default.
 In this run LDS had its documents, its saga log and its transaction log in PostgreSQL. A write was held up in
 the store of the documents, and LDS was ended with `kill -9`:
 
-```sh
+```console
 $ curl -s -X PUT 'http://localhost:9090/ns/Company/crash1?sync=true' \
-       -H 'Content-Type: application/json' -d '{"name":"Written before the crash"}'
+       -H 'Content-Type: application/json' -d '{"name": "Written before the crash"}'
 $ kill -9 <pid>
 ```
 
@@ -505,11 +505,11 @@ the step that writes the document. The document was not stored. Then LDS was sta
 18:11:09.212 INFO  Server started in 1507ms..
 ```
 
-```sh
+```console
 $ curl -s -i 'http://localhost:9090/ns/Company/crash1'
 HTTP/1.1 200 OK
 
-{"name":"Written before the crash"}
+{"name": "Written before the crash"}
 ```
 
 The version has the time of the first request, not the time of the recovery. The saga log was empty again.
@@ -564,12 +564,22 @@ a run.
 
 The run with Solr away, with search on and nothing listening at `search.index.url`:
 
-```sh
+```console
 $ curl -s -i -X PUT 'http://localhost:9090/ns/Company/brew?sync=true' -H 'Content-Type: application/json' \
-       -d '{"name":"Nordic Brewing","about":[{"languageCode":"en","languageText":"A small brewery by the fjord"}]}'
+       -d '
+{
+  "name": "Nordic Brewing",
+  "about": [
+    {
+      "languageCode": "en",
+      "languageText": "A small brewery by the fjord"
+    }
+  ]
+}
+'
 HTTP/1.1 201 Created
 
-{"saga-execution-id":"01a1f9f5-cb3f-7a97-8b60-ebb3970e5696"}
+{"saga-execution-id": "01a1f9f5-cb3f-7a97-8b60-ebb3970e5696"}
 
 $ curl -s -i -X DELETE 'http://localhost:9090/ns/Company/brew?sync=true'
 HTTP/1.1 500 Internal Server Error

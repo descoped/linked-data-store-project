@@ -274,21 +274,21 @@ in this order. The namespace is `namespace.default`. LDS answers for this one na
 curl -s -i 'http://localhost:19107/ns?schema'
 ```
 
-```
+```http
 HTTP/1.1 200 OK
 Connection: keep-alive
 Content-Type: application/json; charset=utf-8
 Content-Length: 42
 Date: Fri, 20 Nov 2026 15:29:14 GMT
 
-["/ns/Company?schema","/ns/Person?schema"]
+["/ns/Company?schema", "/ns/Person?schema"]
 ```
 
 ```sh
 curl -s -i http://localhost:19107/bad/Person/1
 ```
 
-```
+```http
 HTTP/1.1 400 Bad Request
 Connection: keep-alive
 Content-Type: text/plain
@@ -343,7 +343,7 @@ curl -s -i -X OPTIONS -H 'Origin: https://app.example' -H 'Access-Control-Reques
   -H 'Access-Control-Request-Headers: content-type' http://localhost:19107/ns/Person/1
 ```
 
-```
+```http
 HTTP/1.1 204 No Content
 Access-Control-Allow-Origin: https://app.example
 Vary: Origin
@@ -361,7 +361,7 @@ curl -s -i -X OPTIONS -H 'Origin: https://app.example' -H 'Access-Control-Reques
   http://localhost:19107/ns/Person/1
 ```
 
-```
+```http
 HTTP/1.1 400 Bad Request
 Connection: keep-alive
 Content-Type: text/plain
@@ -437,7 +437,7 @@ half a second later these requests were sent:
 curl -s -i http://localhost:19107/ping
 ```
 
-```
+```http
 HTTP/1.1 503 Service Unavailable
 Connection: keep-alive
 Content-Length: 0
@@ -448,7 +448,7 @@ Date: Fri, 20 Nov 2026 15:29:37 GMT
 curl -s -i -H "Origin: https://app.example" http://localhost:19107/ns/Company/acme
 ```
 
-```
+```http
 HTTP/1.1 503 Service Unavailable
 Connection: keep-alive
 Access-Control-Allow-Origin: https://app.example

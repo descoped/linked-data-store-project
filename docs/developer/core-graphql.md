@@ -125,9 +125,9 @@ with `timestamp=2020-01-01T00:00:00Z` unless another time is given:
 | `Person` | `ola` | `{"name":"Ola","born":"1980-02-03T04:05:06.123456Z","employer":"/Company/acme","friends":["/Person/kari", "/Person/per","/Person/anne"]}` |
 | `Person` | `ola` | valid from 2022-01-01: `{"name":"Ola Nordmann","born":"1980-02-03T04:05:06.123456Z", "employer":"/Company/globex","friends":["/Person/kari"]}` |
 
-A long answer is broken over several lines below to be read. LDS sends it on one line. A long argument of a
-command is broken with a quote and a backslash at the end of a line and a quote at the start of the next; the
-shell joins the two parts to the one argument that was sent.
+An answer is shown formatted below; LDS sends it on one line. A query without variables is sent as
+`application/graphql`, the query itself as the body, formatted. A query whose answer names a line and a column of
+the query, and a query with variables, is sent as JSON.
 
 ## How the schema is built
 
@@ -278,20 +278,91 @@ map (a `DocumentKey`) and answers the object type with the name of the entity of
 ### What is served for the example model
 
 ```sh
-curl -s http://localhost:19111/graphql -H 'Content-Type: application/json' \
-  -d '{"query":"{ __schema { queryType { fields { name args { name } type { kind name ofType { name } } } } } }"}'
+curl -s http://localhost:19111/graphql -H 'Content-Type: application/graphql' \
+  -d '
+{
+  __schema {
+    queryType {
+      fields {
+        name
+        args {
+          name
+        }
+        type {
+          kind
+          name
+          ofType {
+            name
+          }
+        }
+      }
+    }
+  }
+}
+'
 ```
 
 ```json
-{"data":{"__schema":{"queryType":{"fields":[
- {"name":"Company","args":[{"name":"after"},{"name":"before"},{"name":"first"},{"name":"last"}],
-  "type":{"kind":"OBJECT","name":"CompanyConnection","ofType":null}},
- {"name":"CompanyById","args":[{"name":"id"}],
-  "type":{"kind":"NON_NULL","name":null,"ofType":{"name":"Company"}}},
- {"name":"Person","args":[{"name":"after"},{"name":"before"},{"name":"first"},{"name":"last"}],
-  "type":{"kind":"OBJECT","name":"PersonConnection","ofType":null}},
- {"name":"PersonById","args":[{"name":"id"}],
-  "type":{"kind":"NON_NULL","name":null,"ofType":{"name":"Person"}}}]}}}}
+{
+  "data": {
+    "__schema": {
+      "queryType": {
+        "fields": [
+          {
+            "name": "Company",
+            "args": [
+              {"name": "after"},
+              {"name": "before"},
+              {"name": "first"},
+              {"name": "last"}
+            ],
+            "type": {
+              "kind": "OBJECT",
+              "name": "CompanyConnection",
+              "ofType": null
+            }
+          },
+          {
+            "name": "CompanyById",
+            "args": [
+              {"name": "id"}
+            ],
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {"name": "Company"}
+            }
+          },
+          {
+            "name": "Person",
+            "args": [
+              {"name": "after"},
+              {"name": "before"},
+              {"name": "first"},
+              {"name": "last"}
+            ],
+            "type": {
+              "kind": "OBJECT",
+              "name": "PersonConnection",
+              "ofType": null
+            }
+          },
+          {
+            "name": "PersonById",
+            "args": [
+              {"name": "id"}
+            ],
+            "type": {
+              "kind": "NON_NULL",
+              "name": null,
+              "ofType": {"name": "Person"}
+            }
+          }
+        ]
+      }
+    }
+  }
+}
 ```
 
 The field `x` of the `Query` of the file is gone. The introspection (`{ __schema { types { kind name } } }`)
@@ -304,20 +375,101 @@ uses them.
 `reverseName` of `Person.employer`:
 
 ```sh
-curl -s http://localhost:19111/graphql -H 'Content-Type: application/json' \
-  -d '{"query":"{ __type(name: \"Person\") { fields { name args { name } type { kind name ofType { name } } } } }"}'
+curl -s http://localhost:19111/graphql -H 'Content-Type: application/graphql' \
+  -d '
+{
+  __type(name: "Person") {
+    fields {
+      name
+      args {
+        name
+      }
+      type {
+        kind
+        name
+        ofType {
+          name
+        }
+      }
+    }
+  }
+}
+'
 ```
 
 ```json
-{"data":{"__type":{"fields":[
- {"name":"address","args":[],"type":{"kind":"OBJECT","name":"Address","ofType":null}},
- {"name":"born","args":[],"type":{"kind":"SCALAR","name":"DateTime","ofType":null}},
- {"name":"employer","args":[],"type":{"kind":"OBJECT","name":"Company","ofType":null}},
- {"name":"friends","args":[{"name":"after"},{"name":"before"},{"name":"first"},{"name":"last"}],
-  "type":{"kind":"OBJECT","name":"PersonConnection","ofType":null}},
- {"name":"name","args":[],"type":{"kind":"NON_NULL","name":null,"ofType":{"name":"String"}}},
- {"name":"reversePersonFriends","args":[{"name":"after"},{"name":"before"},{"name":"first"},{"name":"last"}],
-  "type":{"kind":"OBJECT","name":"PersonConnection","ofType":null}}]}}}
+{
+  "data": {
+    "__type": {
+      "fields": [
+        {
+          "name": "address",
+          "args": [],
+          "type": {
+            "kind": "OBJECT",
+            "name": "Address",
+            "ofType": null
+          }
+        },
+        {
+          "name": "born",
+          "args": [],
+          "type": {
+            "kind": "SCALAR",
+            "name": "DateTime",
+            "ofType": null
+          }
+        },
+        {
+          "name": "employer",
+          "args": [],
+          "type": {
+            "kind": "OBJECT",
+            "name": "Company",
+            "ofType": null
+          }
+        },
+        {
+          "name": "friends",
+          "args": [
+            {"name": "after"},
+            {"name": "before"},
+            {"name": "first"},
+            {"name": "last"}
+          ],
+          "type": {
+            "kind": "OBJECT",
+            "name": "PersonConnection",
+            "ofType": null
+          }
+        },
+        {
+          "name": "name",
+          "args": [],
+          "type": {
+            "kind": "NON_NULL",
+            "name": null,
+            "ofType": {"name": "String"}
+          }
+        },
+        {
+          "name": "reversePersonFriends",
+          "args": [
+            {"name": "after"},
+            {"name": "before"},
+            {"name": "first"},
+            {"name": "last"}
+          ],
+          "type": {
+            "kind": "OBJECT",
+            "name": "PersonConnection",
+            "ofType": null
+          }
+        }
+      ]
+    }
+  }
+}
 ```
 
 A connection type has `edges: [<Target>Edge!]!` and `pageInfo: PageInfo!`. An edge has `cursor: String!` and
@@ -331,19 +483,40 @@ graphql-java-extended-scalars. That scalar writes three digits always, which is 
 `Date` and `Time` are the scalars of the library.
 
 ```sh
-curl -s -i http://localhost:19111/graphql -H 'Content-Type: application/json' \
-  -d '{"query":"{ PersonById(id: \"ola\") { name born employer { name founded } } }"}'
+curl -s -i http://localhost:19111/graphql -H 'Content-Type: application/graphql' \
+  -d '
+{
+  PersonById(id: "ola") {
+    name
+    born
+    employer {
+      name
+      founded
+    }
+  }
+}
+'
 ```
 
-```
+```http
 HTTP/1.1 200 OK
 Connection: keep-alive
 Content-Type: application/json
 Content-Length: 154
 Date: Fri, 20 Nov 2026 15:39:02 GMT
 
-{"data":{"PersonById":{"name":"Ola Nordmann","born":"1980-02-03T04:05:06.123456Z",
- "employer":{"name":"Globex","founded":"2001-09-09T09:09:09.12+02:00"}}}}
+{
+  "data": {
+    "PersonById": {
+      "name": "Ola Nordmann",
+      "born": "1980-02-03T04:05:06.123456Z",
+      "employer": {
+        "name": "Globex",
+        "founded": "2001-09-09T09:09:09.12+02:00"
+      }
+    }
+  }
+}
 ```
 
 `founded` is stored as `2001-09-09T09:09:09.120+02:00` and comes out with `.12`.
@@ -375,13 +548,16 @@ The body is read in the charset of the request (`exchange.getRequestCharset()`).
 
 ```sh
 curl -s -G http://localhost:19111/graphql \
-  --data-urlencode 'query=query A($id: ID!) { PersonById(id: $id) { name } } '\
-'query B($id: ID!) { CompanyById(id: $id) { name } }' \
+  --data-urlencode 'query=query A($id: ID!) { PersonById(id: $id) { name } } query B($id: ID!) { CompanyById(id: $id) { name } }' \
   --data-urlencode 'variables={"id":"acme"}' --data-urlencode 'operationName=B'
 ```
 
 ```json
-{"data":{"CompanyById":{"name":"Acme"}}}
+{
+  "data": {
+    "CompanyById": {"name": "Acme"}
+  }
+}
 ```
 
 ```sh
@@ -389,14 +565,18 @@ curl -s -i http://localhost:19111/graphql -H 'Content-Type: application/graphql'
   -d '{ CompanyById(id: "acme") { name } }'
 ```
 
-```
+```http
 HTTP/1.1 200 OK
 Connection: keep-alive
 Content-Type: application/json
 Content-Length: 40
 Date: Fri, 20 Nov 2026 15:39:03 GMT
 
-{"data":{"CompanyById":{"name":"Acme"}}}
+{
+  "data": {
+    "CompanyById": {"name": "Acme"}
+  }
+}
 ```
 
 ### The time of the query
@@ -413,38 +593,105 @@ tried. More than one `snapshot` parameter and a `__snapshot` that is not a strin
 The snapshot is computed once, when the context is made, and every fetcher of the request uses it.
 
 ```sh
-curl -s 'http://localhost:19111/graphql?snapshot=2021-06-01T00:00:00Z' -H 'Content-Type: application/json' \
-  -d '{"query":"{ PersonById(id: \"ola\") { name employer { name } friends { edges { cursor } } } }"}'
+curl -s 'http://localhost:19111/graphql?snapshot=2021-06-01T00:00:00Z' -H 'Content-Type: application/graphql' \
+  -d '
+{
+  PersonById(id: "ola") {
+    name
+    employer {
+      name
+    }
+    friends {
+      edges {
+        cursor
+      }
+    }
+  }
+}
+'
 ```
 
 ```json
-{"data":{"PersonById":{"name":"Ola","employer":{"name":"Acme"},
- "friends":{"edges":[{"cursor":"anne"},{"cursor":"kari"},{"cursor":"per"}]}}}}
+{
+  "data": {
+    "PersonById": {
+      "name": "Ola",
+      "employer": {"name": "Acme"},
+      "friends": {
+        "edges": [
+          {"cursor": "anne"},
+          {"cursor": "kari"},
+          {"cursor": "per"}
+        ]
+      }
+    }
+  }
+}
 ```
 
 ```sh
 curl -s http://localhost:19111/graphql -H 'Content-Type: application/json' \
-  -d '{"query":"{ PersonById(id: \"ola\") { name employer { name } } }",'\
-'"variables":{"__snapshot":"2021-06-01T00:00:00Z"}}'
+  -d '
+{
+  "query": "{ PersonById(id: \"ola\") { name employer { name } } }",
+  "variables": {"__snapshot": "2021-06-01T00:00:00Z"}
+}
+'
 ```
 
 ```json
-{"data":{"PersonById":{"name":"Ola","employer":{"name":"Acme"}}}}
+{
+  "data": {
+    "PersonById": {
+      "name": "Ola",
+      "employer": {"name": "Acme"}
+    }
+  }
+}
 ```
 
 A link is followed at the same time. A link to a document that does not exist at the snapshot gives `null`, and
 the same link gives the document at a time when it exists:
 
 ```sh
-curl -s http://localhost:19111/graphql -H 'Content-Type: application/json' \
-  -d '{"query":"{ PersonById(id: \"early\") { name employer { name } } }"}'; echo
-curl -s 'http://localhost:19111/graphql?snapshot=2031-01-01T00:00:00Z' -H 'Content-Type: application/json' \
-  -d '{"query":"{ PersonById(id: \"early\") { name employer { name } } }"}'
+curl -s http://localhost:19111/graphql -H 'Content-Type: application/graphql' \
+  -d '
+{
+  PersonById(id: "early") {
+    name
+    employer {
+      name
+    }
+  }
+}
+'; echo
+curl -s 'http://localhost:19111/graphql?snapshot=2031-01-01T00:00:00Z' -H 'Content-Type: application/graphql' \
+  -d '
+{
+  PersonById(id: "early") {
+    name
+    employer {
+      name
+    }
+  }
+}
+'
 ```
 
 ```json
-{"data":{"PersonById":{"name":"Early","employer":null}}}
-{"data":{"PersonById":{"name":"Early","employer":{"name":"Future Ltd"}}}}
+{
+  "data": {
+    "PersonById": {"name": "Early", "employer": null}
+  }
+}
+{
+  "data": {
+    "PersonById": {
+      "name": "Early",
+      "employer": {"name": "Future Ltd"}
+    }
+  }
+}
 ```
 
 ### The answer and the status codes
@@ -455,34 +702,54 @@ of a 200 answer: a query that cannot be parsed, a field the schema does not have
 
 ```sh
 curl -s http://localhost:19111/graphql -H 'Content-Type: application/json' \
-  -d '{"query":"{ PersonById(id: \"ola\") { nmae } }"}'
+  -d '{"query": "{ PersonById(id: \"ola\") { nmae } }"}'
 ```
 
 ```json
-{"errors":[{"message":"Validation error (FieldUndefined@[PersonById/nmae]) : Field 'nmae' in type 'Person' is
- undefined","locations":[{"line":1,"column":27}],"extensions":{"classification":"ValidationError"}}]}
+{
+  "errors": [
+    {
+      "message": "Validation error (FieldUndefined@[PersonById/nmae]) : Field 'nmae' in type 'Person' is undefined",
+      "locations": [
+        {"line": 1, "column": 27}
+      ],
+      "extensions": {"classification": "ValidationError"}
+    }
+  ]
+}
 ```
 
 `<Entity>ById` is declared non-null, so an id that has no document at the snapshot is an error of graphql-java,
 and `data` is `null` for the whole request:
 
 ```sh
-curl -s -i http://localhost:19111/graphql -H 'Content-Type: application/json' \
-  -d '{"query":"{ PersonById(id: \"nobody\") { name } }"}'
+curl -s -i http://localhost:19111/graphql -H 'Content-Type: application/graphql' \
+  -d '
+{
+  PersonById(id: "nobody") {
+    name
+  }
+}
+'
 ```
 
-```
+```http
 HTTP/1.1 200 OK
 Connection: keep-alive
 Content-Type: application/json
 Content-Length: 473
 Date: Fri, 20 Nov 2026 15:39:03 GMT
 
-{"errors":[{"message":"The field at path '/PersonById' was declared as a non null type, but the code involved in
- retrieving data has wrongly returned a null value.  The graphql specification requires that the parent field be
- set to null, or if that is non nullable that it bubble up null to its parent and so on. The non-nullable type is
- 'Person' within parent type 'Query'","path":["PersonById"],
- "extensions":{"classification":"NullValueInNonNullableField"}}],"data":null}
+{
+  "errors": [
+    {
+      "message": "The field at path '/PersonById' was declared as a non null type, but the code involved in retrieving data has wrongly returned a null value.  The graphql specification requires that the parent field be set to null, or if that is non nullable that it bubble up null to its parent and so on. The non-nullable type is 'Person' within parent type 'Query'",
+      "path": ["PersonById"],
+      "extensions": {"classification": "NullValueInNonNullableField"}
+    }
+  ],
+  "data": null
+}
 ```
 
 The handler catches nothing. An exception while the request is read leaves the handler, and Undertow answers 500
@@ -492,7 +759,7 @@ with no body and logs `UT005071: Undertow request failed` with the stack trace:
 curl -s -i http://localhost:19111/graphql -H 'Content-Type: application/json' -d '{}'
 ```
 
-```
+```http
 HTTP/1.1 500 Internal Server Error
 Connection: keep-alive
 Content-Length: 0
@@ -526,7 +793,7 @@ curl -s -o /dev/null -w '%{http_code} %{content_type}\n' http://localhost:19111/
 curl -s http://localhost:19111/graphiql/ | grep -o 'unpkg.com/[^"]*'
 ```
 
-```
+```http
 HTTP/1.1 302 Found
 Connection: keep-alive
 Location: http://localhost:19111/graphiql/
@@ -589,13 +856,34 @@ which graphql-java reports in `errors`. The cursor of an edge is the id of its d
 (`DocumentKey.id()`), so `after` and `before` take ids.
 
 ```sh
-curl -s http://localhost:19111/graphql -H 'Content-Type: application/json' \
-  -d '{"query":"{ Person(first: 2, after: \"early\") { edges { cursor } pageInfo { hasNextPage hasPreviousPage } } }"}'
+curl -s http://localhost:19111/graphql -H 'Content-Type: application/graphql' \
+  -d '
+{
+  Person(first: 2, after: "early") {
+    edges {
+      cursor
+    }
+    pageInfo {
+      hasNextPage
+      hasPreviousPage
+    }
+  }
+}
+'
 ```
 
 ```json
-{"data":{"Person":{"edges":[{"cursor":"kari"},{"cursor":"ola"}],
- "pageInfo":{"hasNextPage":true,"hasPreviousPage":true}}}}
+{
+  "data": {
+    "Person": {
+      "edges": [
+        {"cursor": "kari"},
+        {"cursor": "ola"}
+      ],
+      "pageInfo": {"hasNextPage": true, "hasPreviousPage": true}
+    }
+  }
+}
 ```
 
 `PersistenceRootConnectionFetcher` always asks persistence for `hasPrevious` and `hasNext`. The two link
@@ -605,14 +893,52 @@ reading one document before the first edge and one after the last. An empty page
 A reverse link reads the documents that hold the link, at the snapshot:
 
 ```sh
-curl -s http://localhost:19111/graphql -H 'Content-Type: application/json' \
-  -d '{"query":"{ CompanyById(id: \"acme\") { name employees { edges { cursor node { name } } '\
-'pageInfo { hasNextPage hasPreviousPage } } } }"}'
+curl -s http://localhost:19111/graphql -H 'Content-Type: application/graphql' \
+  -d '
+{
+  CompanyById(id: "acme") {
+    name
+    employees {
+      edges {
+        cursor
+        node {
+          name
+        }
+      }
+      pageInfo {
+        hasNextPage
+        hasPreviousPage
+      }
+    }
+  }
+}
+'
 ```
 
 ```json
-{"data":{"CompanyById":{"name":"Acme","employees":{"edges":[{"cursor":"kari","node":{"name":"Kari"}},
- {"cursor":"per","node":{"name":"Per"}}],"pageInfo":{"hasNextPage":false,"hasPreviousPage":false}}}}}
+{
+  "data": {
+    "CompanyById": {
+      "name": "Acme",
+      "employees": {
+        "edges": [
+          {
+            "cursor": "kari",
+            "node": {"name": "Kari"}
+          },
+          {
+            "cursor": "per",
+            "node": {"name": "Per"}
+          }
+        ],
+        "pageInfo": {
+          "hasNextPage": false,
+          "hasPreviousPage": false
+        }
+      }
+    }
+  }
+}
 ```
 
 ### Search
@@ -641,18 +967,57 @@ was registered with a file `META-INF/services/io.descoped.lds.api.search.SearchI
 the class path. The model had the entities `Cat`, `Dog`, `Owner` and `Car`. Solr was not run for this document.
 
 ```sh
-curl -s http://localhost:19111/graphql -H 'Content-Type: application/json' \
-  -d '{"query":"{ Search(query: \"the\") { edges { cursor node { __typename ... on Cat { name } '\
-'... on Dog { name } } } pageInfo { hasNextPage hasPreviousPage } } }"}'
+curl -s http://localhost:19111/graphql -H 'Content-Type: application/graphql' \
+  -d '
+{
+  Search(query: "the") {
+    edges {
+      cursor
+      node {
+        __typename
+        ... on Cat {
+          name
+        }
+        ... on Dog {
+          name
+        }
+      }
+    }
+    pageInfo {
+      hasNextPage
+      hasPreviousPage
+    }
+  }
+}
+'
 ```
 
 ```json
-{"data":{"Search":{"edges":[
- {"cursor":"cWM6MA","node":{"__typename":"Cat","name":"Felix the cat"}},
- {"cursor":"cWM6MQ","node":{"__typename":"Dog","name":"Fido the dog"}},
- {"cursor":"cWM6Mg","node":{"__typename":"Cat","name":"Tom the cat"}},
- {"cursor":"cWM6Mw","node":{"__typename":"Dog","name":"Rex the dog"}}],
- "pageInfo":{"hasNextPage":false,"hasPreviousPage":false}}}}
+{
+  "data": {
+    "Search": {
+      "edges": [
+        {
+          "cursor": "cWM6MA",
+          "node": {"__typename": "Cat", "name": "Felix the cat"}
+        },
+        {
+          "cursor": "cWM6MQ",
+          "node": {"__typename": "Dog", "name": "Fido the dog"}
+        },
+        {
+          "cursor": "cWM6Mg",
+          "node": {"__typename": "Cat", "name": "Tom the cat"}
+        },
+        {
+          "cursor": "cWM6Mw",
+          "node": {"__typename": "Dog", "name": "Rex the dog"}
+        }
+      ],
+      "pageInfo": {"hasNextPage": false, "hasPreviousPage": false}
+    }
+  }
+}
 ```
 
 ```sh
@@ -830,14 +1195,29 @@ gives an error and `null` for the field:
 
 ```sh
 curl -s http://localhost:19111/graphql -H 'Content-Type: application/json' \
-  -d '{"query":"{ PersonById(id: \"anne\") { name employer { name } } }"}'
+  -d '
+{
+  "query": "{ PersonById(id: \"anne\") { name employer { name } } }"
+}
+'
 ```
 
 ```json
-{"errors":[{"message":"Exception while fetching data (/PersonById/employer) : Cannot invoke
- \"java.lang.CharSequence.length()\" because \"this.text\" is null","locations":[{"line":1,"column":33}],
- "path":["PersonById","employer"],"extensions":{"classification":"DataFetchingException"}}],
- "data":{"PersonById":{"name":"Anne","employer":null}}}
+{
+  "errors": [
+    {
+      "message": "Exception while fetching data (/PersonById/employer) : Cannot invoke \"java.lang.CharSequence.length()\" because \"this.text\" is null",
+      "locations": [
+        {"line": 1, "column": 33}
+      ],
+      "path": ["PersonById", "employer"],
+      "extensions": {"classification": "DataFetchingException"}
+    }
+  ],
+  "data": {
+    "PersonById": {"name": "Anne", "employer": null}
+  }
+}
 ```
 
 Not finished: with `last`, or with `before` alone, `PersistenceRootConnectionFetcher` and
@@ -845,13 +1225,34 @@ Not finished: with `last`, or with `before` alone, `PersistenceRootConnectionFet
 `hasPreviousPage` are computed as if the first edge had the lowest id:
 
 ```sh
-curl -s http://localhost:19111/graphql -H 'Content-Type: application/json' \
-  -d '{"query":"{ Person(last: 2) { edges { cursor } pageInfo { hasNextPage hasPreviousPage } } }"}'
+curl -s http://localhost:19111/graphql -H 'Content-Type: application/graphql' \
+  -d '
+{
+  Person(last: 2) {
+    edges {
+      cursor
+    }
+    pageInfo {
+      hasNextPage
+      hasPreviousPage
+    }
+  }
+}
+'
 ```
 
 ```json
-{"data":{"Person":{"edges":[{"cursor":"per"},{"cursor":"ola"}],
- "pageInfo":{"hasNextPage":true,"hasPreviousPage":true}}}}
+{
+  "data": {
+    "Person": {
+      "edges": [
+        {"cursor": "per"},
+        {"cursor": "ola"}
+      ],
+      "pageInfo": {"hasNextPage": true, "hasPreviousPage": true}
+    }
+  }
+}
 ```
 
 Not finished: a connection of links does not page with the memory provider. `after` and `before` are not applied,
@@ -859,14 +1260,37 @@ and `pageInfo` is `true` and `true` when there is an edge. Ola has three friends
 first:
 
 ```sh
-curl -s 'http://localhost:19111/graphql?snapshot=2021-06-01T00:00:00Z' -H 'Content-Type: application/json' \
-  -d '{"query":"{ PersonById(id: \"ola\") { friends(first: 1, after: \"anne\") { edges { cursor } '\
-'pageInfo { hasNextPage hasPreviousPage } } } }"}'
+curl -s 'http://localhost:19111/graphql?snapshot=2021-06-01T00:00:00Z' -H 'Content-Type: application/graphql' \
+  -d '
+{
+  PersonById(id: "ola") {
+    friends(first: 1, after: "anne") {
+      edges {
+        cursor
+      }
+      pageInfo {
+        hasNextPage
+        hasPreviousPage
+      }
+    }
+  }
+}
+'
 ```
 
 ```json
-{"data":{"PersonById":{"friends":{"edges":[{"cursor":"anne"}],
- "pageInfo":{"hasNextPage":true,"hasPreviousPage":true}}}}}
+{
+  "data": {
+    "PersonById": {
+      "friends": {
+        "edges": [
+          {"cursor": "anne"}
+        ],
+        "pageInfo": {"hasNextPage": true, "hasPreviousPage": true}
+      }
+    }
+  }
+}
 ```
 
 The memory and PostgreSQL providers answer `readTargetDocuments` through
