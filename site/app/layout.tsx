@@ -59,10 +59,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }):
         <footer className="site-footer">
           <div className="site-footer-inner">
             <span>
-              {name} is open source under the{' '}
-              <a href="https://github.com/descoped/linked-data-store-project/blob/master/LICENSE">
-                Apache License 2.0
-              </a>
+              A <a href="https://github.com/descoped">Descoped</a> product · © 2026 ·{' '}
+              <a href="https://github.com/descoped/linked-data-store-project/blob/master/LICENSE">Apache License 2.0</a>
             </span>
             <span>
               Built with <a href="https://krantho.com">Krantho</a>

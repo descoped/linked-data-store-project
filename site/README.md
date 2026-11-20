@@ -18,7 +18,7 @@ publishes it when `docs/`, `site/` or the workflow changes on `master`.
 
 | Address | From |
 |---|---|
-| `/` | `content/landing/home.md`: the hero is its front matter, and each `##` section of the body is a band of the page; the `###` headings of a section are its cards |
+| `/` | `content/landing/home.md`: the hero is its front matter, and each `##` section of the body is a band of the page, in the order the collection's section contract gives; the `###` headings of a section are its cards. The two figures (`components/figures.tsx`) are SVG moved by CSS alone: a read that stops at four instants of the timeline, from the example of the concepts page. With reduced motion they show one still frame |
 | `/docs/` | `../docs/README.md` |
 | `/docs/<name>/` | `../docs/<name>.md` (the glossary) |
 | `/docs/user/<name>/` | `../docs/user/<name>.md` |
@@ -37,6 +37,12 @@ group). The `# Title` of the file is the heading of the page.
   the same place on the site as on GitHub. The `##` and `###` headings are the page's contents, beside it.
 - A ` ```mermaid ` block is drawn in the browser by Mermaid, which only a page with a figure loads
   (`components/mermaid.tsx`), in the theme the page is in.
+- Every other code block is coloured by its language when the site is built, with Shiki in GitHub's light and dark
+  themes (`lib/html.ts`), so the page sends no script for it. A bar above the block names the language (a block
+  without one is "Text"), and holds a button that copies the code (`components/code-copy.tsx`).
+- As the reader scrolls, the address follows the heading in view, so it can be bookmarked or shared as it stands, and
+  "On this page" marks that heading (`components/section-hash.tsx`, from krantho's own site). The address is
+  replaced, never added, so Back leaves the page.
 
 ## Look
 

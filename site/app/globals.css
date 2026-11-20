@@ -2,11 +2,12 @@
 :root {
   --font-text: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
-  --text-sm: 0.875rem;
-  --text-base: 1rem;
-  --text-lg: 1.2rem;
-  --text-2xl: clamp(1.6rem, 1.3rem + 1.2vw, 2.1rem);
-  --text-4xl: clamp(2.2rem, 1.5rem + 3vw, 3.6rem);
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-lg: 1.125rem;
+  --text-2xl: clamp(1.5rem, 1.25rem + 1vw, 1.9rem);
+  --text-4xl: clamp(2rem, 1.4rem + 2.6vw, 3.2rem);
   --leading-tight: 1.15;
   --leading-body: 1.65;
   --space-1: 0.25rem;
@@ -33,6 +34,7 @@
   --color-accent: #1f6f8b;
   --color-accent-contrast: #ffffff;
   --color-focus: #1f6f8b;
+  --color-danger: #cf222e;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -47,6 +49,7 @@
     --color-accent: #7cc4dc;
     --color-accent-contrast: #0f1417;
     --color-focus: #7cc4dc;
+    --color-danger: #ff7b72;
   }
 }
 
@@ -61,6 +64,7 @@
   --color-accent: #7cc4dc;
   --color-accent-contrast: #0f1417;
   --color-focus: #7cc4dc;
+  --color-danger: #ff7b72;
 }
 
 * {
@@ -148,7 +152,7 @@ a {
 }
 
 .logo-name {
-  font-size: 1.05rem;
+  font-size: 1rem;
   font-weight: 600;
   letter-spacing: -0.01em;
   white-space: nowrap;
@@ -161,7 +165,7 @@ a {
 
 .header-nav a {
   color: var(--color-text-muted);
-  font-size: 0.95rem;
+  font-size: var(--text-sm);
   text-decoration: none;
 }
 
@@ -212,8 +216,21 @@ a {
 }
 
 .hero {
-  max-width: 52rem;
-  padding: clamp(3rem, 2rem + 5vw, 6rem) 0 var(--space-6);
+  align-items: center;
+  display: grid;
+  gap: var(--space-6);
+  grid-template-columns: minmax(0, 1fr);
+  padding: clamp(2.5rem, 1.5rem + 4vw, 5rem) 0 var(--space-6);
+}
+
+.hero .figure {
+  margin: 0;
+}
+
+@media (min-width: 64rem) {
+  .hero {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  }
 }
 
 .eyebrow {
@@ -353,7 +370,7 @@ a {
 .sidebar a {
   color: var(--color-text);
   display: block;
-  font-size: 0.93rem;
+  font-size: var(--text-sm);
   padding: 0.15rem 0;
   text-decoration: none;
 }
@@ -386,7 +403,7 @@ a {
 
 .toc {
   align-self: start;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   max-height: calc(100vh - var(--header-height) - var(--space-6));
   overflow-y: auto;
   position: sticky;
@@ -406,8 +423,17 @@ a {
 }
 
 .toc a {
+  border-left: 2px solid transparent;
   color: var(--color-text-muted);
+  display: block;
+  padding-left: var(--space-2);
   text-decoration: none;
+}
+
+/* The heading in view (SectionHash) */
+.toc a[aria-current='location'] {
+  border-left-color: var(--color-accent);
+  color: var(--color-text);
 }
 
 /* Text from markdown */
@@ -424,19 +450,19 @@ a {
 
 .prose h2 {
   border-top: 1px solid var(--color-border);
-  font-size: 1.45rem;
+  font-size: 1.3rem;
   line-height: 1.25;
   margin: var(--space-8) 0 var(--space-3);
   padding-top: var(--space-4);
 }
 
 .prose h3 {
-  font-size: 1.15rem;
+  font-size: 1.075rem;
   margin: var(--space-6) 0 var(--space-2);
 }
 
 .prose h4 {
-  font-size: 1rem;
+  font-size: var(--text-base);
   margin: var(--space-4) 0 var(--space-2);
 }
 
@@ -474,14 +500,78 @@ a {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   font-family: var(--font-mono);
-  font-size: 0.85rem;
-  line-height: 1.5;
+  font-size: 0.8125rem;
+  line-height: 1.55;
   overflow-x: auto;
   padding: var(--space-4);
 }
 
 .prose pre code {
   font-family: inherit;
+}
+
+/* A code block: a bar with its language and the copy button, then the code, coloured as GitHub colours it */
+.code-block {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  margin: var(--space-4) 0;
+  overflow: hidden;
+}
+
+.code-head {
+  align-items: center;
+  background: var(--color-sunken);
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  justify-content: space-between;
+  min-height: 1.9rem;
+  padding: 0 var(--space-2) 0 var(--space-3);
+}
+
+.code-lang {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  letter-spacing: 0.04em;
+}
+
+.code-copy {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-xs);
+  padding: 0.15rem 0.5rem;
+}
+
+.code-copy:hover {
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+.prose .code-block pre {
+  background: var(--color-surface);
+  border: 0;
+  border-radius: 0;
+  margin: 0;
+}
+
+.shiki,
+.shiki span {
+  color: var(--shiki-light);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .shiki,
+  :root:not([data-theme='light']) .shiki span {
+    color: var(--shiki-dark);
+  }
+}
+
+:root[data-theme='dark'] .shiki,
+:root[data-theme='dark'] .shiki span {
+  color: var(--shiki-dark);
 }
 
 /* A figure: drawn by Mermaid in the browser; its source is shown until then */
@@ -510,7 +600,7 @@ a {
 .prose table {
   border-collapse: collapse;
   display: block;
-  font-size: 0.93rem;
+  font-size: var(--text-sm);
   margin: var(--space-6) 0;
   overflow-x: auto;
 }
@@ -632,6 +722,283 @@ a {
 @media (max-width: 30rem) {
   .logo-name {
     font-size: 0.95rem;
+  }
+}
+
+/* Figures: the living SVG of the landing page (components/figures.tsx). A read stops at four instants, four
+   seconds each; the states s0 to s3 of a figure are shown one at a time, and the cursor moves between the stops. */
+.figure {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  margin: var(--space-6) 0 0;
+  padding: var(--space-4);
+}
+
+/* A figure of a section is as wide as the text it follows */
+.band .figure {
+  max-width: var(--width-prose);
+}
+
+.figure figcaption {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  margin-top: var(--space-3);
+}
+
+.fig {
+  display: block;
+  font-family: var(--font-mono);
+  height: auto;
+  width: 100%;
+}
+
+/* On a phone a figure keeps a size its text can be read at, and scrolls sideways in its frame */
+@media (max-width: 40rem) {
+  .figure {
+    overflow-x: auto;
+  }
+
+  .fig {
+    min-width: 34rem;
+  }
+}
+
+.fig text {
+  fill: var(--color-text);
+  font-size: 13px;
+}
+
+.fig .fig-small {
+  fill: var(--color-text-muted);
+  font-family: var(--font-text);
+  font-size: 11px;
+}
+
+.fig .fig-title {
+  font-weight: 700;
+}
+
+.fig .fig-request {
+  fill: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.fig .fig-answer {
+  fill: var(--color-accent);
+}
+
+.fig .fig-missing {
+  fill: var(--color-danger);
+}
+
+.fig .fig-link-text {
+  fill: var(--color-accent);
+  text-decoration: underline;
+}
+
+.fig-card {
+  fill: var(--color-surface);
+  stroke: var(--color-border);
+}
+
+.fig-embedded {
+  fill: var(--color-sunken);
+  stroke: var(--color-text-muted);
+  stroke-dasharray: 4 3;
+}
+
+.fig-bar {
+  fill: var(--color-sunken);
+  stroke: var(--color-border);
+}
+
+.fig-bar-gone {
+  fill: none;
+  stroke-dasharray: 4 3;
+}
+
+.fig .fig-gone {
+  fill: var(--color-text-muted);
+  font-style: italic;
+}
+
+.fig-bar-on {
+  fill: color-mix(in srgb, var(--color-accent) 24%, var(--color-surface));
+  stroke: var(--color-accent);
+}
+
+.fig-open,
+.fig-arrow {
+  fill: none;
+  stroke: var(--color-accent);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.fig-open {
+  stroke: var(--color-text-muted);
+}
+
+.fig-axis line {
+  stroke: var(--color-text-muted);
+}
+
+.fig-cursor line {
+  stroke: var(--color-accent);
+  stroke-width: 2;
+}
+
+.fig-cursor circle {
+  fill: var(--color-accent);
+}
+
+.fig-link {
+  animation: fig-flow 1.2s linear infinite;
+  fill: none;
+  stroke: var(--color-accent);
+  stroke-dasharray: 6 5;
+  stroke-width: 2;
+}
+
+.fig .s0,
+.fig .s1,
+.fig .s2,
+.fig .s3 {
+  animation: fig-step 16s infinite;
+  opacity: 0;
+}
+
+.fig .s1 {
+  animation-delay: -12s;
+  opacity: 1;
+}
+
+.fig .s2 {
+  animation-delay: -8s;
+}
+
+.fig .s3 {
+  animation-delay: -4s;
+}
+
+.fig-a-cursor {
+  animation: fig-a-cursor 16s infinite;
+}
+
+.fig-b-cursor {
+  animation: fig-b-cursor 12s infinite;
+}
+
+@keyframes fig-step {
+  0%,
+  24.9% {
+    opacity: 1;
+  }
+
+  25%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* The stops of the read: 2019-06, 2021-06, 2024-06, 2031-06 (x = 40 + 40 a year from 2019) */
+@keyframes fig-a-cursor {
+  0%,
+  20% {
+    transform: translateX(56.8px);
+  }
+
+  25%,
+  45% {
+    transform: translateX(136.8px);
+  }
+
+  50%,
+  70% {
+    transform: translateX(256.8px);
+  }
+
+  75%,
+  95% {
+    transform: translateX(536.8px);
+  }
+
+  100% {
+    transform: translateX(56.8px);
+  }
+}
+
+/* The second figure: three stops, four seconds each, 2020-06, 2022-06, 2024-06 (x = 70 + 38 a year from 2019) */
+.fig .b0,
+.fig .b1,
+.fig .b2 {
+  animation: fig-step3 12s infinite;
+  opacity: 0;
+}
+
+.fig .b1 {
+  animation-delay: -8s;
+  opacity: 1;
+}
+
+.fig .b2 {
+  animation-delay: -4s;
+}
+
+@keyframes fig-step3 {
+  0%,
+  33.2% {
+    opacity: 1;
+  }
+
+  33.3%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes fig-b-cursor {
+  0%,
+  28% {
+    transform: translateX(123.96px);
+  }
+
+  33.3%,
+  61% {
+    transform: translateX(199.96px);
+  }
+
+  66.7%,
+  95% {
+    transform: translateX(275.96px);
+  }
+
+  100% {
+    transform: translateX(123.96px);
+  }
+}
+
+@keyframes fig-flow {
+  to {
+    stroke-dashoffset: -11;
+  }
+}
+
+/* Still: the second stop of each figure, as the SVG draws it without its animation */
+@media (prefers-reduced-motion: reduce) {
+  .fig .s0,
+  .fig .s1,
+  .fig .s2,
+  .fig .s3,
+  .fig .b0,
+  .fig .b1,
+  .fig .b2,
+  .fig-a-cursor,
+  .fig-b-cursor,
+  .fig-link {
+    animation: none !important;
   }
 }
 
