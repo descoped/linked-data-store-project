@@ -10,7 +10,7 @@ This document tells how Linked Data Store (LDS) is configured and lists every ke
 means, its default and an example. It also shows which keys go together to choose where LDS keeps its data, and
 what happens when LDS starts with a value that is wrong. It is for people who run LDS.
 
-LDS is version `3.0.0-SNAPSHOT`, built from the repository; nothing is released.
+LDS 3.0 is built from the repository; no image and no jar is published.
 [Getting started](getting-started.md) shows how to build and start it. The commands in this document are
 for the directory `linked-data-store-server` of the built repository, and LDS listens on port 19306 in them.
 Without configuration the port is 9090.

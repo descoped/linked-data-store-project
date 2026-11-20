@@ -16,7 +16,7 @@ instant asked for.
 
 This documentation is in two parts, for two kinds of reader, and a [glossary](glossary.md) of the terms both use.
 Every document is written from the code as it is, and every request shown in it was run. LDS 3.0 is in
-development and nothing is released: the version is `3.0.0-SNAPSHOT`, built from the repository. What is
+development and 3.0.0 is not released: LDS is built from the repository, where its milestones are tagged. What is
 unfinished is said where a reader meets it, in a paragraph that starts with "Not finished:".
 
 ## For those who use LDS

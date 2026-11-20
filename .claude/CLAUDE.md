@@ -132,7 +132,8 @@ which validates the Jackson tree of the document). A schema that at its root say
 - **Secrets.** Nothing but documented development defaults (the `lds` database user and the Neo4j password
   `lds-development` in tests and the compose file).
 - **Releases only with the owner's go-ahead**, by hand. **CI publishes nothing**: no SNAPSHOTs, no releases, no
-  images. Maven Central goes through the Central Portal (profiles `central,sign`).
+  images. Maven Central goes through the Central Portal (profiles `central,sign`). A milestone (`3.0.0-M1`) is a
+  tag and a GitHub release with its notes (`RELEASE-NOTES.md`), source only, made as `docs/developer/build.md` says.
 - **SonarCloud**: one project, `descoped_linked-data-store-project`, for the whole reactor.
 
 Several of these describe where 3.0.0 is going and are not true of the pre-3.0 code yet (UTC instants in the

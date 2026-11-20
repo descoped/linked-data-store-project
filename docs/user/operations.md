@@ -13,8 +13,7 @@ LDS does today, and says plainly what it does not do.
 
 ## About what is shown
 
-LDS 3.0 is in development and nothing is released. Everything here is about version `3.0.0-SNAPSHOT`, built
-from the repository.
+LDS 3.0 is in development and 3.0.0 is not released. Everything here is about LDS built from the repository.
 
 - The requests were run against LDS started on the JDK. The addresses are written with the default port, 9090.
   The LDS of the runs had another port; nothing else differs. An answer is shown as its status line and its
