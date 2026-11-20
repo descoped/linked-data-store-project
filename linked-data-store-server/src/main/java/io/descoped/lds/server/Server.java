@@ -60,12 +60,10 @@ public class Server {
 
             application.enableSagaExecutionAutomaticDeadlockDetectionAndResolution();
 
-            // application.triggerRecoveryOfIncompleteSagas();
-
             // wait for termination signal
             try {
                 Thread.currentThread().join();
-            } catch (InterruptedException e) {
+            } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
             }
         } finally {

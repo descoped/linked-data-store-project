@@ -30,6 +30,7 @@ public final class LoopbackPorts implements CreateContainerCmdModifier {
      * Created by Testcontainers.
      */
     public LoopbackPorts() {
+        // it holds nothing: each command is changed by modify
     }
 
     @Override
