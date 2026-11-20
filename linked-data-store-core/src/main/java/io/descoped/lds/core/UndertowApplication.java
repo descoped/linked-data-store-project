@@ -33,7 +33,7 @@ import io.undertow.server.handlers.PathHandler;
 import io.undertow.server.handlers.ResponseCodeHandler;
 import io.undertow.server.handlers.resource.ClassPathResourceManager;
 import io.undertow.util.StatusCodes;
-import no.cantara.concurrent.futureselector.SelectableThreadPoolExectutor;
+import no.cantara.concurrent.futureselector.SelectableThreadPoolExecutor;
 import no.cantara.sagalog.SagaLogInitializer;
 import no.cantara.sagalog.SagaLogPool;
 import org.json.JSONObject;
@@ -42,7 +42,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.net.URL;
-import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -53,14 +52,11 @@ import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
@@ -81,13 +77,13 @@ public class UndertowApplication {
     private final SagaRepository sagaRepository;
     private final SagasObserver sagasObserver;
     private final SagaLogPool sagaLogPool;
-    private final SelectableThreadPoolExectutor sagaThreadPool;
+    private final SelectableThreadPoolExecutor sagaThreadPool;
     private final SagaRecoveryTrigger sagaRecoveryTrigger;
     private final TxlogRawdataPool txlogRawdataPool;
 
     UndertowApplication(Specification specification, RxJsonPersistence persistence, SagaExecutionCoordinator sec,
                         SagaRepository sagaRepository, SagasObserver sagasObserver, SagaRecoveryTrigger sagaRecoveryTrigger, String host, int port,
-                        SagaLogPool sagaLogPool, SelectableThreadPoolExectutor sagaThreadPool,
+                        SagaLogPool sagaLogPool, SelectableThreadPoolExecutor sagaThreadPool,
                         NamespaceController namespaceController, SearchIndex searchIndex,
                         DynamicConfiguration configuration, TxlogRawdataPool txlogRawdataPool) {
         this.specification = specification;
@@ -274,7 +270,7 @@ public class UndertowApplication {
             LOG.warn("Configuration: saga.threadpool.core ({}) must be greater than saga.threadpool.queue.capacity ({}) in order to avoid potential deadlocks.",
                     sagaThreadPoolCoreSize, sagaThreadPoolQueueCapacity);
         }
-        SelectableThreadPoolExectutor sagaThreadPool = new SelectableThreadPoolExectutor(
+        SelectableThreadPoolExecutor sagaThreadPool = new SelectableThreadPoolExecutor(
                 sagaThreadPoolCoreSize, configuration.evaluateToInt("saga.threadpool.max"),
                 configuration.evaluateToInt("saga.threadpool.keepalive.seconds"), TimeUnit.SECONDS,
                 new ArrayBlockingQueue<>(sagaThreadPoolQueueCapacity),
@@ -470,66 +466,71 @@ public class UndertowApplication {
         LOG.info("Listening on {}:{}", host, port);
     }
 
+    /**
+     * Stops the application, one part at a time, in the order the parts need each other:
+     * <ol>
+     * <li>No new work: the HTTP server stops, and the recovery of unfinished sagas.</li>
+     * <li>The sagas that are running complete. They still have their thread pool, their saga logs and the stores
+     * they write to.</li>
+     * <li>The thread pool of the sagas is shut down. A saga hands each of its steps to this pool, so a saga that
+     * is running when the pool is shut down fails.</li>
+     * <li>The saga log pool is shut down. After that it gives out no log.</li>
+     * <li>The stores the sagas wrote to are closed.</li>
+     * </ol>
+     * A part that fails to stop is logged, and the parts after it are stopped all the same.
+     */
     public void stop() {
-        List<CompletableFuture<Void>> futures = new ArrayList<>();
-        futures.add(CompletableFuture.runAsync(() -> {
-            server.stop();
-            LOG.debug("Undertow was shutdown");
-        }));
-        futures.add(CompletableFuture.runAsync(() -> {
-            persistence.close();
-            LOG.debug("Persistence provider was shutdown");
-        }));
-        futures.add(CompletableFuture.runAsync(() -> {
-            try {
-                txlogRawdataPool.getClient().close();
-                LOG.debug("Transaction log (rawdata client) was shutdown");
-            } catch (Error | RuntimeException e) {
-                throw e;
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-        }));
-        futures.add(CompletableFuture.runAsync(() -> {
-            sagasObserver.shutdown();
-            LOG.debug("SagaObserver was shutdown");
-        }));
+        stop(RUNNING_SAGAS_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+    }
+
+    /**
+     * Stops the application as {@link #stop()} does, waiting the given time at most for the sagas that are
+     * running.
+     *
+     * @param runningSagasTimeout the longest time to wait for the running sagas to complete
+     * @param unit                the unit of the timeout
+     */
+    public void stop(long runningSagasTimeout, TimeUnit unit) {
+        stop("Undertow", server::stop);
         if (sagaRecoveryTrigger != null) {
-            futures.add(CompletableFuture.runAsync(() -> {
-                sagaRecoveryTrigger.stop(); // shuts the recovery thread-pool down as well
-                LOG.debug("SagaRecoveryTrigger was shutdown");
-            }));
+            stop("SagaRecoveryTrigger", sagaRecoveryTrigger::stop); // shuts the recovery thread-pool down as well
         } else {
-            futures.add(CompletableFuture.runAsync(() -> {
-                // recovery by the next write uses this pool also when there is no trigger
-                shutdownAndAwaitTermination(sec.getRecoveryThreadPool());
-                LOG.debug("Saga recovery thread-pool was shutdown");
-            }));
+            // recovery by the next write uses this pool also when there is no trigger
+            stop("Saga recovery thread-pool", () -> shutdownAndAwaitTermination(sec.getRecoveryThreadPool()));
         }
-        futures.add(CompletableFuture.runAsync(() -> {
-            sec.shutdown();
-            LOG.debug("Saga Execution Coordinator was shutdown");
-        }));
-        futures.add(CompletableFuture.runAsync(() -> {
-            shutdownAndAwaitTermination(sagaThreadPool);
-            LOG.debug("Saga thread-pool was shutdown");
-        }));
-        futures.add(CompletableFuture.runAsync(() -> {
-            sagaLogPool.shutdown();
-            LOG.debug("SagaLogPool was shutdown");
-        }));
-        CompletableFuture<Void> all = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
-        try {
-            all.orTimeout(10, TimeUnit.SECONDS).join();
-            LOG.debug("All internal services was shutdown.");
-        } catch (CompletionException e) {
-            if (e.getCause() != null && e.getCause() instanceof TimeoutException) {
-                LOG.warn("Timeout before shutdown of internal services could complete.");
-            } else {
-                LOG.error("Error while waiting for all services to shut down.", e);
+
+        stop("Running sagas", () -> {
+            if (!sec.awaitRunningSagas(runningSagasTimeout, unit)) {
+                LOG.warn("Sagas were still running after {} {}. They fail when their thread pool is shut down, and are recovered from their saga logs.", runningSagasTimeout, unit);
             }
-        }
+        });
+
+        stop("Saga Execution Coordinator", sec::shutdown);
+        stop("Saga thread-pool", () -> shutdownAndAwaitTermination(sagaThreadPool));
+        stop("SagaObserver", sagasObserver::shutdown);
+
+        stop("SagaLogPool", sagaLogPool::shutdown);
+
+        stop("Persistence provider", persistence::close);
+        stop("Transaction log (rawdata client)", () -> txlogRawdataPool.getClient().close());
         LOG.info("Leaving.. Bye!");
+    }
+
+    static final int RUNNING_SAGAS_TIMEOUT_SECONDS = 10;
+
+    /* A part of the application that is stopped; closing a store may throw anything. */
+    @FunctionalInterface
+    private interface Stopping {
+        void stop() throws Exception;
+    }
+
+    private static void stop(String part, Stopping stopping) {
+        try {
+            stopping.stop();
+            LOG.debug("{} was shutdown", part);
+        } catch (Exception e) {
+            LOG.error("Error while shutting down: {}", part, e);
+        }
     }
 
     public Undertow getServer() {
@@ -556,7 +557,7 @@ public class UndertowApplication {
         return sagaLogPool;
     }
 
-    public SelectableThreadPoolExectutor getSagaThreadPool() {
+    public SelectableThreadPoolExecutor getSagaThreadPool() {
         return sagaThreadPool;
     }
 

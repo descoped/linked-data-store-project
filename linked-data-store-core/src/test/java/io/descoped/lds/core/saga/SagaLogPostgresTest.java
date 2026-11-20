@@ -193,12 +193,13 @@ public class SagaLogPostgresTest {
         SagaLogPool pool = server.getApplication().getSec().getSagaLogPool();
         long entries = 0;
         for (SagaLogId logId : pool.instanceLocalLogIds()) {
-            SagaLog sagaLog = pool.tryTakeOwnership(new SagaLogOwner("saga-log-postgres-test"), logId, 10, TimeUnit.SECONDS);
+            SagaLogOwner owner = new SagaLogOwner("saga-log-postgres-test");
+            SagaLog sagaLog = pool.tryTakeOwnership(owner, logId, 10, TimeUnit.SECONDS);
             assertThat(sagaLog).as("ownership of %s", logId).isNotNull();
             try {
                 entries += sagaLog.readIncompleteSagas().count();
             } finally {
-                pool.releaseOwnership(logId);
+                pool.releaseOwnership(owner, logId);
             }
         }
         return entries;

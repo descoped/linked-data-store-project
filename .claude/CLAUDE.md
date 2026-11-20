@@ -102,9 +102,9 @@ to the latest stable and removes them from this list, from the "held" block in t
   JUnit Platform (Surefire 3.6 runs TestNG through the TestNG engine for the platform, which it brings itself),
   on the class path (`useModulePath` false), because they share packages with the code. Tests move to JUnit as
   each module is revised; a class that extends the shared suite or the Reactive Streams TCK stays TestNG, because
-  those are. Until core is revised, a test in core that needs the running application is TestNG, because the
-  test server is started by a TestNG listener: a new test class asserts with AssertJ, a test added to an
-  existing class follows that class.
+  those are. Until core is revised, a test in core that takes its server from the TestNG listener
+  (`TestServerListener`) is TestNG: a new test class asserts with AssertJ, a test added to an existing class
+  follows that class. A new test class that starts a server of its own (`ApplicationStopTest`) is JUnit.
 - The PostgreSQL provider's tests (the shared suite, the Reactive Streams TCK for its publisher, and
   `PostgresProviderTest` for what the suite does not cover) run on a real PostgreSQL 18 (`postgres:18-alpine`)
   through Testcontainers, so **the build needs Docker**.
@@ -115,6 +115,8 @@ to the latest stable and removes them from this list, from the "held" block in t
   Reactive Streams TCK for `AsyncIterablePublisher`.
 - Core's `SagaLogPostgresTest` runs the write path with the saga log in a PostgreSQL 18 container: concurrent
   writes, recovery of an unfinished saga by the next write, after a restart and by another instance of the cluster.
+- Core's `ApplicationStopTest` checks the order in which the application stops (`UndertowApplication.stop`): no
+  new writes, the running sagas complete, then their thread pool, the saga log pool and the stores.
 - Core's tests start the application in the JVM on a random port with the memory provider (`TestServerListener`).
   13 of them are disabled in the source (`enabled = false`, `@Ignore`), several because they hang; they are
   re-enabled or deleted with a reason when core is revised.

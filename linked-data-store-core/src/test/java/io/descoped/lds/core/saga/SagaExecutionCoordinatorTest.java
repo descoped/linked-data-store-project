@@ -6,6 +6,7 @@ import io.descoped.lds.test.server.TestServer;
 import io.descoped.lds.test.server.TestServerListener;
 import no.cantara.saga.execution.SagaExecutionTraversalContext;
 import no.cantara.sagalog.SagaLog;
+import no.cantara.sagalog.SagaLogAlreadyAquiredByOtherOwnerException;
 import no.cantara.sagalog.SagaLogOwner;
 import no.cantara.sagalog.SagaLogPool;
 import org.testng.Assert;
@@ -76,7 +77,7 @@ public class SagaExecutionCoordinatorTest {
             assertTrue(sagaLog.readIncompleteSagas().anyMatch(e -> true)); // check that saga-log is not empty
             assertFalse(deadSagaLog.readIncompleteSagas().anyMatch(e -> true)); // check that dead-saga-log is empty
         } finally {
-            pool.release(sagaLog.id());
+            pool.releaseOwnership(owner, sagaLog.id());
         }
 
         client.put("/data/provisionagreement/m1?sync=true", "{\"name\":\"saga-handoff-test-data 2\",\"contacts\":[]}").expect201Created();
@@ -86,7 +87,7 @@ public class SagaExecutionCoordinatorTest {
             assertFalse(sagaLog.readIncompleteSagas().anyMatch(e -> true)); // check that saga-log is empty
             assertFalse(deadSagaLog.readIncompleteSagas().anyMatch(e -> true)); // check that dead-saga-log is empty
         } finally {
-            pool.releaseOwnership(sagaLog.id());
+            pool.releaseOwnership(owner, sagaLog.id());
         }
     }
 
@@ -113,18 +114,18 @@ public class SagaExecutionCoordinatorTest {
                 assertTrue(sagaLog.readIncompleteSagas().anyMatch(e -> true)); // check that saga-log is not empty
                 assertFalse(deadSagaLog.readIncompleteSagas().anyMatch(e -> true)); // check that dead-saga-log is empty
             } finally {
-                pool.release(sagaLog.id());
+                pool.releaseOwnership(owner, sagaLog.id());
             }
 
-            SagaLog otherSagaLog = sec.acquireCleanSagaLog(nopAction(), failOnce()); // should move the entries to dead-saga log
+            SagaExecutionCoordinator.OwnedSagaLog otherSagaLog = sec.acquireCleanSagaLog(nopAction(), failOnce()); // should move the entries to dead-saga log
             try {
-                Assert.assertEquals(otherSagaLog, sagaLog);
-                sagaLog = otherSagaLog;
+                Assert.assertEquals(otherSagaLog.sagaLog(), sagaLog);
+                sagaLog = otherSagaLog.sagaLog();
 
                 assertFalse(sagaLog.readIncompleteSagas().anyMatch(e -> true)); // check that saga-log is empty
                 assertTrue(deadSagaLog.readIncompleteSagas().anyMatch(e -> true)); // check that dead-saga-log is not empty
             } finally {
-                pool.release(otherSagaLog.id());
+                pool.releaseOwnership(otherSagaLog.owner(), otherSagaLog.id());
             }
         } finally {
             deadSagaLog.truncate();
@@ -161,14 +162,15 @@ public class SagaExecutionCoordinatorTest {
         }
         SagaExecutionCoordinator sec = server.getApplication().getSec();
         SagaLogPool pool = sec.getSagaLogPool();
-        SagaLog sagaLog = pool.tryAcquire(new SagaLogOwner("core-sec-test"), 10, TimeUnit.SECONDS);
+        SagaLogOwner owner = new SagaLogOwner("core-sec-test");
+        SagaLog sagaLog = pool.tryAcquire(owner, 10, TimeUnit.SECONDS);
         try {
             Assert.assertEquals(SlowTruncateSagaLogInitializer.ACQUIRED_WITH_ENTRIES.get(), 0, "saga logs handed out with entries in them");
             assertFalse(sagaLog.readIncompleteSagas().anyMatch(e -> true)); // released, so truncated
             assertFalse(pool.connect(sec.deadSagaLogId).readIncompleteSagas().anyMatch(e -> true));
             assertTrue(sec.executionIdBySagaLogId.isEmpty());
         } finally {
-            pool.release(sagaLog.id());
+            pool.releaseOwnership(owner, sagaLog.id());
         }
     }
 
@@ -191,8 +193,8 @@ public class SagaExecutionCoordinatorTest {
         try {
             client.put("/data/provisionagreement/u1?sync=true&saga=failAfter%20S", "{\"name\":\"unfinished\",\"contacts\":[]}").expectAnyOf(500);
             try {
-                SagaLog acquired = sec.acquireCleanSagaLog(nopAction(), nopAction());
-                pool.release(acquired.id());
+                SagaExecutionCoordinator.OwnedSagaLog acquired = sec.acquireCleanSagaLog(nopAction(), nopAction());
+                pool.releaseOwnership(acquired.owner(), acquired.id());
                 Assert.fail("Acquired a saga log that cannot be emptied");
             } catch (RuntimeException e) {
                 assertTrue(e.getMessage().startsWith("Unable to acquire clean saga-log"), e.getMessage());
@@ -200,12 +202,13 @@ public class SagaExecutionCoordinatorTest {
         } finally {
             SlowTruncateSagaLogInitializer.TRUNCATES.set(true);
         }
-        SagaLog sagaLog = pool.tryAcquire(new SagaLogOwner("core-sec-test"), 2, TimeUnit.SECONDS);
+        SagaLogOwner owner = new SagaLogOwner("core-sec-test");
+        SagaLog sagaLog = pool.tryAcquire(owner, 2, TimeUnit.SECONDS);
         Assert.assertNotNull(sagaLog, "the saga log was not released");
         try {
             sagaLog.truncate().join();
         } finally {
-            pool.release(sagaLog.id());
+            pool.releaseOwnership(owner, sagaLog.id());
         }
     }
 
@@ -236,12 +239,13 @@ public class SagaExecutionCoordinatorTest {
         }
         client.get("/data/provisionagreement/t1").expect200Ok(); // the saga itself was recovered
 
-        SagaLog sagaLog = pool.tryAcquire(new SagaLogOwner("core-sec-test"), 2, TimeUnit.SECONDS);
+        SagaLogOwner owner = new SagaLogOwner("core-sec-test");
+        SagaLog sagaLog = pool.tryAcquire(owner, 2, TimeUnit.SECONDS);
         Assert.assertNotNull(sagaLog, "the saga log was not released");
         try {
             sagaLog.truncate().join();
         } finally {
-            pool.release(sagaLog.id());
+            pool.releaseOwnership(owner, sagaLog.id());
         }
     }
 
@@ -260,17 +264,119 @@ public class SagaExecutionCoordinatorTest {
         SagaLogPool pool = sec.getSagaLogPool();
         SagaLogOwner owner = new SagaLogOwner("core-sec-test");
         SagaLog sagaLog = pool.tryAcquire(owner);
-        pool.release(sagaLog.id());
+        pool.releaseOwnership(owner, sagaLog.id());
         sec.executionIdBySagaLogId.put(sagaLog.id(), "another-execution");
         try {
             client.put("/data/provisionagreement/h1?sync=true", "{\"name\":\"held\",\"contacts\":[]}").expectAnyOf(500);
 
             SagaLog released = pool.tryAcquire(owner, 2, TimeUnit.SECONDS);
             Assert.assertNotNull(released, "the saga log was not released");
-            pool.release(released.id());
+            pool.releaseOwnership(owner, released.id());
             Assert.assertEquals(sec.executionIdBySagaLogId.get(sagaLog.id()), "another-execution");
         } finally {
             sec.executionIdBySagaLogId.remove(sagaLog.id());
+        }
+    }
+
+    /**
+     * A saga that the thread pool does not take. Since saga 2.1.1 the library fails such a saga through its
+     * futures, where it threw before. Its log and its permit must be released all the same: a refused write that
+     * kept them would cost one of each, until no write could start.
+     */
+    @Test
+    @ConfigurationOverride({
+            "saga.recovery.enabled", "false",
+            "sagalog.provider", "no.cantara.sagalog.memory.MemorySagaLogInitializer",
+            "saga.number-of-logs", "2"
+    })
+    public void thatASagaTheThreadPoolRefusesReleasesItsLogAndItsPermit() {
+        SagaExecutionCoordinator sec = server.getApplication().getSec();
+        SagaLogPool pool = sec.getSagaLogPool();
+        int permits = sec.semaphore.availablePermits();
+        sec.getThreadPool().shutdown(); // refuses every saga from here on; this server is used by this test only
+
+        for (int i = 0; i < 3; i++) { // more writes than there are logs
+            client.put("/data/provisionagreement/r" + i + "?sync=true", "{\"name\":\"refused " + i + "\",\"contacts\":[]}").expectAnyOf(500);
+        }
+
+        Assert.assertEquals(sec.semaphore.availablePermits(), permits);
+        assertTrue(sec.executionIdBySagaLogId.isEmpty());
+        SagaLogOwner owner = new SagaLogOwner("core-sec-test");
+        List<SagaLog> acquired = new ArrayList<>();
+        try {
+            for (int i = 0; i < 2; i++) {
+                SagaLog sagaLog = pool.tryAcquire(owner);
+                Assert.assertNotNull(sagaLog, "saga log " + i + " was not released");
+                acquired.add(sagaLog);
+            }
+        } finally {
+            for (SagaLog sagaLog : acquired) {
+                pool.releaseOwnership(owner, sagaLog.id());
+            }
+        }
+    }
+
+    /**
+     * The coordinator takes a saga log as an owner and keeps the owner with the log, and the pool gives the log
+     * back for that owner only: another caller cannot release a log that a saga is using.
+     */
+    @Test
+    @ConfigurationOverride({
+            "saga.recovery.enabled", "false",
+            "sagalog.provider", "no.cantara.sagalog.memory.MemorySagaLogInitializer",
+            "saga.number-of-logs", "1"
+    })
+    public void thatASagaLogIsReleasedForTheOwnerThatTookItOnly() {
+        SagaExecutionCoordinator sec = server.getApplication().getSec();
+        SagaLogPool pool = sec.getSagaLogPool();
+        SagaExecutionCoordinator.OwnedSagaLog owned = sec.acquireCleanSagaLog(nopAction(), nopAction());
+        try {
+            try {
+                pool.releaseOwnership(new SagaLogOwner("someone-else"), owned.id());
+                Assert.fail("Another owner released the saga log");
+            } catch (SagaLogAlreadyAquiredByOtherOwnerException _) {
+                // the log is still the coordinator's
+            }
+            Assert.assertNull(pool.tryAcquire(new SagaLogOwner("core-sec-test")), "the only saga log was given out twice");
+        } finally {
+            pool.releaseOwnership(owned.owner(), owned.id());
+        }
+        client.put("/data/provisionagreement/o1?sync=true", "{\"name\":\"owner\",\"contacts\":[]}").expect201Created();
+    }
+
+    /**
+     * Recovery that cannot start a saga of a log, here a saga this instance does not know, fails. It must give the
+     * log back: a log that stays taken is lost to every write after, and to every later recovery.
+     */
+    @Test
+    @ConfigurationOverride({
+            "saga.recovery.enabled", "false",
+            "sagalog.provider", "no.cantara.sagalog.memory.MemorySagaLogInitializer",
+            "saga.number-of-logs", "1"
+    })
+    public void thatASagaLogIsReleasedWhenRecoveryCannotStartItsSaga() throws Exception {
+        SagaExecutionCoordinator sec = server.getApplication().getSec();
+        SagaLogPool pool = sec.getSagaLogPool();
+        SagaLogOwner owner = new SagaLogOwner("core-sec-test");
+        SagaLog sagaLog = pool.tryAcquire(owner);
+        try {
+            sagaLog.write(sagaLog.builder().startSaga("an-execution", "a-saga-nobody-knows", "{}")).join();
+        } finally {
+            pool.releaseOwnership(owner, sagaLog.id());
+        }
+        try {
+            sec.completeLocalIncompleteSagas(sec.getRecoveryThreadPool()).join();
+            Assert.fail("The recovery of a saga nobody knows did not fail");
+        } catch (CompletionException e) {
+            assertTrue(String.valueOf(e.getCause()).contains("is not present in sagaRepository"), String.valueOf(e.getCause()));
+        } finally {
+            SagaLog released = pool.tryAcquire(owner, 2, TimeUnit.SECONDS);
+            Assert.assertNotNull(released, "the saga log was not released");
+            try {
+                released.truncate().join(); // the next test gets it empty
+            } finally {
+                pool.releaseOwnership(owner, released.id());
+            }
         }
     }
 

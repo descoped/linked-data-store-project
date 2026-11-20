@@ -1,0 +1,330 @@
+package io.descoped.lds.core.saga;
+
+import io.descoped.config.DynamicConfiguration;
+import io.descoped.config.StoreBasedDynamicConfiguration;
+import io.descoped.lds.api.persistence.json.JsonTools;
+import io.descoped.lds.core.UndertowApplication;
+import io.descoped.lds.test.server.TestServer;
+import io.descoped.lds.test.server.TestServerListener;
+import no.cantara.saga.api.Saga;
+import no.cantara.saga.execution.SagaHandoffResult;
+import no.cantara.saga.execution.adapter.Adapter;
+import no.cantara.sagalog.SagaLog;
+import no.cantara.sagalog.SagaLogEntry;
+import no.cantara.sagalog.SagaLogEntryType;
+import no.cantara.sagalog.SagaLogOwner;
+import no.cantara.sagalog.SagaPoolShutdownException;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.time.ZonedDateTime;
+import java.util.Collections;
+import java.util.List;
+import java.util.Random;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+/**
+ * The order in which the application stops. A saga hands each of its steps to the thread pool of the sagas, writes
+ * each step to its saga log and writes to the stores, so the application lets the sagas that are running complete
+ * before it shuts any of those down. Each test starts a server of its own, with a saga log whose writes and
+ * truncate take time ({@link SlowTruncateSagaLogInitializer}), so that a saga is still running when the server is
+ * stopped.
+ */
+class ApplicationStopTest {
+
+    private static final String BODY = "{\"name\":\"stop\",\"contacts\":[]}";
+
+    private final HttpClient http = HttpClient.newHttpClient();
+    private TestServer server;
+    private HeldSaga held;
+
+    @AfterEach
+    void stop() {
+        if (held != null) {
+            held.release.countDown();
+        }
+        if (server != null) {
+            server.getApplication().getSec().runningSagas.clear(); // what a test put there never completes
+            server.getApplication().stop(); // a second stop does nothing more
+        }
+    }
+
+    @Test
+    void aSagaThatIsRunningCompletesBeforeTheApplicationStops() throws Exception {
+        server = start();
+        SagaExecutionCoordinator sec = server.getApplication().getSec();
+
+        // answered when the saga has written its first entry; the saga goes on
+        assertThat(put("/data/provisionagreement/s1?sync=false")).isEqualTo(201);
+        List<CompletableFuture<SagaHandoffResult>> running = List.copyOf(sec.runningSagas);
+        assertThat(running).hasSize(1);
+        assertThat(running.getFirst()).isNotDone();
+
+        server.getApplication().stop();
+
+        assertThat(running.getFirst()).isCompleted();
+        assertThat(running.getFirst().join().isSuccess()).isTrue();
+        assertThat(sec.runningSagas).isEmpty();
+        assertThat(sec.executionIdBySagaLogId).isEmpty();
+    }
+
+    /**
+     * A saga that is inside its first step when the application is stopped. Two steps follow that one, and the
+     * saga hands one of them to the thread pool when the first step ends. The stop waits, so the pool is still
+     * there then, and the saga completes.
+     */
+    @Test
+    void aSagaInTheMiddleOfItsStepsCompletesWhenTheApplicationIsStopped() throws Exception {
+        server = start();
+        SagaExecutionCoordinator sec = server.getApplication().getSec();
+        held = new HeldSaga(sec);
+        CompletableFuture<SagaHandoffResult> completion = held.start();
+        assertThat(held.entered.await(10, TimeUnit.SECONDS)).isTrue();
+
+        CompletableFuture<Void> stop = CompletableFuture.runAsync(() -> server.getApplication().stop());
+        Thread.sleep(300);
+        assertThat(stop).isNotDone(); // waiting for the saga
+        assertThat(sec.getThreadPool().isShutdown()).isFalse();
+        held.release.countDown();
+        stop.get(30, TimeUnit.SECONDS);
+
+        assertThat(completion).isCompleted();
+        assertThat(completion.join().isSuccess()).isTrue();
+        assertThat(held.laterSteps).hasValue(2);
+        assertStopped(server);
+    }
+
+    /**
+     * A saga whose first step outlasts the time the stop waits. Its thread pool is shut down when the step ends,
+     * so the step it hands to the pool is refused and the saga fails. It must still give back its saga log and
+     * its permit, and its saga log must hold what it did, for the recovery after the next start: the saga began
+     * and its first step ended.
+     */
+    @Test
+    void aSagaThatOutlastsTheWaitOfTheStopFailsAndLeavesItsLogForRecovery() throws Exception {
+        server = start();
+        SagaExecutionCoordinator sec = server.getApplication().getSec();
+        int permits = sec.semaphore.availablePermits();
+        held = new HeldSaga(sec);
+        CompletableFuture<SagaHandoffResult> completion = held.start();
+        assertThat(held.entered.await(10, TimeUnit.SECONDS)).isTrue();
+        SagaLog sagaLog = sec.getSagaLogPool().connect(sec.executionIdBySagaLogId.keySet().iterator().next());
+
+        CompletableFuture<Void> stop = CompletableFuture.runAsync(() -> server.getApplication().stop(200, TimeUnit.MILLISECONDS));
+        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        while (!sec.getThreadPool().isShutdown()) {
+            assertThat(System.nanoTime()).as("waited for the thread pool to be shut down").isLessThan(deadline);
+            Thread.sleep(10);
+        }
+        // read when the saga has failed, on its own thread: the saga log pool is shut down after that thread ends
+        List<SagaLogEntry> entries = new CopyOnWriteArrayList<>();
+        completion.whenComplete((result, failure) -> sagaLog.readIncompleteSagas().forEach(entries::add));
+        held.release.countDown();
+        stop.get(30, TimeUnit.SECONDS);
+
+        assertThat(completion).isCompletedExceptionally();
+        assertThatThrownBy(completion::join).hasRootCauseInstanceOf(RejectedExecutionException.class);
+        assertThat(held.laterSteps.get()).isLessThan(2); // the saga runs one of the two itself
+        assertThat(entries).anyMatch(entry -> Saga.ID_START.equals(entry.getNodeId()) && entry.getEntryType() == SagaLogEntryType.Start);
+        assertThat(entries).anyMatch(entry -> "a".equals(entry.getNodeId()) && entry.getEntryType() == SagaLogEntryType.End);
+        assertThat(sec.semaphore.availablePermits()).isEqualTo(permits);
+        assertThat(sec.executionIdBySagaLogId).isEmpty();
+        assertStopped(server);
+    }
+
+    @Test
+    void theSagaLogPoolGivesOutNoLogAfterTheApplicationHasStopped() {
+        server = start();
+
+        server.getApplication().stop();
+
+        assertStopped(server);
+    }
+
+    @Test
+    void theStopWaitsForASagaThatDoesNotEndForAsLongAsItIsTold() {
+        server = start();
+        server.getApplication().getSec().runningSagas.add(new CompletableFuture<>());
+
+        long before = System.nanoTime();
+        server.getApplication().stop(200, TimeUnit.MILLISECONDS);
+
+        assertThat(Duration.ofNanos(System.nanoTime() - before)).isBetween(Duration.ofMillis(200), Duration.ofSeconds(5));
+        assertStopped(server);
+    }
+
+    @Test
+    void aPartThatFailsToStopDoesNotKeepTheRestFromStopping() {
+        server = start();
+        server.getApplication().getSec().runningSagas.add(new CompletableFuture<>() {
+            @Override
+            public boolean isDone() {
+                throw new IllegalStateException("as the test asked"); // waiting for the running sagas fails
+            }
+        });
+
+        server.getApplication().stop();
+
+        assertStopped(server);
+    }
+
+    @Test
+    void waitingForTheRunningSagasEndsWhenTheyHaveCompletedOrFailed() {
+        server = start();
+        SagaExecutionCoordinator sec = server.getApplication().getSec();
+        CompletableFuture<SagaHandoffResult> completing = new CompletableFuture<>();
+        CompletableFuture<SagaHandoffResult> failing = new CompletableFuture<>();
+        sec.runningSagas.add(completing);
+        sec.runningSagas.add(failing);
+
+        assertThat(sec.awaitRunningSagas(50, TimeUnit.MILLISECONDS)).isFalse();
+
+        CompletableFuture.delayedExecutor(100, TimeUnit.MILLISECONDS).execute(() -> {
+            failing.completeExceptionally(new IllegalStateException("as the test asked"));
+            completing.complete(null);
+        });
+        assertThat(sec.awaitRunningSagas(10, TimeUnit.SECONDS)).isTrue();
+    }
+
+    @Test
+    void waitingForTheRunningSagasEndsWhenTheThreadIsInterrupted() {
+        server = start();
+        SagaExecutionCoordinator sec = server.getApplication().getSec();
+        sec.runningSagas.add(new CompletableFuture<>());
+
+        Thread.currentThread().interrupt();
+        try {
+            assertThat(sec.awaitRunningSagas(10, TimeUnit.SECONDS)).isFalse();
+            assertThat(Thread.currentThread().isInterrupted()).isTrue();
+        } finally {
+            Thread.interrupted(); // cleared for what comes after
+        }
+    }
+
+    /**
+     * A recovery pass that meets a saga log pool that is shut down is the application stopping. The trigger ends
+     * there: it schedules no pass after it.
+     */
+    @Test
+    void theRecoveryTriggerEndsWhenTheSagaLogPoolIsShutDown() throws Exception {
+        server = start();
+        SagaExecutionCoordinator sec = server.getApplication().getSec();
+        server.getApplication().stop();
+
+        AtomicInteger recoveries = new AtomicInteger(); // one for each saga log of each pass
+        ScheduledThreadPoolExecutor recoveryThreadPool = new ScheduledThreadPoolExecutor(2) {
+            @Override
+            public void execute(Runnable command) {
+                recoveries.incrementAndGet();
+                super.execute(command);
+            }
+        };
+        SagaRecoveryTrigger trigger = new SagaRecoveryTrigger(sec, 1, 1, recoveryThreadPool);
+        trigger.start();
+        try {
+            long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+            while (recoveries.get() == 0) {
+                assertThat(System.nanoTime()).as("waited for the first pass").isLessThan(deadline);
+                Thread.sleep(50);
+            }
+            Thread.sleep(2500); // two more passes, if there were any
+            assertThat(recoveries).hasValue(1);
+        } finally {
+            trigger.stop();
+        }
+    }
+
+    @Test
+    void aSagaLogPoolThatIsShutDownIsToldFromAFaultOfTheRecovery() {
+        assertThat(SagaRecoveryTrigger.shuttingDown(new CompletionException(new SagaPoolShutdownException("the pool is shut down")))).isTrue();
+        assertThat(SagaRecoveryTrigger.shuttingDown(new CompletionException(new IllegalStateException("another failure")))).isFalse();
+    }
+
+    private static void assertStopped(TestServer stopped) {
+        SagaExecutionCoordinator sec = stopped.getApplication().getSec();
+        SagaLogOwner owner = new SagaLogOwner("application-stop-test");
+        assertThat(sec.getThreadPool().isTerminated()).isTrue();
+        assertThatThrownBy(() -> sec.getSagaLogPool().tryAcquire(owner)).isInstanceOf(SagaPoolShutdownException.class);
+    }
+
+    /**
+     * A saga of three steps: {@code a}, then {@code b} and {@code c} side by side. The adapter of {@code a} tells
+     * the test that it is entered and waits there until the test lets it go. With two steps after {@code a}, the
+     * saga hands one of them to the thread pool when {@code a} ends; a single step after it would be run by the
+     * thread that ran {@code a}, and the saga would not need the pool again.
+     */
+    private static final class HeldSaga {
+        final CountDownLatch entered = new CountDownLatch(1);
+        final CountDownLatch release = new CountDownLatch(1);
+        final AtomicInteger laterSteps = new AtomicInteger();
+        private final SagaExecutionCoordinator sec;
+        private final Saga saga;
+
+        HeldSaga(SagaExecutionCoordinator sec) {
+            this.sec = sec;
+            sec.sagaRepository.getAdapterLoader()
+                    .register(new Adapter<>(String.class, "held", (input, dependees) -> {
+                        entered.countDown();
+                        try {
+                            release.await();
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            throw new IllegalStateException("the held step was interrupted", e);
+                        }
+                        return "a";
+                    }))
+                    .register(new Adapter<>(String.class, "counted", (input, dependees) -> {
+                        laterSteps.incrementAndGet();
+                        return "later";
+                    }));
+            saga = Saga.start("HeldSaga").linkTo("a")
+                    .id("a").adapter("held").linkTo("b", "c")
+                    .id("b").adapter("counted").linkToEnd()
+                    .id("c").adapter("counted").linkToEnd()
+                    .end();
+            sec.sagaRepository.register(saga);
+        }
+
+        /** Starts the saga and returns its completion. */
+        CompletableFuture<SagaHandoffResult> start() {
+            SagaInput input = new SagaInput(sec.generateTxId(), "PUT", "application-stop-test", "ns", "SomeEntity", "held",
+                    ZonedDateTime.now(), null, null, JsonTools.mapper.createObjectNode());
+            return sec.handoff(true, sec.sagaRepository.getAdapterLoader(), saga, input, Collections.emptyMap());
+        }
+    }
+
+    private TestServer start() {
+        DynamicConfiguration configuration = new StoreBasedDynamicConfiguration.Builder()
+                .propertiesResource(UndertowApplication.getDefaultConfigurationResourcePath())
+                .propertiesResource("application_test.properties")
+                .values(
+                        "sagalog.provider", SlowTruncateSagaLogInitializer.class.getName(),
+                        "saga.recovery.enabled", "false",
+                        "saga.number-of-logs", "1")
+                .build();
+        TestServer started = new TestServer(configuration, TestServerListener.findFreePort(new Random(), 9500, 9999));
+        started.getApplication().start();
+        return started;
+    }
+
+    private int put(String uri) throws Exception {
+        HttpRequest request = HttpRequest.newBuilder(URI.create(server.testURL(uri))).timeout(Duration.ofSeconds(60))
+                .PUT(HttpRequest.BodyPublishers.ofString(BODY)).build();
+        return http.send(request, HttpResponse.BodyHandlers.discarding()).statusCode();
+    }
+}

@@ -61,7 +61,7 @@
         <testcontainers.version>2.0.5</testcontainers.version>
         <rxjava.version>3.1.12</rxjava.version>
         <reactive-streams.version>1.0.4</reactive-streams.version>
-        <cantara-saga.version>2.1.0</cantara-saga.version>
+        <cantara-saga.version>2.1.1</cantara-saga.version>
 
         <!-- Held at the version the code was written for. Each one moves, to the latest stable, in the pull request
              that revises the code using it (see .claude/CLAUDE.md, "Held versions"); .github/renovate.json holds
