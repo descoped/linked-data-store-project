@@ -1,16 +1,15 @@
 package io.descoped.lds.api.persistence.json;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.flattened.FlattenedDocument;
 import io.descoped.lds.api.persistence.flattened.FlattenedDocumentLeafNode;
 import io.descoped.lds.api.persistence.streaming.FragmentType;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.time.ZonedDateTime;
 import java.util.Deque;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.Map;
@@ -57,15 +56,15 @@ public class JsonToFlattenedDocument {
         if (node == null || node.isNull()) {
             String path = parentPath.stream().collect(Collectors.joining("."));
             leafNodesByPath.put(path, new FlattenedDocumentLeafNode(documentKey, path, FragmentType.NULL, null, fragmentCapacity));
-        } else if (node.isTextual()) {
+        } else if (node.isString()) {
             String path = parentPath.stream().collect(Collectors.joining("."));
-            leafNodesByPath.put(path, new FlattenedDocumentLeafNode(documentKey, path, FragmentType.STRING, node.textValue(), fragmentCapacity));
+            leafNodesByPath.put(path, new FlattenedDocumentLeafNode(documentKey, path, FragmentType.STRING, node.stringValue(), fragmentCapacity));
         } else if (node.isNumber()) {
             String path = parentPath.stream().collect(Collectors.joining("."));
-            leafNodesByPath.put(path, new FlattenedDocumentLeafNode(documentKey, path, FragmentType.NUMERIC, node.asText(), fragmentCapacity));
+            leafNodesByPath.put(path, new FlattenedDocumentLeafNode(documentKey, path, FragmentType.NUMERIC, node.asString(), fragmentCapacity));
         } else if (node.isBoolean()) {
             String path = parentPath.stream().collect(Collectors.joining("."));
-            leafNodesByPath.put(path, new FlattenedDocumentLeafNode(documentKey, path, FragmentType.BOOLEAN, node.asText(), fragmentCapacity));
+            leafNodesByPath.put(path, new FlattenedDocumentLeafNode(documentKey, path, FragmentType.BOOLEAN, node.asString(), fragmentCapacity));
         } else if (node.isArray()) {
             ArrayNode array = (ArrayNode) node;
             if (array.size() == 0) {
@@ -87,9 +86,7 @@ public class JsonToFlattenedDocument {
                 String path = parentPath.stream().collect(Collectors.joining("."));
                 leafNodesByPath.put(path, new FlattenedDocumentLeafNode(documentKey, path, FragmentType.EMPTY_OBJECT, null, fragmentCapacity));
             } else {
-                Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
-                while (fields.hasNext()) {
-                    Map.Entry<String, JsonNode> field = fields.next();
+                for (Map.Entry<String, JsonNode> field : node.properties()) {
                     parentPath.addLast(field.getKey());
                     populateMapFromJson(parentPath, leafNodesByPath, field.getValue());
                     parentPath.removeLast();

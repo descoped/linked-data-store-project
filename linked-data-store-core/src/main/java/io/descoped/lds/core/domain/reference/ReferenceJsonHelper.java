@@ -1,12 +1,13 @@
 package io.descoped.lds.core.domain.reference;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.api.specification.SpecificationElement;
 import io.descoped.lds.core.domain.resource.ResourceContext;
 import io.descoped.lds.core.domain.resource.ResourceElement;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.util.Iterator;
 
@@ -34,7 +35,7 @@ public class ReferenceJsonHelper {
                 }
                 ArrayNode refNode = (ArrayNode) refParentNode.get(referencePropertyName);
                 for (int i = 0; i < refNode.size(); i++) {
-                    String idref = refNode.get(i).textValue();
+                    String idref = JsonTools.text(refNode.get(i));
                     if (referenceValue.equals(idref)) {
                         refNode.remove(i);
                         return true;
@@ -43,7 +44,7 @@ public class ReferenceJsonHelper {
                 return false; // not found
             } else {
                 ObjectNode refParentNode = t.jsonObject;
-                String existingValue = refParentNode.get(referencePropertyName).textValue();
+                String existingValue = JsonTools.text(refParentNode.get(referencePropertyName));
                 if (referenceValue.equals(existingValue)) {
                     refParentNode.remove(referencePropertyName);
                     return true;
@@ -65,13 +66,13 @@ public class ReferenceJsonHelper {
                 }
                 ArrayNode refNode = (ArrayNode) refParentNode.get(referencePropertyName);
                 // scan array for existing identical reference value
-                Iterator<JsonNode> it = refNode.elements();
+                Iterator<JsonNode> it = refNode.iterator();
                 while (it.hasNext()) {
                     JsonNode next = it.next();
                     if (next.isNull()) {
                         continue;
                     }
-                    if (referenceValue.equals(next.textValue())) {
+                    if (referenceValue.equals(JsonTools.text(next))) {
                         // value already in array
                         return false;
                     }
@@ -85,7 +86,7 @@ public class ReferenceJsonHelper {
                     // not already set
                     refParentNode.put(referencePropertyName, referenceValue);
                     return true;
-                } else if (!refParentNode.get(referencePropertyName).textValue().equals(referenceValue)) {
+                } else if (!JsonTools.text(refParentNode.get(referencePropertyName)).equals(referenceValue)) {
                     // change value
                     refParentNode.put(referencePropertyName, referenceValue);
                     return true;

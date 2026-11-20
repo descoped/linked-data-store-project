@@ -1,6 +1,5 @@
 package io.descoped.lds.core.domain.resource;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.json.JsonDocument;
@@ -12,6 +11,7 @@ import io.descoped.lds.test.server.TestServerListener;
 import org.testng.annotations.Ignore;
 import org.testng.annotations.Listeners;
 import org.testng.annotations.Test;
+import tools.jackson.databind.JsonNode;
 
 import javax.inject.Inject;
 import java.net.URLEncoder;

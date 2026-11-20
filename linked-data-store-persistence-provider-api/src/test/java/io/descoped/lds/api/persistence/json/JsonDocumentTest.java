@@ -1,9 +1,9 @@
 package io.descoped.lds.api.persistence.json;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import io.descoped.lds.api.json.JsonNavigationPath;
 import io.descoped.lds.api.persistence.DocumentKey;
 import org.junit.jupiter.api.Test;
+import tools.jackson.core.JacksonException;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -21,7 +21,7 @@ class JsonDocumentTest {
         try {
             new JsonDocument(new DocumentKey("ns", "E", "1", ZonedDateTime.now()), document == null ? null : JsonTools.mapper.readTree(document.replace('\'', '"')))
                     .traverseField(JsonNavigationPath.from(path), (node, at) -> visited.add(at + "=" + node));
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new IllegalArgumentException(document, e);
         }
         return visited;

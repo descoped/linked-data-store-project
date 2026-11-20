@@ -1,7 +1,5 @@
 package io.descoped.lds.core.saga;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.core.persistence.PersistenceCreateOrOverwriteSagaAdapter;
 import io.descoped.lds.core.utils.FileAndClasspathReaderUtils;
@@ -16,6 +14,8 @@ import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 import org.testng.annotations.Listeners;
 import org.testng.annotations.Test;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ObjectNode;
 
 import javax.inject.Inject;
 import java.nio.charset.StandardCharsets;

@@ -1,8 +1,8 @@
 package io.descoped.lds.core.saga;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.descoped.lds.api.persistence.json.JsonTools;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
@@ -45,45 +45,45 @@ public class SagaInput {
     }
 
     public String txId() {
-        return node.get("txid").textValue();
+        return JsonTools.text(node.get("txid"));
     }
 
     public String method() {
-        return node.get("method").textValue();
+        return JsonTools.text(node.get("method"));
     }
 
     public String schema() {
-        return node.get("schema").textValue();
+        return JsonTools.text(node.get("schema"));
     }
 
     public String namespace() {
-        return node.get("namespace").textValue();
+        return JsonTools.text(node.get("namespace"));
     }
 
     public String entity() {
-        return node.get("entity").textValue();
+        return JsonTools.text(node.get("entity"));
     }
 
     public String resourceId() {
-        return node.get("id").textValue();
+        return JsonTools.text(node.get("id"));
     }
 
     public ZonedDateTime version() {
-        String versionStr = node.get("version").textValue();
+        String versionStr = JsonTools.text(node.get("version"));
         return ZonedDateTime.parse(versionStr, DateTimeFormatter.ISO_ZONED_DATE_TIME);
     }
 
     public String versionAsString() {
-        String versionStr = node.get("version").textValue();
+        String versionStr = JsonTools.text(node.get("version"));
         return versionStr;
     }
 
     public String source() {
-        return ofNullable(node.get("source")).map(JsonNode::textValue).orElse(null);
+        return ofNullable(node.get("source")).map(JsonTools::text).orElse(null);
     }
 
     public String sourceId() {
-        return ofNullable(node.get("sourceId")).map(JsonNode::textValue).orElse(null);
+        return ofNullable(node.get("sourceId")).map(JsonTools::text).orElse(null);
     }
 
     public JsonNode data() {

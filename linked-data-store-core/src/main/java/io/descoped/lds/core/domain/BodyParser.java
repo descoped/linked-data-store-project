@@ -1,16 +1,15 @@
 package io.descoped.lds.core.domain;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.tika.mime.MediaType;
-import org.msgpack.jackson.dataformat.MessagePackFactory;
-
-import java.io.IOException;
+import org.komamitsu.jackson.dataformat.msgpack.MessagePackMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 public class BodyParser {
 
     final ObjectMapper jsonMapper = new ObjectMapper();
-    final ObjectMapper msgPackMapper = new ObjectMapper(new MessagePackFactory());
+    final ObjectMapper msgPackMapper = new MessagePackMapper();
 
     public JsonNode deserializeBody(String contentType, String requestBody) {
         try {
@@ -26,7 +25,7 @@ public class BodyParser {
                 throw new IllegalArgumentException("Unsupported Content-Type: " + contentType);
             }
             return requestData;
-        } catch (IOException e) {
+        } catch (JacksonException e) {
             throw new RuntimeException(e);
         }
     }

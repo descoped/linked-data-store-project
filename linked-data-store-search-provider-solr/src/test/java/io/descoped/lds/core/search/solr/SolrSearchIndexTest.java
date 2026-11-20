@@ -1,6 +1,5 @@
 package io.descoped.lds.core.search.solr;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.json.JsonDocument;
 import io.descoped.lds.api.persistence.json.JsonTools;
@@ -9,6 +8,7 @@ import io.descoped.lds.api.search.SearchResponse;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.JsonNode;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -105,7 +105,7 @@ class SolrSearchIndexTest {
     private static JsonDocument document(String entity, String resource) throws IOException {
         try (InputStream in = SolrSearchIndexTest.class.getResourceAsStream("/" + resource)) {
             JsonNode json = JsonTools.toJsonNode(new String(in.readAllBytes(), StandardCharsets.UTF_8));
-            return new JsonDocument(new DocumentKey("ns", entity, json.get("id").textValue(), ZonedDateTime.now()), json);
+            return new JsonDocument(new DocumentKey("ns", entity, JsonTools.text(json.get("id")), ZonedDateTime.now()), json);
         }
     }
 }

@@ -62,6 +62,19 @@ directive by name). Keep them when changing this code: the `SchemaTraverser` of 
 `DateTimeScalar` gives a date-time out with the fraction of a second the value has, as LDS always did; the scalar
 of graphql-java-extended-scalars now always writes three digits.
 
+## JSON
+
+LDS reads and writes JSON with Jackson 3 (`tools.jackson`, the modules `tools.jackson.core` and
+`tools.jackson.databind`). A document is a tree (`JsonNode`); LDS binds no classes. Jackson 3 throws where Jackson 2
+answered null, an empty text or 0 for a node of another kind, so a text is taken out of a node with
+`JsonTools.text` (the text, or null when the node holds anything else) unless the node is known to be a text. An
+entry of the transaction log is MessagePack (`TxLogTools`, on `org.komamitsu:jackson-dataformat-msgpack`, the
+MessagePack format for Jackson 3); `TxLogToolsTest` holds the bytes of a message as they have always been
+written. Jackson 3 refuses a text with something after the document, where Jackson 2 read the document and
+ignored the rest: the body of a REST request (`BodyParser`), and the body and the `variables` parameter of a
+GraphQL request (`GraphqlHttpHandler`). The client of Solr brings Jackson 2 for its own use; LDS code does not use
+it.
+
 ## Invariants (never violate)
 
 - **JDK 27 baseline** (`maven.compiler.release` 27). LDS is a product: it is built, tested and run on one JDK, and CI

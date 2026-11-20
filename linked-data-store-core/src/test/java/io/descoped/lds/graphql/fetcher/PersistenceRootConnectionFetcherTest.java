@@ -1,7 +1,5 @@
 package io.descoped.lds.graphql.fetcher;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import graphql.relay.Connection;
 import graphql.relay.Edge;
 import io.descoped.lds.api.persistence.DocumentKey;
@@ -13,6 +11,8 @@ import io.descoped.lds.core.persistence.memory.MemoryInitializer;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Ignore;
 import org.testng.annotations.Test;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.time.ZonedDateTime;
 import java.util.LinkedHashMap;

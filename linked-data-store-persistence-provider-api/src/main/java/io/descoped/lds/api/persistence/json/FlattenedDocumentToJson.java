@@ -1,16 +1,16 @@
 package io.descoped.lds.api.persistence.json;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.BooleanNode;
-import com.fasterxml.jackson.databind.node.DoubleNode;
-import com.fasterxml.jackson.databind.node.IntNode;
-import com.fasterxml.jackson.databind.node.LongNode;
-import com.fasterxml.jackson.databind.node.NullNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.databind.node.TextNode;
 import io.descoped.lds.api.persistence.flattened.FlattenedDocument;
 import io.descoped.lds.api.persistence.flattened.FlattenedDocumentLeafNode;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.BooleanNode;
+import tools.jackson.databind.node.DoubleNode;
+import tools.jackson.databind.node.IntNode;
+import tools.jackson.databind.node.LongNode;
+import tools.jackson.databind.node.NullNode;
+import tools.jackson.databind.node.ObjectNode;
+import tools.jackson.databind.node.StringNode;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -76,7 +76,7 @@ public class FlattenedDocumentToJson {
                 at = step;
             }
             JsonNode value = valueOf(leaf);
-            if (value.isContainerNode() && parent.children.get(at) instanceof Branch branch && branch.array == value.isArray()) {
+            if (value.isContainer() && parent.children.get(at) instanceof Branch branch && branch.array == value.isArray()) {
                 // the object or array that other leaves have put something into already
                 continue;
             }
@@ -112,7 +112,7 @@ public class FlattenedDocumentToJson {
 
     private static JsonNode valueOf(FlattenedDocumentLeafNode leaf) {
         return switch (leaf.type()) {
-            case STRING -> leaf.value() == null ? NullNode.getInstance() : TextNode.valueOf((String) leaf.value());
+            case STRING -> leaf.value() == null ? NullNode.getInstance() : StringNode.valueOf((String) leaf.value());
             case NUMERIC -> number((String) leaf.value());
             case BOOLEAN -> BooleanNode.valueOf(Boolean.parseBoolean((String) leaf.value()));
             case EMPTY_ARRAY -> mapper.createArrayNode();

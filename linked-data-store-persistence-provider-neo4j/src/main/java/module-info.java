@@ -6,8 +6,8 @@ import io.descoped.lds.core.persistence.neo4j.Neo4jInitializer;
  */
 module io.descoped.lds.persistence.neo4j {
     requires io.descoped.lds.persistence.api;
-    requires com.fasterxml.jackson.core;
-    requires com.fasterxml.jackson.databind;
+    requires tools.jackson.core;
+    requires tools.jackson.databind;
     requires org.neo4j.driver;
     requires java.logging;
     requires jul.to.slf4j;

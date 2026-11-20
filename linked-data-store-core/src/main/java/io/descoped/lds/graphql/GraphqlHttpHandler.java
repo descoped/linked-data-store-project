@@ -1,6 +1,5 @@
 package io.descoped.lds.graphql;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import graphql.ExecutionInput;
 import graphql.ExecutionResult;
 import graphql.GraphQL;
@@ -14,6 +13,7 @@ import io.undertow.util.HeaderMap;
 import io.undertow.util.Headers;
 import io.undertow.util.HttpString;
 import io.undertow.util.StatusCodes;
+import tools.jackson.databind.JsonNode;
 
 import java.io.BufferedInputStream;
 import java.io.IOException;
@@ -116,12 +116,12 @@ public class GraphqlHttpHandler implements HttpHandler {
                 executionInput.query(toString(exchange));
             } else if (IS_JSON.resolve(exchange)) {
                 JsonNode json = toJson(exchange);
-                executionInput.query(json.get("query").textValue());
+                executionInput.query(JsonTools.text(json.get("query")));
                 if (json.has("variables") && !json.get("variables").isNull()) {
                     executionInput.variables(JsonTools.toMap(json.get("variables")));
                 }
                 if (json.has("operationName")) {
-                    executionInput.operationName(json.get("operationName").textValue());
+                    executionInput.operationName(JsonTools.text(json.get("operationName")));
                 }
             } else {
                 exchange.setStatusCode(StatusCodes.UNSUPPORTED_MEDIA_TYPE);

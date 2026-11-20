@@ -1,11 +1,11 @@
 package io.descoped.lds.core.domain.reference;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.core.domain.resource.ResourceContext;
 import org.testng.annotations.Test;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ObjectNode;
 
 import static io.descoped.lds.api.persistence.json.JsonTools.mapper;
 import static io.descoped.lds.core.domain.resource.ResourceContext.createResourceContext;

@@ -1,8 +1,5 @@
 package io.descoped.lds.core.domain.managed;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.json.JsonDocument;
 import io.descoped.lds.api.persistence.json.JsonTools;
@@ -32,6 +29,9 @@ import no.cantara.saga.execution.SagaHandoffResult;
 import no.cantara.saga.execution.adapter.AdapterLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Deque;

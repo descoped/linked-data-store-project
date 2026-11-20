@@ -1,7 +1,6 @@
 package io.descoped.lds.graphql;
 
 import com.damnhandy.uri.template.UriTemplate;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import graphql.GraphQL;
 import graphql.schema.GraphQLSchema;
 import graphql.schema.StaticDataFetcher;
@@ -14,6 +13,7 @@ import io.undertow.Undertow;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -202,5 +202,36 @@ public class GraphqlHttpHandlerTest {
         assertEquals(response.statusCode(), 200);
         assertEquals(response.body(), "{\"data\":{\"me\":{\"name\":\"Hadrien\"}}}");
 
+    }
+
+    /**
+     * Jackson 2 read the first document of a body and ignored what came after it.
+     */
+    @Test
+    public void testPostBodyWithSomethingAfterTheDocumentIsRefused() throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder(URI.create(uriTemplate.expand()))
+                .POST(HttpRequest.BodyPublishers.ofString("{\"query\":\"{me{name}}\"} and more"))
+                .header("Content-Type", "application/json")
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        // answered as every body that cannot be read is: an error, and no data
+        assertEquals(response.statusCode(), 500);
+        assertEquals(response.body(), "");
+    }
+
+    @Test
+    public void testGetVariablesWithSomethingAfterTheDocumentAreRefused() throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder(URI.create(uriTemplate
+                .set("query", "{me{name}}")
+                .set("variables", "{\"foo\":true} and more")
+                .expand())).build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        // answered as every body that cannot be read is: an error, and no data
+        assertEquals(response.statusCode(), 500);
+        assertEquals(response.body(), "");
     }
 }
