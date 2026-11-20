@@ -591,10 +591,10 @@ later version of a `Support` document does not change them. Any other field whos
 link when `@link` is left out: `owner: Support` holds the text `/Support/id`.
 
 Not finished: the copy does not work as written. The field holds one object, not a list: a list is refused with
-`$.support: array found, object expected`. Of the fields of the entity each list is read as a list of links,
-also a list of texts, and the others are not checked: `level` is taken as it comes. The GraphQL API still reads the field as a list, and answers it with `null` and the error
-`Can't resolve value (/AgreementById/support) : type mismatch error, expected type LIST`.
-[The model](model.md#shapes-that-do-not-work-as-written) lists it with the other shapes.
+`$.support: array found, object expected`. Of the fields of the entity each list is read as a list of links, also a list
+of texts, and the others are not checked: `level` is taken as it comes. The GraphQL API still reads the field as a list,
+and answers it with `null` and the error `Can't resolve value (/AgreementById/support) : type mismatch error, expected
+type LIST`. [The model](model.md#shapes-that-do-not-work-as-written) lists it with the other shapes.
 
 Not finished: a field whose type is an interface is none of the three. The fields of the interface become fields
 of the entity, and the field itself is not checked. [The model](model.md#shapes-that-do-not-work-as-written) lists
