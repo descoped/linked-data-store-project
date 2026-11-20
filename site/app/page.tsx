@@ -3,6 +3,10 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getCMSContent, resolveSeoContent, SeoJsonLd } from '@krantho/ui-react/server'
 import { collections } from '../krantho.collections'
+import { CodeCopy } from '../components/code-copy'
+import { CompositionFigure, TimeMachineFigure } from '../components/figures'
+import { SectionHash } from '../components/section-hash'
+import { highlightCode } from '../lib/html'
 import { site } from '../lib/krantho'
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -24,6 +28,19 @@ function cardsOf(html: string): { intro: string; cards: { title: string; html: s
 
 const idOf = (name: string): string => name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
 
+/** The figure a section of the contract shows after its text; its words are the section's */
+const figureOf: Record<string, () => React.ReactElement> = {
+  'What a document is made of': () => (
+    <figure className="figure">
+      <CompositionFigure />
+      <figcaption>
+        Person/ola holds an embedded address and a link to Company/fjord. A read at each instant gives both as they
+        were then.
+      </figcaption>
+    </figure>
+  ),
+}
+
 /**
  * The landing page: the hero from the fields of landing/home, then each section of the section contract
  * (`collections.landing.sections`) as a band, in that order; a section the document lacks is left out. krantho has
@@ -33,22 +50,35 @@ export default async function Home(): Promise<React.ReactElement> {
   const doc = await site.loader.getPublished({ collection: 'landing', slug: 'home' })
   if (!doc) notFound()
   const f = doc.fields as Record<string, string>
-  const { sections } = await getCMSContent('landing', 'home')
+  const { sections: raw } = await getCMSContent('landing', 'home')
+  // The code blocks coloured as on the documentation pages
+  const sections = Object.fromEntries(
+    await Promise.all(Object.entries(raw).map(async ([name, html]) => [name, await highlightCode(html)] as const)),
+  )
   return (
     <main className="landing">
       <SeoJsonLd collection="landing" slug="home" />
       <section className="hero">
-        <p className="eyebrow">{f.eyebrow}</p>
-        <h1>{f.headline}</h1>
-        <p className="subline">{f.subline}</p>
-        <p className="actions">
-          <Link className="button primary" href={f['primary-href']}>
-            {f['primary-label']}
-          </Link>
-          <Link className="button" href={f['secondary-href']}>
-            {f['secondary-label']}
-          </Link>
-        </p>
+        <div>
+          <p className="eyebrow">{f.eyebrow}</p>
+          <h1>{f.headline}</h1>
+          <p className="subline">{f.subline}</p>
+          <p className="actions">
+            <Link className="button primary" href={f['primary-href']}>
+              {f['primary-label']}
+            </Link>
+            <Link className="button" href={f['secondary-href']}>
+              {f['secondary-label']}
+            </Link>
+          </p>
+        </div>
+        <figure className="figure">
+          <TimeMachineFigure />
+          <figcaption>
+            Company/fjord has three versions. A read at each instant gets the version valid then, or nothing before
+            the first.
+          </figcaption>
+        </figure>
       </section>
       {(collections.landing.sections ?? [])
         .filter((name) => sections[name])
@@ -59,6 +89,7 @@ export default async function Home(): Promise<React.ReactElement> {
             <section key={name} id={id} className="band" aria-labelledby={`${id}-title`}>
               <h2 id={`${id}-title`}>{name}</h2>
               {intro.trim() && <div className="prose" dangerouslySetInnerHTML={{ __html: intro }} />}
+              {figureOf[name]?.()}
               {cards.length > 0 && (
                 <div className="cards">
                   {cards.map((card) => (
@@ -72,6 +103,8 @@ export default async function Home(): Promise<React.ReactElement> {
             </section>
           )
         })}
+      <CodeCopy />
+      <SectionHash selector="main section[id]" />
     </main>
   )
 }

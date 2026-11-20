@@ -33,7 +33,15 @@ const landing = defineCollection({
   source: 'filesystem',
   directory: join(process.cwd(), 'content', 'landing'),
   path: '/',
-  sections: ['The problem', 'How it works', 'See it', 'When it fits', 'Status'],
+  sections: [
+    'The problem',
+    'The time machine',
+    'What a document is made of',
+    'How it works',
+    'See it',
+    'When it fits',
+    'Status',
+  ],
   archetype: defineDocumentArchetype({
     id: 'site/landing',
     label: 'Landing',

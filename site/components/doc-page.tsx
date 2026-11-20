@@ -4,7 +4,9 @@ import { notFound } from 'next/navigation'
 import { getCMSContent, resolveSeoContent, SeoJsonLd } from '@krantho/ui-react/server'
 import { type DocCollection, docHref, docLinks, site } from '../lib/krantho'
 import { prepareHtml } from '../lib/html'
+import { CodeCopy } from './code-copy'
 import { Mermaid } from './mermaid'
+import { SectionHash } from './section-hash'
 
 /** A docs page's title, description and canonical address */
 export async function docMetadata(collection: DocCollection, slug: string): Promise<Metadata> {
@@ -35,13 +37,15 @@ export async function DocPage({
   const at = links.findIndex((link) => link.collection === collection && link.slug === slug)
   const previous = at > 0 ? links[at - 1] : undefined
   const next = at >= 0 ? links[at + 1] : undefined
-  const { html, toc, hasFigures } = prepareHtml((await getCMSContent(collection, slug)).html)
+  const { html, toc, hasFigures } = await prepareHtml((await getCMSContent(collection, slug)).html)
   return (
     <div className="doc-layout">
       <article className="doc">
         <SeoJsonLd collection={collection} slug={slug} />
         <div className="cms-markdown prose" dangerouslySetInnerHTML={{ __html: html }} />
         {hasFigures && <Mermaid />}
+        <CodeCopy />
+        <SectionHash selector=".doc .prose :is(h2, h3)[id]" />
         <nav className="pager" aria-label="Pages">
           {previous && (
             <Link href={previous.href} rel="prev">
@@ -56,7 +60,7 @@ export async function DocPage({
         </nav>
       </article>
       {toc.length > 1 && (
-        <nav className="toc" aria-label="On this page">
+        <nav className="toc" aria-label="On this page" data-section-nav>
           <h2>On this page</h2>
           <ul>
             {toc.map((entry) => (
