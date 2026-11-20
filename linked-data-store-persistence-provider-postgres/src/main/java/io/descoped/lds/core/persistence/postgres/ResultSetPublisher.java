@@ -56,7 +56,8 @@ final class ResultSetPublisher implements Publisher<ResultSet> {
                 if (cancelled.get()) {
                     return;
                 }
-                long r, newRequestedValue;
+                long r;
+                long newRequestedValue;
                 do {
                     r = requested.get();
                     if (Long.MAX_VALUE - r < n) {
@@ -70,12 +71,12 @@ final class ResultSetPublisher implements Publisher<ResultSet> {
             } catch (Throwable t) {
                 // the error is the last signal: the subscription is cancelled first, so a later request delivers nothing
                 cancelled.set(true);
-                Subscriber<? super ResultSet> subscriber = this.subscriber.getAndSet(null);
-                if (subscriber == null) {
+                Subscriber<? super ResultSet> target = this.subscriber.getAndSet(null);
+                if (target == null) {
                     // asynchronously cancelled
                     return;
                 }
-                subscriber.onError(t);
+                target.onError(t);
             }
         }
 
@@ -109,8 +110,8 @@ final class ResultSetPublisher implements Publisher<ResultSet> {
          * @return false when nothing more is to be delivered
          */
         private boolean publishNext() {
-            Subscriber<? super ResultSet> subscriber = this.subscriber.get();
-            if (subscriber == null) {
+            Subscriber<? super ResultSet> target = this.subscriber.get();
+            if (target == null) {
                 // asynchronously cancelled
                 return false;
             }
@@ -119,19 +120,19 @@ final class ResultSetPublisher implements Publisher<ResultSet> {
                 next = resultSet.next();
             } catch (Throwable t) {
                 if (!cancelled.get()) {
-                    subscriber.onError(t);
+                    target.onError(t);
                 }
                 return false;
             }
             if (!next) {
-                subscriber.onComplete();
+                target.onComplete();
                 return false;
             }
             try {
-                subscriber.onNext(resultSet);
+                target.onNext(resultSet);
             } catch (Throwable t) {
                 cancel();
-                subscriber.onError(t);
+                target.onError(t);
                 return false;
             }
             published.incrementAndGet();

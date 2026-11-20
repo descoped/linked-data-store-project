@@ -53,6 +53,11 @@ final class PostgresPersistence implements RxPersistence {
     private static final int WRITE_BATCH_SIZE = 100;
 
     private static final String COLUMNS = "f.id, f.version, f.path, f.indices, f.type, f.value";
+    private static final String SELECT_COLUMNS = "SELECT " + COLUMNS;
+    private static final String AND_C_ENTITY = " AND c.entity = ";
+    private static final String AND_C_VERSION_AT_MOST = " AND c.version <= ";
+    private static final String DELETE_WHERE_NAMESPACE = "DELETE FROM fragment WHERE namespace = ";
+    private static final String AND_ENTITY = " AND entity = ";
 
     final PostgresTransactionFactory transactionFactory;
 
@@ -165,13 +170,13 @@ final class PostgresPersistence implements RxPersistence {
     @Override
     public Flowable<Fragment> read(Transaction transaction, ZonedDateTime snapshot, String namespace, String entity, String id) {
         Query query = new Query();
-        query.sql("SELECT ").sql(COLUMNS).sql(" FROM fragment f WHERE f.namespace = ").value(namespace)
+        query.sql(SELECT_COLUMNS).sql(" FROM fragment f WHERE f.namespace = ").value(namespace)
                 .sql(" AND f.entity = ").value(entity)
                 .sql(" AND f.id = ").value(id)
                 .sql(" AND f.version = (SELECT max(c.version) FROM fragment c WHERE c.namespace = ").value(namespace)
-                .sql(" AND c.entity = ").value(entity)
+                .sql(AND_C_ENTITY).value(entity)
                 .sql(" AND c.id = ").value(id)
-                .sql(" AND c.version <= ").value(instantOf(snapshot))
+                .sql(AND_C_VERSION_AT_MOST).value(instantOf(snapshot))
                 .sql(") ORDER BY f.path, f.indices");
         return fragments(transaction, namespace, entity, query);
     }
@@ -184,7 +189,7 @@ final class PostgresPersistence implements RxPersistence {
     @Override
     public Flowable<Fragment> readVersions(Transaction transaction, String namespace, String entity, String id, Range<ZonedDateTime> range) {
         Query query = new Query();
-        query.sql("SELECT ").sql(COLUMNS).sql(" FROM (SELECT DISTINCT v.id, v.version FROM fragment v WHERE v.namespace = ").value(namespace)
+        query.sql(SELECT_COLUMNS).sql(" FROM (SELECT DISTINCT v.id, v.version FROM fragment v WHERE v.namespace = ").value(namespace)
                 .sql(" AND v.entity = ").value(entity)
                 .sql(" AND v.id = ").value(id);
         if (range.hasBefore()) {
@@ -192,9 +197,9 @@ final class PostgresPersistence implements RxPersistence {
         }
         if (range.hasAfter()) {
             query.sql(" AND v.version >= coalesce((SELECT max(c.version) FROM fragment c WHERE c.namespace = ").value(namespace)
-                .sql(" AND c.entity = ").value(entity)
+                .sql(AND_C_ENTITY).value(entity)
                     .sql(" AND c.id = ").value(id)
-                    .sql(" AND c.version <= ").value(instantOf(range.getAfter()))
+                    .sql(AND_C_VERSION_AT_MOST).value(instantOf(range.getAfter()))
                     .sql("), '-infinity')");
         }
         query.sql(range.isBackward() ? " ORDER BY v.version DESC" : " ORDER BY v.version");
@@ -209,9 +214,9 @@ final class PostgresPersistence implements RxPersistence {
     @Override
     public Flowable<Fragment> readAll(Transaction transaction, ZonedDateTime snapshot, String namespace, String entity, Range<String> range) {
         Query query = new Query();
-        query.sql("SELECT ").sql(COLUMNS).sql(" FROM (SELECT c.id, max(c.version) AS version FROM fragment c WHERE c.namespace = ").value(namespace)
-                .sql(" AND c.entity = ").value(entity)
-                .sql(" AND c.version <= ").value(instantOf(snapshot));
+        query.sql(SELECT_COLUMNS).sql(" FROM (SELECT c.id, max(c.version) AS version FROM fragment c WHERE c.namespace = ").value(namespace)
+                .sql(AND_C_ENTITY).value(entity)
+                .sql(AND_C_VERSION_AT_MOST).value(instantOf(snapshot));
         idsInside(query, "c.id", range);
         query.sql(range.isBackward() ? " GROUP BY c.id ORDER BY c.id DESC" : " GROUP BY c.id ORDER BY c.id");
         return fragments(transaction, namespace, entity, documentsOf(query, namespace, entity, range, "d.id"));
@@ -220,8 +225,8 @@ final class PostgresPersistence implements RxPersistence {
     @Override
     public Completable delete(Transaction transaction, String namespace, String entity, String id, ZonedDateTime version, PersistenceDeletePolicy policy) {
         Query query = new Query();
-        query.sql("DELETE FROM fragment WHERE namespace = ").value(namespace)
-                .sql(" AND entity = ").value(entity)
+        query.sql(DELETE_WHERE_NAMESPACE).value(namespace)
+                .sql(AND_ENTITY).value(entity)
                 .sql(" AND id = ").value(id)
                 .sql(" AND version = ").value(instantOf(version));
         return update(transaction, query);
@@ -230,8 +235,8 @@ final class PostgresPersistence implements RxPersistence {
     @Override
     public Completable deleteAllVersions(Transaction transaction, String namespace, String entity, String id, PersistenceDeletePolicy policy) {
         Query query = new Query();
-        query.sql("DELETE FROM fragment WHERE namespace = ").value(namespace)
-                .sql(" AND entity = ").value(entity)
+        query.sql(DELETE_WHERE_NAMESPACE).value(namespace)
+                .sql(AND_ENTITY).value(entity)
                 .sql(" AND id = ").value(id);
         return update(transaction, query);
     }
@@ -239,8 +244,8 @@ final class PostgresPersistence implements RxPersistence {
     @Override
     public Completable deleteAllEntities(Transaction transaction, String namespace, String entity, Iterable<String> paths) {
         Query query = new Query();
-        query.sql("DELETE FROM fragment WHERE namespace = ").value(namespace)
-                .sql(" AND entity = ").value(entity);
+        query.sql(DELETE_WHERE_NAMESPACE).value(namespace)
+                .sql(AND_ENTITY).value(entity);
         return update(transaction, query);
     }
 
@@ -268,7 +273,7 @@ final class PostgresPersistence implements RxPersistence {
     public Flowable<Fragment> find(Transaction transaction, ZonedDateTime snapshot, String namespace, String entity, String path, byte[] value, Range<String> range) {
         OffsetDateTime snapshotInstant = instantOf(snapshot);
         Query query = new Query();
-        query.sql("SELECT ").sql(COLUMNS).sql(" FROM (SELECT DISTINCT m.id, m.version FROM fragment m WHERE m.namespace = ").value(namespace)
+        query.sql(SELECT_COLUMNS).sql(" FROM (SELECT DISTINCT m.id, m.version FROM fragment m WHERE m.namespace = ").value(namespace)
                 .sql(" AND m.entity = ").value(entity)
                 .sql(" AND m.path = ").value(path)
                 .sql(" AND sha256(m.value) = sha256(").value(value)
