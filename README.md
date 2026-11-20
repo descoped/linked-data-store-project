@@ -26,7 +26,6 @@ until that is done, treat the code as work in progress.
 | `linked-data-store-bom` | Aligns the versions of the modules above |
 
 `docs/` holds the documentation from before the merge; it describes the earlier layout and is being rewritten.
-`linked-data-store-loadtest/` and `lds-cluster-test/` are earlier tooling that is not part of the build.
 
 ## Build
 

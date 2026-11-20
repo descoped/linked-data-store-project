@@ -23,8 +23,8 @@ reactor, group `io.descoped.lds`.
 | `linked-data-store-core` | `io.descoped.lds.core` | the application: `UndertowApplication`, REST (`NamespaceController`), GraphQL, sagas, transaction log |
 | `linked-data-store-server` | `io.descoped.lds.server` | `Server` (the main class), the defaults of the configuration, the example model (`schemas/`), the Dockerfile and the compose file (`compose.yaml`) |
 
-Not in the reactor: `docs/` (AsciiDoc, describes the pre-3.0 layout), `linked-data-store-loadtest/` and
-`lds-cluster-test/` (pre-3.0 tooling that does not work as it stands; replaced or removed in a later pull request).
+Not in the reactor: `docs/` (AsciiDoc, describes the pre-3.0 layout). The load test and the cluster test of
+before 3.0 are removed: they needed images and a saga log that do not exist any more. Their history is in git.
 
 Until 2026-11 every module was a repository of its own; their histories were imported here with `git filter-repo`
 (old tags prefixed with the repository name, e.g. `linked-data-store-core/v0.16`). Nothing was released under
