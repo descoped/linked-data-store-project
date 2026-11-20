@@ -3,6 +3,7 @@ package io.descoped.lds.graphql.directives;
 import graphql.schema.GraphQLArgument;
 import graphql.schema.GraphQLDirective;
 import graphql.schema.GraphQLNonNull;
+import io.descoped.lds.graphql.schemas.SchemaElements;
 
 import java.util.EnumSet;
 import java.util.List;
@@ -12,7 +13,10 @@ import static graphql.Scalars.GraphQLBoolean;
 import static graphql.Scalars.GraphQLString;
 import static graphql.introspection.Introspection.DirectiveLocation;
 
-public class ReverseLinkDirective extends GraphQLDirective {
+/**
+ * The reverse link directive. A directive of graphql-java can no longer be extended, so this class holds one.
+ */
+public class ReverseLinkDirective {
 
     public static final String NAME = "reverseLink";
     public static final String DESCRIPTION = "Defines a field as a reverse link to another managed domain";
@@ -22,7 +26,7 @@ public class ReverseLinkDirective extends GraphQLDirective {
     public static final GraphQLArgument PAGINATION_ARGUMENT = GraphQLArgument.newArgument()
             .name(PAGINATION_NAME)
             .type(GraphQLBoolean)
-            .defaultValue(true)
+            .defaultValueProgrammatic(true)
             .build();
 
     public static final GraphQLArgument MAPPED_BY_ARGUMENT = GraphQLArgument.newArgument()
@@ -34,19 +38,33 @@ public class ReverseLinkDirective extends GraphQLDirective {
             NAME,
             DESCRIPTION,
             EnumSet.of(DirectiveLocation.FIELD_DEFINITION),
-            List.of(PAGINATION_ARGUMENT, MAPPED_BY_ARGUMENT),
-            false, false, false
+            List.of(PAGINATION_ARGUMENT, MAPPED_BY_ARGUMENT)
     );
 
-    public static final GraphQLDirective REVERSE_LINK_DIRECTIVE = GraphQLDirective.newDirective()
+    public static final GraphQLDirective REVERSE_LINK_DIRECTIVE = SchemaElements.newDirective()
             .name("reverseLink")
             .argument(GraphQLArgument.newArgument().name("mappedBy").type(GraphQLNonNull.nonNull(GraphQLString)).build())
             .argument(GraphQLArgument.newArgument().name("pagination").type(GraphQLBoolean).build())
             .validLocation(DirectiveLocation.FIELD_DEFINITION)
             .build();
 
-    private ReverseLinkDirective(String name, String description, EnumSet<DirectiveLocation> locations, List<GraphQLArgument> arguments, boolean onOperation, boolean onFragment, boolean onField) {
-        super(name, description, locations, arguments, onOperation, onFragment, onField);
+    private final GraphQLDirective directive;
+
+    private ReverseLinkDirective(String name, String description, EnumSet<DirectiveLocation> locations, List<GraphQLArgument> arguments) {
+        this.directive = SchemaElements.newDirective()
+                .name(name)
+                .description(description)
+                .validLocations(locations.toArray(new DirectiveLocation[0]))
+                .replaceArguments(arguments)
+                .build();
+    }
+
+    public GraphQLDirective getDirective() {
+        return directive;
+    }
+
+    public GraphQLArgument getArgument(String name) {
+        return directive.getArgument(name);
     }
 
     public static ReverseLinkDirective newReverseLinkDirective(Boolean pagination, String mappedBy) {
@@ -57,9 +75,8 @@ public class ReverseLinkDirective extends GraphQLDirective {
                 DESCRIPTION,
                 EnumSet.of(DirectiveLocation.FIELD_DEFINITION),
                 List.of(
-                        MAPPED_BY_ARGUMENT.transform(builder -> builder.value(mappedBy)),
-                        PAGINATION_ARGUMENT.transform(builder -> builder.value(pagination))),
-                false, false, false
+                        MAPPED_BY_ARGUMENT.transform(builder -> builder.valueProgrammatic(mappedBy)),
+                        PAGINATION_ARGUMENT.transform(builder -> builder.valueProgrammatic(pagination)))
         );
     }
 
@@ -68,21 +85,20 @@ public class ReverseLinkDirective extends GraphQLDirective {
                 NAME,
                 DESCRIPTION,
                 EnumSet.of(DirectiveLocation.FIELD_DEFINITION),
-                List.of(MAPPED_BY_ARGUMENT.transform(builder -> builder.value(mappedBy))),
-                false, false, false
+                List.of(MAPPED_BY_ARGUMENT.transform(builder -> builder.valueProgrammatic(mappedBy)))
         );
     }
 
     public String getMappedBy() {
         GraphQLArgument argument = getArgument(MAPPED_BY_NAME);
-        return (String) argument.getValue();
+        return (String) SchemaElements.value(argument);
     }
 
     public Boolean getPagination() {
         GraphQLArgument pagination = getArgument(PAGINATION_NAME);
-        if (pagination.getValue() == null) {
-            return (Boolean) pagination.getDefaultValue();
+        if (SchemaElements.value(pagination) == null) {
+            return (Boolean) SchemaElements.defaultValue(pagination);
         }
-        return (Boolean) pagination.getDefaultValue();
+        return (Boolean) SchemaElements.defaultValue(pagination);
     }
 }

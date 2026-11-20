@@ -35,7 +35,7 @@ public class PersistenceLinkFetcher implements DataFetcher<Map<String, Object>> 
         if (matcher.matches()) {
             String id = matcher.group("id");
             String type = matcher.group("type");
-            GraphQLContext context = environment.getContext();
+            GraphQLContext context = environment.getGraphQlContext().get(GraphQLContext.class);
             JsonDocument document = readDocument(type, id, context.getSnapshot());
             if (document != null) {
                 Map<String, Object> asMap = document.toMap();

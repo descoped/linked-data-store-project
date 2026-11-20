@@ -44,7 +44,7 @@ public class PersistenceLinksFetcher implements DataFetcher<List<Map<String, Obj
             Matcher matcher = pattern.matcher(link);
             if (matcher.matches()) {
                 String id = matcher.group("id");
-                GraphQLContext context = environment.getContext();
+                GraphQLContext context = environment.getGraphQlContext().get(GraphQLContext.class);
                 JsonDocument document = readDocument(id, context.getSnapshot());
                 results.add(document != null ? document.toMap() : null);
             } else {

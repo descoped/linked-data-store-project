@@ -24,25 +24,6 @@
       "enabled": false
     },
     {
-      "description": "Held versions: each of these moves to the latest stable in the pull request that revises the code written for it (see .claude/CLAUDE.md, Held versions; the same list as the held block in the root POM). No updates at all until then, patch releases included, so the list stays one list. Remove an entry here in that pull request.",
-      "matchManagers": [
-        "maven"
-      ],
-      "matchPackageNames": [
-        "io.descoped.config:dynamic-configuration",
-        "com.graphql-java:**",
-        "io.undertow:**",
-        "org.jboss.xnio:**",
-        "org.jboss.threads:**",
-        "com.github.erosb:everit-json-schema",
-        "org.json:json",
-        "org.apache.tika:**",
-        "com.squareup.okhttp3:**",
-        "org.apache.solr:**"
-      ],
-      "enabled": false
-    },
-    {
       "description": "Maven bumps through the wrapper: Renovate does not update distributionSha256Sum, so CI fails until it is set by hand (see .claude/CLAUDE.md, Maven Wrapper)",
       "matchManagers": [
         "maven-wrapper"

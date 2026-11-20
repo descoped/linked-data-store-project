@@ -3,6 +3,7 @@ package io.descoped.lds.graphql.directives;
 import graphql.schema.GraphQLArgument;
 import graphql.schema.GraphQLDirective;
 import graphql.schema.GraphQLDirectiveContainer;
+import io.descoped.lds.graphql.schemas.SchemaElements;
 
 import java.util.EnumSet;
 import java.util.List;
@@ -10,14 +11,17 @@ import java.util.List;
 import static graphql.Scalars.GraphQLBoolean;
 import static graphql.introspection.Introspection.DirectiveLocation;
 
-public class DomainDirective extends GraphQLDirective {
+/**
+ * The domain directive. A directive of graphql-java can no longer be extended, so this class holds one.
+ */
+public class DomainDirective {
 
     public static final String NAME = "domain";
     private static final String SEARCHABLE_NAME = "searchable";
     private static final GraphQLArgument SEARCHABLE_ARGUMENT = GraphQLArgument.newArgument()
             .name(SEARCHABLE_NAME)
             .type(GraphQLBoolean)
-            .defaultValue(true)
+            .defaultValueProgrammatic(true)
             .build();
     private static final String DESCRIPTION = "Marks a type definition as a managed domain object";
 
@@ -25,12 +29,26 @@ public class DomainDirective extends GraphQLDirective {
             NAME,
             DESCRIPTION,
             EnumSet.of(DirectiveLocation.OBJECT),
-            List.of(SEARCHABLE_ARGUMENT),
-            true, true, true
+            List.of(SEARCHABLE_ARGUMENT)
     );
 
-    private DomainDirective(String name, String description, EnumSet<DirectiveLocation> locations, List<GraphQLArgument> arguments, boolean onOperation, boolean onFragment, boolean onField) {
-        super(name, description, locations, arguments, onOperation, onFragment, onField);
+    private final GraphQLDirective directive;
+
+    private DomainDirective(String name, String description, EnumSet<DirectiveLocation> locations, List<GraphQLArgument> arguments) {
+        this.directive = SchemaElements.newDirective()
+                .name(name)
+                .description(description)
+                .validLocations(locations.toArray(new DirectiveLocation[0]))
+                .replaceArguments(arguments)
+                .build();
+    }
+
+    public GraphQLDirective getDirective() {
+        return directive;
+    }
+
+    public GraphQLArgument getArgument(String name) {
+        return directive.getArgument(name);
     }
 
     public static DomainDirective newDomainDirective(Boolean searchable) {
@@ -38,8 +56,7 @@ public class DomainDirective extends GraphQLDirective {
                 NAME,
                 DESCRIPTION,
                 EnumSet.of(DirectiveLocation.OBJECT),
-                List.of(SEARCHABLE_ARGUMENT.transform(builder -> builder.value(searchable))),
-                true, true, true
+                List.of(SEARCHABLE_ARGUMENT.transform(builder -> builder.valueProgrammatic(searchable)))
         );
     }
 
@@ -54,11 +71,11 @@ public class DomainDirective extends GraphQLDirective {
 
     public Boolean isSearchable() {
         GraphQLArgument argument = getArgument(SEARCHABLE_NAME);
-        Object value = argument.getValue();
+        Object value = SchemaElements.value(argument);
         if (value != null) {
             return (Boolean) value;
         }
-        return (Boolean) argument.getDefaultValue();
+        return (Boolean) SchemaElements.defaultValue(argument);
     }
 
 }

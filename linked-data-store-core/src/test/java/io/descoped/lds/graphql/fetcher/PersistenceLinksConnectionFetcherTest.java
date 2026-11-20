@@ -2,10 +2,10 @@ package io.descoped.lds.graphql.fetcher;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import graphql.cachecontrol.CacheControl;
 import graphql.execution.ExecutionId;
 import graphql.execution.ExecutionStepInfo;
 import graphql.execution.MergedField;
+import graphql.execution.directives.QueryDirectives;
 import graphql.language.Document;
 import graphql.language.Field;
 import graphql.language.FragmentDefinition;
@@ -28,6 +28,7 @@ import io.descoped.lds.core.persistence.memory.MemoryInitializer;
 import io.descoped.lds.graphql.GraphQLContext;
 import io.undertow.server.HttpServerExchange;
 import org.dataloader.DataLoader;
+import org.dataloader.DataLoaderRegistry;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Ignore;
 import org.testng.annotations.Test;
@@ -36,6 +37,7 @@ import java.time.ZonedDateTime;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -189,6 +191,16 @@ public class PersistenceLinksConnectionFetcherTest {
         }
 
         @Override
+        public <T> T getArgumentOrDefault(String name, T defaultValue) {
+            return arguments.containsKey(name) ? (T) arguments.get(name) : defaultValue;
+        }
+
+        @Override
+        public graphql.GraphQLContext getGraphQlContext() {
+            return graphql.GraphQLContext.of(Map.of(GraphQLContext.class, this.<GraphQLContext>getContext()));
+        }
+
+        @Override
         public <T> T getContext() {
             return (T) new GraphQLContext() {
 
@@ -275,7 +287,17 @@ public class PersistenceLinksConnectionFetcherTest {
         }
 
         @Override
-        public CacheControl getCacheControl() {
+        public QueryDirectives getQueryDirectives() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public DataLoaderRegistry getDataLoaderRegistry() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public Locale getLocale() {
             return null;
         }
 

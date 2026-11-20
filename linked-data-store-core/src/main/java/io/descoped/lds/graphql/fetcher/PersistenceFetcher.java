@@ -36,7 +36,7 @@ public class PersistenceFetcher implements DataFetcher<Map<String, Object>> {
 
     @Override
     public Map<String, Object> get(DataFetchingEnvironment environment) throws Exception {
-        GraphQLContext context = environment.getContext();
+        GraphQLContext context = environment.getGraphQlContext().get(GraphQLContext.class);
         JsonDocument document = readDocument(environment.getArgument("id"), context.getSnapshot());
         if (document != null) {
             Map<String, Object> map = document.toMap();

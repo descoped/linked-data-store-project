@@ -1,12 +1,13 @@
 
 package io.descoped.lds.graphql.jsonSchema.visitors;
 
+import graphql.schema.GraphQLNamedType;
 import graphql.schema.GraphQLObjectType;
-import graphql.schema.GraphQLType;
+import graphql.schema.GraphQLSchemaElement;
 import graphql.schema.GraphQLTypeVisitorStub;
-import graphql.schema.TypeTraverser;
 import graphql.util.TraversalControl;
 import graphql.util.TraverserContext;
+import io.descoped.lds.graphql.schemas.TypeTraverser;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,17 +22,17 @@ import static io.descoped.lds.graphql.directives.DomainDirective.hasDomainDirect
 public class ParseObjectTypesVisitor extends GraphQLTypeVisitorStub {
     private static final Logger LOG = LoggerFactory.getLogger(ParseObjectTypesVisitor.class);
     private static final TypeTraverser TRAVERSER = new TypeTraverser();
-    private final Map<String, GraphQLType> typeMap;
+    private final Map<String, GraphQLNamedType> typeMap;
     private final LinkedHashMap<String, JSONObject> jsonMap;
     private String visitedDefinition;
 
-    public ParseObjectTypesVisitor(Map<String, GraphQLType> typeMap, LinkedHashMap<String, JSONObject> jsonMap) {
+    public ParseObjectTypesVisitor(Map<String, GraphQLNamedType> typeMap, LinkedHashMap<String, JSONObject> jsonMap) {
         this.typeMap = typeMap;
         this.jsonMap = jsonMap;
     }
 
     @Override
-    public TraversalControl visitGraphQLObjectType(GraphQLObjectType node, TraverserContext<GraphQLType> context) {
+    public TraversalControl visitGraphQLObjectType(GraphQLObjectType node, TraverserContext<GraphQLSchemaElement> context) {
         JSONObject jsonElements = new JSONObject();
         JSONObject jsonDefinitions = new JSONObject();
         JSONObject definitionValues = new JSONObject();

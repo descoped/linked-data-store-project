@@ -5,19 +5,21 @@ import graphql.schema.GraphQLDirectiveContainer;
 import graphql.schema.GraphQLEnumType;
 import graphql.schema.GraphQLFieldDefinition;
 import graphql.schema.GraphQLList;
+import graphql.schema.GraphQLNamedOutputType;
 import graphql.schema.GraphQLNonNull;
 import graphql.schema.GraphQLObjectType;
 import graphql.schema.GraphQLOutputType;
 import graphql.schema.GraphQLScalarType;
+import graphql.schema.GraphQLSchemaElement;
 import graphql.schema.GraphQLType;
 import graphql.schema.GraphQLTypeUtil;
 import graphql.schema.GraphQLTypeVisitorStub;
 import graphql.schema.GraphQLUnionType;
 import graphql.schema.GraphQLUnmodifiedType;
-import graphql.schema.TypeTraverser;
 import graphql.util.TraversalControl;
 import graphql.util.TraverserContext;
 import io.descoped.lds.graphql.directives.LinkDirective;
+import io.descoped.lds.graphql.schemas.TypeTraverser;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.slf4j.Logger;
@@ -27,6 +29,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static io.descoped.lds.graphql.directives.DomainDirective.hasDomainDirective;
+import static io.descoped.lds.graphql.schemas.SchemaElements.name;
 
 
 public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
@@ -45,7 +48,7 @@ public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
     }
 
     @Override
-    public TraversalControl visitGraphQLObjectType(GraphQLObjectType node, TraverserContext<GraphQLType> context) {
+    public TraversalControl visitGraphQLObjectType(GraphQLObjectType node, TraverserContext<GraphQLSchemaElement> context) {
 
         List<GraphQLDirective> directives = node.getDirectives();
         boolean isDomainType = directives.stream().map(GraphQLDirective::getName).anyMatch("domain"::equalsIgnoreCase);
@@ -71,7 +74,7 @@ public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
     }
 
     @Override
-    public TraversalControl visitGraphQLFieldDefinition(GraphQLFieldDefinition node, TraverserContext<GraphQLType> context) {
+    public TraversalControl visitGraphQLFieldDefinition(GraphQLFieldDefinition node, TraverserContext<GraphQLSchemaElement> context) {
         JSONObject definitionElements = (JSONObject) ((JSONObject) jsonElements.get("definitions")).get(visitedDefinition);
         JSONObject definitionProperties = (JSONObject) ((JSONObject) definitionElements.get("properties"));
 
@@ -91,10 +94,10 @@ public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
         // handle scalar types(string, date-time)
         GraphQLType graphQLType = GraphQLTypeUtil.unwrapOne(node.getType());
         if (GraphQLTypeUtil.isScalar(graphQLType)) {
-            if (graphQLType.getName().equalsIgnoreCase("string")) {
+            if (name(graphQLType).equalsIgnoreCase("string")) {
                 propertyElements.put("type", "string");
             }
-            switch (graphQLType.getName()) {
+            switch (name(graphQLType)) {
                 case "String":
                     propertyElements.put("type", "string");
                     break;
@@ -151,7 +154,17 @@ public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
     }
 
     @Override
-    public TraversalControl visitGraphQLEnumType(GraphQLEnumType node, TraverserContext<GraphQLType> context) {
+    public TraversalControl visitGraphQLDirective(GraphQLDirective node, TraverserContext<GraphQLSchemaElement> context) {
+        // The reason of @deprecated is a non-null string in graphql-java now, and a non-null type under a field
+        // marks the field as required. It was a nullable string when this was written, so it is not looked at.
+        if ("deprecated".equals(node.getName())) {
+            return TraversalControl.ABORT;
+        }
+        return super.visitGraphQLDirective(node, context);
+    }
+
+    @Override
+    public TraversalControl visitGraphQLEnumType(GraphQLEnumType node, TraverserContext<GraphQLSchemaElement> context) {
         JSONObject definitionElements = (JSONObject) ((JSONObject) jsonElements.get("definitions")).get(visitedDefinition);
         JSONObject definitionProperties = (JSONObject) definitionElements.get("properties");
         JSONObject fieldProperties = (JSONObject) definitionProperties.get(visitedFieldName);
@@ -171,7 +184,7 @@ public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
     }
 
     @Override
-    public TraversalControl visitGraphQLList(GraphQLList node, TraverserContext<GraphQLType> context) {
+    public TraversalControl visitGraphQLList(GraphQLList node, TraverserContext<GraphQLSchemaElement> context) {
         JSONObject definitionElements = (JSONObject) ((JSONObject) jsonElements.get("definitions")).get(visitedDefinition);
         JSONObject definitionProperties = (JSONObject) definitionElements.get("properties");
 
@@ -191,7 +204,7 @@ public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
 
         if (type instanceof GraphQLObjectType) {
             if (!hasDomainDirective((GraphQLDirectiveContainer) type)) {
-                itemList.put("$ref", "#/definitions/" + type.getName());
+                itemList.put("$ref", "#/definitions/" + name(type));
                 fieldProperties.put("items", itemList);
                 lastVisitedNodeType = GraphQLList.class.getName();
 
@@ -220,7 +233,7 @@ public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
                 }
             }
         } else if (type instanceof GraphQLScalarType) {
-            if (type.getName().equalsIgnoreCase("string")) {
+            if (name(type).equalsIgnoreCase("string")) {
                 itemList.put("type", "string");
             }
             fieldProperties.put("items", itemList);
@@ -234,12 +247,12 @@ public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
 
 
     @Override
-    public TraversalControl visitGraphQLScalarType(GraphQLScalarType node, TraverserContext<GraphQLType> context) {
+    public TraversalControl visitGraphQLScalarType(GraphQLScalarType node, TraverserContext<GraphQLSchemaElement> context) {
         return visitGraphQLType(node, context);
     }
 
     @Override
-    public TraversalControl visitGraphQLNonNull(GraphQLNonNull node, TraverserContext<GraphQLType> context) {
+    public TraversalControl visitGraphQLNonNull(GraphQLNonNull node, TraverserContext<GraphQLSchemaElement> context) {
         JSONObject definitionElements = (JSONObject) ((JSONObject) jsonElements.get("definitions")).get(visitedDefinition);
         JSONArray defRequiredProperties = (JSONArray) definitionElements.get("required");
 
@@ -257,7 +270,7 @@ public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
         return visitGraphQLType(node.getWrappedType(), context);
     }
 
-    private TraversalControl visitGraphQLDomainType(GraphQLObjectType node, TraverserContext<GraphQLType> context) {
+    private TraversalControl visitGraphQLDomainType(GraphQLObjectType node, TraverserContext<GraphQLSchemaElement> context) {
         JSONObject definitionElements = (JSONObject) ((JSONObject) jsonElements.get("definitions")).get(visitedDefinition);
         JSONObject definitionProperties = (JSONObject) definitionElements.get("properties");
 
@@ -280,7 +293,7 @@ public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
         return TraversalControl.ABORT;
     }
 
-    private TraversalControl visitListLinkProperty(GraphQLType node, TraverserContext<GraphQLType> context) {
+    private TraversalControl visitListLinkProperty(GraphQLType node, TraverserContext<GraphQLSchemaElement> context) {
         JSONObject definitionElements = (JSONObject) ((JSONObject) jsonElements.get("definitions")).get(visitedDefinition);
         JSONObject definitionsProperties = (JSONObject) definitionElements.get("properties");
         JSONObject definitionProperties = (JSONObject) definitionsProperties.get(visitedFieldName);
@@ -299,11 +312,11 @@ public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
         propertyElements.put("type", "null");
 
         if (GraphQLTypeUtil.isWrapped(node) && GraphQLTypeUtil.isList(node)) {
-            properties.put(((GraphQLList) node).getWrappedType().getName(), propertyElements);
+            properties.put(name(((GraphQLList) node).getWrappedType()), propertyElements);
         } else if (GraphQLTypeUtil.isWrapped(node) && GraphQLTypeUtil.isNonNull(node)) {
-            properties.put(((GraphQLNonNull) node).getWrappedType().getName(), propertyElements);
+            properties.put(name(((GraphQLNonNull) node).getWrappedType()), propertyElements);
         } else {
-            properties.put(node.getName(), propertyElements);
+            properties.put(name(node), propertyElements);
         }
 
         fieldObjects.put("properties", properties);
@@ -314,7 +327,7 @@ public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
         return TraversalControl.ABORT;
     }
 
-    private TraversalControl visitUnionLinkProperty(GraphQLType node, TraverserContext<GraphQLType> context) {
+    private TraversalControl visitUnionLinkProperty(GraphQLType node, TraverserContext<GraphQLSchemaElement> context) {
         JSONObject definitionElements = (JSONObject) ((JSONObject) jsonElements.get("definitions")).get(visitedDefinition);
         JSONObject definitionsProperties = (JSONObject) definitionElements.get("properties");
 
@@ -322,7 +335,7 @@ public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
         JSONObject properties = new JSONObject();
         JSONObject propertyElements = new JSONObject();
 
-        for (GraphQLOutputType objectType : ((GraphQLUnionType) GraphQLTypeUtil.unwrapNonNull(node)).getTypes()) {
+        for (GraphQLNamedOutputType objectType : ((GraphQLUnionType) GraphQLTypeUtil.unwrapNonNull(node)).getTypes()) {
             propertyElements.put("type", "null");
             properties.put(objectType.getName(), propertyElements);
         }
@@ -335,7 +348,7 @@ public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
         return TraversalControl.ABORT;
     }
 
-    private TraversalControl visitEmbeddedType(GraphQLList node, TraverserContext<GraphQLType> context) {
+    private TraversalControl visitEmbeddedType(GraphQLList node, TraverserContext<GraphQLSchemaElement> context) {
         JSONObject definitionElements = (JSONObject) ((JSONObject) jsonElements.get("definitions")).get(visitedDefinition);
         JSONObject definitionsProperties = (JSONObject) definitionElements.get("properties");
         JSONObject definitionProperties = (JSONObject) definitionsProperties.get(visitedFieldName);
@@ -362,7 +375,7 @@ public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
                         linkedProperties.put("type", "object");
                         propertiesValues = new JSONObject();
                         linkedObjects.put("type", "null");
-                        propertiesValues.put(((GraphQLList) fieldDef.getType()).getWrappedType().getName(), linkedObjects);
+                        propertiesValues.put(name(((GraphQLList) fieldDef.getType()).getWrappedType()), linkedObjects);
                         linkedProperties.put("properties", propertiesValues);
 
                         embeddedProperties.put("_link_property_" + fieldDef.getName(), linkedProperties);

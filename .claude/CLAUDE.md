@@ -19,7 +19,7 @@ reactor, group `io.descoped.lds`.
 | `linked-data-store-persistence-provider-postgres` | `io.descoped.lds.persistence.postgres` | provider `postgres`, revised for 3.0: one table, `fragment`, created at start, holding every namespace; every read is one statement whose rows are fetched as they are asked for |
 | `linked-data-store-persistence-provider-neo4j` | `io.descoped.lds.persistence.neo4j` | provider `neo4j`, revised for 3.0 on Neo4j 2026 (community edition is enough): a document is a node with its entity as label and `namespace` and `id` as properties, unique together, so one database holds every namespace; a version is a `VERSION` relationship (`from`, `to`) to the root of a tree of `<entity>_E` nodes; a link is a `REF` relationship to the document node it points at. The constraints and indexes are created at start |
 | `linked-data-store-search-provider-api` | `io.descoped.lds.search.api` | the search SPI (`SearchIndexProvider`, `SearchIndex`) |
-| `linked-data-store-search-provider-solr` | `io.descoped.lds.search.provider.solr` | provider `solr` |
+| `linked-data-store-search-provider-solr` | `io.descoped.lds.search.provider.solr` | provider `solr`, on the client of Solr 10 that uses the HTTP client of the JDK. It indexes into one core, named in `search.index.url` |
 | `linked-data-store-core` | `io.descoped.lds.core` | the application: `UndertowApplication`, REST (`NamespaceController`), GraphQL, sagas, transaction log |
 | `linked-data-store-server` | `io.descoped.lds.server` | `Server` (the main class), configuration, Dockerfile and compose file |
 
@@ -44,6 +44,16 @@ and a record is taken from the driver when a document is asked for (`Neo4jTransa
 the mechanism when changing this code: a stream is not replaced by a call that returns a complete list, and no
 blocking call is added to an interface.
 
+## The GraphQL schema
+
+Core builds its GraphQL schema from the schema file with a chain of visitors (`GraphQLSchemaBuilder`), on
+graphql-java 26. The visitors were written for graphql-java 12, and what they produce follows from the order in
+which the schema is walked and from how types are built. LDS therefore has its own `TypeTraverser` (the walk of
+graphql-java 12), `TypeCollectingVisitor` and `SchemaElements` (builders that keep the order of names, and replace a
+directive by name). Keep them when changing this code: the `SchemaTraverser` of graphql-java walks differently.
+`DateTimeScalar` gives a date-time out with the fraction of a second the value has, as LDS always did; the scalar
+of graphql-java-extended-scalars now always writes three digits.
+
 ## Invariants (never violate)
 
 - **JDK 27 baseline** (`maven.compiler.release` 27). LDS is a product: it is built, tested and run on one JDK, and CI
@@ -67,7 +77,7 @@ blocking call is added to an interface.
 - **Transactions** commit only when asked and roll back otherwise.
 - **Always the latest stable version** of every library, plugin, action, image and engine (PostgreSQL 18, Neo4j
   2026, Solr 10). Pre-releases only on request. Old and outdated code and configuration is removed,
-  not carried along. The exception is the list under "Held versions".
+  not carried along. No version is held back: Renovate moves every dependency, and CI on JDK 27 is the gate.
 - **No leftovers** of the earlier hosts and pipelines: no Statistics Norway (SSB) references, Azure Pipelines,
   Travis, Drone or OSSRH configuration.
 - **Secrets.** Nothing but documented development defaults (the `lds` database user in tests and compose files).
@@ -81,20 +91,6 @@ writes the name of an entity into Cypher as a quoted label (`Cypher.label`), and
 parameter costs Neo4j its indexes for lists, and a constraint cannot be created with one. Everything else it is
 given is a parameter. New and revised code must meet them; a pull request that revises a
 module makes that module meet them.
-
-## Held versions
-
-These stay at the version the code was written for until the pull request that revises that code, which moves them
-to the latest stable and removes them from this list, from the "held" block in the root POM and from the rule in
-`.github/renovate.json`:
-
-| Dependency | Held at | Moves with |
-|---|---|---|
-| solr-solrj, solr-test-framework (and the Restlet repository in the Solr module) | 7.7.1 | the Solr provider |
-| graphql-java, extended scalars | 12.0, 1.0 | core, GraphQL |
-| Undertow, xnio, jboss-threads | 2.0.30, 3.8.0, 2.3.3 | core, HTTP |
-| everit json-schema, org.json, tika-core, okhttp | 1.14.6, 20260814, 1.24.1, 3.14.0 | core, validation (replaced or removed) |
-| dynamic-configuration | 2.0.0 | core, housekeeping |
 
 ## Testing
 
@@ -111,6 +107,9 @@ to the latest stable and removes them from this list, from the "held" block in t
 - The Neo4j provider's tests (the shared suite, `Neo4jProviderTest` for what the suite does not cover,
   `Neo4jRoundTripTest` for documents of every shape and `Neo4jTransactionTest`) run on a real Neo4j 2026
   (`neo4j:2026.10-community`) through Testcontainers.
+- The Solr provider's tests run on a real Solr 10 (`solr:10.1`) through Testcontainers, started as the compose
+  file of the server starts it: the image as it is, with the core `lds-index` created from the configuration the
+  image comes with. A write is in the index within the five seconds the provider gives Solr to commit it.
 - The shared suite runs for every provider: memory, PostgreSQL and Neo4j. The memory provider also runs the
   Reactive Streams TCK for `AsyncIterablePublisher`.
 - Core's `SagaLogPostgresTest` runs the write path with the saga log in a PostgreSQL 18 container: concurrent
@@ -143,5 +142,6 @@ to the latest stable and removes them from this list, from the "held" block in t
 The main class is `io.descoped.lds.server.Server` in `linked-data-store-server`. It reads core's
 `application-defaults.properties`, `application-server-defaults.properties`, `conf/application.properties` and
 `conf_dev/application.properties` (relative to the working directory), then `LDS_`-prefixed environment variables
-and system properties. The `conf` files, the Dockerfiles and the compose file there are from before the monorepo
+and system properties (dynamic-configuration 3: the variable `LDS_HTTP_PORT` sets `http.port`, and a variable or a
+system property sets only a key that one of the files has). The `conf` files, the Dockerfiles and the compose file there are from before the monorepo
 (they expect Neo4j, PostgreSQL and Solr from that compose file) and are rebuilt with the server module.

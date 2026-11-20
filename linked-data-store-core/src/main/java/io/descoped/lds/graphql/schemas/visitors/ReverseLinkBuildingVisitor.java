@@ -3,9 +3,12 @@ package io.descoped.lds.graphql.schemas.visitors;
 import graphql.schema.GraphQLDirective;
 import graphql.schema.GraphQLFieldDefinition;
 import graphql.schema.GraphQLList;
+import graphql.schema.GraphQLNamedOutputType;
+import graphql.schema.GraphQLNamedType;
 import graphql.schema.GraphQLNonNull;
 import graphql.schema.GraphQLObjectType;
 import graphql.schema.GraphQLOutputType;
+import graphql.schema.GraphQLSchemaElement;
 import graphql.schema.GraphQLType;
 import graphql.schema.GraphQLTypeReference;
 import graphql.schema.GraphQLTypeUtil;
@@ -31,6 +34,9 @@ import java.util.Optional;
 import static io.descoped.lds.graphql.directives.DomainDirective.hasDomainDirective;
 import static io.descoped.lds.graphql.directives.LinkDirective.NAME;
 import static io.descoped.lds.graphql.directives.LinkDirective.newLinkDirective;
+import static io.descoped.lds.graphql.schemas.SchemaElements.name;
+import static io.descoped.lds.graphql.schemas.SchemaElements.newFieldDefinition;
+import static io.descoped.lds.graphql.schemas.SchemaElements.newObject;
 
 /**
  * Update the target of a link annotation with a corresponding reverseLink annotation.
@@ -40,14 +46,14 @@ import static io.descoped.lds.graphql.directives.LinkDirective.newLinkDirective;
 public class ReverseLinkBuildingVisitor extends GraphQLTypeVisitorStub {
 
     private static final Logger log = LoggerFactory.getLogger(ReverseLinkBuildingVisitor.class);
-    private final Map<String, GraphQLType> typeMap;
+    private final Map<String, GraphQLNamedType> typeMap;
 
-    public ReverseLinkBuildingVisitor(Map<String, GraphQLType> typeMap) {
+    public ReverseLinkBuildingVisitor(Map<String, GraphQLNamedType> typeMap) {
         this.typeMap = Objects.requireNonNull(typeMap);
     }
 
     @Override
-    public TraversalControl visitGraphQLFieldDefinition(GraphQLFieldDefinition node, TraverserContext<GraphQLType> context) {
+    public TraversalControl visitGraphQLFieldDefinition(GraphQLFieldDefinition node, TraverserContext<GraphQLSchemaElement> context) {
         Optional<LinkDirective> linkDirective = getLinkDirective(node);
         if (linkDirective.isPresent()) {
             log.debug("Found @link annotation on {}", node.getName());
@@ -56,14 +62,14 @@ public class ReverseLinkBuildingVisitor extends GraphQLTypeVisitorStub {
                 addReverseField(node, context, reverseName.get());
             }
         } else if (log.isDebugEnabled()) {
-            log.trace("Ignoring field {} of {}", node.getName(), context.getParentContext().thisNode().getName());
+            log.trace("Ignoring field {} of {}", node.getName(), name(context.getParentContext().thisNode()));
         }
 
         return super.visitGraphQLFieldDefinition(node, context);
     }
 
     private GraphQLOutputType getObjectType(String name) {
-        GraphQLType graphQLType = typeMap.get(name);
+        GraphQLNamedType graphQLType = typeMap.get(name);
         if (graphQLType == null) {
             throw new IllegalArgumentException(String.format("Could not find the type %s", name));
         }
@@ -75,24 +81,24 @@ public class ReverseLinkBuildingVisitor extends GraphQLTypeVisitorStub {
         }
     }
 
-    public static Collection<String> computePath(GraphQLFieldDefinition node, TraverserContext<GraphQLType> context) {
-        List<GraphQLType> types = new ArrayList<>();
+    public static Collection<String> computePath(GraphQLFieldDefinition node, TraverserContext<GraphQLSchemaElement> context) {
+        List<GraphQLSchemaElement> types = new ArrayList<>();
         types.add(node.getType());
         types.add(node);
         types.addAll(context.getParentNodes());
         Deque<String> parts = new ArrayDeque<>();
-        for (GraphQLType type : types) {
+        for (GraphQLSchemaElement type : types) {
             if (type instanceof GraphQLNonNull) {
                 type = ((GraphQLNonNull) type).getWrappedType();
             }
             // TODO: We need to use annotations to mark relation types.
             if (type instanceof GraphQLList
-                    || type.getName().endsWith("Connection")) {
+                    || name(type).endsWith("Connection")) {
                 parts.addFirst("[]");
                 continue;
             }
             if (type instanceof GraphQLFieldDefinition) {
-                parts.addFirst(type.getName());
+                parts.addFirst(name(type));
             }
             if (type instanceof GraphQLObjectType) {
                 if (!parts.isEmpty() && hasDomainDirective((GraphQLObjectType) type)) {
@@ -109,26 +115,24 @@ public class ReverseLinkBuildingVisitor extends GraphQLTypeVisitorStub {
      */
     public static Optional<LinkDirective> getLinkDirective(GraphQLFieldDefinition node) {
         for (GraphQLDirective directive : node.getDirectives()) {
-            if (directive instanceof LinkDirective) {
-                return Optional.of((LinkDirective) directive);
-            } else if (directive.getName().equals(NAME)) {
+            if (directive.getName().equals(NAME)) {
                 return Optional.of(newLinkDirective(directive));
             }
         }
         return Optional.empty();
     }
 
-    private boolean addReverseField(GraphQLFieldDefinition node, TraverserContext<GraphQLType> context, String reverseName) {
+    private boolean addReverseField(GraphQLFieldDefinition node, TraverserContext<GraphQLSchemaElement> context, String reverseName) {
 
-        String sourceName = GraphQLTypeUtil.unwrapAll(context.getParentNode()).getName();
-        String targetName = GraphQLTypeUtil.unwrapType(node.getType()).peek().getName();
+        String sourceName = GraphQLTypeUtil.unwrapAll((GraphQLType) context.getParentNode()).getName();
+        String targetName = name(GraphQLTypeUtil.unwrapType(node.getType()).peek());
 
         GraphQLOutputType source = getObjectType(sourceName);
         GraphQLOutputType target = getObjectType(targetName);
 
         if (target instanceof GraphQLUnionType) {
             boolean replaced = false;
-            for (GraphQLOutputType concreteType : ((GraphQLUnionType) target).getTypes()) {
+            for (GraphQLNamedOutputType concreteType : ((GraphQLUnionType) target).getTypes()) {
                 replaced = addReverseField(node, context, reverseName, source, getObjectType(concreteType.getName()));
             }
             return replaced;
@@ -137,25 +141,25 @@ public class ReverseLinkBuildingVisitor extends GraphQLTypeVisitorStub {
         }
     }
 
-    private boolean addReverseField(GraphQLFieldDefinition node, TraverserContext<GraphQLType> context, String reverseName, GraphQLOutputType source, GraphQLOutputType target) {
+    private boolean addReverseField(GraphQLFieldDefinition node, TraverserContext<GraphQLSchemaElement> context, String reverseName, GraphQLOutputType source, GraphQLOutputType target) {
         // Copy the definition
-        GraphQLObjectType.Builder nodeCopy = GraphQLObjectType.newObject((GraphQLObjectType) target);
+        GraphQLObjectType.Builder nodeCopy = newObject((GraphQLObjectType) target);
 
         // Add reverse link
         GraphQLOutputType sourceType = GraphQLNonNull.nonNull(
-                GraphQLList.list(GraphQLNonNull.nonNull(GraphQLTypeReference.typeRef(source.getName()))));
+                GraphQLList.list(GraphQLNonNull.nonNull(GraphQLTypeReference.typeRef(name(source)))));
 
         Collection<String> parts = computePath(node, context);
         JsonNavigationPath mappedBy = JsonNavigationPath.from(parts);
 
         // Annotate reverse link
-        GraphQLFieldDefinition fieldDefinition = GraphQLFieldDefinition.newFieldDefinition()
+        GraphQLFieldDefinition fieldDefinition = newFieldDefinition()
                 .name(reverseName)
                 .type(sourceType)
-                .withDirective(ReverseLinkDirective.newReverseLinkDirective(true, mappedBy.serialize()))
+                .withDirective(ReverseLinkDirective.newReverseLinkDirective(true, mappedBy.serialize()).getDirective())
                 .build();
 
-        log.debug("Adding reverseLink {} from target {} to source {}", fieldDefinition, target.getName(), source.getName());
+        log.debug("Adding reverseLink {} from target {} to source {}", fieldDefinition, name(target), name(source));
         nodeCopy.field(fieldDefinition);
 
         // TODO: Figure out why this fails. We should have tree with same instance of all types
@@ -164,7 +168,7 @@ public class ReverseLinkBuildingVisitor extends GraphQLTypeVisitorStub {
         //            "Could not replace %s, the schema probably contains references", existing.getName()
         //    ));
         //}
-        GraphQLType oldObject = typeMap.put(target.getName(), nodeCopy.build());
+        GraphQLNamedType oldObject = typeMap.put(name(target), nodeCopy.build());
         if (oldObject != null && Objects.equals(oldObject, target)) {
             log.debug("Existing object {} is not equal to visited object {}", target, oldObject);
         }

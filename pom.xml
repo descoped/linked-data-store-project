@@ -62,13 +62,9 @@
         <rxjava.version>3.1.12</rxjava.version>
         <reactive-streams.version>1.0.4</reactive-streams.version>
         <cantara-saga.version>2.1.2</cantara-saga.version>
-
-        <!-- Held at the version the code was written for. Each one moves, to the latest stable, in the pull request
-             that revises the code using it (see .claude/CLAUDE.md, "Held versions"); .github/renovate.json holds
-             the same list. -->
         <dynamic-configuration.version>3.0.1</dynamic-configuration.version>
-        <graphql-java.version>12.0</graphql-java.version>
-        <graphql-java-extended-scalars.version>1.0</graphql-java-extended-scalars.version>
+        <graphql-java.version>26.2</graphql-java.version>
+        <graphql-java-extended-scalars.version>24.0</graphql-java-extended-scalars.version>
         <undertow.version>2.4.4.Final</undertow.version>
         <xnio.version>3.8.17.Final</xnio.version>
         <jboss-threads.version>3.11.1</jboss-threads.version>

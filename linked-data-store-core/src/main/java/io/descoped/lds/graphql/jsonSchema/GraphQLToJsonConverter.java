@@ -1,10 +1,10 @@
 package io.descoped.lds.graphql.jsonSchema;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import graphql.schema.GraphQLNamedType;
 import graphql.schema.GraphQLSchema;
-import graphql.schema.GraphQLType;
-import graphql.schema.TypeTraverser;
 import io.descoped.lds.graphql.jsonSchema.visitors.ParseObjectTypesVisitor;
+import io.descoped.lds.graphql.schemas.TypeTraverser;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,7 +23,7 @@ public class GraphQLToJsonConverter {
     }
 
     public LinkedHashMap<String, JSONObject> createSpecification(GraphQLSchema graphQLSchema) {
-        Map<String, GraphQLType> typeMap = graphQLSchema.getTypeMap();
+        Map<String, GraphQLNamedType> typeMap = graphQLSchema.getTypeMap();
         LinkedHashMap<String, JSONObject> jsonMap = new LinkedHashMap<>();
         StringBuilder sb = new StringBuilder();
 

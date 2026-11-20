@@ -1,10 +1,13 @@
 package io.descoped.lds.graphql.schemas.visitors;
 
+import graphql.schema.GraphQLAppliedDirective;
 import graphql.schema.GraphQLArgument;
 import graphql.schema.GraphQLDirective;
 import graphql.schema.GraphQLEnumType;
 import graphql.schema.GraphQLFieldDefinition;
+import graphql.schema.GraphQLNamedType;
 import graphql.schema.GraphQLObjectType;
+import graphql.schema.GraphQLSchemaElement;
 import graphql.schema.GraphQLType;
 import graphql.schema.GraphQLTypeUtil;
 import graphql.schema.GraphQLTypeVisitorStub;
@@ -18,40 +21,50 @@ import java.util.Map;
 
 import static graphql.Scalars.GraphQLString;
 import static graphql.schema.GraphQLArgument.newArgument;
-import static graphql.schema.GraphQLDirective.newDirective;
-import static graphql.schema.GraphQLFieldDefinition.newFieldDefinition;
 import static graphql.schema.GraphQLList.list;
 import static graphql.schema.GraphQLNonNull.nonNull;
 import static io.descoped.lds.graphql.directives.DomainDirective.hasDomainDirective;
+import static io.descoped.lds.graphql.schemas.SchemaElements.newEnum;
+import static io.descoped.lds.graphql.schemas.SchemaElements.newFieldDefinition;
+import static io.descoped.lds.graphql.schemas.SchemaElements.newObject;
+import static io.descoped.lds.graphql.schemas.SchemaElements.newUnionType;
+import static io.descoped.lds.graphql.schemas.SchemaElements.value;
 
 public class AddSearchTypesVisitor extends GraphQLTypeVisitorStub {
+
+    /**
+     * The name of the directive that marks the search field of the query type. It is an applied directive:
+     * graphql-java does not build a schema that has a directive on a field and no definition of it, and it does
+     * not ask for the definition of an applied directive.
+     */
+    public static final String SEARCH_NAME = "search";
 
     private static final Logger log = LoggerFactory.getLogger(AddConnectionVisitor.class);
 
     private final GraphQLObjectType.Builder query;
-    private final Map<String, GraphQLType> typeMap;
+    private final Map<String, GraphQLNamedType> typeMap;
     private final GraphQLEnumType.Builder typeFilterEnum;
     private final GraphQLUnionType.Builder searchResultType;
 
-    public AddSearchTypesVisitor(Map<String, GraphQLType> typeMap, GraphQLObjectType.Builder query) {
+    public AddSearchTypesVisitor(Map<String, GraphQLNamedType> typeMap, GraphQLObjectType.Builder query) {
         this.typeMap = typeMap;
         this.query = query;
         // Create a union type for the search results and a Type filter for the query.
-        this.typeFilterEnum = GraphQLEnumType.newEnum()
+        this.typeFilterEnum = newEnum()
                 .name("TypeFilters")
                 .description("Defines valid type filters");
 
-        this.searchResultType = GraphQLUnionType.newUnionType()
+        this.searchResultType = newUnionType()
                 .name("SearchResult")
                 .description("Union type for possible search results");
     }
 
-    public AddSearchTypesVisitor(Map<String, GraphQLType> typeMap) {
-        this(typeMap, GraphQLObjectType.newObject().name("Query"));
+    public AddSearchTypesVisitor(Map<String, GraphQLNamedType> typeMap) {
+        this(typeMap, newObject().name("Query"));
     }
 
-    public AddSearchTypesVisitor(Map<String, GraphQLType> typeMap, GraphQLObjectType query) {
-        this(typeMap, GraphQLObjectType.newObject(query));
+    public AddSearchTypesVisitor(Map<String, GraphQLNamedType> typeMap, GraphQLObjectType query) {
+        this(typeMap, newObject(query));
     }
 
     @Deprecated
@@ -59,14 +72,14 @@ public class AddSearchTypesVisitor extends GraphQLTypeVisitorStub {
         for (GraphQLDirective directive : node.getDirectives()) {
             if ("domain".equals(directive.getName())) {
                 GraphQLArgument searchable = directive.getArgument("searchable");
-                return searchable != null && searchable.getValue() != null && searchable.getValue().equals(true);
+                return searchable != null && value(searchable) != null && value(searchable).equals(true);
             }
         }
         return false;
     }
 
     @Override
-    public TraversalControl visitGraphQLObjectType(GraphQLObjectType node, TraverserContext<GraphQLType> context) {
+    public TraversalControl visitGraphQLObjectType(GraphQLObjectType node, TraverserContext<GraphQLSchemaElement> context) {
         if (hasDomainDirective(node)) {
             typeFilterEnum.value(node.getName());
             searchResultType.possibleType(node);
@@ -93,7 +106,7 @@ public class AddSearchTypesVisitor extends GraphQLTypeVisitorStub {
         // Create a new field in the query
         GraphQLFieldDefinition.Builder searchField = newFieldDefinition()
                 .name("Search")
-                .withDirective(newDirective().name("search").build())
+                .withAppliedDirective(GraphQLAppliedDirective.newDirective().name(SEARCH_NAME).build())
                 .argument(newArgument()
                         .name("query")
                         .type(nonNull(GraphQLString)))

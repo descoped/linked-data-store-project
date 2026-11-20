@@ -52,7 +52,7 @@
             <artifactId>linked-data-store-persistence-provider-api</artifactId>
             <version>${project.version}</version>
         </dependency>
-        <!-- Named here so Solr 7's older transitive Jackson does not win over the version the persistence API needs. -->
+        <!-- Named here so the older Jackson that Solr's client brings does not win over the version the persistence API needs. -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-annotations</artifactId>
