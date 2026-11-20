@@ -73,7 +73,7 @@ public class UndertowApplication {
     private final RxJsonPersistence persistence;
     private final Specification specification;
     private final Undertow server;
-    /** In front of every other handler: counts the requests in flight, and refuses new ones when the application stops. */
+    /** In front of every handler but the CORS handler: counts the requests in flight, and refuses new ones when the application stops. */
     private final GracefulShutdownHandler requests;
     private final AtomicBoolean stopping = new AtomicBoolean();
     private final String host;
@@ -168,16 +168,17 @@ public class UndertowApplication {
         boolean corsAllowCredentials = configuration.evaluateToBoolean("http.cors.allow.credentials");
         int corsMaxAge = configuration.evaluateToInt("http.cors.allow.max-age");
 
-        CORSHandler corsHandler = new CORSHandler(httpHandler, httpHandler, corsAllowOrigin,
+        // inside the CORS handler, so that its 503 has the CORS headers and a browser can read the answer
+        this.requests = new GracefulShutdownHandler(httpHandler);
+        CORSHandler corsHandler = new CORSHandler(requests, requests, corsAllowOrigin,
                 corsAllowCredentials, StatusCodes.NO_CONTENT, corsMaxAge, corsAllowMethods, corsAllowHeaders
         );
 
         LOG.info("Initializing Undertow ...");
 
-        this.requests = new GracefulShutdownHandler(corsHandler);
         this.server = Undertow.builder()
                 .addHttpListener(port, host)
-                .setHandler(requests)
+                .setHandler(corsHandler)
                 .build();
     }
 
@@ -485,7 +486,7 @@ public class UndertowApplication {
      * <li>The stores the sagas wrote to are closed.</li>
      * </ol>
      * A part that fails to stop is logged, and the parts after it are stopped all the same. The application is
-     * stopped once: a second call does nothing.
+     * stopped once: a second call does nothing, and does not wait for the first to be done.
      */
     public void stop() {
         stop(RUNNING_SAGAS_TIMEOUT_SECONDS, TimeUnit.SECONDS);
@@ -495,17 +496,17 @@ public class UndertowApplication {
      * Stops the application as {@link #stop()} does, waiting the given time at most for the requests that are
      * being handled, and then the same time at most for the sagas that are running.
      *
-     * @param runningSagasTimeout the longest time to wait for the requests, and then for the running sagas
-     * @param unit                the unit of the timeout
+     * @param timeout the longest time to wait for the requests, and then for the running sagas
+     * @param unit    the unit of the timeout
      */
-    public void stop(long runningSagasTimeout, TimeUnit unit) {
+    public void stop(long timeout, TimeUnit unit) {
         if (!stopping.compareAndSet(false, true)) {
             return; // stopped, or being stopped by another caller
         }
         stop("HTTP requests", () -> {
             requests.shutdown(); // every request from here on is answered 503 Service Unavailable
-            if (!requests.awaitShutdown(unit.toMillis(runningSagasTimeout))) {
-                LOG.warn("Requests were still being handled after {} {}. They lose their connection when the HTTP server stops.", runningSagasTimeout, unit);
+            if (!requests.awaitShutdown(unit.toMillis(timeout))) {
+                LOG.warn("Requests were still being handled after {} {}. They lose their connection when the HTTP server stops.", timeout, unit);
             }
         });
         stop("Undertow", server::stop);
@@ -517,8 +518,8 @@ public class UndertowApplication {
         }
 
         stop("Running sagas", () -> {
-            if (!sec.awaitRunningSagas(runningSagasTimeout, unit)) {
-                LOG.warn("Sagas were still running after {} {}. They fail when their thread pool is shut down, and are recovered from their saga logs.", runningSagasTimeout, unit);
+            if (!sec.awaitRunningSagas(timeout, unit)) {
+                LOG.warn("Sagas were still running after {} {}. They fail when their thread pool is shut down, and are recovered from their saga logs.", timeout, unit);
             }
         });
 
@@ -541,9 +542,9 @@ public class UndertowApplication {
         void stop() throws Exception;
     }
 
-    private static void stop(String part, Stopping stopping) {
+    private static void stop(String part, Stopping action) {
         try {
-            stopping.stop();
+            action.stop();
             LOG.debug("{} was shutdown", part);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

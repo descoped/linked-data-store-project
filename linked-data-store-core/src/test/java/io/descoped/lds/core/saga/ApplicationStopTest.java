@@ -175,6 +175,13 @@ class ApplicationStopTest {
             }
             assertThat(stop).isNotDone(); // waiting for the request whose body has not all arrived
 
+            // a browser reads the 503 only when it has the CORS headers
+            HttpRequest fromABrowser = HttpRequest.newBuilder(URI.create(server.testURL("/data/provisionagreement/late")))
+                    .timeout(Duration.ofSeconds(60)).header("Origin", "https://app.example").GET().build();
+            HttpResponse<Void> refused = http.send(fromABrowser, HttpResponse.BodyHandlers.discarding());
+            assertThat(refused.statusCode()).isEqualTo(503);
+            assertThat(refused.headers().firstValue("Access-Control-Allow-Origin")).hasValue("https://app.example");
+
             out.write(BODY_BYTES, HALF, BODY_BYTES.length - HALF);
             out.flush();
             String statusLine = new BufferedReader(new InputStreamReader(inFlight.getInputStream(), StandardCharsets.US_ASCII)).readLine();
