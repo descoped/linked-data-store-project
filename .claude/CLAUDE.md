@@ -5,9 +5,9 @@ Guidance for Claude Code in this repository.
 ## What this is
 
 Linked Data Store (LDS), a product of Descoped: a server that gives REST and GraphQL access to versioned, linked
-JSON documents described by a model read at start (a GraphQL schema or JSON Schema 2020-12 files). Writes go through a saga
-(transaction log, then persistence, then the search index). Persistence and search are pluggable. One Maven
-reactor, group `io.descoped.lds`.
+JSON documents described by a model read at start (a GraphQL schema or JSON Schema 2020-12 files). Writes go
+through a saga (transaction log first, then persistence and the search index side by side). Persistence and
+search are pluggable. One Maven reactor, group `io.descoped.lds`.
 
 | Module | JPMS module | Role |
 |---|---|---|
@@ -25,8 +25,8 @@ reactor, group `io.descoped.lds`.
 
 | `linked-data-store-loadtest` | `io.descoped.lds.loadtest` | the load test, run by hand: scripts and a compose file that start LDS from the image of the server with one persistence provider and drive a load at it, and the program that turns the results into plot files (`HTTPLoadTestBaselineStatistics`). Not in the BOM and not in a release |
 
-Not in the reactor: `docs/` (AsciiDoc, describes the pre-3.0 layout). The cluster test of before 3.0 is removed:
-it needed images and a saga log that do not exist any more. Its history is in git.
+Not in the reactor: `docs/`, the documentation (see "The documentation" below). The cluster test of before 3.0
+is removed: it needed images and a saga log that do not exist any more. Its history is in git.
 
 Until 2026-11 every module was a repository of its own; their histories were imported here with `git filter-repo`
 (old tags prefixed with the repository name, e.g. `linked-data-store-core/v0.16`). Nothing was released under
@@ -45,6 +45,12 @@ Neo4j implements `RxJsonPersistence` directly: a read is one statement that retu
 and a record is taken from the driver when a document is asked for (`Neo4jTransaction.executeCypherAsync`). Keep
 the mechanism when changing this code: a stream is not replaced by a call that returns a complete list, and no
 blocking call is added to an interface.
+
+Not true yet of the bridge: for a list of documents, the versions of a document and a find,
+`RxJsonPersistenceBridge` reads without a limit (`Range.unlimited`) and sorts the fragments (`Flowable.sorted`)
+before it cuts them into documents. So with the memory and PostgreSQL providers every fragment of the read is
+taken from the store before the first document comes out; only the read of one document is on demand to the
+end. Do not rely on a list being streamed until that sort is gone, and do not add another.
 
 A provider stores a document as it is given and gives it back the same: also a field the model does not have, a
 value of another kind than the model says, a null, an array inside an array. Whether a document may be like that
@@ -129,10 +135,11 @@ which validates the Jackson tree of the document). A schema that at its root say
 - **SonarCloud**: one project, `descoped_linked-data-store-project`, for the whole reactor.
 
 Several of these describe where 3.0.0 is going and are not true of the pre-3.0 code yet (UTC instants in the
-memory provider, `Transaction.close()` committing). One is met in another way than it is worded: the Neo4j provider
-writes the name of an entity into Cypher as a quoted label (`Cypher.label`), and does not validate it; a label as a
-parameter costs Neo4j its indexes for lists, and a constraint cannot be created with one. Everything else it is
-given is a parameter. New and revised code must meet them; a pull request that revises a
+memory provider, `Transaction.close()` committing, the bridge sorting a list before it gives the first
+document, the search text going into the Solr query as it is). One is met in another way than it is worded: the
+Neo4j provider writes the name of an entity into Cypher as a quoted label (`Cypher.label`), and does not validate
+it; a label as a parameter costs Neo4j its indexes for lists, and a constraint cannot be created with one.
+Everything else it is given is a parameter. New and revised code must meet them; a pull request that revises a
 module makes that module meet them.
 
 ## Testing
@@ -224,6 +231,42 @@ use. Keep these when changing them:
 - **Every port of the compose file is published on 127.0.0.1**, and can be moved (`LDS_PORT`, ...), which is how
   `ServerStackIT` runs next to a stack that is up. The passwords in it are development defaults.
 - **The JDK of the image is the baseline**: Renovate is told to keep `eclipse-temurin` at 27.
+
+## The documentation
+
+`docs/` is Markdown as GitHub renders it, in two parts with two readers, and a document is for exactly one of
+them: `docs/user/` for those who use LDS (they run it, give it a model, read and write documents; no class, module
+or package names there) and `docs/developer/` for those who change the code (`architecture.md` is the map, then
+one document for each part of the code). `docs/README.md` is the index. Keep these when changing it:
+
+- **Only what the code does.** A statement is one found in the code, in a test or by running LDS, and every
+  request shown was run, with the answer that came. A change of behaviour changes the document in the same pull
+  request.
+- **The code as it is, not its history.** LDS went through several designs. The documents describe the current
+  code only: no commit ids, no dates of changes, no code or test models that were removed. Earlier code and the
+  documents of earlier versions are read to understand the thinking behind the current code, and are not
+  described.
+- **What is unfinished is said where the reader meets it**, in a paragraph that starts with `Not finished:`. When
+  the fault is corrected, the paragraph goes.
+- **Established technical terms, each defined once** in `docs/glossary.md` (entity type, document key, embedded
+  object, link, valid time, as-of read, snapshot, tombstone, saga, transaction log, fragment, ...), and one term
+  for one thing. A new term goes into the glossary first, defined from the code. Present tense, no history.
+- **The documents stand alone.** They never cite this file; a rule of the project is stated in
+  `docs/developer/architecture.md`, a command is given as the command.
+- **Figures are Mermaid** (` ```mermaid `, which GitHub draws in light and dark), and show what the code does,
+  as everything else does: a model as a class diagram (a filled diamond for an embedded type, an arrow for a
+  link), a timeline as a Gantt chart without the marker of today, a path as a flowchart. What is a table is a
+  Markdown table. What a model can say and the timeline of versions and snapshots are drawn where they are
+  explained; a change to them changes the figure.
+- **Examples are formatted.** A JSON body and a JSON answer are pretty-printed (two spaces; an object with one
+  field, or two plain ones, and a list of plain values may stay on one line), with the fields in the order LDS
+  sent them. A GraphQL query without variables is sent as `application/graphql` and formatted, one field on a
+  line. A request body opens on the line of `-d` and its fields are indented under it. A session of several
+  commands and their answers is a `console` block with `$` before each command. An answer is an `http` block only
+  when its body is JSON; an answer of text or HTML is a plain block, which GitHub does not colour as invalid.
+  Every page is looked at as GitHub draws it, in light and dark, before it is pushed for review.
+- Lines of at most 120 characters, except a row of a table. A link to another document is a relative path, and
+  a link to a section names the id GitHub gives its heading, so a heading that is renamed has its links renamed.
 
 ## The load test
 

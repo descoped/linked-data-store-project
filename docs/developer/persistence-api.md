@@ -1,0 +1,795 @@
+# The persistence interface
+
+This document describes the module `linked-data-store-persistence-provider-api`: the interface between LDS and
+the store that keeps its documents. It is for developers who change this module, write a persistence provider, or
+call a provider from the application.
+
+## What this part is for
+
+LDS keeps versioned JSON documents in a store that can be exchanged. This module is the contract between the two
+sides:
+
+- The application (`linked-data-store-core`) reads and writes documents through `RxJsonPersistence`.
+- A provider (memory, PostgreSQL, Neo4j) implements `RxJsonPersistence`, either directly or by implementing the
+  smaller `RxPersistence` and putting `RxJsonPersistenceBridge` in front of it.
+- A provider is found at start through `PersistenceInitializer`.
+- The model is given to a provider as a `Specification`.
+
+The module has no code that talks to a database and no configuration of its own. Its JPMS name is
+`io.descoped.lds.persistence.api`. It depends on RxJava 3 and Jackson 3 and on nothing else of LDS.
+
+## Layout
+
+| Package | What is in it |
+|---|---|
+| `io.descoped.lds.api.persistence` | `PersistenceInitializer` and `@ProviderName` (how a provider is found), `Transaction`, `TransactionFactory`, `TransactionStatistics`, `DocumentKey`, `PersistenceDeletePolicy`, `PersistenceException`. |
+| `io.descoped.lds.api.persistence.reactivex` | `RxJsonPersistence` (documents), `RxPersistence` ([fragments](../glossary.md#fragment)), `RxJsonPersistenceBridge` (documents on top of fragments), `RxGroupByTools` (cuts an ordered stream into groups), `Range` (bounds and limit of a list). |
+| `io.descoped.lds.api.persistence.streaming` | `Fragment` and `FragmentType`: one stored piece of one value. |
+| `io.descoped.lds.api.persistence.flattened` | `FlattenedDocument` (a document as leaves by path), `FlattenedDocumentLeafNode` (one leaf, cut into fragments), `PathComparator` (the order of paths). |
+| `io.descoped.lds.api.persistence.json` | `JsonDocument` (a key and a Jackson tree), `JsonToFlattenedDocument` and `FlattenedDocumentToJson` (between a tree and leaves), `JsonTools` (the shared `ObjectMapper` and small conversions). |
+| `io.descoped.lds.api.json` | `JsonNavigationPath`: a path into a document, as the application gives it to a provider. |
+| `io.descoped.lds.api.specification` | `Specification`, `SpecificationElement`, `SpecificationElementType`, `SpecificationTraversal`, `SpecificationValidator`: the model as a provider sees it. |
+
+`module-info.java` exports all seven packages. It `requires transitive` RxJava and Jackson databind, because the
+interfaces expose `Flowable`, `Maybe`, `Single`, `Completable` and `JsonNode`.
+
+Who uses what:
+
+- `linked-data-store-core` calls `RxJsonPersistence` and builds the `Specification`.
+- The memory and PostgreSQL providers implement `RxPersistence` and return an `RxJsonPersistenceBridge`.
+- The Neo4j provider implements `RxJsonPersistence` itself. It still uses `FlattenedDocument` and
+  `FlattenedDocumentToJson` of this module.
+- `linked-data-store-search-provider-api` uses `JsonDocument` and `DocumentKey`. The Solr provider flattens a
+  document with `JsonToFlattenedDocument` and reads its leaves.
+- `EmptyPersistence` in `linked-data-store-core` (package `io.descoped.lds.graphql.schemas`) is an
+  `RxJsonPersistence` that holds nothing. Only the test `GraphQLSchemaBuilderTest` uses it. It implements every
+  method of the interface, so it changes when the interface does.
+
+## The words of this level
+
+- **Document key.**
+  `DocumentKey`: namespace, [entity type](../glossary.md#entity-type), id and the
+  [valid time](../glossary.md#valid-time) of the version (`timestamp()`, a `ZonedDateTime`). One key is one version
+  of one document.
+
+- **Document.**
+  `JsonDocument`: a `DocumentKey` and the Jackson tree of that version.
+
+- **Leaf.**
+  One value of a document that has nothing below it: a text, a number, a boolean, a null, an object with no fields
+  or an array with no elements. `FlattenedDocumentLeafNode`.
+
+- **Path.**
+  Where a leaf is in the document, written from the root `$`: `$.address.city`, `$.name[1].first`, `$.grid[0][2]`.
+
+- **Fragment.**
+  `Fragment`: one stored piece of one leaf. A text that is longer than the fragment capacity of the provider is cut
+  into several fragments; every other leaf is one fragment.
+
+- **Flattened document.**
+  `FlattenedDocument`: the leaves of one version, by path.
+
+## RxJsonPersistence: documents
+
+`RxJsonPersistence` is what the application calls. Every method takes the `Transaction` to work in. An
+[as-of read](../glossary.md#as-of-read) takes a `snapshot`; the answer is the document as it is at that time (see
+[Versions and time](#versions-and-time)).
+
+| Method | What it promises |
+|---|---|
+| `readDocument(tx, snapshot, ns, entity, id)` gives `Maybe<JsonDocument>` | The version of the document that is valid at `snapshot`. Empty when the document has no version at or before `snapshot`, and when the version valid then is a tombstone. |
+| `readDocuments(tx, snapshot, ns, entity, range)` gives `Flowable<JsonDocument>` | Every document of the entity type as it is at `snapshot`, one for each id, ordered by id. A document that is marked as deleted at `snapshot` is left out. `after` and `before` of the range are ids, both exclusive. The limit counts documents. A backward range gives descending ids. |
+| `readDocumentVersions(tx, ns, entity, id, range)` gives `Flowable<JsonDocument>` | Every version of one document, oldest first, or newest first for a backward range. A tombstone is one of the versions and comes as an empty document. `after` and `before` of the range are valid times, both exclusive. |
+| `readTargetDocuments(tx, snapshot, ns, sourceEntity, sourceId, relationPath, targetEntity, range)` | The documents of `targetEntity` that the source document, as it is at `snapshot`, links to at `relationPath`. Each target is read as it is at `snapshot`; a target that is not there then is left out. |
+| `readSourceDocuments(tx, snapshot, ns, targetEntity, targetId, relationPath, sourceEntity, range)` | The documents of `sourceEntity` that, as they are at `snapshot`, hold a link to the target at `relationPath`. The range is on the ids of the sources. The target does not have to exist. |
+| `findDocument(tx, snapshot, ns, entity, path, value, range)` | The documents of the entity type that, as they are at `snapshot`, hold the text `value` at `path`. `[]` in the path means any element of an array. |
+| `createOrOverwrite(tx, document, specification)` and the same with a `Flowable<JsonDocument>` | Writes versions. A version that is there with the same key is replaced as a whole, and so is a tombstone at the same valid time. Other versions are not touched. The documents of one call may be versions of one document in any order of time. |
+| `markDocumentDeleted(tx, ns, entity, id, version, policy)` | Writes a tombstone at the valid time `version` (see [Deletion markers](#deletion-markers)). |
+| `deleteDocument(tx, ns, entity, id, version, policy)` | Removes one version, or one tombstone, as if it was never written: the version before it is valid until the next one. |
+| `deleteAllDocumentVersions(tx, ns, entity, id, policy)` | Removes every version of one document. |
+| `deleteAllEntities(tx, ns, entity, specification)` | Removes every document of one entity type in one namespace. |
+| `hasPrevious(tx, snapshot, ns, entity, id)`, `hasNext(...)` give `Single<Boolean>` | Whether a document of the entity type with a smaller, or a greater, id is there at `snapshot`. |
+| `createTransaction(readOnly)` | A new transaction (see [Transactions and their factory](#transactions-and-their-factory)). |
+| `close()` | Releases what the provider holds. The application calls it when it stops. |
+
+`readLinkedDocuments` is a deprecated default method that calls `readTargetDocuments`. Only the
+[shared suite](../glossary.md#shared-suite) calls it.
+
+A provider stores a document as it is given and gives it back the same: also a field the model does not have, a
+value of another kind than the model says, a null, an array inside an array. The shared suite
+(`PersistenceIntegrationTest`) holds every provider to this and to the table above.
+
+What the application uses today: `readDocument`, `readDocuments`, `readDocumentVersions`, `readTargetDocuments`,
+`readSourceDocuments`, `hasPrevious`, `hasNext`, `createOrOverwrite`, `markDocumentDeleted`, `createTransaction`
+and `close`. `findDocument`, `deleteDocument`, `deleteAllDocumentVersions` and `deleteAllEntities` are called by
+tests only.
+
+### Range
+
+`Range<T>` carries the bounds and the limit of a list: `after` and `before` (ids, or times for versions) and
+either `first` or `last`. Giving both `first` and `last` throws `IllegalArgumentException`. It is made with the
+static methods: `unbounded()`, `first(n)`, `last(n)`, `firstAfter(n, x)`, `lastBefore(n, x)`, `between(a, b)`,
+`firstBetween(n, a, b)`, `lastBetween(n, a, b)`.
+
+`isBackward()` is true when the range has `last`, or has `before` and no `after`. A backward range is read from
+the end: `Range.last(2)` over the ids `p000` to `p099` gives `p099`, `p098`. `Range.unlimited(range)` is the same
+bounds without the limit, and `Range.copy(range, mapper)` the same range over another type.
+
+The direction of a range can go away with its limit: `Range.last(2)` is backward, and
+`Range.unlimited(Range.last(2))` is not, because it has neither `last` nor `before`. Code that takes the limit
+off asks the range it was given for the direction, as the bridge does.
+
+Measured with the bridge and the memory provider, over the ids `p000` to `p099`: `Range.between("p003", "p006")`
+gives `p004`, `p005`; `Range.lastBefore(2, "p003")` gives `p002`, `p001`; `Range.firstAfter(2, "p097")` gives
+`p098`, `p099`; `Range.lastBetween(2, "p003", "p008")` gives `p007`, `p006`.
+
+## RxPersistence: fragments
+
+`RxPersistence` is the smaller interface a provider can implement instead. It carries fragments, not documents.
+`RxJsonPersistenceBridge` turns it into an `RxJsonPersistence`.
+
+| Method | What the bridge expects |
+|---|---|
+| `createOrOverwrite(tx, fragments)` | Stores the fragments. When the first fragment of a document version arrives, what is stored for that version is removed first. |
+| `read(tx, snapshot, ns, entity, id)` | The fragments of the version valid at `snapshot`. When that version is a tombstone: one fragment of type `DELETED`. |
+| `readVersions(tx, ns, entity, id, range)` | The fragments of the versions in the range. The memory and PostgreSQL providers also give the version that is valid at `after`; the bridge drops it. |
+| `readAll(tx, snapshot, ns, entity, range)` | For every id inside the range, the fragments of the version valid at `snapshot`, a tombstone included. |
+| `find(tx, snapshot, ns, entity, path, value, range)` | The fragments of every document whose version valid at `snapshot` holds `value` at `path`. The path has no array positions (`$.tags[]`). The value is the bytes as they are stored. The PostgreSQL provider applies the bounds and the limit of the range in its statement; the memory provider does not read the range. The bridge applies the range to the documents afterwards. |
+| `delete`, `deleteAllVersions`, `markDeleted` | As the methods of `RxJsonPersistence` with the same meaning. |
+| `deleteAllEntities(tx, ns, entity, paths)` | Removes every document of the entity type. `paths` are paths of the entity type taken from the specification, for a provider that keeps an index for each path. The list is not complete (see [The specification](#the-specification)). |
+| `transactionFactory()`, `createTransaction(readOnly)`, `close()` | The transactions of the provider. |
+| `hasPrevious`, `hasNext` | The bridge does not call them. It answers from its own `readDocuments`. |
+
+The fragments of one document version must come one after the other in a stream. The storage order is id, then
+valid time of the version, then path.
+
+`read` must give the fragments of one text in the order of their offsets. `readDocument` does not sort, and the
+pieces of a text are joined as they come.
+
+## Fragments and flattened documents
+
+### From a tree to leaves
+
+`JsonToFlattenedDocument.toDocument()` walks the Jackson tree and makes one `FlattenedDocumentLeafNode` for every
+leaf. The path of a leaf is built on the way down:
+
+- The root is `$`.
+- A field adds `.` and its name: `$.address.city`.
+- An element of an array adds its place in brackets to the last part: `$.tags[0]`, `$.grid[1][0]`.
+- An object with fields and an array with elements are not leaves. They exist through the paths of what is in
+  them.
+
+| `FragmentType` | Leaf | Value as stored |
+|---|---|---|
+| `NULL` (0) | a JSON null | no bytes |
+| `DELETED` (1) | a tombstone, never made from a document | no bytes |
+| `EMPTY_OBJECT` (2) | `{}` | no bytes |
+| `EMPTY_ARRAY` (3) | `[]` | no bytes |
+| `STRING` (4) | a text | its UTF-8 bytes, in one or more fragments |
+| `NUMERIC` (5) | a number | the text of the number in UTF-8, one fragment |
+| `BOOLEAN` (6) | true or false | one byte, 1 or 0 |
+
+The number in brackets is the type code (`FragmentType.getTypeCode`), which the memory provider stores in the key
+of a fragment. The PostgreSQL provider stores the ordinal of the type, which is the same number, and reads it
+with `FragmentType.fromTypeCode`. `FlattenedDocumentLeafNode.valueByOffset` throws `IllegalStateException` for
+`DELETED`.
+
+`FlattenedDocument` keeps its leaves in a map ordered by `PathComparator`: a path of fewer parts comes first;
+paths of as many parts are compared part by part; a part of digits comes before a part that is not; two parts of
+digits are compared as numbers, so `$.a[9]` is before `$.a[10]`; other parts are compared as text. Two paths are
+the same only when they are the same text.
+
+`FlattenedDocument.fragmentIterator()` gives the fragments of the leaves in that order. A leaf makes its fragments
+in `FlattenedDocumentLeafNode.valueByOffset`: a text is encoded to UTF-8 into a buffer of the fragment capacity,
+and each full buffer is one fragment. The `offset` of a fragment is the number of bytes before it. A character is
+not cut in two, so a fragment can be a few bytes shorter than the capacity: with a capacity of 8 bytes, the text
+`abcdefgåååxyz` is cut into `abcdefg` (7 bytes), `åååxy` (8 bytes) and `z`. A text with no characters is one
+fragment of no bytes.
+
+Not finished: `valueByOffset` does not return when the capacity is smaller than the bytes of one character of the
+text (a character is 1 to 4 bytes in UTF-8). Seen with a capacity of 1 and the text `å`, and with a capacity of 3
+and a text with an emoji: the call was still running after 3 seconds. Nothing checks the capacity a provider is
+given.
+
+This document, flattened with a fragment capacity of 8 bytes:
+
+```json
+{
+  "name": "Ola Nordmann",
+  "born": 1998,
+  "weight": 3.82,
+  "human": true,
+  "nothing": null,
+  "address": {"city": "Oslo"},
+  "tags": ["a", "b"],
+  "grid": [
+    [1, 2],
+    [3]
+  ],
+  "empty": {},
+  "none": [],
+  "friends": ["/Person/kari"],
+  "many": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+}
+```
+
+```java
+FlattenedDocument flat = new JsonToFlattenedDocument("ns", "Person", "ola", version, json, 8).toDocument();
+Iterator<Fragment> fragments = flat.fragmentIterator();
+```
+
+gives these fragments (path, type, offset, value):
+
+```
+$.born         NUMERIC      offset=0 value="1998"
+$.empty        EMPTY_OBJECT offset=0 value=0 bytes
+$.human        BOOLEAN      offset=0 value=byte 1
+$.name         STRING       offset=0 value="Ola Nord"
+$.name         STRING       offset=8 value="mann"
+$.none         EMPTY_ARRAY  offset=0 value=0 bytes
+$.nothing      NULL         offset=0 value=0 bytes
+$.weight       NUMERIC      offset=0 value="3.82"
+$.address.city STRING       offset=0 value="Oslo"
+$.friends[0]   STRING       offset=0 value="/Person/"
+$.friends[0]   STRING       offset=8 value="kari"
+$.many[0]      NUMERIC      offset=0 value="0"
+...
+$.many[9]      NUMERIC      offset=0 value="9"
+$.many[10]     NUMERIC      offset=0 value="10"
+$.tags[0]      STRING       offset=0 value="a"
+$.tags[1]      STRING       offset=0 value="b"
+$.grid[0][0]   NUMERIC      offset=0 value="1"
+$.grid[0][1]   NUMERIC      offset=0 value="2"
+$.grid[1][0]   NUMERIC      offset=0 value="3"
+```
+
+### From leaves to a tree
+
+`FlattenedDocument.decodeDocument(key, fragmentsByPath, capacity)` makes the leaves from the fragments of each
+path. The fragments of a text are decoded in the order they are given. A fragment of type `DELETED` makes the
+document a deleted one (`deleted()` is true). In a store the tombstone is the only fragment of its version, so
+the deleted document has no leaves. The type of a path is the type of its first fragment.
+
+`FlattenedDocumentToJson.toJsonNode()` builds the tree. Each leaf is put where its path says, in whatever order
+the leaves come. The elements of an array are in the order of their places, and a place that no leaf names leaves
+no gap. A leaf of type `EMPTY_OBJECT` or `EMPTY_ARRAY` at a place that other leaves put something into takes
+nothing away: the Neo4j provider gives such a leaf for every object and array. A document without leaves is `{}`.
+
+Two things are not the same after the round trip through the bridge:
+
+- The fields of an object come back in the order of their paths, not in the order they were written. The document
+  above comes back as:
+
+  ```json
+  {"born":1998,"empty":{},"human":true,"name":"Ola Nordmann","none":[],"nothing":null,"weight":3.82,
+   "address":{"city":"Oslo"},"friends":["/Person/kari"],"many":[0,1,2,3,4,5,6,7,8,9,10],"tags":["a","b"],
+   "grid":[[1,2],[3]]}
+  ```
+- A number is stored as its text and read as the smallest of `int`, `long` and `double` that holds it
+  (`FlattenedDocumentToJson.number`). An integer that needs more than 64 bits comes back as a `double`:
+  `12345678901234567890` is read as `1.2345678901234567E19`.
+
+`Fragment` is `Comparable`: namespace, entity type, id, valid time, path (as text), type, offset, value.
+`Fragment.equals` compares the same fields except the type. `Fragment.computeIndexUnawarePath` takes the places
+out of a path (`$.a.b[3103].c.d[2].e` becomes `$.a.b[].c.d[].e` and the list 3103, 2), and
+`computePathFromIndexUnawarePathAndIndices` puts them back. The memory and PostgreSQL providers store a path that
+way. `Fragment.hashOf` is the SHA-1 of a value, which the memory provider uses in the keys of its index.
+
+## The bridge: how one ordered fragment stream becomes documents
+
+`RxJsonPersistenceBridge(RxPersistence persistence, int fragmentSize)` implements `RxJsonPersistence`.
+`fragmentSize` is the fragment capacity in bytes.
+
+### A write
+
+`createOrOverwrite` flattens each document (`JsonToFlattenedDocument`) and gives the fragments of all documents,
+one document after the other (`concatMap`), to `RxPersistence.createOrOverwrite`. The bridge does not read the
+`specification` it is given, and it checks nothing in the document.
+
+### A read of one document
+
+`readDocument` asks `RxPersistence.read` for the fragments and gives them to `toDocuments`, then takes the first
+document. Nothing is sorted and nothing more than the fragments of that version is read.
+
+### toDocuments and RxGroupByTools.groupByOrdered
+
+`RxJsonPersistenceBridge.toDocuments(fragments, fragmentSize, includeDeleted)` is the place where fragments become
+documents:
+
+1. The stream ends at the first streaming-control fragment (`takeWhile`).
+2. `RxGroupByTools.groupByOrdered` cuts the stream into groups with the same `DocumentKey`.
+3. Each group is collected into a map from path to fragments (`toMultimap`) and decoded
+   (`FlattenedDocument.decodeDocument`). The groups are taken one after the other (`concatMap`).
+4. A deleted document is dropped, unless `includeDeleted` is true (it is true only for the versions of a document).
+5. `FlattenedDocumentToJson` builds the tree, and the result is a `JsonDocument`.
+
+`groupByOrdered(upstream, groupKeyFunction)` assumes that the items of one group follow each other. It works like
+this:
+
+- The first item of a group passes on and becomes a `MyGroupedFlowable` (the key and a `Flowable` of the items).
+  It is also put in a queue for that group.
+- The following items of the same group are put in the queue and not passed on (`filter`), so the source is asked
+  for the next item.
+- The first item of the next group puts an end mark in the queue of the group before it. So does the end of the
+  source. An error of the source is put in the queue of the group that is open.
+- The `Flowable` of a group reads its queue (`Flowable.generate`, `BlockingQueue.take`) on a thread of its own
+  (`Schedulers.newThread()`), until the end mark.
+
+The result is a [reactive stream](../glossary.md#reactive-stream), and the demand of the reader (backpressure)
+counts groups, so the source is asked for more only when a group is asked for. The items of a group are held in
+memory until the group is read. `concatMap` asks for two groups at a time, so the source is
+up to two groups ahead of the reader. Measured with a source of 1000 items in groups of 10, the groups read one
+after the other with `concatMap` as the bridge reads them: taking 1 group makes the source give 11 items, taking
+2 or 3 groups 31 items, taking 5 groups 51 items.
+
+An error of the source ends the read with that error: with 25 items in groups of 10 and then an error, read with
+`concatMap`, the reader got the first group and then the error.
+
+The state of `groupByOrdered` (the current key and the queues) is made once for each call and cleared when the
+result is subscribed to. One result has one subscriber at a time; it can be subscribed to again after that
+subscriber is done.
+
+The items of a group must follow each other. When a key comes back after another key, the read does not end:
+with the keys 1, 1, 2, 1, 1 from a source that gives all its items at once, no answer came in 10 of 10 runs. The
+queue of a key is used again when the key comes back, and a group clears its queue when its `Flowable` ends.
+
+### A list
+
+`readDocuments`, `readDocumentVersions`, `findDocument` and `readSourceDocuments` work the same way:
+
+1. Ask the provider for fragments (`readAll`, `readVersions` or `find`). For the first three the range is given
+   without its limit (`Range.unlimited`).
+2. Sort the fragments: `Flowable.sorted()`, or `sorted(Comparator.reverseOrder())` for a backward range.
+3. `toDocuments`.
+4. `limit(documents, keyOf, range)`: for a forward range `skipWhile` key is not after `after`, `takeWhile` key is
+   before `before`, `take(first)`. For a backward range the same from the other end with `last`. The key is the id,
+   or the instant of the version.
+
+`findDocument` asks `find` for the first `fragmentSize` bytes of the UTF-8 text of the value, and afterwards drops
+every document that does not hold exactly the value in a text at the path (`JsonDocument.traverseField`). The
+fragment store may answer with a document that only looks like a match.
+
+`hasPrevious` and `hasNext` are `readDocuments` with `Range.lastBefore(1, id)` and `Range.firstAfter(1, id)`, and
+the question whether anything came.
+
+Not finished: step 2 takes every fragment of the read from the provider before the first document is given, so a
+list is not streamed from the store. Measured with the memory provider and 100 documents of 5 leaves:
+`readDocuments` with `Range.first(1)` takes 500 of 500 fragments from `readAll`; `readDocument` takes 5. The
+PostgreSQL provider already gives its fragments in the right order.
+
+Not finished: with a backward range the sort also turns the fragments of one text around, and
+`FlattenedDocument.decodeDocument` joins them as they come. A text that is longer than the fragment capacity comes
+back with its pieces in reverse order. Seen with the memory provider (capacity 8192 bytes): a text of 9000
+characters, read with the GraphQL argument `last: 1`, starts with its last 808 characters. With `first: 1` it is
+right. The PostgreSQL provider does not cut values, so it is not affected.
+
+Not finished: in `findDocument` the limit is put on before the documents that only look like a match are dropped,
+so a page can hold fewer documents than asked for. Seen with the memory provider and a capacity of 8 bytes: the
+documents `a`, `b` and `c` hold the names `12345678-other`, `12345678-wanted` and `12345678-wanted`. A find of
+`12345678-wanted` gives `b` and `c` without a limit, nothing with `Range.first(1)`, and `b` alone with
+`Range.first(2)`. Only texts are found; the code has a `TODO` for other types.
+
+## Links at this level
+
+A [link](../glossary.md#link) is a text of the form `/Entity/id` in a field of a document. In the store it is a
+`STRING` leaf like any other text. Nothing in this module checks, when a document is written, that the target of a
+link exists, so a link may be a dangling reference.
+
+`RxJsonPersistenceBridge.readTargetDocuments` follows links:
+
+1. It reads the source document at `snapshot`.
+2. It visits the path in the document (`JsonDocument.traverseField`); `[]` in the path visits every element.
+3. A value counts as a link when it is a text that matches `/(?<entity>[^/]*)/(?<id>[^/]*)` as a whole and its
+   entity type is the target entity type asked for. Any other value is skipped.
+4. The ids are sorted (descending for a backward range), cut to the limit of the range, and each target is read
+   with `readDocument` at `snapshot`. A target that is not there gives nothing. A link that is in the field twice
+   gives its target twice.
+
+The path must name the elements of an array with `[]`. `traverseField` does not know a place: with the path
+`$.friends[1]` nothing is visited and `readTargetDocuments` gives nothing.
+
+`readSourceDocuments` is a `find` for the text `/targetEntity/targetId` at the path in the source entity type,
+followed by the steps of a list. It differs from `findDocument` in three things: the range goes to `find` with its
+limit, the value is the whole text and not its first fragment, and the documents are not checked again after the
+find.
+
+The bridge does not ask the specification whether the path is a link field. A text of the form `/Entity/id` in
+any field is followed when that path is asked for. The Neo4j provider follows only the fields that the
+specification calls links.
+
+Not finished: `readTargetDocuments` uses only the limit and the direction of the range. `after` and `before` are
+not applied. The limit counts links, so a link to a document that is not there takes a place: with the links
+`nobody`, `p001`, `p002`, `p003` and only the last three written, `Range.first(2)` gives `p001` alone. Seen from
+outside with the memory provider, on a link field with the targets `fa`, `fb` and `fc`: the GraphQL arguments
+`first: 1, after: "fa"` give `fa` again, and `hasNextPage` and `hasPreviousPage` are true on every page that was
+asked for.
+
+Not finished: `readSourceDocuments` finds nothing when the link text is longer than the fragment capacity and the
+store keeps a text in pieces. Seen with the memory provider: with a capacity of 8 bytes, two documents hold the
+link `/Person/kari` (12 bytes) and `readSourceDocuments` for `kari` gives none of them; with a capacity of 8192
+it gives both. `readTargetDocuments` gives `kari` with both capacities.
+
+## Versions and time
+
+A version of a document is identified by its valid time, `DocumentKey.timestamp()`. The same time appears in
+every fragment of the version (`Fragment.timestamp()`).
+
+- An as-of read at `snapshot` gives the latest version whose valid time is not after `snapshot`. The bound is
+  inclusive: a read at exactly the valid time of a version gives that version.
+- A version is valid from its own valid time until the valid time of the next version. Versions may be written in
+  any order of time.
+- A write at the valid time of a version that is there replaces it.
+
+How times are compared in this module:
+
+- `DocumentKey.equals` and `Fragment.equals` use `ZonedDateTime.equals`. Two times that are the same instant in
+  different zones are not equal there: `2020-01-01T00:00Z[Etc/UTC]` is not equal to `2020-01-01T01:00+01:00`, and
+  not to `2020-01-01T00:00Z` either. `groupByOrdered` groups by `DocumentKey`, so every fragment of a version must
+  carry an equal time. The memory and PostgreSQL providers give every time back in the zone `Etc/UTC`.
+- `Fragment.compareTo` uses `ZonedDateTime.compareTo`, which orders by instant first.
+- The bridge compares instants when it applies the range of `readDocumentVersions`.
+
+The REST controller (`DataController` in `linked-data-store-core`) turns the time of a request into the zone
+`Etc/UTC` before a provider is called. The GraphQL endpoint does not: `GraphQLUndertowContext` gives the
+`snapshot` of a request to the provider in the zone it was written with.
+
+Not finished: the interfaces take and give `ZonedDateTime`. An [invariant](architecture.md#the-invariants) of the
+project is that versions are stored and compared as UTC instants, and the bridge has a `TODO` that says the same.
+What a provider does with a time in another zone is up to the provider today. The PostgreSQL and Neo4j providers
+turn every time they are given into its instant (`PostgresPersistence.instantOf`, `Neo4jPersistence.inUtc`). The
+memory provider stores the date and time of day as they are given, without changing the zone
+(`MemoryRxPersistence.toTuple`); see [the memory provider](persistence-memory.md). Seen through the bridge with
+the memory provider: a version written with the time `2020-01-01T01:00+01:00` comes back with the key
+`2020-01-01T01:00Z[Etc/UTC]`, an hour later than it was written, and a read at `2020-01-01T00:30Z` does not find
+it. Seen from outside, with LDS in memory: a document that exists from `2021-01-01T00:00:00Z` is the target of a
+link. The GraphQL query with `snapshot=2021-01-01T00:30:00Z` gives the target, and with
+`snapshot=2020-12-31T23:30:00-01:00`, which is the same instant, it gives `null` for the link.
+
+## Deletion markers
+
+A document is not removed when a user deletes it. `markDocumentDeleted` writes a deletion marker, a
+[tombstone](../glossary.md#tombstone): a version that says the document is not there from that valid time on.
+
+- In a fragment store the tombstone is one fragment of type `DELETED` with the empty path and no value, at the id
+  and the valid time of the tombstone. Both `RxPersistence` implementations write it in `markDeleted` and remove
+  what was stored for that time first. `Fragment.deleteMarker()` tells whether a fragment is one.
+- `FlattenedDocument.decodeDocument` gives a `FlattenedDocument` with `deleted()` true and no leaves when it meets
+  such a fragment.
+- `toDocuments` drops a deleted document for `readDocument`, `readDocuments`, `findDocument` and
+  `readSourceDocuments`. For `readDocumentVersions` it keeps it, and the tombstone comes out as a `JsonDocument`
+  with the tree `{}`.
+- A tombstone is valid like any version: until the valid time of the next version. A write at the valid time of
+  the tombstone replaces it. `deleteDocument` at the valid time of the tombstone removes it, and the version before
+  it is valid again.
+- A tombstone may be written for a document that has no version yet.
+
+`JsonDocument.deleted()` is true when the tree is null. The bridge never gives such a document: a tombstone read
+through it has `jackson()` equal to `{}` and `deleted()` false. The Neo4j provider gives a tombstone in the same way
+(`Neo4jPersistence.toDocument`). The application checks `deleted()` after some of its reads
+(`ManagedResourceHandler`, `ReferenceResourceHandler`); with the three providers the check is never true.
+
+From outside, with LDS in memory on port 19101, three versions and a delete in between:
+
+```sh
+curl -X PUT 'http://localhost:19101/ns/Company/acme?sync=true&timestamp=2020-01-01T00:00:00Z' \
+     -H 'Content-Type: application/json' -d '{"name": "Acme 2020"}'
+curl -X PUT 'http://localhost:19101/ns/Company/acme?sync=true&timestamp=2022-01-01T00:00:00Z' \
+     -H 'Content-Type: application/json' -d '{"name": "Acme 2022"}'
+curl -X PUT 'http://localhost:19101/ns/Company/acme?sync=true&timestamp=2021-01-01T00:00:00Z' \
+     -H 'Content-Type: application/json' -d '{"name": "Acme 2021"}'
+curl -X DELETE 'http://localhost:19101/ns/Company/acme?sync=true&timestamp=2021-06-01T00:00:00Z'
+curl 'http://localhost:19101/ns/Company/acme?timeline'
+```
+
+```json
+[
+  {
+    "version": "2020-01-01T00:00Z[Etc/UTC]",
+    "document": {"name": "Acme 2020"}
+  },
+  {
+    "version": "2021-01-01T00:00Z[Etc/UTC]",
+    "document": {"name": "Acme 2021"}
+  },
+  {
+    "version": "2021-06-01T00:00Z[Etc/UTC]",
+    "document": {}
+  },
+  {
+    "version": "2022-01-01T00:00Z[Etc/UTC]",
+    "document": {"name": "Acme 2022"}
+  }
+]
+```
+
+A read with `timestamp=2021-03-01T00:00:00Z` answers `{"name":"Acme 2021"}`, a read with
+`timestamp=2021-09-01T00:00:00Z` answers 404, and a read with `timestamp=2022-06-01T00:00:00Z` answers
+`{"name":"Acme 2022"}`.
+
+A `PUT` with `timestamp=2021-06-01T00:00:00Z` after that replaces the tombstone: the timeline has the new document
+at that time and no empty one. A `DELETE` for an id that has no version, with `timestamp=2020-01-01T00:00:00Z`,
+answers 204, and the timeline of that id is `[{"version":"2020-01-01T00:00Z[Etc/UTC]","document":{}}]`.
+
+`PersistenceDeletePolicy` has three values: `FAIL_IF_INCOMING_LINKS`, `DELETE_INCOMING_LINKS` and
+`CASCADE_DELETE_ALL_INCOMING_LINKS_AND_NODES`. `markDocumentDeleted`, `deleteDocument` and
+`deleteAllDocumentVersions` take one; `deleteAllEntities` does not.
+
+Not finished: no provider reads the policy. The application always gives `FAIL_IF_INCOMING_LINKS`, and a document
+that other documents link to is marked as deleted all the same. The links to it stay in the other documents as
+texts and are dangling references from the valid time of the tombstone.
+
+## Transactions and their factory
+
+Every call of both interfaces takes a `Transaction`. A provider makes it in `createTransaction(readOnly)` and
+casts it back to its own class when it is used, so a transaction works only with the provider that made it.
+`readOnly` is a hint: `true` when the work only reads. The memory provider takes its read lock for it and its
+write lock otherwise (`MemoryTransactionFactory`), the Neo4j provider opens its session with the access mode
+`READ` or `WRITE` (`Neo4jTransactionFactory`), and the PostgreSQL provider does not look at it.
+
+`Transaction` has two methods, each giving a `CompletableFuture<TransactionStatistics>`:
+
+- `commit()` keeps what was written.
+- `cancel()` undoes it.
+
+`Transaction` is `AutoCloseable`. The default `close()` calls `commit().join()`. When the commit fails it calls
+`cancel().join()`, and the failure of the commit is thrown on. The application uses a transaction in a
+`try`-with-resources block, for reads as for writes. The health check (`HealthCheckHandler` in
+`linked-data-store-core`) makes a read-only transaction and cancels it.
+
+`TransactionFactory` makes the transactions of a provider: `createTransaction(readOnly)` and `close()`, which
+releases the pools and connections of the provider. `runAsyncInIsolatedTransaction(work, readOnly)` runs a
+function in a new transaction on another thread and closes the transaction after it. Only the memory provider
+calls it. `RxPersistence.transactionFactory()` gives the factory; `RxJsonPersistence` does not.
+
+`TransactionStatistics` is a map of counters by name (`add`, `map`). The providers return one from `commit` and
+`cancel`. No code of LDS adds a counter or reads one.
+
+Not finished: the invariant of the repository is that a transaction commits only when asked and rolls back
+otherwise. `Transaction.close()` commits. A block that ends with an exception therefore commits what it wrote
+before the exception. `PostgresTransaction` and `Neo4jTransaction` do not override `close()`, and
+`MemoryTransaction.close()` commits in the same way. Seen with the memory provider: a document written in a
+`try`-with-resources block that then throws is read afterwards; a document written in a transaction that is
+ended with `cancel()` is not.
+
+## How a provider is found
+
+A provider has one class that implements `PersistenceInitializer`:
+
+```java
+public interface PersistenceInitializer {
+    String persistenceProviderId();
+    Set<String> configurationKeys();
+    RxJsonPersistence initialize(String defaultNamespace, Map<String, String> configuration,
+                                 Set<String> managedDomains);
+}
+```
+
+The class carries the annotation `@ProviderName` with the same name that `persistenceProviderId()` returns: `mem`,
+`postgres`, `neo4j`. It is registered as a service of `PersistenceInitializer` in two places: `provides ... with`
+in the `module-info.java` of the provider and the file
+`META-INF/services/io.descoped.lds.api.persistence.PersistenceInitializer`. `linked-data-store-core` declares
+`uses` for the interface.
+
+`PersistenceConfigurator.configurePersistence` in `linked-data-store-core` does the finding, once, at start:
+
+1. It reads the key `persistence.provider`.
+2. It loads the services of `PersistenceInitializer` (`ServiceLoader`) and keeps those whose `@ProviderName` is the
+   value of the key. The annotation is read from the class, so no provider is created to be asked for its name. A
+   registered class without the annotation fails here with a `NullPointerException`.
+3. None left: `RuntimeException` with `No persistence providers found for providerId: <value>`. More than one:
+   `More than one persistence provider found for providerId: <value>`.
+4. It creates the initializer and checks that `persistenceProviderId()` is the same name.
+5. It asks for `configurationKeys()`. A key that the configuration does not have stops the start:
+   `IllegalArgumentException` with `Configuration missing for: [<keys>]`.
+6. It calls `initialize` with the value of `namespace.default`, a map of exactly those keys and their values, and
+   the names of the entity types (`Specification.getManagedDomains()`).
+7. When `initialize` throws a `RuntimeException`, it waits up to a second and tries again, until
+   `persistence.initialization.max-wait-seconds` have passed. Then the exception stops the start.
+
+A provider gets only the keys it names in `configurationKeys()`. A key it reads but does not name is never in the
+map.
+
+Of the three providers, none reads `defaultNamespace` (the namespace comes with every call), and only Neo4j reads
+`managedDomains`.
+
+To add a provider: implement `RxPersistence` and return `new RxJsonPersistenceBridge(yours, capacity)`, or
+implement `RxJsonPersistence`; write the initializer with `@ProviderName`; register it in both places; extend
+`PersistenceIntegrationTest` (see [the shared suite](persistence-tck.md)).
+
+## The specification
+
+`Specification` is the model as a provider is given it:
+
+- `getRootElement()`: the root of a tree of `SpecificationElement`.
+- `getManagedDomains()`: the names of the entity types.
+
+A `SpecificationElement` has:
+
+| Method | Meaning |
+|---|---|
+| `getName()` | The name of the entity type or the field. |
+| `getDescription()` | The text that describes it in the model. |
+| `getParent()` | The element above it; null for the root. |
+| `getSpecificationElementType()` | `ROOT` for the root, `MANAGED` for an entity type, `REF` for a field that holds links, `EMBEDDED` for every other field. The element of `getItems()` is said below. |
+| `getJsonTypes()` | The JSON types of the element. This module asks only whether `array` is among them. |
+| `getRefTypes()` | For a `REF` element: the entity types the field may link to. |
+| `getProperties()` | The elements below it, by name. For the root: the entity types, and in the specification that the application builds also the other types of the model, as `EMBEDDED`. |
+| `getItems()` | For an array: the element that describes what the array holds. |
+| `getRequired()`, `isRequired()` | The names of the required fields below it; whether this element is one of the required fields of its parent. |
+| `getValidators()` | A list of `SpecificationValidator`, an interface without methods that nothing implements. |
+
+The application builds the specification from the model (`JsonSchemaBasedSpecification` and
+`SpecificationElementBuilder` in `linked-data-store-core`). Seen in the specification it builds from the example
+model (`schemas/schema.graphql`):
+
+- The element that `getItems()` gives has no type: `getSpecificationElementType()` is null. Its name is the name
+  of the type of the elements (`Text` for `Company.about`), or the empty text (for `Person.friends`).
+- A field that holds links to many documents (`Person.friends`) is a `REF` element with the JSON type `array`.
+  The element of its items is not a `REF`.
+- A field whose type is another type of the model and not an array (`Person.address`) has no properties. The
+  type is an element of its own below the root (`Address`, `EMBEDDED`). The items of an array of such a type
+  (`Company.about`) do have the properties of the type.
+- `getValidators()` is an empty list for every element.
+
+`SpecificationTraversal.depthFirstPreOrderFullTraversal(element, visit)` visits an element and then, for each of
+its properties, that property and what is below it. The visitor gets the ancestors and the element. It follows
+`getProperties()` only, not `getItems()`.
+
+`JsonNavigationPath` connects paths and elements:
+
+- `from(SpecificationElement)` is the path from the entity type down to the element. An element whose parent is
+  an array adds `[]` instead of its name.
+- `toSpecificationElement(specification, entity)` walks the other way: from the element of the entity type along
+  the path. At an array it takes `getItems()`. At a name the specification does not have it stops and gives the
+  last element it found. With the example model and the entity type `Person`: `$.friends` gives the element
+  `friends`, `$.friends[]` the element of its items, `$.nope` the element of `Person`, and `$.address.city` the
+  element `address`, because `address` has no properties there.
+
+What this module does with the specification: `RxJsonPersistenceBridge.deleteAllEntities` walks the entity type
+with `SpecificationTraversal` and gives the path of every element to `RxPersistence.deleteAllEntities`. The
+bridge uses the specification nowhere else. The model tells a provider one thing: which fields are links. The
+Neo4j provider reads that.
+
+Not finished: `RxJsonPersistenceBridge.deleteAllEntities` for an entity type that the specification does not
+have throws a `NullPointerException` from the call itself.
+
+Not finished: the paths that `deleteAllEntities` gives are not all the paths of the entity type. The walk does
+not follow `getItems()`, so nothing below an array is in the list, and an array is given without `[]`. With the
+example model the list is `$`, `$.address`, `$.born`, `$.employer`, `$.friends`, `$.name` for `Person` and `$`,
+`$.about`, `$.founded`, `$.name` for `Company`. The paths that documents of these entity types have fragments at,
+such as `$.friends[]`, `$.address.city` and `$.about[].languageText`, are not in it. The memory provider clears
+the index of each path it is given (`MemoryRxPersistence.deleteAllEntities`), and the PostgreSQL provider does
+not use the paths.
+
+## JsonNavigationPath, JsonDocument, JsonTools
+
+`JsonNavigationPath` is a path as the application gives it to a provider: an array of parts, the first `$`, then
+field names, and `[]` for the elements of an array. `from("$.name[].first")` parses the text form into the parts
+`$`, `name`, `[]`, `first`, and `serialize()` writes it back. `popBack()` is the path without its last part and
+`back()` the last part. A part with a place, `[3]`, is parsed and written back too, but `traverseField` does not
+know it: it visits nothing for such a path.
+
+`JsonDocument.traverseField(path, callback)` visits what the document holds at a path. `[]` visits every element
+of an array, so the callback may be called many times; it gets the node and the path with the place of each
+element (`$.name[1].first`). Where the document does not have the path, nothing is visited.
+
+`JsonTools.mapper` is the one `ObjectMapper` (Jackson 3) of this module. `JsonTools.text(node)` is the text of a
+node, or null when the node holds anything else. Use it where a text is taken out of a node that may be of another
+kind, because Jackson 3 throws when a text is asked of such a node.
+
+Not finished: `JsonNavigationPath` does not refuse every malformed path. `from("$.x[aw]")` gives the path `$.x`.
+`from("$", "a]")` is accepted. `from("$name.x")` is accepted, because the first part only has to start with `$`.
+`from("$", "x[1]")` throws `MissingFormatArgumentException` (a subclass of `IllegalArgumentException`) with the
+text `Format specifier '%d'` where a message about the path is meant.
+
+## Rules to keep
+
+- **Streaming.**
+  LDS streams. A read gives a `Flowable`, a reactive stream whose source is asked for more as the reader asks
+  (backpressure). Do not replace a stream by a call that returns a complete list, and do not add a blocking call
+  to an interface. `groupByOrdered` and `toDocuments` are the mechanism that gives documents one at a time; keep
+  it when changing the bridge.
+
+- **One contract.**
+  Every provider answers the same. What a method promises is what `PersistenceIntegrationTest` checks, against the
+  real engine. A change of a promise is a change of the suite and of every provider.
+
+- **The store keeps what it is given.**
+  A provider does not validate and does not drop anything. Whether a document may hold a field or a value is for
+  the validation before a write to say.
+
+- **Order.** The fragments of one document version are next to each other in a stream. Otherwise a read through
+  `groupByOrdered` may not end (see [toDocuments and
+  RxGroupByTools.groupByOrdered](#todocuments-and-rxgroupbytoolsgroupbyordered)). Paths are ordered by `PathComparator`,
+  which keeps array elements in the order of their places.
+
+- **No spliced identifiers.**
+  Namespace, entity type, id, path and value come to a provider as arguments. A provider gives them to its engine
+  as parameters and does not write them into a statement. The Neo4j provider writes the name of an entity type as
+  a quoted label; see [the Neo4j provider](persistence-neo4j.md).
+
+- **Time.**
+  Versions are stored and compared as UTC instants.
+
+- **Transactions.** A transaction commits only when asked and rolls back otherwise (see [Transactions and their
+  factory](#transactions-and-their-factory) for what is not so yet).
+
+- **JPMS.**
+  The module is a named module. It `requires transitive` what its interfaces expose. A provider registers its
+  initializer with `provides` and in `META-INF/services`.
+
+- **Clean break.**
+  Nothing is released, so there is nothing to stay compatible with: no deprecated aliases, no shims, no code for
+  older data. `readLinkedDocuments` is such an alias and is still there.
+
+- **JSON.**
+  Jackson 3, as a tree. No classes are bound.
+
+- **Lint and Javadoc.**
+  The rule of the repository is `-Xlint:all -Werror` and doclint `all`. This module overrides both in its
+  `pom.xml`: the lint categories `requires-automatic`, `exports`, `serial`, `missing-explicit-ctor`, `rawtypes` and
+  `deprecation` are off, and doclint is `all,-missing`. The overrides are removed, not widened, when the module is
+  revised.
+
+## Configuration
+
+The module reads no configuration. Two values reach it from outside:
+
+- The fragment capacity is the second argument of `RxJsonPersistenceBridge`. The memory provider takes it from
+  the key `persistence.fragment.capacity` (8192 in the defaults of the server). The PostgreSQL provider gives
+  `Integer.MAX_VALUE`, so it never cuts a value. What a capacity of a few bytes does is said under
+  `Not finished:` in [Links at this level](#links-at-this-level) and in the section on fragments.
+- The keys a provider needs are the ones it names in `PersistenceInitializer.configurationKeys()`.
+
+The keys that select and start a provider are read by `PersistenceConfigurator` in `linked-data-store-core`:
+`persistence.provider`, `persistence.initialization.max-wait-seconds` and `namespace.default`.
+
+## Tests
+
+The tests are in `src/test/java` of the module, in the packages of the classes they test. They need no container.
+
+| Class | Kind | What it holds |
+|---|---|---|
+| `FlattenedDocumentToJsonTest` | JUnit | A document is the same after it is taken apart and put together: 16 documents of every shape, leaves in any order, leaves that only say object or array, gaps in arrays, numbers, a deleted leaf. |
+| `JsonDocumentTest` | JUnit | What `traverseField` visits, and what it does not visit. |
+| `PathComparatorTest` | TestNG | The order of paths: places as numbers, arrays in arrays, names of digits. |
+| `FlattenedDocumentTest`, `FlattenedDocumentLeafNodeTest` | TestNG | A leaf as one or several fragments, and `decodeDocument`. |
+| `FragmentTest` | TestNG | `computeIndexUnawarePath`. |
+| `JsonNavigationPathTest` | TestNG | Parsing and writing a path, and the malformed paths that are refused. |
+| `JsonToolsTest` | TestNG | Conversions between tree, map and list, and `JsonTools.text`. |
+| `RxJsonPersistenceBridgeTest` | TestNG | `doReadDocument` and `doReadDocuments` with a range, from fragments made in the test. |
+
+New and revised tests are JUnit 6 with AssertJ; the others are TestNG 7. Both run in one build on the JUnit
+Platform, on the class path.
+
+`Range` and `RxGroupByTools` have no test of their own. Links, find, versions, tombstones and the delete
+methods of the bridge are tested through the shared suite, `PersistenceIntegrationTest` in
+`linked-data-store-persistence-provider-tck`, which the memory and PostgreSQL providers run with the bridge in
+front of their stores. A change of the bridge is therefore checked by building those two providers as well.
+
+The tests run in the Maven build (`./mvnw`, Surefire). To build one module and what it needs, Maven is given the
+module with `-pl linked-data-store-persistence-provider-api` and `-am`.
+
+## Not finished
+
+What is said above under `Not finished:`, and these:
+
+Not finished: `RxJsonPersistence` says of itself that it is a temporary interface. Its comments leave open how a
+failure of the store is reported: they have a `TODO` for `onError(PersistenceException)` on almost every method.
+
+Not finished: no provider makes a streaming-control fragment. The second constructor of `Fragment`,
+`isStreamingControl`, `isLimited`, `isNotLimited` and the codes `LIMITED_CODE` and `NOT_LIMITED_CODE` are used
+only by the `takeWhile` at the start of `toDocuments`. `Fragment.samePathAs` and `RxGroupByTools.debug` (which
+prints to `System.out`) are not called.
+
+Not finished: `groupByOrdered` starts a new thread for every group, which in the bridge is every document of a
+list. It keeps an entry for every group in a map and does not remove it. A cancel can fail: when the groups are
+read with `group.flowable().toList().toFlowable()` or with `group.flowable().toMultimap(...).toFlowable()` and
+the reader stops early with `take(1)`, the cancel handler is interrupted in `BlockingQueue.put`, and RxJava
+reports an `UndeliverableException` caused by `InterruptedException` to its error handler. This was seen in 50
+of 50 runs with each of the two. It was not seen in 50 runs with the chain as the bridge has it, where a `map`
+stands between `toMultimap` and `toFlowable`, and not with the bridge and the memory provider (a list with
+`Range.first(1)`, `readDocument`, `hasNext`). A change of that chain in `toDocuments` can bring the error in.
+
+Not finished: `readSourceDocuments` makes the bytes of the link text with `String.getBytes()`, the charset of the
+JVM, where `findDocument` encodes with UTF-8.
