@@ -10,7 +10,7 @@ public class ResourceJsonTraversalTuple {
 
     ResourceJsonTraversalTuple(ResourceElement resourceElement, JsonNode jsonObject) {
         this.resourceElement = resourceElement;
-        // TODO Use JsonNode type and support array-navigation
+        // array-navigation is not supported, so the parent is an object
         if (!jsonObject.isObject()) {
             throw new UnsupportedOperationException("array-navigation not supported");
         }

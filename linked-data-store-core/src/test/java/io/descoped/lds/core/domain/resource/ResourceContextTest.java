@@ -6,6 +6,7 @@ import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.api.specification.SpecificationElementType;
 import io.descoped.lds.core.specification.SpecificationBuilder;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -52,66 +53,38 @@ public class ResourceContextTest {
         Assert.assertTrue(context.isManaged());
     }
 
-    @Test
-    public void thatCreateResourceContextOnEmbeddedResourceWorks() {
+    @DataProvider
+    public static Object[][] embeddedResourcePaths() {
+        return new Object[][]{
+                {"/ns/SomeEntity/123/object1"},
+                {"/ns/SomeEntity/123/ref"},
+                {"/ns/SomeEntity/123/object1/object2"},
+        };
+    }
+
+    @Test(dataProvider = "embeddedResourcePaths")
+    public void thatCreateResourceContextOnEmbeddedResourceWorks(String path) {
         Specification specification = specification();
-        ResourceContext context = ResourceContext.createResourceContext(specification, "/ns/SomeEntity/123/object1", ZonedDateTime.now(ZoneId.of("Etc/UTC")));
+        ResourceContext context = ResourceContext.createResourceContext(specification, path, ZonedDateTime.now(ZoneId.of("Etc/UTC")));
         Assert.assertTrue(context.isEmbedded());
     }
 
-    @Test
-    public void thatCreateResourceContextOnEmbeddedLinkResourceWorks() {
-        Specification specification = specification();
-        ResourceContext context = ResourceContext.createResourceContext(specification, "/ns/SomeEntity/123/ref", ZonedDateTime.now(ZoneId.of("Etc/UTC")));
-        Assert.assertTrue(context.isEmbedded());
+    @DataProvider
+    public static Object[][] referenceResourcePaths() {
+        return new Object[][]{
+                {"/ns/SomeEntity/123/ref/OtherEntity/456"},
+                {"/ns/SomeEntity/123/object1/ref/OtherEntity/456"},
+                {"/ns/SomeEntity/123/object1/object2/ref/OtherEntity/456"},
+                {"/ns/SomeEntity/123/refs/OtherEntity/456"},
+                {"/ns/SomeEntity/123/object1/refs/OtherEntity/456"},
+                {"/ns/SomeEntity/123/object1/object2/refs/OtherEntity/456"},
+        };
     }
 
-    @Test
-    public void thatCreateResourceContextOnNestedEmbeddedResourceWorks() {
+    @Test(dataProvider = "referenceResourcePaths")
+    public void thatCreateResourceContextOnReferenceResourceWorks(String path) {
         Specification specification = specification();
-        ResourceContext context = ResourceContext.createResourceContext(specification, "/ns/SomeEntity/123/object1/object2", ZonedDateTime.now(ZoneId.of("Etc/UTC")));
-        Assert.assertTrue(context.isEmbedded());
-    }
-
-    @Test
-    public void thatCreateResourceContextOnReferenceResourceWorks() {
-        Specification specification = specification();
-        ResourceContext context = ResourceContext.createResourceContext(specification, "/ns/SomeEntity/123/ref/OtherEntity/456", ZonedDateTime.now(ZoneId.of("Etc/UTC")));
-        Assert.assertTrue(context.isReference());
-    }
-
-    @Test
-    public void thatCreateResourceContextOnNestedReferenceResourceWorks() {
-        Specification specification = specification();
-        ResourceContext context = ResourceContext.createResourceContext(specification, "/ns/SomeEntity/123/object1/ref/OtherEntity/456", ZonedDateTime.now(ZoneId.of("Etc/UTC")));
-        Assert.assertTrue(context.isReference());
-    }
-
-    @Test
-    public void thatCreateResourceContextOnNestedNestedReferenceResourceWorks() {
-        Specification specification = specification();
-        ResourceContext context = ResourceContext.createResourceContext(specification, "/ns/SomeEntity/123/object1/object2/ref/OtherEntity/456", ZonedDateTime.now(ZoneId.of("Etc/UTC")));
-        Assert.assertTrue(context.isReference());
-    }
-
-    @Test
-    public void thatCreateResourceContextOnArrayReferenceResourceWorks() {
-        Specification specification = specification();
-        ResourceContext context = ResourceContext.createResourceContext(specification, "/ns/SomeEntity/123/refs/OtherEntity/456", ZonedDateTime.now(ZoneId.of("Etc/UTC")));
-        Assert.assertTrue(context.isReference());
-    }
-
-    @Test
-    public void thatCreateResourceContextOnNestedArrayReferenceResourceWorks() {
-        Specification specification = specification();
-        ResourceContext context = ResourceContext.createResourceContext(specification, "/ns/SomeEntity/123/object1/refs/OtherEntity/456", ZonedDateTime.now(ZoneId.of("Etc/UTC")));
-        Assert.assertTrue(context.isReference());
-    }
-
-    @Test
-    public void thatCreateResourceContextOnNestedNestedArrayReferenceResourceWorks() {
-        Specification specification = specification();
-        ResourceContext context = ResourceContext.createResourceContext(specification, "/ns/SomeEntity/123/object1/object2/refs/OtherEntity/456", ZonedDateTime.now(ZoneId.of("Etc/UTC")));
+        ResourceContext context = ResourceContext.createResourceContext(specification, path, ZonedDateTime.now(ZoneId.of("Etc/UTC")));
         Assert.assertTrue(context.isReference());
     }
 
@@ -159,5 +132,5 @@ public class ResourceContextTest {
         Assert.assertEquals(JsonTools.toJson(documentRoot), "{\"object1\":{\"object2\":{}}}");
     }
 
-    // TODO Test array-navigation
+    // A path does not navigate into the elements of an array, so that has no test.
 }

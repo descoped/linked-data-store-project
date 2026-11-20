@@ -44,6 +44,8 @@ import static java.util.Optional.ofNullable;
 public class ManagedResourceHandler implements HttpHandler {
 
     private static final Logger LOG = LoggerFactory.getLogger(ManagedResourceHandler.class);
+    private static final String TEXT_PLAIN = "text/plain";
+    private static final String APPLICATION_JSON = "application/json";
 
     private final RxJsonPersistence persistence;
     private final Specification specification;
@@ -74,7 +76,7 @@ public class ManagedResourceHandler implements HttpHandler {
             deleteManaged(exchange);
         } else {
             exchange.setStatusCode(400);
-            exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "text/plain");
+            exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, TEXT_PLAIN);
             exchange.getResponseSender().send("Unsupported managed resource method: " + exchange.getRequestMethod());
         }
     }
@@ -94,41 +96,53 @@ public class ManagedResourceHandler implements HttpHandler {
 
         try (Transaction tx = persistence.createTransaction(true)) {
             if (isManagedList) {
-                Iterable<JsonDocument> documents = persistence.readDocuments(tx, resourceContext.getTimestamp(), resourceContext.getNamespace(), topLevelElement.name(), Range.unbounded()).blockingIterable();
-                ArrayNode output = mapper.createArrayNode();
-                for (JsonDocument jsonDocument : documents) {
-                    if (jsonDocument.deleted()) {
-                        continue;
-                    }
-                    output.add(jsonDocument.jackson());
+                exchange.getResponseSender().send(JsonTools.toJson(documents(tx, topLevelElement)), StandardCharsets.UTF_8);
+            } else if (exchange.getQueryParameters().containsKey("timeline")) {
+                ArrayNode output = timeline(tx, topLevelElement);
+                if (output.size() == 0) {
+                    exchange.setStatusCode(StatusCodes.NOT_FOUND).endExchange();
+                    return;
                 }
                 exchange.getResponseSender().send(JsonTools.toJson(output), StandardCharsets.UTF_8);
             } else {
-                if (exchange.getQueryParameters().containsKey("timeline")) {
-                    ArrayNode output = mapper.createArrayNode();
-                    // TODO Support pagination or time-range based query parameters
-                    Flowable<JsonDocument> jsonDocumentFlowable = persistence.readDocumentVersions(tx, resourceContext.getNamespace(), topLevelElement.name(), topLevelElement.id(), Range.unbounded());
-                    for (JsonDocument jsonDocument : jsonDocumentFlowable.blockingIterable()) {
-                        ObjectNode timeVersionedInstance = output.addObject();
-                        timeVersionedInstance.put("version", jsonDocument.key().timestamp().toString());
-                        timeVersionedInstance.set("document", jsonDocument.jackson());
-                    }
-                    if (output.size() == 0) {
-                        exchange.setStatusCode(StatusCodes.NOT_FOUND).endExchange();
-                        return;
-                    }
-                    exchange.getResponseSender().send(JsonTools.toJson(output), StandardCharsets.UTF_8);
+                JsonDocument jsonDocument = persistence.readDocument(tx, resourceContext.getTimestamp(), resourceContext.getNamespace(), topLevelElement.name(), topLevelElement.id()).blockingGet();
+                if (jsonDocument != null && !jsonDocument.deleted()) {
+                    exchange.getResponseSender().send(JsonTools.toJson(jsonDocument.jackson()), StandardCharsets.UTF_8);
                 } else {
-                    JsonDocument jsonDocument = persistence.readDocument(tx, resourceContext.getTimestamp(), resourceContext.getNamespace(), topLevelElement.name(), topLevelElement.id()).blockingGet();
-                    if (jsonDocument != null && !jsonDocument.deleted()) {
-                        exchange.getResponseSender().send(JsonTools.toJson(jsonDocument.jackson()), StandardCharsets.UTF_8);
-                    } else {
-                        exchange.setStatusCode(StatusCodes.NOT_FOUND);
-                    }
+                    exchange.setStatusCode(StatusCodes.NOT_FOUND);
                 }
             }
         }
         exchange.endExchange();
+    }
+
+    /*
+     * The documents of the entity at the time of the request, without those that are deleted.
+     */
+    private ArrayNode documents(Transaction tx, ResourceElement topLevelElement) {
+        Iterable<JsonDocument> documents = persistence.readDocuments(tx, resourceContext.getTimestamp(), resourceContext.getNamespace(), topLevelElement.name(), Range.unbounded()).blockingIterable();
+        ArrayNode output = mapper.createArrayNode();
+        for (JsonDocument jsonDocument : documents) {
+            if (!jsonDocument.deleted()) {
+                output.add(jsonDocument.jackson());
+            }
+        }
+        return output;
+    }
+
+    /*
+     * Every version of the document, oldest first. There is no pagination and no range of time: the store is asked
+     * for all versions.
+     */
+    private ArrayNode timeline(Transaction tx, ResourceElement topLevelElement) {
+        ArrayNode output = mapper.createArrayNode();
+        Flowable<JsonDocument> jsonDocumentFlowable = persistence.readDocumentVersions(tx, resourceContext.getNamespace(), topLevelElement.name(), topLevelElement.id(), Range.unbounded());
+        for (JsonDocument jsonDocument : jsonDocumentFlowable.blockingIterable()) {
+            ObjectNode timeVersionedInstance = output.addObject();
+            timeVersionedInstance.put("version", jsonDocument.key().timestamp().toString());
+            timeVersionedInstance.set("document", jsonDocument.jackson());
+        }
+        return output;
     }
 
     private void putManaged(HttpServerExchange exchange) {
@@ -143,7 +157,7 @@ public class ManagedResourceHandler implements HttpHandler {
                     if ("".equals(requestBody)) {
                         LOG.error("Received empty payload for: {}", exchange.getRequestPath());
                         exchange.setStatusCode(400);
-                        exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "text/plain");
+                        exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, TEXT_PLAIN);
                         exchange.getResponseSender().send("Payload was empty!");
                         return;
                     }
@@ -151,17 +165,17 @@ public class ManagedResourceHandler implements HttpHandler {
                     // check that we have a document id.
                     if (managedDocumentId == null || "".equals(managedDocumentId)) {
                         exchange.setStatusCode(400);
-                        exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "text/plain");
+                        exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, TEXT_PLAIN);
                         exchange.getResponseSender().send("Id was empty!");
                         return;
                     }
 
                     String contentType = ofNullable(exchange.getRequestHeaders().get(Headers.CONTENT_TYPE))
-                            .map(HeaderValues::getFirst).orElse("application/json");
+                            .map(HeaderValues::getFirst).orElse(APPLICATION_JSON);
                     JsonNode requestData = bodyParser.deserializeBody(contentType, requestBody);
 
                     if (LOG.isTraceEnabled()) {
-                        LOG.trace("{} {}\n{}", exchange.getRequestMethod(), exchange.getRequestPath(), requestBody);
+                        LOG.trace("{}\u00A0{}\n{}", exchange.getRequestMethod(), exchange.getRequestPath(), requestBody);
                     }
 
                     try {
@@ -170,7 +184,7 @@ public class ManagedResourceHandler implements HttpHandler {
                     } catch (LinkedDocumentValidationException ve) {
                         LOG.debug("Schema validation error: {}", ve.getMessage());
                         exchange.setStatusCode(400);
-                        exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "text/plain");
+                        exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, TEXT_PLAIN);
                         exchange.getResponseSender().send("Schema validation error: " + ve.getMessage());
                         return;
                     }
@@ -191,12 +205,12 @@ public class ManagedResourceHandler implements HttpHandler {
                     SagaHandoffResult handoffResult = handoff.join();
 
                     exchange.setStatusCode(StatusCodes.CREATED);
-                    exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/json");
+                    exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, APPLICATION_JSON);
                     exchange.getResponseSender().send("{\"saga-execution-id\":\"" + handoffResult.getExecutionId() + "\"}");
                 },
                 (exchange1, e) -> {
                     exchange.setStatusCode(StatusCodes.INTERNAL_SERVER_ERROR);
-                    exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "text/plain");
+                    exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, TEXT_PLAIN);
                     exchange.getResponseSender().send("Error: " + e.getMessage());
                     LOG.warn("", e);
                 },
@@ -210,7 +224,7 @@ public class ManagedResourceHandler implements HttpHandler {
         // check that we have a document id, as for PUT
         if (topLevelElement.id() == null || "".equals(topLevelElement.id())) {
             exchange.setStatusCode(400);
-            exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "text/plain");
+            exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, TEXT_PLAIN);
             exchange.getResponseSender().send("Id was empty!");
             return;
         }
@@ -239,7 +253,7 @@ public class ManagedResourceHandler implements HttpHandler {
             exchange.endExchange();
         } else {
             exchange.setStatusCode(StatusCodes.ACCEPTED);
-            responseHeaders.put(Headers.CONTENT_TYPE, "application/json");
+            responseHeaders.put(Headers.CONTENT_TYPE, APPLICATION_JSON);
             exchange.getResponseSender().send("{\"saga-execution-id\":\"" + handoffResult.getExecutionId() + "\"}");
         }
 

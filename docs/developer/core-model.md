@@ -614,7 +614,7 @@ then refused with a `ClassCastException` (`GraphQLSchemaGoldenTest.aListOfLinksT
 The exception comes in the constructor of `UndertowApplication`, after the thread pools of the sagas are made, and
 the process stays up without listening.
 
-Not finished: `JsonSchemaBuilder.build` has the comment `TODO remove link directives from schema`. The
+Not finished: `JsonSchemaBuilder.build` does not remove the link directives from the schema. The
 `_link_property_<field>` objects stay in the schema that validates, so a document may hold a field of that name
 when its value is an object.
 

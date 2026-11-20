@@ -139,8 +139,9 @@ class JsonSchemaBuilderTest {
     @Test
     void anEntityTheModelDoesNotHaveCannotBeValidated() {
         JsonSchema schema = read("Person", PERSON);
+        JsonNode document = json("{}");
 
-        assertThatThrownBy(() -> schema.validate("House", json("{}")))
+        assertThatThrownBy(() -> schema.validate("House", document))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("House");
     }
 

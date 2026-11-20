@@ -35,8 +35,7 @@ public class SpecificationBuilder {
     }
 
     public static TestSpecificationElement arrayRefNode(String name, Set<String> refTypes) {
-        TestSpecificationElement arrayNode = new TestSpecificationElement(name, SpecificationElementType.REF, Set.of("array"), List.of(), refTypes, Map.of(), stringNode("[]"));
-        return arrayNode;
+        return new TestSpecificationElement(name, SpecificationElementType.REF, Set.of("array"), List.of(), refTypes, Map.of(), stringNode("[]"));
     }
 
     public static TestSpecificationElement objectNode(String name, Set<TestSpecificationElement> properties) {

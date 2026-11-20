@@ -9,8 +9,6 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
-import java.util.Iterator;
-
 public class ReferenceJsonHelper {
 
     final Specification specification;
@@ -24,76 +22,78 @@ public class ReferenceJsonHelper {
     }
 
     public boolean deleteReferenceJson(ResourceContext resourceContext, JsonNode rootNode) {
-        // TODO Support array-navigation
+        // array-navigation is not supported
         return resourceContext.navigateAndCreateJson(rootNode, t -> {
             String referencePropertyName = t.resourceElement.name();
             String referenceValue = t.resourceElement.id();
             if (t.resourceElement.getSpecificationElement().getJsonTypes().contains("array")) {
-                ObjectNode refParentNode = t.jsonObject;
-                if (!refParentNode.has(referencePropertyName)) {
-                    return false;
-                }
-                ArrayNode refNode = (ArrayNode) refParentNode.get(referencePropertyName);
-                for (int i = 0; i < refNode.size(); i++) {
-                    String idref = JsonTools.text(refNode.get(i));
-                    if (referenceValue.equals(idref)) {
-                        refNode.remove(i);
-                        return true;
-                    }
-                }
-                return false; // not found
-            } else {
-                ObjectNode refParentNode = t.jsonObject;
-                String existingValue = JsonTools.text(refParentNode.get(referencePropertyName));
-                if (referenceValue.equals(existingValue)) {
-                    refParentNode.remove(referencePropertyName);
-                    return true;
-                }
-                return false;
+                return deleteFromArray(t.jsonObject, referencePropertyName, referenceValue);
             }
+            return deleteValue(t.jsonObject, referencePropertyName, referenceValue);
         });
     }
 
+    private static boolean deleteFromArray(ObjectNode refParentNode, String referencePropertyName, String referenceValue) {
+        if (!refParentNode.has(referencePropertyName)) {
+            return false;
+        }
+        ArrayNode refNode = (ArrayNode) refParentNode.get(referencePropertyName);
+        for (int i = 0; i < refNode.size(); i++) {
+            String idref = JsonTools.text(refNode.get(i));
+            if (referenceValue.equals(idref)) {
+                refNode.remove(i);
+                return true;
+            }
+        }
+        return false; // not found
+    }
+
+    private static boolean deleteValue(ObjectNode refParentNode, String referencePropertyName, String referenceValue) {
+        String existingValue = JsonTools.text(refParentNode.get(referencePropertyName));
+        if (referenceValue.equals(existingValue)) {
+            refParentNode.remove(referencePropertyName);
+            return true;
+        }
+        return false;
+    }
+
     public boolean createReferenceJson(ResourceContext resourceContext, JsonNode rootNode) {
-        // TODO Support array-navigation
+        // array-navigation is not supported
         return resourceContext.navigateAndCreateJson(rootNode, t -> {
             String referencePropertyName = t.resourceElement.name();
             String referenceValue = t.resourceElement.id();
             if (t.resourceElement.getSpecificationElement().getJsonTypes().contains("array")) {
-                ObjectNode refParentNode = t.jsonObject;
-                if (!refParentNode.has(referencePropertyName)) {
-                    refParentNode.putArray(referencePropertyName);
-                }
-                ArrayNode refNode = (ArrayNode) refParentNode.get(referencePropertyName);
-                // scan array for existing identical reference value
-                Iterator<JsonNode> it = refNode.iterator();
-                while (it.hasNext()) {
-                    JsonNode next = it.next();
-                    if (next.isNull()) {
-                        continue;
-                    }
-                    if (referenceValue.equals(JsonTools.text(next))) {
-                        // value already in array
-                        return false;
-                    }
-                }
-                refNode.add(referenceValue);
-                return true;
-            } else {
-                ObjectNode refParentNode = t.jsonObject;
-                if (!refParentNode.has(referencePropertyName)
-                        || refParentNode.get(referencePropertyName).isNull()) {
-                    // not already set
-                    refParentNode.put(referencePropertyName, referenceValue);
-                    return true;
-                } else if (!JsonTools.text(refParentNode.get(referencePropertyName)).equals(referenceValue)) {
-                    // change value
-                    refParentNode.put(referencePropertyName, referenceValue);
-                    return true;
-                }
-                // already set to referenceValue value
+                return addToArray(t.jsonObject, referencePropertyName, referenceValue);
+            }
+            return setValue(t.jsonObject, referencePropertyName, referenceValue);
+        });
+    }
+
+    private static boolean addToArray(ObjectNode refParentNode, String referencePropertyName, String referenceValue) {
+        if (!refParentNode.has(referencePropertyName)) {
+            refParentNode.putArray(referencePropertyName);
+        }
+        ArrayNode refNode = (ArrayNode) refParentNode.get(referencePropertyName);
+        // scan array for existing identical reference value
+        for (JsonNode next : refNode) {
+            if (!next.isNull() && referenceValue.equals(JsonTools.text(next))) {
+                // value already in array
                 return false;
             }
-        });
+        }
+        refNode.add(referenceValue);
+        return true;
+    }
+
+    private static boolean setValue(ObjectNode refParentNode, String referencePropertyName, String referenceValue) {
+        if (!refParentNode.has(referencePropertyName)
+                || refParentNode.get(referencePropertyName).isNull()
+                || !JsonTools.text(refParentNode.get(referencePropertyName)).equals(referenceValue)) {
+            // not already set, or set to another value
+            refParentNode.put(referencePropertyName, referenceValue);
+            return true;
+        }
+        // already set to referenceValue value
+        return false;
     }
 }

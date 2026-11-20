@@ -15,9 +15,9 @@ class BodyParserTest {
 
     @Test
     void aJsonBodyIsReadAsTheDocument() {
-        assertThat(parser.deserializeBody("application/json", "{\"name\":\"Ola\",\"age\":7,\"list\":[1.5,null,true]}").toString())
-                .isEqualTo("{\"name\":\"Ola\",\"age\":7,\"list\":[1.5,null,true]}");
-        assertThat(parser.deserializeBody("application/json; charset=utf-8", "{\"a\":1}\n").toString()).isEqualTo("{\"a\":1}");
+        assertThat(parser.deserializeBody("application/json", "{\"name\":\"Ola\",\"age\":7,\"list\":[1.5,null,true]}"))
+                .hasToString("{\"name\":\"Ola\",\"age\":7,\"list\":[1.5,null,true]}");
+        assertThat(parser.deserializeBody("application/json; charset=utf-8", "{\"a\":1}\n")).hasToString("{\"a\":1}");
     }
 
     @Test

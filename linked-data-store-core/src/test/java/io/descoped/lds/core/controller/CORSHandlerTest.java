@@ -22,8 +22,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class CORSHandlerTest {
 
-    volatile private HttpServerExchange httpServerExchange;
-    volatile private HttpHandler customHandler;
+    private volatile HttpServerExchange httpServerExchange;
+    private volatile HttpHandler customHandler;
     private OkHttpClient client;
     private Undertow server;
     private Request.Builder requestBuilder;
