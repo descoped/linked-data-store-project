@@ -530,17 +530,19 @@ A milestone and a release are both made by hand, with the owner's go-ahead for e
 ### A milestone
 
 A milestone, such as `3.0.0-M1`, is a tag of the source and a release on GitHub with its notes. Nothing is built for
-it and nothing is published: no jar, no image, nothing on Maven Central. It is made with two pull requests:
+it and nothing is published: no jar, no image, nothing on Maven Central. It is made with two pull requests and a tag:
 
 1. The first sets the version of every POM to the milestone, sets `project.build.outputTimestamp` in the root POM
    to the time of the milestone, sets `softwareVersion` in `site/krantho.config.ts`, and adds the milestone's notes
-   to `RELEASE-NOTES.md`. CI builds and tests it, as any pull request that changes code.
+   to `RELEASE-NOTES.md`, in a section of its own, with links that are whole addresses so they also lead somewhere
+   in the release on GitHub. CI builds and tests it, as any pull request that changes code.
 2. Its commit on `master` is tagged with the version alone (`3.0.0-M1`), and the release on GitHub is made from the
-   tag with the notes:
+   tag with the milestone's section of the notes, without its heading:
 
    ```sh
    git tag -a 3.0.0-M1 -m 3.0.0-M1 && git push origin 3.0.0-M1
-   gh release create 3.0.0-M1 --prerelease --title "LDS 3.0.0-M1" --notes-file <the notes of the milestone>
+   awk '/^## 3.0.0-M1$/{f=1;next} /^## /{f=0} f' RELEASE-NOTES.md > notes.md
+   gh release create 3.0.0-M1 --prerelease --title "LDS 3.0.0-M1" --notes-file notes.md
    ```
 3. The second pull request sets the versions back to `3.0.0-SNAPSHOT`.
 

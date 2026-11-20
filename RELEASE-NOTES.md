@@ -71,5 +71,5 @@ docker build -t lds-server linked-data-store-server
 docker run --rm -p 127.0.0.1:9090:9090 lds-server
 ```
 
-LDS then answers on port 9090, in memory, with an example model. [Getting started](docs/user/getting-started.md)
+LDS then answers on port 9090, in memory, with an example model. [Getting started](https://lds.descoped.io/docs/user/getting-started/)
 goes on from there, and `./mvnw verify` builds with every test.
