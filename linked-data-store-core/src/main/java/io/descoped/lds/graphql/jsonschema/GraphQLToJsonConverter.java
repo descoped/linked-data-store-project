@@ -1,8 +1,8 @@
-package io.descoped.lds.graphql.jsonSchema;
+package io.descoped.lds.graphql.jsonschema;
 
 import graphql.schema.GraphQLNamedType;
 import graphql.schema.GraphQLSchema;
-import io.descoped.lds.graphql.jsonSchema.visitors.ParseObjectTypesVisitor;
+import io.descoped.lds.graphql.jsonschema.visitors.ParseObjectTypesVisitor;
 import io.descoped.lds.graphql.schemas.TypeTraverser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

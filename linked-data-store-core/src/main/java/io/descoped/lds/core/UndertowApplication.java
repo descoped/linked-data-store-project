@@ -23,7 +23,7 @@ import io.descoped.lds.core.specification.JsonSchemaBasedSpecification;
 import io.descoped.lds.core.specification.SpecificationJsonSchemaBuilder;
 import io.descoped.lds.core.txlog.TxlogRawdataPool;
 import io.descoped.lds.graphql.GraphqlHttpHandler;
-import io.descoped.lds.graphql.jsonSchema.GraphQLToJsonConverter;
+import io.descoped.lds.graphql.jsonschema.GraphQLToJsonConverter;
 import io.descoped.lds.graphql.schemas.GraphQLSchemaBuilder;
 import io.descoped.rawdata.api.RawdataClient;
 import io.undertow.Handlers;

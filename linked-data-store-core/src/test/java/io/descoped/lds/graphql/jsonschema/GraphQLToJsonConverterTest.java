@@ -1,4 +1,4 @@
-package io.descoped.lds.graphql.jsonSchema;
+package io.descoped.lds.graphql.jsonschema;
 
 import graphql.Assert;
 import graphql.schema.GraphQLSchema;

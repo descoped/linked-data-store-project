@@ -28,7 +28,7 @@ builds the rest from it when it starts:
 - when search is on, a `Search` field with its types;
 - a data fetcher for every field that reads from persistence.
 
-The code is in the package `io.descoped.lds.graphql` and the packages under it. The package `jsonSchema` belongs to
+The code is in the package `io.descoped.lds.graphql` and the packages under it. The package `jsonschema` belongs to
 [the model](core-model.md) and is not described here. The module does not export these packages. It `opens`
 `io.descoped.lds.graphql.graphiql`, which holds the GraphiQL page. The libraries are graphql-java and
 graphql-java-extended-scalars (`graphql-java.version` and `graphql-java-extended-scalars.version` in the root POM).

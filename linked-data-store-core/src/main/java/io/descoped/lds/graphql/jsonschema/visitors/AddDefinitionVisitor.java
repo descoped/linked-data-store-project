@@ -1,4 +1,4 @@
-package io.descoped.lds.graphql.jsonSchema.visitors;
+package io.descoped.lds.graphql.jsonschema.visitors;
 
 import graphql.schema.GraphQLDirective;
 import graphql.schema.GraphQLDirectiveContainer;

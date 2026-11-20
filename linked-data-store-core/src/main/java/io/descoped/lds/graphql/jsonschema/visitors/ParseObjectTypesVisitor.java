@@ -1,5 +1,5 @@
 
-package io.descoped.lds.graphql.jsonSchema.visitors;
+package io.descoped.lds.graphql.jsonschema.visitors;
 
 import graphql.schema.GraphQLNamedType;
 import graphql.schema.GraphQLObjectType;
