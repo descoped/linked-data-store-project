@@ -8,6 +8,10 @@
 # environment variables (LDS_PERSISTENCE_PROVIDER, LDS_NEO4J_DRIVER_URL, ...) or by a file mounted as
 # /lds/conf/application.properties; options of the JVM are given in JAVA_TOOL_OPTIONS.
 #
+# The health check asks /ping on the port of LDS_HTTP_PORT (9090 without it). Give the port that way, and leave
+# http.prefix as it is: a port or a prefix that is set in the mounted file is one the health check does not know,
+# and the container is then said to be unhealthy while LDS runs.
+#
 # The JDK is the baseline of LDS and is raised by hand, together with java.version in the root POM.
 FROM eclipse-temurin:27-jre-alpine
 

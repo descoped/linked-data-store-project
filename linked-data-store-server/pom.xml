@@ -17,6 +17,33 @@
 
     <build>
         <plugins>
+            <!-- The image is made of every jar in target and target/lib. The jars of an earlier build go first,
+                 so that a library or a version that has changed since is not there twice. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-clean-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>remove-the-jars-of-an-earlier-build</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>clean</goal>
+                        </goals>
+                        <configuration>
+                            <excludeDefaultDirectories>true</excludeDefaultDirectories>
+                            <filesets>
+                                <fileset>
+                                    <directory>${project.build.directory}</directory>
+                                    <includes>
+                                        <include>*.jar</include>
+                                        <include>lib/**</include>
+                                    </includes>
+                                </fileset>
+                            </filesets>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <!-- Everything LDS runs with, next to its own jar: what the container image is made of. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

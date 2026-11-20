@@ -99,7 +99,9 @@ The configuration is read with dynamic-configuration 3, which has these rules:
 - A boolean is `true` or `false`; anything else stops LDS at start with the name of the key.
 
 In the image, the model is read from `/lds/schemas` (mount your own there), options of the JVM are given in
-`JAVA_TOOL_OPTIONS`, and LDS runs as the user `lds`. The image is built here and is not published anywhere.
+`JAVA_TOOL_OPTIONS`, and LDS runs as the user `lds`. Its health check asks `/ping` on the port of `LDS_HTTP_PORT`,
+so move the port with that variable and not in a mounted file, and leave `http.prefix` as it is. The image is
+built here and is not published anywhere.
 
 Search finds a document by the texts of its fields named `languageText`, which is what the Solr provider indexes.
 
