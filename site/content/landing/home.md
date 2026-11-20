@@ -79,12 +79,13 @@ time and are read as they were, and models whose documents link to each other.
 
 It does not fit, as it is today, when:
 
-- you need a released product: nothing is released yet;
+- you need a released product: 3.0.0 is not released, and no jar and no image is published;
 - you need to know when a version was recorded as well as when it holds: LDS keeps valid time only and is not
   bitemporal, and a version written again at the same valid time replaces the one before;
 - you need a write to be refused when its link points at nothing: links are not checked when written.
 
 ## Status
 
-LDS 3.0 is in development. Nothing is released yet: it is built from the repository on JDK 27. What is unfinished is
+LDS 3.0 is in development. Its first milestone, 3.0.0-M1, is a tag of the source with release notes; nothing is
+published, and LDS is built from the repository on JDK 27. What is unfinished is
 said in the documentation where a reader meets it, in a paragraph that starts with "Not finished:".

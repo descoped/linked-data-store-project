@@ -39,7 +39,7 @@ The code has some words of its own:
 
 ## The modules
 
-LDS is one Maven reactor with the group `io.descoped.lds` and one version, `3.0.0-SNAPSHOT`. Every module with
+LDS is one Maven reactor with the group `io.descoped.lds` and one version, which every module has. Every module with
 code is a JPMS module, except the [shared suite](../glossary.md#shared-suite) of tests for
 [persistence providers](../glossary.md#persistence-provider) (the TCK).
 
@@ -448,7 +448,7 @@ and the two API modules, which define the service interfaces, do not.
 
 ## Not finished
 
-Not finished: LDS 3.0 is in development and nothing is released. These are the large items. Every document below
+Not finished: LDS 3.0 is in development and 3.0.0 is not released. These are the large items. Every document below
 has its own list.
 
 - **Streaming ends in the handlers** (see [Streaming on RxJava 3](#streaming-on-rxjava-3)), and lists over REST are not

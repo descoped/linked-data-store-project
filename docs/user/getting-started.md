@@ -18,8 +18,8 @@ shows this at work; [Concepts](concepts.md) explains the ideas.
 
 ## What is needed
 
-- A copy of the LDS repository. LDS 3.0 is in development and nothing is released: there is no image and no
-  program to fetch. You build version `3.0.0-SNAPSHOT` from the repository.
+- A copy of the LDS repository. LDS 3.0 is in development and 3.0.0 is not released: there is no image and no
+  program to fetch. You build LDS from the repository.
 - JDK 27, to build LDS and to start it on the JDK.
 - Docker with `docker compose`, only for the two ways to start LDS that use containers.
 - `curl`, or another program that sends HTTP requests. The examples use `curl`.

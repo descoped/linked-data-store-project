@@ -16,8 +16,8 @@ The build makes every module of LDS from one repository, with one version, on on
 as named modules with compiler warnings as errors, runs the tests against the real engines in containers, checks
 the Javadoc, and puts together the jars the server image is made of.
 
-The build publishes nothing. No artifact and no image leaves the machine that builds. The version is
-`3.0.0-SNAPSHOT`, and nothing is released.
+The build publishes nothing. No artifact and no image leaves the machine that builds. Between milestones the
+version is `3.0.0-SNAPSHOT`, and 3.0.0 is not released (see [How a release is made](#how-a-release-is-made)).
 
 ## Where things are
 
@@ -305,7 +305,7 @@ POM.
 - Always the latest stable version of every library, plugin, action, image and engine. Renovate moves them, and
   CI is the gate (see [Renovate](#renovate)).
 - No secret but the documented development defaults of the tests and the compose file.
-- CI publishes nothing, and a release is made by hand (see [How a release would be made](#how-a-release-would-be-made)).
+- CI publishes nothing, and a release is made by hand (see [How a release is made](#how-a-release-is-made)).
 
 ## The profiles
 
@@ -523,15 +523,35 @@ that changes `docs/`, `site/` or the workflow, and on a start by hand. It has tw
 Each document starts with front matter that the site reads: `title`, `description` and `order`. GitHub shows it as a
 table at the top of the file.
 
-## How a release would be made
+## How a release is made
 
-No release has been made: the repository has no tag of the form `1.2.3`, which is the form the release plugin is
-told to use. What follows is what the root POM is set up for.
+A milestone and a release are both made by hand, with the owner's go-ahead for each one.
 
-Not finished: no release has been made with the command below. It is the command the comment in the root POM
-gives.
+### A milestone
 
-A release is made by hand, with the owner's go-ahead for each one:
+A milestone, such as `3.0.0-M1`, is a tag of the source and a release on GitHub with its notes. Nothing is built for
+it and nothing is published: no jar, no image, nothing on Maven Central. It is made with two pull requests and a tag:
+
+1. The first sets the version of every POM to the milestone, sets `project.build.outputTimestamp` in the root POM
+   to the time of the milestone, sets `softwareVersion` in `site/krantho.config.ts`, and adds the milestone's notes
+   to `RELEASE-NOTES.md`, in a section of its own, with links that are whole addresses so they also lead somewhere
+   in the release on GitHub. CI builds and tests it, as any pull request that changes code.
+2. Its commit on `master` is tagged with the version alone (`3.0.0-M1`), and the release on GitHub is made from the
+   tag with the milestone's section of the notes, without its heading:
+
+   ```sh
+   git tag -a 3.0.0-M1 -m 3.0.0-M1 && git push origin 3.0.0-M1
+   awk '/^## 3.0.0-M1$/{f=1;next} /^## /{f=0} f' RELEASE-NOTES.md > notes.md
+   gh release create 3.0.0-M1 --prerelease --title "LDS 3.0.0-M1" --notes-file notes.md
+   ```
+3. The second pull request sets the versions back to `3.0.0-SNAPSHOT`.
+
+The push of a milestone's tag does not start CI: its tags are of the form `1.2.3` only.
+
+### A release
+
+Not finished: no release has been made with the command below, and the repository has no tag of the form `1.2.3`,
+which is the form the release plugin is told to use. It is the command the comment in the root POM gives.
 
 ```sh
 ./mvnw release:prepare release:perform
@@ -553,7 +573,7 @@ Nothing in the repository publishes the image of the server.
 
 ## Not finished
 
-- Nothing is released.
+- 3.0.0 is not released, and nothing is published.
 - The TCK is not a named module.
 - Six modules have an exception from the Javadoc rule and five from the lint rule; some of the lint categories that are
   switched off give no warning any more (see [Every compiler warning is an error](#every-compiler-warning-is-an-error)).

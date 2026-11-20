@@ -8,9 +8,10 @@ data.
 Every document version has a "valid from" time, and a read returns the document as it was at the time asked for.
 Persistence and search are pluggable.
 
-**Status: 3.0.0 is in development and nothing is released yet.** This repository was put together in November 2026
-from the 14 repositories LDS used to live in, with their full history. The modules are being revised one by one;
-until that is done, treat the code as work in progress.
+**Status: 3.0.0 is in development and not released.** Its milestones are tags of the source with release notes,
+and nothing is published: the first is [3.0.0-M1](RELEASE-NOTES.md#300-m1). This repository was put together in
+November 2026 from the 14 repositories LDS used to live in, with their full history. The modules are being revised
+one by one; until that is done, treat the code as work in progress.
 
 ## Modules
 

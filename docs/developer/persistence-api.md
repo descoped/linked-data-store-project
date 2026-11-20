@@ -725,8 +725,8 @@ text `Format specifier '%d'` where a message about the path is meant.
   initializer with `provides` and in `META-INF/services`.
 
 - **Clean break.**
-  Nothing is released, so there is nothing to stay compatible with: no deprecated aliases, no shims, no code for
-  older data. `readLinkedDocuments` is such an alias and is still there.
+  3.0.0 is not released, and a milestone promises no compatibility, so there is nothing to stay compatible with:
+  no deprecated aliases, no shims, no code for older data. `readLinkedDocuments` is such an alias and is still there.
 
 - **JSON.**
   Jackson 3, as a tree. No classes are bound.
