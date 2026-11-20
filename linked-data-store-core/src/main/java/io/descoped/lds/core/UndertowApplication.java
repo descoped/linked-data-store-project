@@ -29,6 +29,7 @@ import io.descoped.rawdata.api.RawdataClient;
 import io.undertow.Handlers;
 import io.undertow.Undertow;
 import io.undertow.server.HttpHandler;
+import io.undertow.server.handlers.GracefulShutdownHandler;
 import io.undertow.server.handlers.PathHandler;
 import io.undertow.server.handlers.ResponseCodeHandler;
 import io.undertow.server.handlers.resource.ClassPathResourceManager;
@@ -57,6 +58,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
@@ -71,6 +73,9 @@ public class UndertowApplication {
     private final RxJsonPersistence persistence;
     private final Specification specification;
     private final Undertow server;
+    /** In front of every handler but the CORS handler: counts the requests in flight, and refuses new ones when the application stops. */
+    private final GracefulShutdownHandler requests;
+    private final AtomicBoolean stopping = new AtomicBoolean();
     private final String host;
     private final int port;
     private final SagaExecutionCoordinator sec;
@@ -163,7 +168,9 @@ public class UndertowApplication {
         boolean corsAllowCredentials = configuration.evaluateToBoolean("http.cors.allow.credentials");
         int corsMaxAge = configuration.evaluateToInt("http.cors.allow.max-age");
 
-        CORSHandler corsHandler = new CORSHandler(httpHandler, httpHandler, corsAllowOrigin,
+        // inside the CORS handler, so that its 503 has the CORS headers and a browser can read the answer
+        this.requests = new GracefulShutdownHandler(httpHandler);
+        CORSHandler corsHandler = new CORSHandler(requests, requests, corsAllowOrigin,
                 corsAllowCredentials, StatusCodes.NO_CONTENT, corsMaxAge, corsAllowMethods, corsAllowHeaders
         );
 
@@ -469,28 +476,39 @@ public class UndertowApplication {
     /**
      * Stops the application, one part at a time, in the order the parts need each other:
      * <ol>
-     * <li>No new work: the HTTP server stops, and the recovery of unfinished sagas.</li>
+     * <li>No new work. A request that arrives from here on is answered 503 Service Unavailable, while the requests
+     * that are being handled are completed. Then the HTTP server stops, and the recovery of unfinished sagas.</li>
      * <li>The sagas that are running complete. They still have their thread pool, their saga logs and the stores
      * they write to.</li>
-     * <li>The thread pool of the sagas is shut down. A saga hands each of its steps to this pool, so a saga that
-     * is running when the pool is shut down fails.</li>
+     * <li>The thread pool of the sagas is shut down. A saga that branches hands steps to this pool, so such a saga
+     * fails if it is running when the pool is shut down.</li>
      * <li>The saga log pool is shut down. After that it gives out no log.</li>
      * <li>The stores the sagas wrote to are closed.</li>
      * </ol>
-     * A part that fails to stop is logged, and the parts after it are stopped all the same.
+     * A part that fails to stop is logged, and the parts after it are stopped all the same. The application is
+     * stopped once: a second call does nothing, and does not wait for the first to be done.
      */
     public void stop() {
         stop(RUNNING_SAGAS_TIMEOUT_SECONDS, TimeUnit.SECONDS);
     }
 
     /**
-     * Stops the application as {@link #stop()} does, waiting the given time at most for the sagas that are
-     * running.
+     * Stops the application as {@link #stop()} does, waiting the given time at most for the requests that are
+     * being handled, and then the same time at most for the sagas that are running.
      *
-     * @param runningSagasTimeout the longest time to wait for the running sagas to complete
-     * @param unit                the unit of the timeout
+     * @param timeout the longest time to wait for the requests, and then for the running sagas
+     * @param unit    the unit of the timeout
      */
-    public void stop(long runningSagasTimeout, TimeUnit unit) {
+    public void stop(long timeout, TimeUnit unit) {
+        if (!stopping.compareAndSet(false, true)) {
+            return; // stopped, or being stopped by another caller
+        }
+        stop("HTTP requests", () -> {
+            requests.shutdown(); // every request from here on is answered 503 Service Unavailable
+            if (!requests.awaitShutdown(unit.toMillis(timeout))) {
+                LOG.warn("Requests were still being handled after {} {}. They lose their connection when the HTTP server stops.", timeout, unit);
+            }
+        });
         stop("Undertow", server::stop);
         if (sagaRecoveryTrigger != null) {
             stop("SagaRecoveryTrigger", sagaRecoveryTrigger::stop); // shuts the recovery thread-pool down as well
@@ -500,8 +518,8 @@ public class UndertowApplication {
         }
 
         stop("Running sagas", () -> {
-            if (!sec.awaitRunningSagas(runningSagasTimeout, unit)) {
-                LOG.warn("Sagas were still running after {} {}. They fail when their thread pool is shut down, and are recovered from their saga logs.", runningSagasTimeout, unit);
+            if (!sec.awaitRunningSagas(timeout, unit)) {
+                LOG.warn("Sagas were still running after {} {}. They fail when their thread pool is shut down, and are recovered from their saga logs.", timeout, unit);
             }
         });
 
@@ -524,10 +542,13 @@ public class UndertowApplication {
         void stop() throws Exception;
     }
 
-    private static void stop(String part, Stopping stopping) {
+    private static void stop(String part, Stopping action) {
         try {
-            stopping.stop();
+            action.stop();
             LOG.debug("{} was shutdown", part);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            LOG.error("Interrupted while shutting down: {}", part, e);
         } catch (Exception e) {
             LOG.error("Error while shutting down: {}", part, e);
         }

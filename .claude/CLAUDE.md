@@ -115,8 +115,9 @@ to the latest stable and removes them from this list, from the "held" block in t
   Reactive Streams TCK for `AsyncIterablePublisher`.
 - Core's `SagaLogPostgresTest` runs the write path with the saga log in a PostgreSQL 18 container: concurrent
   writes, recovery of an unfinished saga by the next write, after a restart and by another instance of the cluster.
-- Core's `ApplicationStopTest` checks the order in which the application stops (`UndertowApplication.stop`): no
-  new writes, the running sagas complete, then their thread pool, the saga log pool and the stores.
+- Core's `ApplicationStopTest` checks the order in which the application stops (`UndertowApplication.stop`): new
+  requests are answered 503 while those being handled complete, the running sagas complete, then their thread
+  pool, the saga log pool and the stores.
 - Core's tests start the application in the JVM on a random port with the memory provider (`TestServerListener`).
   13 of them are disabled in the source (`enabled = false`, `@Ignore`), several because they hang; they are
   re-enabled or deleted with a reason when core is revised.

@@ -17,10 +17,15 @@ import no.cantara.sagalog.SagaPoolShutdownException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.Socket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.util.Collections;
@@ -48,6 +53,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ApplicationStopTest {
 
     private static final String BODY = "{\"name\":\"stop\",\"contacts\":[]}";
+    private static final byte[] BODY_BYTES = BODY.getBytes(StandardCharsets.UTF_8);
+    private static final int HALF = BODY_BYTES.length / 2;
 
     private final HttpClient http = HttpClient.newHttpClient();
     private TestServer server;
@@ -60,7 +67,7 @@ class ApplicationStopTest {
         }
         if (server != null) {
             server.getApplication().getSec().runningSagas.clear(); // what a test put there never completes
-            server.getApplication().stop(); // a second stop does nothing more
+            server.getApplication().stop(); // does nothing when the test has stopped it
         }
     }
 
@@ -145,6 +152,81 @@ class ApplicationStopTest {
         assertThat(sec.semaphore.availablePermits()).isEqualTo(permits);
         assertThat(sec.executionIdBySagaLogId).isEmpty();
         assertStopped(server);
+    }
+
+    /**
+     * While the application completes the requests it is handling, it answers a new request 503 Service
+     * Unavailable: it is stopping, and the client may try again, here later or at another instance. The request
+     * that is being handled, here one whose body has not all arrived, is completed and answered as always.
+     */
+    @Test
+    void aRequestThatArrivesWhileTheApplicationIsStoppingIsAnswered503() throws Exception {
+        server = start();
+        try (Socket inFlight = requestWithHalfItsBody()) {
+            OutputStream out = inFlight.getOutputStream();
+
+            CompletableFuture<Void> stop = CompletableFuture.runAsync(() -> server.getApplication().stop());
+            long deadline = System.nanoTime() + Duration.ofSeconds(8).toNanos();
+            int status;
+            while ((status = put("/data/provisionagreement/late?sync=true")) != 503) {
+                // a request that arrived before the stop had begun is handled as always
+                assertThat(status).isEqualTo(201);
+                assertThat(System.nanoTime()).as("waited for a 503").isLessThan(deadline);
+            }
+            assertThat(stop).isNotDone(); // waiting for the request whose body has not all arrived
+
+            // a browser reads the 503 only when it has the CORS headers
+            HttpRequest fromABrowser = HttpRequest.newBuilder(URI.create(server.testURL("/data/provisionagreement/late")))
+                    .timeout(Duration.ofSeconds(60)).header("Origin", "https://app.example").GET().build();
+            HttpResponse<Void> refused = http.send(fromABrowser, HttpResponse.BodyHandlers.discarding());
+            assertThat(refused.statusCode()).isEqualTo(503);
+            assertThat(refused.headers().firstValue("Access-Control-Allow-Origin")).hasValue("https://app.example");
+
+            out.write(BODY_BYTES, HALF, BODY_BYTES.length - HALF);
+            out.flush();
+            String statusLine = new BufferedReader(new InputStreamReader(inFlight.getInputStream(), StandardCharsets.US_ASCII)).readLine();
+            assertThat(statusLine).startsWith("HTTP/1.1 201");
+            stop.get(30, TimeUnit.SECONDS);
+        }
+        assertStopped(server);
+    }
+
+    /**
+     * A request that is not completed in the time the stop waits does not hold the stop up: the HTTP server is
+     * stopped, the request loses its connection, and the rest of the application stops.
+     */
+    @Test
+    void aRequestThatIsNotCompletedInTimeDoesNotKeepTheApplicationFromStopping() throws Exception {
+        server = start();
+        try (Socket inFlight = requestWithHalfItsBody()) {
+            server.getApplication().stop(200, TimeUnit.MILLISECONDS);
+
+            assertStopped(server);
+            inFlight.setSoTimeout(5000);
+            assertThat(inFlight.getInputStream().read()).as("the connection is closed, without an answer").isEqualTo(-1);
+        }
+    }
+
+    /**
+     * A stop on a thread that is interrupted does not wait, and still stops every part.
+     */
+    @Test
+    void aStopThatIsInterruptedStopsEveryPartWithoutWaiting() throws Exception {
+        server = start();
+        try (Socket inFlight = requestWithHalfItsBody()) {
+            assertThat(inFlight.isConnected()).isTrue();
+            Thread stopper = new Thread(() -> {
+                Thread.currentThread().interrupt();
+                server.getApplication().stop();
+            }, "interrupted-stop");
+            long before = System.nanoTime();
+            stopper.start();
+            stopper.join(30_000);
+
+            assertThat(stopper.isAlive()).isFalse();
+            assertThat(Duration.ofNanos(System.nanoTime() - before)).isLessThan(Duration.ofSeconds(8)); // not the ten of a wait
+            assertStopped(server);
+        }
     }
 
     @Test
@@ -320,6 +402,22 @@ class ApplicationStopTest {
         TestServer started = new TestServer(configuration, TestServerListener.findFreePort(new Random(), 9500, 9999));
         started.getApplication().start();
         return started;
+    }
+
+    /**
+     * Opens a connection and sends a write with the first half of its body: a request that the server is handling
+     * until the test sends the rest.
+     */
+    private Socket requestWithHalfItsBody() throws Exception {
+        URI uri = URI.create(server.testURL("/data/provisionagreement/inflight?sync=true"));
+        Socket socket = new Socket(uri.getHost(), uri.getPort());
+        OutputStream out = socket.getOutputStream();
+        out.write(("PUT " + uri.getRawPath() + "?" + uri.getRawQuery() + " HTTP/1.1\r\nHost: " + uri.getAuthority()
+                + "\r\nContent-Type: application/json\r\nContent-Length: " + BODY_BYTES.length + "\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
+        out.write(BODY_BYTES, 0, HALF);
+        out.flush();
+        Thread.sleep(300); // the request has reached its handler
+        return socket;
     }
 
     private int put(String uri) throws Exception {
