@@ -93,7 +93,7 @@ final class Neo4jDocumentWriter {
                 : statements.computeIfAbsent(new StatementKey(entity, linkTargets(entityElement)), key -> statement(key.entity(), key.linkTargets()));
         List<Object> batch = new ArrayList<>(documents.size());
         for (JsonDocument document : documents) {
-            batch.add(record(document, entityElement, statement.linkTargets()));
+            batch.add(documentParameters(document, entityElement, statement.linkTargets()));
         }
         return new Neo4jQueryAndParams(statement.cypher(), Map.of("batch", batch));
     }
@@ -187,7 +187,7 @@ final class Neo4jDocumentWriter {
      * @param linkTargets   the entities the statement writes links to
      * @return the parameters of one document
      */
-    static Map<String, Object> record(JsonDocument document, SpecificationElement entityElement, List<String> linkTargets) {
+    static Map<String, Object> documentParameters(JsonDocument document, SpecificationElement entityElement, List<String> linkTargets) {
         DocumentKey key = document.key();
         JsonNode root = document.jackson();
         if (!root.isObject()) {
@@ -195,13 +195,13 @@ final class Neo4jDocumentWriter {
         }
         Rows rows = new Rows(linkTargets);
         addFields(rows, root, entityElement, 0, "$");
-        Map<String, Object> record = new LinkedHashMap<>();
-        record.put("namespace", key.namespace());
-        record.put("id", key.id());
-        record.put("version", Neo4jPersistence.inUtc(key.timestamp()));
-        record.put("nodes", rows.nodes);
-        record.put("links", rows.links);
-        return record;
+        Map<String, Object> parameters = new LinkedHashMap<>();
+        parameters.put("namespace", key.namespace());
+        parameters.put("id", key.id());
+        parameters.put("version", Neo4jPersistence.inUtc(key.timestamp()));
+        parameters.put("nodes", rows.nodes);
+        parameters.put("links", rows.links);
+        return parameters;
     }
 
     /* What a document is made of, while it is collected. */
@@ -264,7 +264,14 @@ final class Neo4jDocumentWriter {
             for (int i = 0; i < node.size(); i++) {
                 add(rows, node.get(i), items, place, "[]", i, path + "[]");
             }
-        } else if (node.isNull()) {
+        } else {
+            addValue(rows, node, element, parent, name, index, path);
+        }
+    }
+
+    /* Adds a value: a null, a text (or a link), a boolean or a number. */
+    private static void addValue(Rows rows, JsonNode node, SpecificationElement element, int parent, String name, Integer index, String path) {
+        if (node.isNull()) {
             rows.add(parent, name, index, "null", path, null, null);
         } else if (node.isString()) {
             String text = node.stringValue();
@@ -274,17 +281,18 @@ final class Neo4jDocumentWriter {
         } else if (node.isBoolean()) {
             rows.add(parent, name, index, "boolean", path, node.booleanValue(), null);
         } else if (node.isNumber()) {
-            // a whole number that a long does not hold is written as the nearest double, as a number with a fraction is
-            Number number;
-            if (node.isIntegralNumber() && node.canConvertToLong()) {
-                number = node.longValue();
-            } else {
-                number = node.doubleValue();
-            }
-            rows.add(parent, name, index, "number", path, number, null);
+            rows.add(parent, name, index, "number", path, numberOf(node), null);
         } else {
             throw new IllegalArgumentException("A value that JSON does not have, at " + path + ": " + node.getNodeType());
         }
+    }
+
+    /* A whole number that a long does not hold is written as the nearest double, as a number with a fraction is. */
+    private static Number numberOf(JsonNode node) {
+        if (node.isIntegralNumber() && node.canConvertToLong()) {
+            return node.longValue();
+        }
+        return node.doubleValue();
     }
 
     /*

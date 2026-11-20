@@ -73,6 +73,11 @@ final class Neo4jPersistence implements RxJsonPersistence {
      */
     private static final String RETURN_DOCUMENT = "RETURN r, v, m, [p = (m)-[:EMBED|REF*]->(e) | [relationships(p), e]] AS leaves";
 
+    /* The names of the parameters that every statement or every read at a time has, and the start of a match. */
+    private static final String NAMESPACE = "namespace";
+    private static final String SNAPSHOT = "snapshot";
+    private static final String MATCH_DOCUMENT = "MATCH (r:";
+
     private final Neo4jTransactionFactory transactionFactory;
     private final Neo4jDocumentWriter writer;
 
@@ -202,8 +207,8 @@ final class Neo4jPersistence implements RxJsonPersistence {
     @Override
     public Flowable<JsonDocument> findDocument(Transaction tx, ZonedDateTime snapshot, String namespace, String entityName, JsonNavigationPath path, String value, Range<String> range) {
         Map<String, Object> params = new LinkedHashMap<>();
-        params.put("namespace", namespace);
-        params.put("snapshot", inUtc(snapshot));
+        params.put(NAMESPACE, namespace);
+        params.put(SNAPSHOT, inUtc(snapshot));
         params.put("path", path.serialize());
         params.put("value", value.length() > LONGEST_TEXT_LOOKED_UP_AS_IT_IS ? hashOf(value) : value);
         String cypher = "MATCH (e:" + Cypher.label(entityName + "_E") + " {namespace: $namespace, path: $path, hashOrValue: $value})<-[:EMBED*]-(m)<-[v:VERSION]-(r)\n" +
@@ -217,10 +222,10 @@ final class Neo4jPersistence implements RxJsonPersistence {
     @Override
     public Maybe<JsonDocument> readDocument(Transaction tx, ZonedDateTime snapshot, String ns, String entityName, String id) {
         Map<String, Object> params = new LinkedHashMap<>();
-        params.put("namespace", ns);
+        params.put(NAMESPACE, ns);
         params.put("rid", id);
-        params.put("snapshot", inUtc(snapshot));
-        String cypher = "MATCH (r:" + Cypher.label(entityName) + " {namespace: $namespace, id: $rid})-[v:VERSION]->(m) WHERE " + VALID_AT_SNAPSHOT + "\n" +
+        params.put(SNAPSHOT, inUtc(snapshot));
+        String cypher = MATCH_DOCUMENT + Cypher.label(entityName) + " {namespace: $namespace, id: $rid})-[v:VERSION]->(m) WHERE " + VALID_AT_SNAPSHOT + "\n" +
                 RETURN_DOCUMENT;
         return documents(tx, cypher, params, ns, entityName).firstElement();
     }
@@ -228,9 +233,9 @@ final class Neo4jPersistence implements RxJsonPersistence {
     @Override
     public Flowable<JsonDocument> readDocuments(Transaction tx, ZonedDateTime snapshot, String ns, String entityName, Range<String> range) {
         Map<String, Object> params = new LinkedHashMap<>();
-        params.put("namespace", ns);
-        params.put("snapshot", inUtc(snapshot));
-        String cypher = "MATCH (r:" + Cypher.label(entityName) + " {namespace: $namespace})-[v:VERSION]->(m)\n" +
+        params.put(NAMESPACE, ns);
+        params.put(SNAPSHOT, inUtc(snapshot));
+        String cypher = MATCH_DOCUMENT + Cypher.label(entityName) + " {namespace: $namespace})-[v:VERSION]->(m)\n" +
                 "WHERE " + VALID_AT_SNAPSHOT + idConditions(range, params) + "\n" +
                 "WITH r, v, m" + orderAndLimit(range, "r.id", params) + "\n" +
                 RETURN_DOCUMENT;
@@ -240,7 +245,7 @@ final class Neo4jPersistence implements RxJsonPersistence {
     @Override
     public Flowable<JsonDocument> readDocumentVersions(Transaction tx, String ns, String entityName, String id, Range<ZonedDateTime> range) {
         Map<String, Object> params = new LinkedHashMap<>();
-        params.put("namespace", ns);
+        params.put(NAMESPACE, ns);
         params.put("rid", id);
 
         // the versions between the bounds, both exclusive
@@ -255,7 +260,7 @@ final class Neo4jPersistence implements RxJsonPersistence {
         }
         String where = conditions.isEmpty() ? "" : " WHERE " + String.join(" AND ", conditions);
 
-        String cypher = "MATCH (r:" + Cypher.label(entityName) + " {namespace: $namespace, id: $rid})-[v:VERSION]->(m)" + where + "\n" +
+        String cypher = MATCH_DOCUMENT + Cypher.label(entityName) + " {namespace: $namespace, id: $rid})-[v:VERSION]->(m)" + where + "\n" +
                 "WITH r, v, m" + orderAndLimit(range, "v.from", params) + "\n" +
                 RETURN_DOCUMENT;
         return documents(tx, cypher, params, ns, entityName);
@@ -267,8 +272,8 @@ final class Neo4jPersistence implements RxJsonPersistence {
                                                       String targetEntityName, Range<String> range) {
         return Flowable.defer(() -> {
             Map<String, Object> params = new LinkedHashMap<>();
-            params.put("namespace", ns);
-            params.put("snapshot", inUtc(snapshot));
+            params.put(NAMESPACE, ns);
+            params.put(SNAPSHOT, inUtc(snapshot));
             params.put("path", jsonNavigationPath.popBack().serialize());
             params.put("lastPathElement", jsonNavigationPath.back());
             params.put("id", id);
@@ -297,8 +302,8 @@ final class Neo4jPersistence implements RxJsonPersistence {
                                                       Range<String> range) {
         return Flowable.defer(() -> {
             Map<String, Object> params = new LinkedHashMap<>();
-            params.put("namespace", ns);
-            params.put("snapshot", inUtc(snapshot));
+            params.put(NAMESPACE, ns);
+            params.put(SNAPSHOT, inUtc(snapshot));
             params.put("path", relationPath.popBack().serialize());
             params.put("lastPathElement", relationPath.back());
             params.put("id", targetId);
@@ -317,28 +322,28 @@ final class Neo4jPersistence implements RxJsonPersistence {
 
     @Override
     public Completable deleteDocument(Transaction tx, String ns, String entityName, String id, ZonedDateTime version, PersistenceDeletePolicy policy) {
-        String cypher = "MATCH (r:" + Cypher.label(entityName) + " {namespace: $namespace, id: $rid})-[v:VERSION {from: $version}]->(m)\n" +
+        String cypher = MATCH_DOCUMENT + Cypher.label(entityName) + " {namespace: $namespace, id: $rid})-[v:VERSION {from: $version}]->(m)\n" +
                 // the version before the deleted one is valid until the one after it, as if the deleted one was never written
                 "OPTIONAL MATCH (r)-[p:VERSION]->() WHERE p.from < $version WITH r, v, m, p ORDER BY p.from DESC LIMIT 1\n" +
                 "SET p.to = v.to\n" +
                 "WITH r, m OPTIONAL MATCH (m)-[:EMBED*]->(e) DETACH DELETE m, e " +
                 "WITH r MATCH (r) WHERE NOT (r)--() DELETE r";
-        return run(tx, cypher, Map.of("namespace", ns, "rid", id, "version", inUtc(version)));
+        return run(tx, cypher, Map.of(NAMESPACE, ns, "rid", id, "version", inUtc(version)));
     }
 
     @Override
     public Completable deleteAllDocumentVersions(Transaction tx, String ns, String entity, String id, PersistenceDeletePolicy policy) {
-        String cypher = "MATCH (r:" + Cypher.label(entity) + " {namespace: $namespace, id: $rid}) OPTIONAL MATCH (r)-[:VERSION]->(m) OPTIONAL MATCH (m)-[:EMBED*]->(e) DETACH DELETE m, e " +
+        String cypher = MATCH_DOCUMENT + Cypher.label(entity) + " {namespace: $namespace, id: $rid}) OPTIONAL MATCH (r)-[:VERSION]->(m) OPTIONAL MATCH (m)-[:EMBED*]->(e) DETACH DELETE m, e " +
                 "WITH r MATCH (r) WHERE NOT (r)<--() DELETE r";
-        return run(tx, cypher, Map.of("namespace", ns, "rid", id));
+        return run(tx, cypher, Map.of(NAMESPACE, ns, "rid", id));
     }
 
     @Override
     public Completable deleteAllEntities(Transaction tx, String namespace, String entity, Specification specification) {
         // DISTINCT: each document node once, where there was a row for every node of every version
-        String cypher = "MATCH (r:" + Cypher.label(entity) + " {namespace: $namespace}) OPTIONAL MATCH (r)-[:VERSION]->(m) OPTIONAL MATCH (m)-[:EMBED*]->(e) DETACH DELETE m, e " +
+        String cypher = MATCH_DOCUMENT + Cypher.label(entity) + " {namespace: $namespace}) OPTIONAL MATCH (r)-[:VERSION]->(m) OPTIONAL MATCH (m)-[:EMBED*]->(e) DETACH DELETE m, e " +
                 "WITH DISTINCT r WHERE NOT (r)<--() DELETE r";
-        return run(tx, cypher, Map.of("namespace", namespace));
+        return run(tx, cypher, Map.of(NAMESPACE, namespace));
     }
 
     @Override
@@ -351,7 +356,7 @@ final class Neo4jPersistence implements RxJsonPersistence {
                 "OPTIONAL MATCH (r)-[v:VERSION]->() WHERE v.from > $version WITH r, prevVersion, min(v.from) AS nextVersionFrom\n" +
                 "CREATE (r)-[:VERSION {from: $version, to: coalesce(prevVersion.to, nextVersionFrom, datetime('9999-01-01T00:00:00.0Z[Etc/UTC]'))}]->(:" + Cypher.label(entityName + "_E") + " {type:'map', path:'$', deleted: true})\n" +
                 "SET prevVersion.to = $version";
-        return run(transaction, cypher, Map.of("namespace", ns, "rid", id, "version", inUtc(version)));
+        return run(transaction, cypher, Map.of(NAMESPACE, ns, "rid", id, "version", inUtc(version)));
     }
 
     @Override
