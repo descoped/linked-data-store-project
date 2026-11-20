@@ -24,6 +24,16 @@
       "enabled": false
     },
     {
+      "description": "The JDK of the server image is the baseline (27) and is raised by hand, together with java.version in the root POM and the workflows.",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "eclipse-temurin"
+      ],
+      "allowedVersions": "/^27([._-]|$)/"
+    },
+    {
       "description": "PostgreSQL stays at 18 by the owner's decision (19 is too new); the owner says when it is raised (see .claude/CLAUDE.md, Invariants)",
       "matchDatasources": [
         "docker"

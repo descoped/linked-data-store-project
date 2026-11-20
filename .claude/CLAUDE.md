@@ -21,7 +21,7 @@ reactor, group `io.descoped.lds`.
 | `linked-data-store-search-provider-api` | `io.descoped.lds.search.api` | the search SPI (`SearchIndexProvider`, `SearchIndex`) |
 | `linked-data-store-search-provider-solr` | `io.descoped.lds.search.provider.solr` | provider `solr`, on the client of Solr 10 that uses the HTTP client of the JDK. It indexes into one core, named in `search.index.url` |
 | `linked-data-store-core` | `io.descoped.lds.core` | the application: `UndertowApplication`, REST (`NamespaceController`), GraphQL, sagas, transaction log |
-| `linked-data-store-server` | `io.descoped.lds.server` | `Server` (the main class), configuration, Dockerfile and compose file |
+| `linked-data-store-server` | `io.descoped.lds.server` | `Server` (the main class), the defaults of the configuration, the example model (`schemas/`), the Dockerfile and the compose file (`compose.yaml`) |
 
 Not in the reactor: `docs/` (AsciiDoc, describes the pre-3.0 layout), `linked-data-store-loadtest/` and
 `lds-cluster-test/` (pre-3.0 tooling that does not work as it stands; replaced or removed in a later pull request).
@@ -120,7 +120,8 @@ which validates the Jackson tree of the document). A schema that at its root say
   told to stay below 19 (`.github/renovate.json`).
 - **No leftovers** of the earlier hosts and pipelines: no Statistics Norway (SSB) references, Azure Pipelines,
   Travis, Drone or OSSRH configuration.
-- **Secrets.** Nothing but documented development defaults (the `lds` database user in tests and compose files).
+- **Secrets.** Nothing but documented development defaults (the `lds` database user and the Neo4j password
+  `lds-development` in tests and the compose file).
 - **Releases only with the owner's go-ahead**, by hand. **CI publishes nothing**: no SNAPSHOTs, no releases, no
   images. Maven Central goes through the Central Portal (profiles `central,sign`).
 - **SonarCloud**: one project, `descoped_linked-data-store-project`, for the whole reactor.
@@ -153,7 +154,7 @@ module makes that module meet them.
   image comes with. A write is in the index within the five seconds the provider gives Solr to commit it.
 - Every container of the tests is published on 127.0.0.1 only, the one Testcontainers starts itself (Ryuk)
   included: `LoopbackPorts`, which Testcontainers finds through `META-INF/services`, in each module that starts
-  a container (PostgreSQL, Neo4j, Solr, core). A module that starts containers needs its own. Without it Docker
+  a container (PostgreSQL, Neo4j, Solr, core, server). A module that starts containers needs its own. Without it Docker
   Desktop on macOS can give a container a port that another program listens on at 127.0.0.1, and the build fails
   with "Could not connect to Ryuk" or with an engine that never answers. The helper that starts a container
   checks it (`LoopbackPorts.check`).
@@ -164,6 +165,12 @@ module makes that module meet them.
 - Core's `ApplicationStopTest` checks the order in which the application stops (`UndertowApplication.stop`): new
   requests are answered 503 while those being handled complete, the running sagas complete, then their thread
   pool, the saga log pool and the stores.
+- The server's tests are the tests of the image (`*IT`, run by Failsafe after the jars are made, so by `verify`
+  and not by `test`). `ServerImageIT` builds the image with `docker build` and starts it as it is: the example
+  model in memory, the health check, the user it runs as, and that it stops when asked to. `ServerStackIT` starts
+  `compose.yaml` with `docker compose`, with ports that Docker picks, and writes, reads, follows links and
+  searches through LDS with Neo4j, PostgreSQL and Solr. So **the build needs the `docker` command with compose**,
+  not only the Docker engine.
 - Core's tests start the application in the JVM on a random port with the memory provider (`TestServerListener`).
   13 of them are disabled in the source (`enabled = false`, `@Ignore`), several because they hang; they are
   re-enabled or deleted with a reason when core is revised.
@@ -181,6 +188,7 @@ module makes that module meet them.
 
 ```sh
 ./mvnw verify javadoc:javadoc                       # what CI runs: build, tests, Javadoc (needs Docker and JDK 27)
+./mvnw verify -pl linked-data-store-server -am -Dtest=None -Dsurefire.failIfNoSpecifiedTests=false   # the image tests only
 ./mvnw verify -pl linked-data-store-core -am        # one module and what it needs
 ./mvnw test -pl linked-data-store-core -Dtest=DataControllerTest
 ./mvnw verify -P coverage                           # with JaCoCo reports
@@ -190,6 +198,30 @@ The main class is `io.descoped.lds.server.Server` in `linked-data-store-server`.
 `application-defaults.properties`, `application-server-defaults.properties`, `conf/application.properties` and
 `conf_dev/application.properties` (relative to the working directory), then `LDS_`-prefixed environment variables
 and system properties (dynamic-configuration 3: the variable `LDS_HTTP_PORT` sets `http.port`, and a variable or a
-system property sets only a key that one of the files has). The `conf` files, the Dockerfiles and the compose
-file there are from before the monorepo (they expect Neo4j, PostgreSQL and Solr from that compose file) and are
-rebuilt with the server module.
+system property sets only a key that one of the files has).
+
+## The server image
+
+`linked-data-store-server/Dockerfile` makes the image from what Maven has packaged (`target/lib` and the jar of
+the module) on `eclipse-temurin:27-jre-alpine`; the reactor is built first, and the context is the module
+directory. `compose.yaml` next to it is a whole LDS for development: the image, Neo4j, PostgreSQL (saga log and
+transaction log, the databases made by `postgres-init.sql`) and Solr, with the images the tests of the providers
+use. Keep these when changing them:
+
+- **LDS runs on the class path**, as the tests do. On the module path the libraries Undertow is made of (Undertow,
+  XNIO, WildFly client config, SmallRye common) cannot make their message loggers: jboss-logging has to read
+  each of their modules, which takes an `--add-reads` or `--add-opens` for every one, and a missing one shows
+  only when the message is first written. The module descriptors are checked when the modules are compiled.
+- **`java` is the process of the container** (`ENTRYPOINT` in exec form, no script), so the signal of
+  `docker stop` reaches the JVM and LDS stops in order (`UndertowApplication.stop`); it then ends with 143.
+- **The image is configured from outside by environment variables**, which set only keys a file has. So
+  `application-server-defaults.properties` has the keys of every provider, with LDS in memory as the default and
+  no password. A key is added there when the image needs to be given it.
+- **The image runs as the user `lds`**, has a health check on `/ping`, and has the example model in
+  `/lds/schemas`. No image is published (see Invariants).
+- **Every port of the compose file is published on 127.0.0.1**, and can be moved (`LDS_PORT`, ...), which is how
+  `ServerStackIT` runs next to a stack that is up. The passwords in it are development defaults.
+- **The JDK of the image is the baseline**: Renovate is told to keep `eclipse-temurin` at 27.
+
+The Solr provider indexes the texts of the fields named `languageText` and nothing else, which is from the model
+LDS was first written for. The example model has such a field (`Company.about`) so that search can be tried.

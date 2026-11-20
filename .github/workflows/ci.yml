@@ -1,10 +1,11 @@
 name: CI
 
 # One job on JDK 27, the baseline: Linked Data Store is a product and is built, tested and run on one JDK. Every
-# run: build, tests and Javadoc of every module; the PostgreSQL tests start PostgreSQL 18 in Docker through
-# Testcontainers. Pushes to master and release tags, and pull requests from this repository, add coverage and the
-# SonarCloud analysis (not gating; pull requests from forks get no token). CI publishes nothing, neither to Maven
-# Central nor to an image registry: releases are made by hand (see .claude/CLAUDE.md).
+# run: build, tests and Javadoc of every module; the tests start PostgreSQL 18, Neo4j and Solr in Docker through
+# Testcontainers, build the image of the server and start its compose file with the docker command. Pushes to
+# master and release tags, and pull requests from this repository, add coverage and the SonarCloud analysis (not
+# gating; pull requests from forks get no token). CI publishes nothing, neither to Maven Central nor to an image
+# registry: releases are made by hand (see .claude/CLAUDE.md).
 on:
   push:
     branches: [master]

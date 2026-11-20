@@ -21,8 +21,9 @@ pom.xml.releaseBackup
 pom.xml.tag
 pom.xml.next
 
-# Local run state of the server and the providers
-/linked-data-store-server/schemas/
-/linked-data-store-server/sagalogs/
-/linked-data-store-server/gsim-raml-schema/
+# Local configuration of the server (it reads both when started in its module directory)
+/linked-data-store-server/conf/
+/linked-data-store-server/conf_dev/
+
+# Local run state of the providers
 /linked-data-store-search-provider-solr/data/
