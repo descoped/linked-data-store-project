@@ -366,6 +366,7 @@ curl -s 'http://localhost:19306/source/default'
 
 ```json
 {"saga-execution-id": "01a1f9e0-e0f7-75ca-9fad-619a8920b3ad"}
+
 {"lastSourceId": "b-17"}
 ```
 

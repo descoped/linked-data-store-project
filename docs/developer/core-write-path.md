@@ -467,8 +467,11 @@ curl -s 'http://localhost:19109/source/nobody'
 
 ```json
 {"saga-execution-id": "01a1f994-d061-712b-982a-c4ddaecaa42a"}
+
 {"saga-execution-id": "01a1f994-d07c-729b-95d6-8a409ff022a0"}
+
 {"lastSourceId": "a2"}
+
 {"lastSourceId": null}
 ```
 

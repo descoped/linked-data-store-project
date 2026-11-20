@@ -670,6 +670,7 @@ curl -s 'http://localhost:19111/graphql?snapshot=2031-01-01T00:00:00Z' -H 'Conte
     "PersonById": {"name": "Early", "employer": null}
   }
 }
+
 {
   "data": {
     "PersonById": {

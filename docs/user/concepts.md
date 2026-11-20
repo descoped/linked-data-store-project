@@ -479,6 +479,7 @@ curl "$LDS/ns/Person/kari/address"
 
 ```json
 {"saga-execution-id": "01a1f9de-1286-7220-912c-c551bc2ca161"}
+
 {
   "city": "Oslo",
   "street": "Storgata 1"
@@ -495,6 +496,7 @@ curl "$LDS/ns/Person/kari"
 
 ```json
 {"saga-execution-id": "01a1f9de-12a0-72ac-8c2a-d60619db82d6"}
+
 {
   "employer": "/Company/acme",
   "name": "Kari",
@@ -745,6 +747,7 @@ The writes were answered `201`, and the delete `204`. The answers to the query, 
     }
   }
 }
+
 {
   "data": {
     "PersonById": {
@@ -760,6 +763,7 @@ The writes were answered `201`, and the delete `204`. The answers to the query, 
     }
   }
 }
+
 {
   "data": {
     "PersonById": {
@@ -927,7 +931,9 @@ curl "$LDS/ns/Company/hav?timeline"
 
 ```json
 {"saga-execution-id": "01a1f9de-132e-7ff3-881c-4244047f7318"}
+
 {"saga-execution-id": "01a1f9de-133b-7fe7-a137-63ec95e5e356"}
+
 [
   {
     "version": "2024-03-01T00:00Z[Etc/UTC]",
@@ -949,7 +955,9 @@ curl "$LDS/ns/Company/vind?timeline"
 
 ```json
 {"saga-execution-id": "01a1f9de-1353-7e41-830b-28eb4c54befc"}
+
 {"saga-execution-id": "01a1f9de-1360-7964-9445-947a2c18689a"}
+
 [
   {
     "version": "2026-11-20T16:50:43.155Z[Etc/UTC]",

@@ -298,6 +298,7 @@ curl 'http://localhost:19308/graphql' -H 'Content-Type: application/graphql' \
     }
   }
 }
+
 {
   "data": {
     "PersonById": {"name": "Ola Nordmann", "employer": null}
