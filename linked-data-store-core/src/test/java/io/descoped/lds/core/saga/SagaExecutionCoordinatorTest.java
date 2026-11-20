@@ -274,6 +274,44 @@ public class SagaExecutionCoordinatorTest {
         }
     }
 
+    /**
+     * A saga that the thread pool does not take. Since saga 2.1.1 the library fails such a saga through its
+     * futures, where it threw before. Its log and its permit must be released all the same: a refused write that
+     * kept them would cost one of each, until no write could start.
+     */
+    @Test
+    @ConfigurationOverride({
+            "saga.recovery.enabled", "false",
+            "sagalog.provider", "no.cantara.sagalog.memory.MemorySagaLogInitializer",
+            "saga.number-of-logs", "2"
+    })
+    public void thatASagaTheThreadPoolRefusesReleasesItsLogAndItsPermit() {
+        SagaExecutionCoordinator sec = server.getApplication().getSec();
+        SagaLogPool pool = sec.getSagaLogPool();
+        int permits = sec.semaphore.availablePermits();
+        sec.getThreadPool().shutdown(); // refuses every saga from here on; this server is used by this test only
+
+        for (int i = 0; i < 3; i++) { // more writes than there are logs
+            client.put("/data/provisionagreement/r" + i + "?sync=true", "{\"name\":\"refused " + i + "\",\"contacts\":[]}").expectAnyOf(500);
+        }
+
+        Assert.assertEquals(sec.semaphore.availablePermits(), permits);
+        assertTrue(sec.executionIdBySagaLogId.isEmpty());
+        SagaLogOwner owner = new SagaLogOwner("core-sec-test");
+        List<SagaLog> acquired = new ArrayList<>();
+        try {
+            for (int i = 0; i < 2; i++) {
+                SagaLog sagaLog = pool.tryAcquire(owner);
+                Assert.assertNotNull(sagaLog, "saga log " + i + " was not released");
+                acquired.add(sagaLog);
+            }
+        } finally {
+            for (SagaLog sagaLog : acquired) {
+                pool.release(sagaLog.id());
+            }
+        }
+    }
+
     private Consumer<SagaExecutionTraversalContext> failOnce() {
         AtomicBoolean failedOnce = new AtomicBoolean();
         return c -> {
