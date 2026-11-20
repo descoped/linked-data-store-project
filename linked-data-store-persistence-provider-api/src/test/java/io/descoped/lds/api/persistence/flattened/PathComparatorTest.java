@@ -150,6 +150,7 @@ public class PathComparatorTest {
         map.put("$.7", "");
         map.put("$.", "");
 
+        // "$." is the field without a name: one part less than the others, so it is first
         assertThat(map.keySet()).containsExactly(
                 "$.",
                 "$.7",
@@ -158,6 +159,18 @@ public class PathComparatorTest {
                 "$.10",
                 "$.12345678901234567890123"
         );
+    }
+
+    @Test
+    public void testNamesOfDigitsComeBeforeOtherNames() {
+        map.put("$.1a", "");
+        map.put("$.10", "");
+        map.put("$.9", "");
+        map.put("$.a", "");
+        map.put("$.9a", "");
+
+        assertThat(map.keySet()).containsExactly("$.9", "$.10", "$.1a", "$.9a", "$.a");
+        assertThat(map).containsKeys("$.9", "$.10", "$.1a", "$.9a", "$.a");
     }
 
     @Test

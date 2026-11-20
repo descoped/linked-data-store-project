@@ -32,7 +32,9 @@ import static io.descoped.lds.api.persistence.json.JsonTools.mapper;
  * <p>
  * Each leaf is put where its path says, in whatever order the leaves come: an array may hold values, objects,
  * arrays, empty ones and nulls side by side. The elements of an array are in the order of their places; a place
- * that no leaf names leaves no gap.
+ * that no leaf names leaves no gap. A leaf that says "an object" or "an array" for a place that other leaves put
+ * something into is that object or array, and takes nothing away from it: Neo4j gives such a leaf for every
+ * object and array, not only for the empty ones.
  */
 public class FlattenedDocumentToJson {
 
@@ -57,16 +59,28 @@ public class FlattenedDocumentToJson {
      * @return the JSON document; an empty object for a document without leaves
      */
     public JsonNode toJsonNode() {
+        return toJsonNode(document.leafNodesByPath().values());
+    }
+
+    /*
+     * The JSON document of leaves, in the order they are given.
+     */
+    static JsonNode toJsonNode(Iterable<FlattenedDocumentLeafNode> leaves) {
         // The document is what is at place 0 of this, so that the root is put like everything below it.
         Branch holder = new Branch(true);
-        for (Map.Entry<String, FlattenedDocumentLeafNode> entry : document.leafNodesByPath().entrySet()) {
+        for (FlattenedDocumentLeafNode leaf : leaves) {
             Branch parent = holder;
             Object at = 0;
-            for (Object step : steps(entry.getKey())) {
+            for (Object step : steps(leaf.path())) {
                 parent = parent.branchAt(at, step instanceof Integer);
                 at = step;
             }
-            parent.children.put(at, valueOf(entry.getValue()));
+            JsonNode value = valueOf(leaf);
+            if (value.isContainerNode() && parent.children.get(at) instanceof Branch branch && branch.array == value.isArray()) {
+                // the object or array that other leaves have put something into already
+                continue;
+            }
+            parent.children.put(at, value);
         }
         Object root = holder.children.get(0);
         return root == null ? mapper.createObjectNode() : toJson(root);
@@ -160,6 +174,7 @@ public class FlattenedDocumentToJson {
             if (children.get(at) instanceof Branch branch && branch.array == array) {
                 return branch;
             }
+            // nothing is there yet, or a leaf that only says "an object" or "an array" is
             Branch branch = new Branch(array);
             children.put(at, branch);
             return branch;

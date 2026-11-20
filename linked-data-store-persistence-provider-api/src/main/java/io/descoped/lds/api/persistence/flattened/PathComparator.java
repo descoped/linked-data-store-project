@@ -7,8 +7,9 @@ import java.util.regex.Pattern;
  * The order of the paths of the leaves of a document: {@code $.name[2].first} before {@code $.name[10].first}.
  * <p>
  * A path is taken apart at its dots and brackets. A path of fewer parts comes first. Paths of as many parts are
- * compared part by part: two parts of digits as the numbers they are, any other two as text. Two paths are the
- * same only when they are the same text, so no two leaves of a document take the place of each other.
+ * compared part by part: a part of digits comes before a part that is not, two parts of digits are compared as
+ * the numbers they are, and two other parts as text. Two paths are the same only when they are the same text,
+ * so no two leaves of a document take the place of each other.
  */
 public class PathComparator implements Comparator<String> {
 
@@ -33,9 +34,17 @@ public class PathComparator implements Comparator<String> {
             return parts1.length < parts2.length ? -1 : +1;
         }
         for (int i = 0; i < parts1.length; i++) {
-            int compare = isDigit(parts1[i]) && isDigit(parts2[i])
-                    ? compareNumbers(parts1[i], parts2[i])
-                    : parts1[i].compareTo(parts2[i]);
+            boolean digits1 = isDigit(parts1[i]);
+            boolean digits2 = isDigit(parts2[i]);
+            int compare;
+            if (digits1 != digits2) {
+                // digits first: comparing "10" with "1a" as text would put 9 before 10, 10 before 1a and 1a before 9
+                compare = digits1 ? -1 : +1;
+            } else if (digits1) {
+                compare = compareNumbers(parts1[i], parts2[i]);
+            } else {
+                compare = parts1[i].compareTo(parts2[i]);
+            }
             if (compare != 0) {
                 return compare;
             }

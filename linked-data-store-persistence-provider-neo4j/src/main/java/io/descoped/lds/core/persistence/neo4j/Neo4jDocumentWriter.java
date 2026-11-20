@@ -45,9 +45,11 @@ final class Neo4jDocumentWriter {
 
     /*
      * A link is written /Entity/id, as it is for the providers that keep it as text (RxJsonPersistenceBridge), so
-     * that every provider follows the same texts and reads back the text that was written.
+     * that every provider follows the same texts and reads back the text that was written. A text without an id
+     * (/Entity/) leads to no document in any provider; here it is a text, so that no document node without an id
+     * is made for it.
      */
-    private static final Pattern LINK = Pattern.compile("/([^/]*)/([^/]*)");
+    private static final Pattern LINK = Pattern.compile("/([^/]+)/([^/]+)");
 
     private static final HexFormat HEX = HexFormat.of();
 
@@ -82,7 +84,10 @@ final class Neo4jDocumentWriter {
     Neo4jQueryAndParams write(Specification specification, String entity, List<JsonDocument> documents) {
         SpecificationElement entityElement = specification.getRootElement().getProperties().get(entity);
         // An entity the specification does not have is written all the same, without links: nothing says where
-        // they are. Its statement is not kept, so that names from outside do not fill the memory.
+        // they are. Its statement is not kept, so that names from outside do not fill the memory. Such an entity
+        // has no constraint and no indexes either (they are created at start for the entities of the
+        // specification), so its documents are found by a scan of the label and two writers at once can make
+        // two document nodes for one id. Core refuses a write to an entity the specification does not have.
         Statement statement = entityElement == null
                 ? statement(entity, List.of())
                 : statements.computeIfAbsent(new StatementKey(entity, linkTargets(entityElement)), key -> statement(key.entity(), key.linkTargets()));
@@ -150,6 +155,8 @@ final class Neo4jDocumentWriter {
         cypher.append("    UNWIND range(0, size(record.nodes) - 1) AS i\n");
         cypher.append("    WITH i, record.nodes[i] AS n ORDER BY i\n");
         cypher.append("    CREATE (x:").append(node).append(" {type: n.type, path: n.path, value: n.value, hashOrValue: coalesce(n.hash, n.value), namespace: CASE WHEN n.value IS NULL THEN null ELSE record.namespace END})\n");
+        // the order is stated again after the CREATE: the places of the list are what joins a node to its parent
+        cypher.append("    WITH i, x ORDER BY i\n");
         cypher.append("    RETURN collect(x) AS created\n");
         cypher.append("  }\n");
         // Place 0 is the root of the version, place n the n-th node of the list.

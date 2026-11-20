@@ -1291,7 +1291,7 @@ public abstract class PersistenceIntegrationTest {
             assertReadAsWritten(tx, specification, "Person", "more-in-object", "{'firstname':'A','history':{'note':'n','more':{'deep':[1,2]}}}");
             assertReadAsWritten(tx, people, "People", "more-in-array", "{'name':[{'first':'J','middle':'M'},{'last':'D','more':{'k':[1]}}],'tags':['a']}");
             assertReadAsWritten(tx, specification, "Address", "more-arrays-in-arrays", "{'grid':[[1,2],[3]],'deep':[[[{'a':[[true]]}],[]],[],[null]]}");
-            assertReadAsWritten(tx, specification, "Address", "more-names", "{'':'no name','7':'digits','007':'more digits','12345678901234567890123':'many digits'}");
+            assertReadAsWritten(tx, specification, "Address", "more-names", "{'':'no name','7':'digits','007':'more digits','12345678901234567890123':'many digits','9':1,'10':2,'1a':3}");
             assertReadAsWritten(tx, specification, "Address", "nothing", "{}");
         }
     }
@@ -1333,6 +1333,7 @@ public abstract class PersistenceIntegrationTest {
             assertReadAsWritten(tx, specification, "Person", "link-array-mixed", "{'history':{'previousAddresses':['/Address/a',null,'notalink','/Address/b']}}");
             assertReadAsWritten(tx, specification, "Person", "link-not-an-array", "{'history':{'previousAddresses':'/Address/a'}}");
             assertReadAsWritten(tx, specification, "Person", "link-no-slash", "{'history':{'currentAddress':'Address/more-home'}}");
+            assertReadAsWritten(tx, specification, "Person", "link-no-id", "{'history':{'currentAddress':'/Address/','previousAddresses':['/Address/']}}");
 
             assertThat(persistence.readLinkedDocuments(tx, Y2020, namespace, "Person", "link-other-entity", JsonNavigationPath.from("$.history.currentAddress"), "Address", Range.unbounded())
                     .toList().blockingGet()).isEmpty();

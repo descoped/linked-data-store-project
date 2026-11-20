@@ -12,7 +12,10 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -35,6 +38,10 @@ class FlattenedDocumentToJsonTest {
     private static JsonNode rebuilt(JsonNode document) {
         FlattenedDocument leaves = new JsonToFlattenedDocument("ns", "E", "1", KEY.timestamp(), document, 8192).toDocument();
         return new FlattenedDocumentToJson(leaves).toJsonNode();
+    }
+
+    private static FlattenedDocumentLeafNode leaf(String path, FragmentType type, String value) {
+        return new FlattenedDocumentLeafNode(KEY, path, type, value, 8192);
     }
 
     private static FlattenedDocument leaves(Object... pathTypeValue) {
@@ -88,6 +95,25 @@ class FlattenedDocumentToJsonTest {
 
         assertThat(new FlattenedDocumentToJson(document).toJsonNode())
                 .isEqualTo(json("{'name':[{'first':'John'},{'first':'Jane','last':'Doe'},{},null]}"));
+    }
+
+    @Test
+    void aLeafThatSaysObjectOrArrayTakesNothingAwayWhereverItComes() {
+        // as Neo4j gives the leaves: one for every object and array, also those that hold something
+        List<FlattenedDocumentLeafNode> leaves = List.of(
+                leaf("$.a.b[0].c", FragmentType.STRING, "deep"),
+                leaf("$.a", FragmentType.EMPTY_OBJECT, null),
+                leaf("$.a.b[0]", FragmentType.EMPTY_OBJECT, null),
+                leaf("$.a.b", FragmentType.EMPTY_ARRAY, null),
+                leaf("$.a.b[1]", FragmentType.EMPTY_ARRAY, null),
+                leaf("$", FragmentType.EMPTY_OBJECT, null),
+                leaf("$.a.e", FragmentType.EMPTY_OBJECT, null));
+        JsonNode expected = json("{'a':{'b':[{'c':'deep'},[]],'e':{}}}");
+
+        assertThat(FlattenedDocumentToJson.toJsonNode(leaves)).isEqualTo(expected);
+        List<FlattenedDocumentLeafNode> reversed = new ArrayList<>(leaves);
+        Collections.reverse(reversed);
+        assertThat(FlattenedDocumentToJson.toJsonNode(reversed)).isEqualTo(expected);
     }
 
     @Test

@@ -106,9 +106,9 @@ class Neo4jDocumentWriterTest {
 
     @Test
     void anythingElseInALinkFieldIsTheValueItIs() throws Exception {
-        // no link, a link to an entity the field may not link to, a link without its first slash, a number, nothing;
-        // and a link in a field that is no link field
-        Map<String, Object> record = record("{'home':'nowhere','history':{'lived':['/Boat/b1','House/h1',5,null]},'name':'/House/h1'}");
+        // no link, a link to an entity the field may not link to, a link without its first slash, a link without an
+        // id, a number, nothing; and a link in a field that is no link field
+        Map<String, Object> record = record("{'home':'nowhere','history':{'lived':['/Boat/b1','House/h1','/House/',5,null]},'name':'/House/h1'}");
 
         assertThat(links(record)).containsExactly(List.of(), List.of());
         assertThat(nodes(record)).extracting(node -> node.get("type") + " " + node.get("path") + " " + node.get("value")).containsExactly(
@@ -117,6 +117,7 @@ class Neo4jDocumentWriterTest {
                 "array $.history.lived null",
                 "string $.history.lived[] /Boat/b1",
                 "string $.history.lived[] House/h1",
+                "string $.history.lived[] /House/",
                 "number $.history.lived[] 5",
                 "null $.history.lived[] null",
                 "string $.name /House/h1");
@@ -168,6 +169,7 @@ class Neo4jDocumentWriterTest {
         assertThat(statement.cypher())
                 .contains("MERGE (r:`Per``son` {namespace: record.namespace, id: record.id})")
                 .contains("(m:`Per``son_E` {type: 'map', path: '$'})")
+                .contains("WITH i, x ORDER BY i\n    RETURN collect(x) AS created")
                 .contains("UNWIND record.links[0] AS link\n    MERGE (target:`Boat` {namespace: record.namespace, id: link.id})")
                 .contains("UNWIND record.links[1] AS link\n    MERGE (target:`Ho use` {namespace: record.namespace, id: link.id})");
         assertThat(Neo4jDocumentWriter.statement("Person", List.of()).cypher()).doesNotContain("REF");
