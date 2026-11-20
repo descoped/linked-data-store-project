@@ -5,9 +5,9 @@ Guidance for Claude Code in this repository.
 ## What this is
 
 Linked Data Store (LDS), a product of Descoped: a server that gives REST and GraphQL access to versioned, linked
-JSON documents described by a model read at start (a GraphQL schema or JSON Schema 2020-12 files). Writes go through a saga
-(transaction log, then persistence, then the search index). Persistence and search are pluggable. One Maven
-reactor, group `io.descoped.lds`.
+JSON documents described by a model read at start (a GraphQL schema or JSON Schema 2020-12 files). Writes go
+through a saga (transaction log first, then persistence and the search index side by side). Persistence and
+search are pluggable. One Maven reactor, group `io.descoped.lds`.
 
 | Module | JPMS module | Role |
 |---|---|---|
@@ -25,8 +25,8 @@ reactor, group `io.descoped.lds`.
 
 | `linked-data-store-loadtest` | `io.descoped.lds.loadtest` | the load test, run by hand: scripts and a compose file that start LDS from the image of the server with one persistence provider and drive a load at it, and the program that turns the results into plot files (`HTTPLoadTestBaselineStatistics`). Not in the BOM and not in a release |
 
-Not in the reactor: `docs/` (AsciiDoc, describes the pre-3.0 layout). The cluster test of before 3.0 is removed:
-it needed images and a saga log that do not exist any more. Its history is in git.
+Not in the reactor: `docs/`, the documentation (see "The documentation" below). The cluster test of before 3.0
+is removed: it needed images and a saga log that do not exist any more. Its history is in git.
 
 Until 2026-11 every module was a repository of its own; their histories were imported here with `git filter-repo`
 (old tags prefixed with the repository name, e.g. `linked-data-store-core/v0.16`). Nothing was released under
@@ -224,6 +224,22 @@ use. Keep these when changing them:
 - **Every port of the compose file is published on 127.0.0.1**, and can be moved (`LDS_PORT`, ...), which is how
   `ServerStackIT` runs next to a stack that is up. The passwords in it are development defaults.
 - **The JDK of the image is the baseline**: Renovate is told to keep `eclipse-temurin` at 27.
+
+## The documentation
+
+`docs/` is AsciiDoc that GitHub renders, in two parts with two readers, and a document is for exactly one of them:
+`docs/user/` for those who use LDS (they run it, give it a model, read and write documents; no class, module or
+package names there) and `docs/developer/` for those who change the code (`architecture.adoc` is the map, then one
+document for each part of the code). `docs/README.adoc` is the index. Keep these when changing it:
+
+- **Only what the code does.** A statement is one found in the code, in a test or by running LDS, and every
+  request shown was run, with the answer that came. A change of behaviour changes the document in the same pull
+  request.
+- **What is unfinished is said where the reader meets it**, in a paragraph that starts with `Not finished:`. When
+  the fault is corrected, the paragraph goes.
+- **Plain words, present tense, no history**: not how the code got this way, no earlier hosts or models.
+- **One word for one thing**: document, entity, namespace, id, version, link, model, provider, saga.
+- Lines of at most 120 characters, links between documents with `xref:` and a relative path.
 
 ## The load test
 

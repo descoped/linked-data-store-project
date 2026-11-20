@@ -1,76 +1,95 @@
-// Asciidoc Cheat Sheet: https://github.com/powerman/asciidoc-cheatsheet
-// Asciidoc Manaual: https://asciidoctor.org/docs/user-manual/
+= Linked Data Store: documentation
 
-:doctitle: Linked Data Store
+Linked Data Store (LDS) is a server that gives REST and GraphQL access to versioned, linked JSON documents. The
+model of the documents is read when LDS starts. LDS is a time machine: every version of a document is valid from
+a time, and a read gives the document as it was at the time asked for.
 
-ifndef::env-github[]
-:doctype: book
-:page-layout: docs
-:numbered:
-:toc: left
-:toclevels: 3
-:factory-ref: https://github.com/asciidoctor/asciidoctor-stylesheet-factory
-:uri-svgo: https://github.com/svg/svgo
-//:source-highlighter: highlightjs
-:source-highlighter: coderay
-:coderay-linenums-mode: inline
-:coderay-css: class
-:icons: font
-endif::[]
+This documentation is in two parts, for two kinds of reader. Every document is written from the code as it is,
+and every request shown in it was run. LDS 3.0 is in development and nothing is released: the version is
+`3.0.0-SNAPSHOT`, built from the repository. What is unfinished is said where a reader meets it, in a paragraph
+that starts with "Not finished:".
 
-ifdef::env-github[]
-:tip-caption: :bulb:
-:note-caption: :information_source:
-:important-caption: :heavy_exclamation_mark:
-:caution-caption: :fire:
-:warning-caption: :warning:
-:toc-placement: preamble
-endif::[]
+== For those who use LDS
 
-[NOTE]
-====
-This documentation is work in progress!
-====
+You run LDS, give it a model, and read and write documents. You do not need to read the code.
 
-// This description of LDS is also maintained in docs/_includes/what-is-lds.
+[cols="1,3"]
+|===
+|Document |What it is
 
-ifdef::env-github[]
-Linked Data Store (LDS) offers a well defined resource-oriented RESTful API over a runtime configured information model allowing users to read and write data. LDS supports _time-based-data-versioning_ capabilities that allows it to act as an immutable datastore where data can be read as they were back in time.
+|xref:user/getting-started.adoc[Getting started]
+|From nothing to a first document: start LDS, write a document, read it, read it as it was, link two documents,
+ask with GraphQL.
 
-The information model configuration is represented using JSON Schema and LDS will interpret schema properties prefixed with `_link_property_` as directives to describe relationships between entities in the information model.
+|xref:user/concepts.adoc[Concepts]
+|The ideas: document, entity, namespace, version and time, link, model, provider, what a write goes through.
 
-LDS is intended to be a smart service layer between information-model-aware applications and the underlying persistence-technology (e.g. Postgres, Neo4j, BigTable).
-endif::[]
+|xref:user/model.adoc[The model]
+|How to write a model, as a GraphQL schema or as JSON Schema files, and what LDS checks against it.
 
-ifdef::env-github[]
-= Table of Contents
+|xref:user/rest-api.adoc[The REST API]
+|Every address, method, parameter and answer.
 
-. link:docs/background.adoc[Background]
-. link:docs/architecture.adoc[Architecture]
-. link:docs/administration.adoc[Administration]
-. link:docs/rest-api.adoc[REST API]
-. link:docs/graphql-api.adoc[GraphQL API]
-. link:docs/development.adoc[Development]
-. link:docs/examples.adoc[Examples]
-endif::[]
+|xref:user/graphql-api.adoc[The GraphQL API]
+|The queries LDS makes from a model, paging, links, reading at a time, search.
 
-ifndef::env-github[]
-:leveloffset: +1
-include::docs/background.adoc[]
-include::docs/architecture.adoc[]
-include::docs/administration.adoc[]
-include::docs/rest-api.adoc[]
-include::docs/development.adoc[]
-include::docs/examples.adoc[]
-:leveloffset: -1
-endif::[]
+|xref:user/configuration.adoc[Configuration]
+|Every key, its default and its meaning, and how keys are set.
 
-== Other references
+|xref:user/operations.adoc[Running LDS]
+|The image and the compose file, starting and stopping, health, logs, what is stored where.
+|===
 
-* https://json-schema.org/[IETF JSON Schema]
-* https://www.ietf.org/archive/id/draft-zyp-json-schema-04.txt[JSON Schema Draft 4]
+== For those who develop and maintain LDS
 
-== License
+You change the code, add a provider, or look for a fault.
 
-This software is licensed under link:LICENSE[APL 2.0]
+Start with xref:developer/architecture.adoc[the architecture]: the modules, the path of a read and of a write,
+the ideas that hold the code together and the rules a change must keep. Then one document for each part:
 
+[cols="1,3"]
+|===
+|Document |The part of the code
+
+|xref:developer/build.adoc[The build]
+|The reactor, the BOM, the rules of the build, the tests, CI.
+
+|xref:developer/persistence-api.adoc[The persistence interface]
+|What a persistence provider implements: fragments, documents, streams, transactions.
+
+|xref:developer/persistence-tck.adoc[The shared suite]
+|The tests every persistence provider passes.
+
+|xref:developer/persistence-memory.adoc[The memory provider]
+|Persistence in memory, for tests and for trying LDS.
+
+|xref:developer/persistence-postgres.adoc[The PostgreSQL provider]
+|Persistence in one table of PostgreSQL.
+
+|xref:developer/persistence-neo4j.adoc[The Neo4j provider]
+|Persistence as a graph in Neo4j.
+
+|xref:developer/search.adoc[Search]
+|The search interface and the Solr provider.
+
+|xref:developer/core-application.adoc[Core: the application]
+|How LDS is put together, started and stopped.
+
+|xref:developer/core-model.adoc[Core: the model]
+|How a model is read and how a document is checked against it.
+
+|xref:developer/core-rest.adoc[Core: the REST API]
+|How a request becomes a read or a write of a document, a part of it, or a link.
+
+|xref:developer/core-write-path.adoc[Core: the write path]
+|Sagas, the saga log, the transaction log, recovery.
+
+|xref:developer/core-graphql.adoc[Core: GraphQL]
+|How the GraphQL schema is built and how a query is answered.
+
+|xref:developer/server.adoc[The server]
+|The main class, the defaults of the configuration, the image, the compose file.
+
+|xref:developer/loadtest.adoc[The load test]
+|What a run of the load test does and what it is made of.
+|===
