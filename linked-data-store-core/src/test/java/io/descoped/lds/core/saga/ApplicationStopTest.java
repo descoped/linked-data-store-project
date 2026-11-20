@@ -7,7 +7,6 @@ import io.descoped.lds.test.server.TestServer;
 import io.descoped.lds.test.server.TestServerListener;
 import no.cantara.saga.execution.SagaHandoffResult;
 import no.cantara.sagalog.SagaLogOwner;
-import no.cantara.sagalog.SagaLogPool;
 import no.cantara.sagalog.SagaPoolShutdownException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -20,6 +19,10 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -41,6 +44,7 @@ class ApplicationStopTest {
     @AfterEach
     void stop() {
         if (server != null) {
+            server.getApplication().getSec().runningSagas.clear(); // what a test put there never completes
             server.getApplication().stop(); // a second stop does nothing more
         }
     }
@@ -67,13 +71,116 @@ class ApplicationStopTest {
     @Test
     void theSagaLogPoolGivesOutNoLogAfterTheApplicationHasStopped() {
         server = start();
-        SagaLogPool pool = server.getApplication().getSec().getSagaLogPool();
 
         server.getApplication().stop();
 
-        assertThatThrownBy(() -> pool.tryAcquire(new SagaLogOwner("application-stop-test")))
-                .isInstanceOf(SagaPoolShutdownException.class);
-        assertThat(server.getApplication().getSec().getThreadPool().isTerminated()).isTrue();
+        assertStopped(server);
+    }
+
+    @Test
+    void theStopWaitsForASagaThatDoesNotEndForAsLongAsItIsTold() {
+        server = start();
+        server.getApplication().getSec().runningSagas.add(new CompletableFuture<>());
+
+        long before = System.nanoTime();
+        server.getApplication().stop(200, TimeUnit.MILLISECONDS);
+
+        assertThat(Duration.ofNanos(System.nanoTime() - before)).isBetween(Duration.ofMillis(200), Duration.ofSeconds(5));
+        assertStopped(server);
+    }
+
+    @Test
+    void aPartThatFailsToStopDoesNotKeepTheRestFromStopping() {
+        server = start();
+        server.getApplication().getSec().runningSagas.add(new CompletableFuture<>() {
+            @Override
+            public boolean isDone() {
+                throw new IllegalStateException("as the test asked"); // waiting for the running sagas fails
+            }
+        });
+
+        server.getApplication().stop();
+
+        assertStopped(server);
+    }
+
+    @Test
+    void waitingForTheRunningSagasEndsWhenTheyHaveCompletedOrFailed() {
+        server = start();
+        SagaExecutionCoordinator sec = server.getApplication().getSec();
+        CompletableFuture<SagaHandoffResult> completing = new CompletableFuture<>();
+        CompletableFuture<SagaHandoffResult> failing = new CompletableFuture<>();
+        sec.runningSagas.add(completing);
+        sec.runningSagas.add(failing);
+
+        assertThat(sec.awaitRunningSagas(50, TimeUnit.MILLISECONDS)).isFalse();
+
+        CompletableFuture.delayedExecutor(100, TimeUnit.MILLISECONDS).execute(() -> {
+            failing.completeExceptionally(new IllegalStateException("as the test asked"));
+            completing.complete(null);
+        });
+        assertThat(sec.awaitRunningSagas(10, TimeUnit.SECONDS)).isTrue();
+    }
+
+    @Test
+    void waitingForTheRunningSagasEndsWhenTheThreadIsInterrupted() {
+        server = start();
+        SagaExecutionCoordinator sec = server.getApplication().getSec();
+        sec.runningSagas.add(new CompletableFuture<>());
+
+        Thread.currentThread().interrupt();
+        try {
+            assertThat(sec.awaitRunningSagas(10, TimeUnit.SECONDS)).isFalse();
+            assertThat(Thread.currentThread().isInterrupted()).isTrue();
+        } finally {
+            Thread.interrupted(); // cleared for what comes after
+        }
+    }
+
+    /**
+     * A recovery pass that meets a saga log pool that is shut down is the application stopping. The trigger ends
+     * there: it schedules no pass after it.
+     */
+    @Test
+    void theRecoveryTriggerEndsWhenTheSagaLogPoolIsShutDown() throws Exception {
+        server = start();
+        SagaExecutionCoordinator sec = server.getApplication().getSec();
+        server.getApplication().stop();
+
+        AtomicInteger recoveries = new AtomicInteger(); // one for each saga log of each pass
+        ScheduledThreadPoolExecutor recoveryThreadPool = new ScheduledThreadPoolExecutor(2) {
+            @Override
+            public void execute(Runnable command) {
+                recoveries.incrementAndGet();
+                super.execute(command);
+            }
+        };
+        SagaRecoveryTrigger trigger = new SagaRecoveryTrigger(sec, 1, 1, recoveryThreadPool);
+        trigger.start();
+        try {
+            long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+            while (recoveries.get() == 0) {
+                assertThat(System.nanoTime()).as("waited for the first pass").isLessThan(deadline);
+                Thread.sleep(50);
+            }
+            Thread.sleep(2500); // two more passes, if there were any
+            assertThat(recoveries).hasValue(1);
+        } finally {
+            trigger.stop();
+        }
+    }
+
+    @Test
+    void aSagaLogPoolThatIsShutDownIsToldFromAFaultOfTheRecovery() {
+        assertThat(SagaRecoveryTrigger.shuttingDown(new CompletionException(new SagaPoolShutdownException("the pool is shut down")))).isTrue();
+        assertThat(SagaRecoveryTrigger.shuttingDown(new CompletionException(new IllegalStateException("another failure")))).isFalse();
+    }
+
+    private static void assertStopped(TestServer stopped) {
+        SagaExecutionCoordinator sec = stopped.getApplication().getSec();
+        SagaLogOwner owner = new SagaLogOwner("application-stop-test");
+        assertThat(sec.getThreadPool().isTerminated()).isTrue();
+        assertThatThrownBy(() -> sec.getSagaLogPool().tryAcquire(owner)).isInstanceOf(SagaPoolShutdownException.class);
     }
 
     private TestServer start() {

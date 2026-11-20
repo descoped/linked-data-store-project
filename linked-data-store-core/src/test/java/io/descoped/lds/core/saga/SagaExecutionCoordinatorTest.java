@@ -334,7 +334,7 @@ public class SagaExecutionCoordinatorTest {
             try {
                 pool.releaseOwnership(new SagaLogOwner("someone-else"), owned.id());
                 Assert.fail("Another owner released the saga log");
-            } catch (SagaLogAlreadyAquiredByOtherOwnerException e) {
+            } catch (SagaLogAlreadyAquiredByOtherOwnerException _) {
                 // the log is still the coordinator's
             }
             Assert.assertNull(pool.tryAcquire(new SagaLogOwner("core-sec-test")), "the only saga log was given out twice");
@@ -342,6 +342,42 @@ public class SagaExecutionCoordinatorTest {
             pool.releaseOwnership(owned.owner(), owned.id());
         }
         client.put("/data/provisionagreement/o1?sync=true", "{\"name\":\"owner\",\"contacts\":[]}").expect201Created();
+    }
+
+    /**
+     * Recovery that cannot start a saga of a log, here a saga this instance does not know, fails. It must give the
+     * log back: a log that stays taken is lost to every write after, and to every later recovery.
+     */
+    @Test
+    @ConfigurationOverride({
+            "saga.recovery.enabled", "false",
+            "sagalog.provider", "no.cantara.sagalog.memory.MemorySagaLogInitializer",
+            "saga.number-of-logs", "1"
+    })
+    public void thatASagaLogIsReleasedWhenRecoveryCannotStartItsSaga() throws Exception {
+        SagaExecutionCoordinator sec = server.getApplication().getSec();
+        SagaLogPool pool = sec.getSagaLogPool();
+        SagaLogOwner owner = new SagaLogOwner("core-sec-test");
+        SagaLog sagaLog = pool.tryAcquire(owner);
+        try {
+            sagaLog.write(sagaLog.builder().startSaga("an-execution", "a-saga-nobody-knows", "{}")).join();
+        } finally {
+            pool.releaseOwnership(owner, sagaLog.id());
+        }
+        try {
+            sec.completeLocalIncompleteSagas(sec.getRecoveryThreadPool()).join();
+            Assert.fail("The recovery of a saga nobody knows did not fail");
+        } catch (CompletionException e) {
+            assertTrue(String.valueOf(e.getCause()).contains("is not present in sagaRepository"), String.valueOf(e.getCause()));
+        } finally {
+            SagaLog released = pool.tryAcquire(owner, 2, TimeUnit.SECONDS);
+            Assert.assertNotNull(released, "the saga log was not released");
+            try {
+                released.truncate().join(); // the next test gets it empty
+            } finally {
+                pool.releaseOwnership(owner, released.id());
+            }
+        }
     }
 
     private Consumer<SagaExecutionTraversalContext> failOnce() {

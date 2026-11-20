@@ -82,7 +82,7 @@ public class SagaRecoveryTrigger {
     }
 
     /* The saga log pool is shut down: that is the application stopping, not a fault of the recovery. */
-    private static boolean shuttingDown(Throwable t) {
+    static boolean shuttingDown(Throwable t) {
         for (Throwable cause = t; cause != null; cause = cause.getCause()) {
             if (cause instanceof SagaPoolShutdownException) {
                 return true;

@@ -194,11 +194,11 @@ public class SagaExecutionCoordinator {
             }
             try {
                 CompletableFuture.allOf(running).get(Math.max(0, deadline - System.nanoTime()), TimeUnit.NANOSECONDS);
-            } catch (ExecutionException e) {
+            } catch (ExecutionException _) {
                 // one of them failed; all of them have completed
-            } catch (TimeoutException e) {
+            } catch (TimeoutException _) {
                 return false;
-            } catch (InterruptedException e) {
+            } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
                 return false;
             }

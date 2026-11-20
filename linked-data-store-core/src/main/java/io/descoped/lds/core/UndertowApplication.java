@@ -480,6 +480,17 @@ public class UndertowApplication {
      * A part that fails to stop is logged, and the parts after it are stopped all the same.
      */
     public void stop() {
+        stop(RUNNING_SAGAS_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+    }
+
+    /**
+     * Stops the application as {@link #stop()} does, waiting the given time at most for the sagas that are
+     * running.
+     *
+     * @param runningSagasTimeout the longest time to wait for the running sagas to complete
+     * @param unit                the unit of the timeout
+     */
+    public void stop(long runningSagasTimeout, TimeUnit unit) {
         stop("Undertow", server::stop);
         if (sagaRecoveryTrigger != null) {
             stop("SagaRecoveryTrigger", sagaRecoveryTrigger::stop); // shuts the recovery thread-pool down as well
@@ -489,8 +500,8 @@ public class UndertowApplication {
         }
 
         stop("Running sagas", () -> {
-            if (!sec.awaitRunningSagas(RUNNING_SAGAS_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-                LOG.warn("Sagas were still running after {} seconds. They fail when their thread pool is shut down, and are recovered from their saga logs.", RUNNING_SAGAS_TIMEOUT_SECONDS);
+            if (!sec.awaitRunningSagas(runningSagasTimeout, unit)) {
+                LOG.warn("Sagas were still running after {} {}. They fail when their thread pool is shut down, and are recovered from their saga logs.", runningSagasTimeout, unit);
             }
         });
 
@@ -517,9 +528,6 @@ public class UndertowApplication {
         try {
             stopping.stop();
             LOG.debug("{} was shutdown", part);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            LOG.error("Interrupted while shutting down: {}", part, e);
         } catch (Exception e) {
             LOG.error("Error while shutting down: {}", part, e);
         }
