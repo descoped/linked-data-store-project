@@ -1,28 +1,47 @@
 package io.descoped.lds.loadtest;
 
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.core.JsonToken;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import tools.jackson.core.JsonParser;
+import tools.jackson.core.JsonToken;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
-public class HTTPLoadTestBaselineStatistics {
+/**
+ * Turns the result files of a load test into statistics and plot files.
+ * <p>
+ * HTTPLoadTest-baseline, which drives the load, leaves three files for each run in its results folder:
+ * {@code <run>.csv}, {@code <run>.json} with one object for each request it sent, and
+ * {@code <run>_load_specififation.json} with the load it was asked for (the name is spelled that way by the
+ * tool). Each run becomes one sample, at the number of threads of the run: how many reads and writes succeeded
+ * and failed, and how long they took. The samples are written as one data file and the gnuplot files that draw
+ * it ({@link GnuplotFileGenerator}).
+ */
+public final class HTTPLoadTestBaselineStatistics {
 
+    private HTTPLoadTestBaselineStatistics() {
+    }
+
+    /**
+     * Reads every run in a folder and writes the plot files.
+     *
+     * @param args the folder with the result files, the folder to write the plot files to, and the name the plot
+     *             files start with
+     * @throws IOException when a file cannot be read or written
+     */
     public static void main(String[] args) throws IOException {
         if (args.length != 3) {
             System.err.println("Must provide the following three arguments: INFOLDER OUTFOLDER OUTBASENAME");
             return;
         }
         String inFolder = args[0];
-        Path resultsPath = Paths.get(inFolder);
+        Path resultsPath = Path.of(inFolder);
         if (!Files.isDirectory(resultsPath)) {
             System.err.println("Invalid INFOLDER argument, not a directory: " + inFolder);
             return;
@@ -45,7 +64,10 @@ public class HTTPLoadTestBaselineStatistics {
         Pattern readPattern = Pattern.compile("\\(Read-URL:");
         Pattern writePattern = Pattern.compile("\\(Write-URL:");
         ObjectMapper mapper = new ObjectMapper();
-        List<Path> csvFiles = Files.list(resultsPath).filter(path -> csvFilePattern.matcher(path.getFileName().toString().toLowerCase()).matches()).collect(Collectors.toList());
+        List<Path> csvFiles;
+        try (Stream<Path> files = Files.list(resultsPath)) {
+            csvFiles = files.filter(path -> csvFilePattern.matcher(path.getFileName().toString().toLowerCase()).matches()).toList();
+        }
 
         for (Path csvFile : csvFiles) {
             int deviations = 0;
@@ -55,12 +77,13 @@ public class HTTPLoadTestBaselineStatistics {
             String testBasename = csvFilenameMatcher.group(1);
 
             Path testResultsFile = resultsPath.resolve(testBasename + ".json");
-            try (JsonParser jParser = mapper.getFactory().createParser(testResultsFile.toFile())) {
+            try (JsonParser jParser = mapper.createParser(testResultsFile.toFile())) {
                 if (jParser.nextToken() != JsonToken.START_ARRAY) {
                     throw new IllegalStateException("Expected an array");
                 }
                 while (jParser.nextToken() == JsonToken.START_OBJECT) {
-                    ObjectNode node = mapper.readTree(jParser);
+                    // one request at a time: a file of a run holds tens of megabytes
+                    JsonNode node = jParser.readValueAsTree();
                     double duration = node.get("test_duration").asDouble();
                     boolean success = node.get("test_success").asBoolean();
                     boolean deviation = node.get("test_deviation_flag").asBoolean();
@@ -69,7 +92,7 @@ public class HTTPLoadTestBaselineStatistics {
                     int commandConcurrencyDegree = node.get("command_concurrency_degree").asInt();
                     statistics.recordCommandConcurrency(commandConcurrencyDegree);
 
-                    String tags = node.get("test_tags").asText();
+                    String tags = node.get("test_tags").asString();
                     Matcher readMatcher = readPattern.matcher(tags);
                     if (readMatcher.find()) {
                         if (success) {
@@ -109,8 +132,7 @@ public class HTTPLoadTestBaselineStatistics {
 
 
             Path loadConfigurationFile = resultsPath.resolve(testBasename + "_load_specififation.json");
-            ObjectNode loadConfigurationNode = (ObjectNode) mapper.readTree(loadConfigurationFile.toFile());
-            loadConfigurationNode.get("test_id").asText();
+            JsonNode loadConfigurationNode = mapper.readTree(loadConfigurationFile.toFile());
             int threads = loadConfigurationNode.get("test_no_of_threads").asInt();
             int testDurationSeconds = loadConfigurationNode.get("test_duration_in_seconds").asInt();
             statistics.sample(threads, testDurationSeconds);

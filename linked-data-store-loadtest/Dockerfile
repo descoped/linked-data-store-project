@@ -1,28 +1,17 @@
-FROM descoped/alpine-jdk11-buildtools:latest as build
+# The controller of the load test: the tools the scripts run inside the network of the test (curl, jq, zip,
+# gnuplot) and the program that turns the results into plot files. It is made of what Maven has built, so build
+# the reactor first (./mvnw package -DskipTests); the scripts build this image themselves.
+#
+# The JDK is the baseline of LDS and is raised by hand, together with java.version in the root POM.
+FROM eclipse-temurin:27-jre-alpine
 
-RUN ["jlink", "--strip-debug", "--no-header-files", "--no-man-pages", "--compress=2", "--module-path", "/opt/jdk/jmods", "--output", "/linked",\
- "--add-modules", "java.base"]
+RUN apk --no-cache add bash curl gnuplot jq perl zip
 
-COPY pom.xml /loadtest/plotgen/
-WORKDIR /loadtest/plotgen
-RUN mvn -B verify dependency:go-offline
-COPY src /loadtest/plotgen/src/
-RUN mvn -B -o verify && mvn -B -o dependency:copy-dependencies
+COPY target/lib/ /opt/plotgen/lib/
+COPY target/linked-data-store-loadtest-*.jar /opt/plotgen/lib/
+COPY prepopulate.sh /prepopulate.sh
 
+WORKDIR /loadtest
 
-
-FROM alpine:latest
-
-RUN apk --no-cache add bash curl gnuplot zip perl vim jq
-
-COPY --from=build /linked /opt/jdk/
-COPY --from=build /loadtest/plotgen/target/dependency /opt/plotgen/lib/
-COPY --from=build /loadtest/plotgen/target/*.jar /opt/plotgen/
-
-ADD prepopulate.sh /
-
-ENV PATH=/opt/jdk/bin:$PATH
-
-VOLUME ["/loadtest", "/results"]
-
-CMD ["java", "-cp", "/opt/plotgen/*:/opt/plotgen/lib/*", "io.descoped.lds.loadtest.HTTPLoadTestBaselineStatistics"]
+# It only waits: the scripts run their commands in it.
+CMD ["sleep", "infinity"]

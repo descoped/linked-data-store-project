@@ -1,3 +1,0 @@
-FROM postgres:11-alpine
-
-COPY ./docker-postgres-init-db.bash /docker-entrypoint-initdb.d/init-user-db.sh

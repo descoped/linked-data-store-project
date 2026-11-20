@@ -5,30 +5,61 @@ import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * The statistics of a load test: latencies and concurrency are recorded as they are read, and {@link #sample}
+ * closes a run by keeping one value of every statistic at the x of the run (the number of threads).
+ * <p>
+ * A statistic is kept under its name with a prefix that says what it is of: {@code r-} reads that succeeded,
+ * {@code w-} writes that succeeded, none for both, {@code rf-}, {@code wf-} and {@code f-} for those that
+ * failed, {@code wc-} and {@code cc-} for the concurrency of workers and of commands.
+ */
 public class Statistics {
 
+    /** The number of values. */
     public static final String STAT_N = "N";
+    /** The length of the run in seconds. */
     public static final String STAT_SECONDS = "sec";
+    /** The number of values for each second of the run. */
     public static final String STAT_N_PER_SEC = "N/sec";
+    /** The smallest value. */
     public static final String STAT_MIN = "min";
+    /** The mean. */
     public static final String STAT_MEAN = "mean";
+    /** The largest value. */
     public static final String STAT_MAX = "max";
+    /** The standard deviation. */
     public static final String STAT_STDDEV = "stddev";
+    /** The median. */
     public static final String STAT_MEDIAN = "median";
+    /** The 25th percentile. */
     public static final String STAT_P25 = "25%";
+    /** The 10th percentile. */
     public static final String STAT_P10 = "10%";
+    /** The 5th percentile. */
     public static final String STAT_P5 = "5%";
+    /** The 1st percentile. */
     public static final String STAT_P1 = "1%";
+    /** The 0.1th percentile. */
     public static final String STAT_P0_1 = "0.1%";
+    /** The 75th percentile. */
     public static final String STAT_P75 = "75%";
+    /** The 90th percentile. */
     public static final String STAT_P90 = "90%";
+    /** The 95th percentile. */
     public static final String STAT_P95 = "95%";
+    /** The 99th percentile. */
     public static final String STAT_P99 = "99%";
+    /** The 99.9th percentile. */
     public static final String STAT_P99_9 = "99.9%";
+    /** The kurtosis. */
     public static final String STAT_KURTOSIS = "kurtosis";
+    /** The skewness. */
     public static final String STAT_SKEWNESS = "skewness";
+    /** The geometric mean. */
     public static final String STAT_GMEAN = "gmean";
+    /** The sum. */
     public static final String STAT_SUM = "sum";
+    /** The variance of the sample. */
     public static final String STAT_SAMPLE_VARIANCE = "sample-variance";
 
     final Map<String, Map<Number, Number>> stat_datasets = new LinkedHashMap<>();
@@ -39,45 +70,85 @@ public class Statistics {
     private final DescriptiveStatistics workerConcurrencyStatistics = new DescriptiveStatistics();
     private final DescriptiveStatistics commandConcurrencyStatistics = new DescriptiveStatistics();
 
+    /**
+     * Statistics with nothing recorded.
+     */
     public Statistics() {
     }
 
+    /**
+     * A read that succeeded.
+     *
+     * @param latencyMs how long it took, in milliseconds
+     */
     public void recordReadLatency(double latencyMs) {
         synchronized (readLatencyStatistics) {
             readLatencyStatistics.addValue(latencyMs);
         }
     }
 
+    /**
+     * A write that succeeded.
+     *
+     * @param latencyMs how long it took, in milliseconds
+     */
     public void recordWriteLatency(double latencyMs) {
         synchronized (writeLatencyStatistics) {
             writeLatencyStatistics.addValue(latencyMs);
         }
     }
 
+    /**
+     * A read that failed.
+     *
+     * @param latencyMs how long it took, in milliseconds
+     */
     public void recordReadFailedLatency(double latencyMs) {
         synchronized (readFailedLatencyStatistics) {
             readFailedLatencyStatistics.addValue(latencyMs);
         }
     }
 
+    /**
+     * A write that failed.
+     *
+     * @param latencyMs how long it took, in milliseconds
+     */
     public void recordWriteFailedLatency(double latencyMs) {
         synchronized (writeFailedLatencyStatistics) {
             writeFailedLatencyStatistics.addValue(latencyMs);
         }
     }
 
+    /**
+     * The number of workers that were busy when a request was sent.
+     *
+     * @param workerConcurrency the number of workers
+     */
     public void recordWorkerConcurrency(double workerConcurrency) {
         synchronized (workerConcurrencyStatistics) {
             workerConcurrencyStatistics.addValue(workerConcurrency);
         }
     }
 
+    /**
+     * The number of commands that were running when a request was sent.
+     *
+     * @param commandConcurrency the number of commands
+     */
     public void recordCommandConcurrency(double commandConcurrency) {
         synchronized (commandConcurrencyStatistics) {
             commandConcurrencyStatistics.addValue(commandConcurrency);
         }
     }
 
+    /**
+     * Closes a run: every statistic of what was recorded since the last sample is kept at x, and the recorded
+     * values are forgotten.
+     *
+     * @param x                   where the run is on the x axis: its number of threads
+     * @param sampleWindowSeconds the length of the run in seconds
+     */
     public void sample(int x, int sampleWindowSeconds) {
         DescriptiveStatistics combinedSuccessStats;
         synchronized (readLatencyStatistics) {

@@ -28,6 +28,7 @@
         <module>linked-data-store-search-provider-solr</module>
         <module>linked-data-store-core</module>
         <module>linked-data-store-server</module>
+        <module>linked-data-store-loadtest</module>
     </modules>
 
     <properties>
@@ -161,6 +162,11 @@
                             <publishingServerId>central</publishingServerId>
                             <autoPublish>false</autoPublish>
                             <waitUntil>validated</waitUntil>
+                            <!-- The load test is a tool of this repository, not a library: it is built and
+                                 checked with the reactor and stays out of a release. -->
+                            <excludeArtifacts>
+                                <artifact>linked-data-store-loadtest</artifact>
+                            </excludeArtifacts>
                         </configuration>
                     </plugin>
                 </plugins>

@@ -10,8 +10,25 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.TreeMap;
 
-public class GnuplotFileGenerator {
+/**
+ * Writes the statistics of a load test as files for gnuplot: one data file with a block for every statistic, and
+ * the scripts that draw throughput and latency by the number of threads from it.
+ */
+public final class GnuplotFileGenerator {
 
+    private GnuplotFileGenerator() {
+    }
+
+    /**
+     * Writes {@code <basename>.dat} and the gnuplot scripts {@code <basename>.gnu} (throughput and mean latency),
+     * {@code _total_throughput.gnu}, {@code _read_latency.gnu}, {@code _write_latency.gnu} and {@code _load.gnu}.
+     * Each script writes an SVG file of its own name when gnuplot runs it in the folder.
+     *
+     * @param statistics        the samples to write
+     * @param xlabel            the label of the x axis
+     * @param plotfilesFolder   the folder to write to
+     * @param plotfilesBasename what the names of the files start with
+     */
     public static void writeStatisticsGnuplotAndDatafile(Statistics statistics, String xlabel, Path plotfilesFolder, String plotfilesBasename) {
         Map<String, Map<Number, Number>> stat_datasets = statistics.stat_datasets;
         Map<String, Integer> indexByStatistic = new LinkedHashMap<>();

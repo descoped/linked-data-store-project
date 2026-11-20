@@ -9,7 +9,7 @@
     "description": [
       {
         "languageCode": "nb",
-        "languageText": "SSBs standardkoder for kjønn"
+        "languageText": "Standardkoder for kjønn"
       }
     ],
     "administrativeStatus": "OPEN",
@@ -19,5 +19,5 @@
     "createdDate": "#now",
     "createdBy": "OHV",
     "dataType": "TEKST",
-    "klassUrl": "https://www.ssb.no/klass/klassifikasjoner/2"
+    "klassUrl": "https://example.org/klass/klassifikasjoner/2"
 }

@@ -34,9 +34,9 @@
     {
       "administrativeDetailType": "DOCUMENTATION",
       "values": [
-        "www.ssb.no/document1",
-        "www.ssb.no/document2",
-        "www.ssb.no/document3"
+        "www.example.org/document1",
+        "www.example.org/document2",
+        "www.example.org/document3"
       ]
     }
   ]

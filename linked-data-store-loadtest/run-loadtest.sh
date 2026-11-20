@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
 
 #
-# Sets up test-environment then runs a 5 minute LDS load-test.
-# This script will fail early on if no LDS is running.
+# Runs the load test of LDS with one persistence provider: starts LDS, the load tester and the controller, fills
+# LDS, warms it up, runs the load with 1 to 50 threads for ten seconds each, draws the plots and stops everything.
+# It takes about seven minutes.
+#
+#   ./run-loadtest.sh memory|neo4j|postgres
+#
+# The results are in lds<provider>/results. Build LDS first: ./mvnw package -DskipTests in the root of the
+# repository.
 #
 
-. $(dirname "$0")/functions.sh
+. "$(dirname "$0")/functions.sh"
 
 run_loadtest_all() {
   echo "Running loadtests with threads ranging from 1 to 50"
@@ -20,12 +26,14 @@ run_loadtest_all() {
 ## Program execution starts here ##
 ###################################
 
-OUTPUTFOLDER="$1"
+use_provider "${1:-}"
 echo Output-folder: ${OUTPUTFOLDER}
 
-check_whether_lds_network_and_containers_exists
-stop_test_containers
+echo Removing previous test-output
+rm -rf "${RESULTS_FOLDER:?}"
+
 start_test_containers
+trap stop_test_containers EXIT
 check_health_of_lds
 prepopulate_data
 check_health_of_loadtest
@@ -33,4 +41,3 @@ configure_loadtest
 warm_up_lds 10 30
 run_loadtest_all
 create_gnuplot_files
-stop_test_containers
