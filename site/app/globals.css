@@ -813,6 +813,16 @@ a {
   stroke: var(--color-border);
 }
 
+.fig-bar-gone {
+  fill: none;
+  stroke-dasharray: 4 3;
+}
+
+.fig .fig-gone {
+  fill: var(--color-text-muted);
+  font-style: italic;
+}
+
 .fig-bar-on {
   fill: color-mix(in srgb, var(--color-accent) 24%, var(--color-surface));
   stroke: var(--color-accent);
@@ -878,7 +888,7 @@ a {
 }
 
 .fig-b-cursor {
-  animation: fig-b-cursor 16s infinite;
+  animation: fig-b-cursor 12s infinite;
 }
 
 @keyframes fig-step {
@@ -920,30 +930,53 @@ a {
   }
 }
 
-/* 2021-06, 2024-06, 2027-06, 2031-06 */
+/* The second figure: three stops, four seconds each, 2020-06, 2022-06, 2024-06 (x = 70 + 38 a year from 2019) */
+.fig .b0,
+.fig .b1,
+.fig .b2 {
+  animation: fig-step3 12s infinite;
+  opacity: 0;
+}
+
+.fig .b1 {
+  animation-delay: -8s;
+  opacity: 1;
+}
+
+.fig .b2 {
+  animation-delay: -4s;
+}
+
+@keyframes fig-step3 {
+  0%,
+  33.2% {
+    opacity: 1;
+  }
+
+  33.3%,
+  100% {
+    opacity: 0;
+  }
+}
+
 @keyframes fig-b-cursor {
   0%,
-  20% {
-    transform: translateX(136.8px);
+  28% {
+    transform: translateX(123.96px);
   }
 
-  25%,
-  45% {
-    transform: translateX(256.8px);
+  33.3%,
+  61% {
+    transform: translateX(199.96px);
   }
 
-  50%,
-  70% {
-    transform: translateX(376.8px);
-  }
-
-  75%,
+  66.7%,
   95% {
-    transform: translateX(536.8px);
+    transform: translateX(275.96px);
   }
 
   100% {
-    transform: translateX(136.8px);
+    transform: translateX(123.96px);
   }
 }
 
@@ -959,6 +992,9 @@ a {
   .fig .s1,
   .fig .s2,
   .fig .s3,
+  .fig .b0,
+  .fig .b1,
+  .fig .b2,
   .fig-a-cursor,
   .fig-b-cursor,
   .fig-link {

@@ -106,15 +106,11 @@ export async function prepareHtml(source: string): Promise<{ html: string; toc: 
     hasFigures = true
     return `<pre class="mermaid">${code}</pre>`
   })
-  html = await replaceAsync(
-    html,
-    /<pre><code(?: class="language-([\w-]+)")?>([\s\S]*?)<\/code><\/pre>/g,
-    (_, lang = '', code = '') => highlight(lang, code),
-  )
+  html = await highlightCode(html)
   return { html, toc, hasFigures }
 }
 
-/** The code blocks of a piece of HTML coloured as `prepareHtml` colours them; for the landing page */
+/** The code blocks of a piece of HTML, coloured by `highlight`; for the documentation pages and the landing page */
 export async function highlightCode(html: string): Promise<string> {
   return replaceAsync(
     html,

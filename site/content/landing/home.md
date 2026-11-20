@@ -35,7 +35,7 @@ link resolved then. A delete is a version too: the document is not there from th
 
 A document is a JSON object of an entity type of the model, at an address such as `/ns/Person/ola`. A field holds a
 value, an embedded object that is part of the document and versioned with it, or a link to another document. A link
-is the address of that document, `/Company/fjord`, which has versions of its own. A read follows it to the version
+is the address of that document, `/Company/nordlys`, which has versions of its own. A read follows it to the version
 that was valid at the same instant. [The model](/docs/user/model/)
 
 ## How it works

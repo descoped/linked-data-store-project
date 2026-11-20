@@ -1,22 +1,23 @@
 // The living figures of the landing page: SVG drawn on the server and moved by CSS alone (globals.css, "Figures").
-// A read moves along the timeline and stops at four instants; at each stop the figure shows what LDS answers then.
-// The four states of a stop are the classes s0 to s3, shown one at a time. With reduced motion a figure shows one
-// still frame, the second stop. The data is the example of the documentation (concepts.md, Version and time).
+// A read moves along the timeline and stops at a few instants; at each stop the figure shows what LDS answers then.
+// The states of the stops are classes (s0 to s3 in the first figure, b0 to b2 in the second), shown one at a time.
+// With reduced motion a figure shows one still frame, its second stop. The data is the examples of concepts.md:
+// Version and time for the first figure, Snapshots: the time machine for the second.
 
 /** The x of an instant on the timeline: 40 px a year, from the start of 2019 */
 const x = (year: number): number => 40 + (year - 2019) * 40
 
 /** The year axis under a timeline */
-function Axis({ y }: { y: number }): React.ReactElement {
+function Axis({ y, sx = x }: { y: number; sx?: (year: number) => number }): React.ReactElement {
   const years = Array.from({ length: 15 }, (_, i) => 2019 + i)
   return (
     <g className="fig-axis">
-      <line x1={x(2019)} y1={y} x2={x(2033)} y2={y} />
+      <line x1={sx(2019)} y1={y} x2={sx(2033)} y2={y} />
       {years.map((year) => (
         <g key={year}>
-          <line x1={x(year)} y1={y} x2={x(year)} y2={y + 4} />
+          <line x1={sx(year)} y1={y} x2={sx(year)} y2={y + 4} />
           {year % 2 === 1 && (
-            <text className="fig-small" x={x(year)} y={y + 18} textAnchor="middle">
+            <text className="fig-small" x={sx(year)} y={y + 18} textAnchor="middle">
               {year}
             </text>
           )}
@@ -34,6 +35,9 @@ function Version({
   name,
   at,
   open = false,
+  gone = false,
+  prefix = 's',
+  sx = x,
 }: {
   from: number
   to: number
@@ -41,16 +45,19 @@ function Version({
   name: string
   at: number[]
   open?: boolean
+  gone?: boolean
+  prefix?: string
+  sx?: (year: number) => number
 }): React.ReactElement {
-  const w = x(to) - x(from)
+  const w = sx(to) - sx(from)
   return (
     <g>
-      <rect className="fig-bar" x={x(from)} y={y} width={w} height={24} rx={4} />
+      <rect className={gone ? 'fig-bar fig-bar-gone' : 'fig-bar'} x={sx(from)} y={y} width={w} height={24} rx={4} />
       {at.map((stop) => (
-        <rect key={stop} className={`fig-bar-on s${stop}`} x={x(from)} y={y} width={w} height={24} rx={4} />
+        <rect key={stop} className={`fig-bar-on ${prefix}${stop}`} x={sx(from)} y={y} width={w} height={24} rx={4} />
       ))}
-      {open && <path className="fig-open" d={`M${x(to) - 10} ${y + 6}l6 6-6 6`} />}
-      <text x={x(from) + w / 2} y={y + 16} textAnchor="middle">
+      {open && <path className="fig-open" d={`M${sx(to) - 10} ${y + 6}l6 6-6 6`} />}
+      <text className={gone ? 'fig-gone' : undefined} x={sx(from) + w / 2} y={y + 16} textAnchor="middle">
         {name}
       </text>
     </g>
@@ -102,28 +109,34 @@ export function TimeMachineFigure(): React.ReactElement {
   )
 }
 
+/** The x of an instant on the timeline of the second figure: 38 px a year from the start of 2019, after the row names */
+const xb = (year: number): number => 70 + (year - 2019) * 38
+
 /**
- * What a document is made of: Person/ola holds a value, an embedded address and a link to Company/fjord. Both
- * documents have their own versions; a read at an instant gives ola as it was then, and follows the link to fjord as
- * it was at the same instant.
+ * What a document is made of, on the snapshot example of concepts.md (Snapshots: the time machine): Person/ola holds a
+ * value, an embedded address and a link. Its first version (2020) is in Bergen with the employer /Company/nordlys,
+ * its second (2023) in Oslo with /Company/acme. Nordlys has a version from 2021 and is deleted from 2025; Acme has a
+ * version from 2020. A read at an instant gives ola as it was then and follows the link to the other document as it
+ * was at the same instant: at 2020-06 nordlys has no version yet, so the employer is null; at 2022-06 it is Nordlys;
+ * at 2024-06 it is Acme. Three stops, the classes b0 to b2.
  */
 export function CompositionFigure(): React.ReactElement {
   const stops = [
-    { at: '2021-06', street: 'Bryggen 3', city: 'Bergen', company: 'Fjord Fish' },
-    { at: '2024-06', street: 'Bryggen 3', city: 'Bergen', company: 'Fjord Seafood' },
-    { at: '2027-06', street: 'Storgata 1', city: 'Oslo', company: 'Fjord Seafood' },
-    { at: '2031-06', street: 'Storgata 1', city: 'Oslo', company: 'Fjord Group' },
+    { at: '2020-06', city: 'Bergen', link: '/Company/nordlys', target: 'Company/nordlys', answer: null },
+    { at: '2022-06', city: 'Bergen', link: '/Company/nordlys', target: 'Company/nordlys', answer: 'Nordlys' },
+    { at: '2024-06', city: 'Oslo', link: '/Company/acme', target: 'Company/acme', answer: 'Acme' },
   ]
   return (
-    <svg className="fig fig-b" viewBox="0 0 640 350" role="img" aria-labelledby="fig-b-title fig-b-desc">
+    <svg className="fig fig-b" viewBox="0 0 640 372" role="img" aria-labelledby="fig-b-title fig-b-desc">
       <title id="fig-b-title">What a document is made of</title>
       <desc id="fig-b-desc">
         The document Person/ola holds a name, an embedded address that is part of it, and a field employer that links
-        to the document Company/fjord. Both documents have versions of their own. A read at an instant gives ola as
-        it was then, and follows the link to fjord as it was at the same instant: in 2021 Bergen and Fjord Fish, in
-        2024 Bergen and Fjord Seafood, in 2027 Oslo and Fjord Seafood, in 2031 Oslo and Fjord Group.
+        to another document. Its first version, from 2020, is in Bergen with the employer Company/nordlys; its second,
+        from 2023, in Oslo with Company/acme. Nordlys has a version from 2021 and is deleted from 2025. A read at an
+        instant follows the link to the other document as it was at the same instant: in June 2020 Nordlys has no
+        version yet and the employer is null, in June 2022 it is Nordlys, in June 2024 it is Acme.
       </desc>
-      <rect className="fig-card" x={20} y={10} width={290} height={180} rx={10} />
+      <rect className="fig-card" x={20} y={10} width={290} height={150} rx={10} />
       <text className="fig-title" x={36} y={36}>
         Person/ola
       </text>
@@ -133,57 +146,65 @@ export function CompositionFigure(): React.ReactElement {
       <text x={36} y={88}>
         address:
       </text>
-      <rect className="fig-embedded" x={36} y={96} width={258} height={52} rx={6} />
+      <rect className="fig-embedded" x={110} y={72} width={184} height={26} rx={6} />
       {stops.map((stop, i) => (
-        <g key={stop.at} className={`s${i}`}>
-          <text x={52} y={117}>
-            street: <tspan className="fig-answer">&quot;{stop.street}&quot;</tspan>
-          </text>
-          <text x={52} y={139}>
+        <g key={stop.at} className={`b${i}`}>
+          <text x={122} y={90}>
             city: <tspan className="fig-answer">&quot;{stop.city}&quot;</tspan>
+          </text>
+          <text x={36} y={134}>
+            employer: <tspan className="fig-link-text">&quot;{stop.link}&quot;</tspan>
           </text>
         </g>
       ))}
-      <text x={36} y={174}>
-        employer: <tspan className="fig-link-text">&quot;/Company/fjord&quot;</tspan>
-      </text>
-      <path className="fig-link" d="M300 170C350 170 350 104 396 104" />
-      <path className="fig-arrow" d="M390 98l8 6-8 6" />
-      <rect className="fig-card" x={400} y={66} width={220} height={76} rx={10} />
-      <text className="fig-title" x={416} y={92}>
-        Company/fjord
-      </text>
+      <path className="fig-link" d="M300 130C350 130 350 70 396 70" />
+      <path className="fig-arrow" d="M390 64l8 6-8 6" />
+      <rect className="fig-card" x={400} y={32} width={220} height={76} rx={10} />
       {stops.map((stop, i) => (
-        <text key={stop.at} className={`s${i}`} x={416} y={122}>
-          name: <tspan className="fig-answer">&quot;{stop.company}&quot;</tspan>
-        </text>
+        <g key={stop.at} className={`b${i}`}>
+          <text className="fig-title" x={416} y={58}>
+            {stop.target}
+          </text>
+          {stop.answer ? (
+            <text x={416} y={88}>
+              name: <tspan className="fig-answer">&quot;{stop.answer}&quot;</tspan>
+            </text>
+          ) : (
+            <text className="fig-missing" x={416} y={88}>
+              no version yet → null
+            </text>
+          )}
+        </g>
       ))}
-      <text className="fig-small" x={400} y={162}>
+      <text className="fig-small" x={400} y={128}>
         a link: another document, read
       </text>
-      <text className="fig-small" x={400} y={176}>
+      <text className="fig-small" x={400} y={142}>
         at the same instant
       </text>
-      <text className="fig-small" x={36} y={208}>
+      <text className="fig-small" x={36} y={178}>
         the address is embedded: part of ola, versioned with it
       </text>
-      <text className="fig-small" x={34} y={244} textAnchor="end">
+      <text className="fig-small" x={62} y={234} textAnchor="end">
         ola
       </text>
-      <Version from={2020} to={2026} y={228} name="Bergen" at={[0, 1]} />
-      <Version from={2026} to={2033} y={228} name="Oslo" at={[2, 3]} open />
-      <text className="fig-small" x={34} y={276} textAnchor="end">
-        fjord
+      <Version sx={xb} from={2020} to={2023} y={218} name="Bergen" at={[0, 1]} prefix="b" />
+      <Version sx={xb} from={2023} to={2033} y={218} name="Oslo" at={[2]} prefix="b" open />
+      <text className="fig-small" x={62} y={266} textAnchor="end">
+        nordlys
       </text>
-      <Version from={2020} to={2023} y={260} name="Fjord Fish" at={[0]} />
-      <Version from={2023} to={2030} y={260} name="Fjord Seafood" at={[1, 2]} />
-      <Version from={2030} to={2033} y={260} name="Fjord Group" at={[3]} open />
-      <Axis y={298} />
-      <g className="fig-cursor fig-b-cursor" transform={`translate(${x(2024.42)} 0)`}>
-        <line x1={0} y1={218} x2={0} y2={298} />
-        <circle cx={0} cy={298} r={5} />
+      <Version sx={xb} from={2021} to={2025} y={250} name="Nordlys" at={[1]} prefix="b" />
+      <Version sx={xb} from={2025} to={2033} y={250} name="deleted" at={[]} prefix="b" gone open />
+      <text className="fig-small" x={62} y={298} textAnchor="end">
+        acme
+      </text>
+      <Version sx={xb} from={2020} to={2033} y={282} name="Acme" at={[2]} prefix="b" open />
+      <Axis sx={xb} y={320} />
+      <g className="fig-cursor fig-b-cursor" transform={`translate(${xb(2022.42)} 0)`}>
+        <line x1={0} y1={206} x2={0} y2={320} />
+        <circle cx={0} cy={320} r={5} />
         {stops.map((stop, i) => (
-          <text key={stop.at} className={`fig-small fig-at s${i}`} x={0} y={213} textAnchor="middle">
+          <text key={stop.at} className={`fig-small fig-at b${i}`} x={0} y={200} textAnchor="middle">
             as of {stop.at}
           </text>
         ))}

@@ -34,8 +34,8 @@ const figureOf: Record<string, () => React.ReactElement> = {
     <figure className="figure">
       <CompositionFigure />
       <figcaption>
-        Person/ola holds an embedded address and a link to Company/fjord. A read at each instant gives both as they
-        were then.
+        Person/ola holds an embedded address and a link to a company. A read at each instant gives ola as it was
+        then, and follows the link to the company as it was at the same instant.
       </figcaption>
     </figure>
   ),
