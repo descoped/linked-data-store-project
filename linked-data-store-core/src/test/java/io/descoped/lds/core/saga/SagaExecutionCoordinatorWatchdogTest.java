@@ -24,6 +24,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static io.descoped.lds.api.persistence.json.JsonTools.mapper;
 import static org.testng.Assert.assertEquals;
@@ -55,16 +56,23 @@ public class SagaExecutionCoordinatorWatchdogTest {
     })
     public void thatWatchdogIsTriggeredWhenSagaThreadpoolIsDeadlocked() throws InterruptedException {
         SagaExecutionCoordinator sec = server.getApplication().getSec();
+        /*
+         * The slow node holds its pool thread until the test releases it, after the watchdog has acted. A sleep of a
+         * fixed time does not do: whether the pool deadlocks then depends on how fast the requests arrive, and on a
+         * slow machine the sagas drain before the watchdog looks.
+         */
+        CountDownLatch releaseSlowNodes = new CountDownLatch(1);
 
         {
             /*
-             * Configure a  dummy slow node before saga fan-out in order to easily provoke deadlock.
+             * Configure a dummy slow node before saga fan-out in order to provoke deadlock.
              */
             final ObjectNode empty = mapper.createObjectNode();
             sec.sagaRepository.getAdapterLoader().register(new Adapter<>(JsonNode.class, "SlowNodeAdapter", (i, d) -> {
                 try {
-                    Thread.sleep(2000);
+                    releaseSlowNodes.await(60, TimeUnit.SECONDS);
                 } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
                 }
                 return empty;
             }));
@@ -85,15 +93,18 @@ public class SagaExecutionCoordinatorWatchdogTest {
             JsonNode provisionAgreementSirius = resource("provisionagreement_sirius.json");
 
             CountDownLatch requestsHandled = new CountDownLatch(sagaThreadPoolCoreSize);
+            AtomicInteger requestsFailed = new AtomicInteger();
             for (int i = 0; i < sagaThreadPoolCoreSize; i++) {
                 CompletableFuture.runAsync(() -> {
                     try {
                         client.put("/data/provisionagreement/100", provisionAgreementSirius.toString()).expect201Created();
                     } catch (Throwable t) {
+                        requestsFailed.incrementAndGet();
                         t.printStackTrace();
                     }
                     requestsHandled.countDown();
-                }).exceptionally(t -> {
+                }, executor).exceptionally(t -> {
+                    requestsFailed.incrementAndGet();
                     requestsHandled.countDown();
                     t.printStackTrace();
                     return null;
@@ -110,8 +121,8 @@ public class SagaExecutionCoordinatorWatchdogTest {
                 long previousCompletedTaskCount;
                 int i = 0;
                 do {
-                    if (i++ >= 5) {
-                        Assert.fail("Unable to provoke deadlock within 5 seconds, failing!");
+                    if (i++ >= 30) {
+                        Assert.fail("Unable to provoke deadlock within 30 seconds, failing!");
                     }
                     previousActiveCount = sec.threadPool.getActiveCount();
                     previousCompletedTaskCount = sec.threadPool.getCompletedTaskCount();
@@ -130,23 +141,26 @@ public class SagaExecutionCoordinatorWatchdogTest {
                 int i = 0;
                 do {
                     Thread.sleep(1000);
-                    if (++i >= 10) {
-                        Assert.fail("Unable to detect deadlock resolution attempt within 10 seconds, failing!");
+                    if (++i >= 30) {
+                        Assert.fail("Unable to detect deadlock resolution attempt within 30 seconds, failing!");
                     }
                     LOG.debug("Threadpool-state: {}", sec.threadPool.toString());
                 } while (sec.threadPoolWatchDog.deadlockResolutionAttemptCounter.get() == 0);
             }
 
             LOG.debug("Waiting for sagas to complete after deadlock resolution attempt");
-            shutdownAndAwaitTermination(executor);
+            releaseSlowNodes.countDown();
 
-            boolean allCompleted = requestsHandled.await(10, TimeUnit.SECONDS);
+            boolean allCompleted = requestsHandled.await(30, TimeUnit.SECONDS);
             if (allCompleted) {
                 LOG.debug("All sagas completed after deadlock resolution");
             } else {
                 Assert.fail("Not all sagas completed");
             }
+            assertEquals(requestsFailed.get(), 0, "requests that failed");
+            shutdownAndAwaitTermination(executor);
         } finally {
+            releaseSlowNodes.countDown();
             if (!executor.isShutdown()) {
                 shutdownAndAwaitTermination(executor);
             }

@@ -6,26 +6,30 @@ name: CI
 # master and release tags, and pull requests from this repository, add coverage and the SonarCloud analysis (not
 # gating; pull requests from forks get no token). CI publishes nothing, neither to Maven Central nor to an image
 # registry: releases are made by hand (see .claude/CLAUDE.md).
+# CI builds the products, so it runs only for what can change them: the root POM, the Maven wrapper, the
+# modules and this file. The documentation (docs/, README.md and every other Markdown file), LICENSE, .claude/,
+# Renovate's settings and claude.yml never start a build. A tag starts it whatever it changes: GitHub does not
+# apply paths to a tag.
 on:
   push:
     branches: [master]
     tags: ['[0-9]+.[0-9]+.[0-9]+']
-    paths-ignore:
-      - '**/*.md'
-      - 'LICENSE'
-      - '.claude/**'
-      - '.github/workflows/claude.yml'
-      - '.github/renovate.json'
-      - '.gitignore'
+    paths:
+      - 'pom.xml'
+      - 'mvnw'
+      - '.mvn/**'
+      - 'linked-data-store-*/**'
+      - '.github/workflows/ci.yml'
+      - '!**/*.md'
   pull_request:
     branches: [master]
-    paths-ignore:
-      - '**/*.md'
-      - 'LICENSE'
-      - '.claude/**'
-      - '.github/workflows/claude.yml'
-      - '.github/renovate.json'
-      - '.gitignore'
+    paths:
+      - 'pom.xml'
+      - 'mvnw'
+      - '.mvn/**'
+      - 'linked-data-store-*/**'
+      - '.github/workflows/ci.yml'
+      - '!**/*.md'
   # To run it on any branch by hand.
   workflow_dispatch:
 
