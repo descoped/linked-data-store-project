@@ -232,16 +232,16 @@ call to the provider. There is no "current" document in a store:
   document that is written later. A link is followed at the time of the read.
 
 ```mermaid
-flowchart LR
+flowchart TB
     model[["model, read once at start"]]
     subgraph write["a write at T"]
-        direction LR
+        direction TB
         w["PUT /ns/Person/ola?timestamp=T"] --> v["validated against the model"] --> s["saga"]
         s --> tx["transaction log entry<br/>schema: #quot;TODO#quot;"]
         s --> p["provider: the version<br/>DocumentKey(ns, Person, ola, T)"]
     end
     subgraph read["a read at T"]
-        direction LR
+        direction TB
         rest["GET /ns/Person/ola?timestamp=T"] --> q["provider: the latest version<br/>whose time is not after T"]
         gq["POST /graphql?snapshot=T"] --> q2["the same for every document<br/>the query reaches; links followed at T"]
     end
