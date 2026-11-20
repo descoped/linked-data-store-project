@@ -1,0 +1,72 @@
+MANAGED [City, Job, Person]
+root elementType=ROOT jsonTypes=[object] refTypes=[] required=[] isRequired=false description=null
+  property Address
+    Address elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[lines, street] isRequired=false description=""
+      property cities
+        cities elementType=REF jsonTypes=[array] refTypes=[City] required=[] isRequired=false description=""
+          items
+             elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+      property city
+        city elementType=REF jsonTypes=[string] refTypes=[City] required=[] isRequired=false description=""
+      property lines
+        lines elementType=EMBEDDED jsonTypes=[array] refTypes=[] required=[] isRequired=true description=""
+          items
+             elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+      property street
+        street elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description=""
+      property zip
+        zip elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+  property City
+    City elementType=MANAGED jsonTypes=[object] refTypes=[] required=[name] isRequired=false description=""
+      property name
+        name elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description=""
+  property Job
+    Job elementType=MANAGED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+      property boss
+        boss elementType=REF jsonTypes=[string] refTypes=[Person] required=[] isRequired=false description=""
+      property staff
+        staff elementType=REF jsonTypes=[array] refTypes=[Person] required=[] isRequired=false description=""
+          items
+             elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+      property title
+        title elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+  property Person
+    Person elementType=MANAGED jsonTypes=[object] refTypes=[] required=[homes, name, work] isRequired=false description=""
+      property home
+        home elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+      property homes
+        homes elementType=EMBEDDED jsonTypes=[array] refTypes=[] required=[] isRequired=true description=""
+          items
+            Address elementType=null jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+              property cities
+                cities elementType=REF jsonTypes=[array] refTypes=[City] required=[] isRequired=false description=""
+                  items
+                     elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+              property city
+                city elementType=REF jsonTypes=[string] refTypes=[City] required=[] isRequired=false description=""
+              property lines
+                lines elementType=EMBEDDED jsonTypes=[array] refTypes=[] required=[] isRequired=false description=""
+                  items
+                     elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+              property street
+                street elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+              property zip
+                zip elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+      property jobs
+        jobs elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+          property staff
+            staff elementType=REF jsonTypes=[array] refTypes=[Person] required=[] isRequired=false description=""
+              items
+                 elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+      property name
+        name elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description=""
+      property work
+        work elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=true description=""
+  property Zip
+    Zip elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[code] isRequired=false description=""
+      property area
+        area elementType=REF jsonTypes=[array] refTypes=[City] required=[] isRequired=false description=""
+          items
+             elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+      property code
+        code elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description=""

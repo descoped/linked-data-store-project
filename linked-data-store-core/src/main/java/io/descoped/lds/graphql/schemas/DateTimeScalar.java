@@ -46,11 +46,18 @@ final class DateTimeScalar {
 
         @Override
         public String serialize(Object input, GraphQLContext graphQLContext, Locale locale) throws CoercingSerializeException {
+            return text(input);
+        }
+
+        /**
+         * The text of a value: the date, the time with the fraction of a second the value has, and the offset.
+         */
+        private static String text(Object input) {
             OffsetDateTime offsetDateTime;
-            if (input instanceof OffsetDateTime) {
-                offsetDateTime = (OffsetDateTime) input;
-            } else if (input instanceof ZonedDateTime) {
-                offsetDateTime = ((ZonedDateTime) input).toOffsetDateTime();
+            if (input instanceof OffsetDateTime dateTime) {
+                offsetDateTime = dateTime;
+            } else if (input instanceof ZonedDateTime dateTime) {
+                offsetDateTime = dateTime.toOffsetDateTime();
             } else if (input instanceof String) {
                 try {
                     offsetDateTime = OffsetDateTime.parse(input.toString(), DateTimeFormatter.ISO_OFFSET_DATE_TIME);
@@ -85,7 +92,7 @@ final class DateTimeScalar {
 
         @Override
         public Value<?> valueToLiteral(Object input, GraphQLContext graphQLContext, Locale locale) {
-            return StringValue.newStringValue(serialize(input, graphQLContext, locale)).build();
+            return StringValue.newStringValue(text(input)).build();
         }
     }
 }

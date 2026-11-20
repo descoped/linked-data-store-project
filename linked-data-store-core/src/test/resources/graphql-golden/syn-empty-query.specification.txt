@@ -1,0 +1,14 @@
+MANAGED [A, B]
+root elementType=ROOT jsonTypes=[object] refTypes=[] required=[] isRequired=false description=null
+  property A
+    A elementType=MANAGED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+      property b
+        b elementType=REF jsonTypes=[array] refTypes=[B] required=[] isRequired=false description=""
+          items
+             elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+      property c
+        c elementType=REF jsonTypes=[string] refTypes=[B] required=[] isRequired=false description=""
+  property B
+    B elementType=MANAGED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+      property name
+        name elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""

@@ -1,0 +1,7 @@
+directive @domain on OBJECT
+directive @link(pagination: Boolean, reverseName: String) on FIELD_DEFINITION
+directive @zeta on FIELD_DEFINITION | OBJECT
+directive @alpha(n: Int = 1) on FIELD_DEFINITION | OBJECT
+type A @zeta @domain @alpha { b: [B] @zeta @link @alpha(n: 2) c: B @link @deprecated n: String @alpha }
+type B @domain { name: String }
+type Query { x: String }

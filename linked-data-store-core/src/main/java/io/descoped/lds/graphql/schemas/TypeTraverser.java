@@ -45,10 +45,27 @@ public class TypeTraverser {
         return children;
     }
 
+    /**
+     * Walks one element and everything under it, depth first, and shows each element to the visitor before its
+     * children.
+     *
+     * @param graphQLTypeVisitor the visitor
+     * @param root               the element to start from
+     * @return what the walk ended with
+     */
     public TraverserResult depthFirst(GraphQLTypeVisitor graphQLTypeVisitor, GraphQLSchemaElement root) {
         return depthFirst(graphQLTypeVisitor, Collections.singletonList(root));
     }
 
+    /**
+     * Walks several elements and everything under them, depth first and in the order given, and shows each
+     * element to the visitor before its children. An element that was entered before, under any of the roots, is
+     * not entered again: the visitor is told of it with {@code visitBackRef}.
+     *
+     * @param graphQLTypeVisitor the visitor
+     * @param roots              the elements to start from
+     * @return what the walk ended with
+     */
     public TraverserResult depthFirst(GraphQLTypeVisitor graphQLTypeVisitor, Collection<? extends GraphQLSchemaElement> roots) {
         Traverser<GraphQLSchemaElement> traverser = Traverser.depthFirst(TypeTraverser::children);
         return traverser.traverse(roots, new TraverserDelegateVisitor(graphQLTypeVisitor));

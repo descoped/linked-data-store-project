@@ -1,0 +1,284 @@
+MANAGED [Agent, AgentInRole, Cat, Dog, Owner, Role, contact, provisionagreement, support]
+root elementType=ROOT jsonTypes=[object] refTypes=[] required=[] isRequired=false description=null
+  property AdministrativeDetails
+    AdministrativeDetails elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[administrativeDetailType, values] isRequired=false description=""
+      property administrativeDetailType
+        administrativeDetailType elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description="The type (key) of the AdministrativeDetails-attribute."
+      property values
+        values elementType=EMBEDDED jsonTypes=[array] refTypes=[] required=[] isRequired=true description="One or more values (a list) for this administrativeDetailType."
+          items
+             elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+  property Agent
+    Agent elementType=MANAGED jsonTypes=[object] refTypes=[] required=[agentType, createdBy, createdDate, id, isExternal, name, validFrom, versionValidFrom] isRequired=false description="An actor that performs a role in relation to the statistical Business Process."
+      property administrativeDetails
+        administrativeDetails elementType=EMBEDDED jsonTypes=[array] refTypes=[] required=[] isRequired=false description="Administrative details (e.g. default language, documentation, localID, ...)."
+          items
+            AdministrativeDetails elementType=null jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+              property administrativeDetailType
+                administrativeDetailType elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description="The type (key) of the AdministrativeDetails-attribute."
+              property values
+                values elementType=EMBEDDED jsonTypes=[array] refTypes=[] required=[] isRequired=false description="One or more values (a list) for this administrativeDetailType."
+                  items
+                     elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+      property administrativeStatus
+        administrativeStatus elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description="Indicator for access to an item."
+      property agentDetails
+        agentDetails elementType=EMBEDDED jsonTypes=[array] refTypes=[] required=[] isRequired=false description="Agent details (e.g. contackt adress, email, phone, mobile ...)."
+          items
+            AgentDetails elementType=null jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+              property agentDetailType
+                agentDetailType elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description="The type (key) of the AgentDetails-attribute."
+              property values
+                values elementType=EMBEDDED jsonTypes=[array] refTypes=[] required=[] isRequired=false description="One or more values (a list) for this agentDetailType."
+                  items
+                     elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+      property agentInRoles
+        agentInRoles elementType=REF jsonTypes=[array] refTypes=[AgentInRole] required=[] isRequired=false description="Agent(s) acting in the Role(s) for this information object."
+          items
+             elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+      property agentType
+        agentType elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description="The type of agent."
+      property createdBy
+        createdBy elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description="Information object created by."
+      property createdDate
+        createdDate elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description="The date on which the information object was created"
+      property description
+        description elementType=EMBEDDED jsonTypes=[array] refTypes=[] required=[] isRequired=false description="The description of the information object"
+          items
+            MultilingualText elementType=null jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+              property languageCode
+                languageCode elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description="The language code. Use only ISO 639-1 codes."
+              property languageText
+                languageText elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description="The text (e.g. label, title, description)"
+      property id
+        id elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description="The global unique identifier (GUID) of the information object assigned by the owner agency."
+      property isExternal
+        isExternal elementType=EMBEDDED jsonTypes=[boolean] refTypes=[] required=[] isRequired=true description="Is this an external agent?"
+      property lastUpdatedBy
+        lastUpdatedBy elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description="Last updated by."
+      property lastUpdatedDate
+        lastUpdatedDate elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description="The date on which the object was last updated."
+      property name
+        name elementType=EMBEDDED jsonTypes=[array] refTypes=[] required=[] isRequired=true description="A term which designates a concept, in this case an information object. The identifying name will be the preferred designation. There will be many terms to designate the same information object, such as synonyms and terms in other languages."
+          items
+            MultilingualText elementType=null jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+              property languageCode
+                languageCode elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description="The language code. Use only ISO 639-1 codes."
+              property languageText
+                languageText elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description="The text (e.g. label, title, description)"
+      property parentAgents
+        parentAgents elementType=REF jsonTypes=[array] refTypes=[Agent] required=[] isRequired=false description=""
+          items
+             elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+      property validFrom
+        validFrom elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description="The date on which the information object is effective or valid. Set this date only once (constant). The same date for all versions of this information object."
+      property validUntil
+        validUntil elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description="The date on which the information object is no longer effective or valid."
+      property version
+        version elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description="Formal versioning of the information object. The version designator of the information object assigned by the owner agency. "major.minor.patch", e.g. "1.12.5"."
+      property versionRationale
+        versionRationale elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description="The reason for making this version of the information object."
+      property versionValidFrom
+        versionValidFrom elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description="The date on which the current version of the infomation object is effective or valid."
+  property AgentDetails
+    AgentDetails elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[agentDetailType, values] isRequired=false description=""
+      property agentDetailType
+        agentDetailType elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description="The type (key) of the AgentDetails-attribute."
+      property values
+        values elementType=EMBEDDED jsonTypes=[array] refTypes=[] required=[] isRequired=true description="One or more values (a list) for this agentDetailType."
+          items
+             elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+  property AgentInRole
+    AgentInRole elementType=MANAGED jsonTypes=[object] refTypes=[] required=[agents, createdBy, createdDate, id, name, role, validFrom, versionValidFrom] isRequired=false description="Reflects an agent acting in a specific role."
+      property administrativeDetails
+        administrativeDetails elementType=EMBEDDED jsonTypes=[array] refTypes=[] required=[] isRequired=false description="Administrative details (e.g. default language, documentation, localID, ...)."
+          items
+            AdministrativeDetails elementType=null jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+              property administrativeDetailType
+                administrativeDetailType elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description="The type (key) of the AdministrativeDetails-attribute."
+              property values
+                values elementType=EMBEDDED jsonTypes=[array] refTypes=[] required=[] isRequired=false description="One or more values (a list) for this administrativeDetailType."
+                  items
+                     elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+      property administrativeStatus
+        administrativeStatus elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description="Indicator for access to an item."
+      property agentInRoles
+        agentInRoles elementType=REF jsonTypes=[array] refTypes=[AgentInRole] required=[] isRequired=false description="Agent(s) acting in the Role(s) for this information object."
+          items
+             elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+      property agents
+        agents elementType=REF jsonTypes=[array] refTypes=[Agent] required=[] isRequired=true description=""
+          items
+             elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+      property createdBy
+        createdBy elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description="Information object created by."
+      property createdDate
+        createdDate elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description="The date on which the information object was created"
+      property description
+        description elementType=EMBEDDED jsonTypes=[array] refTypes=[] required=[] isRequired=false description="The description of the information object"
+          items
+            MultilingualText elementType=null jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+              property languageCode
+                languageCode elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description="The language code. Use only ISO 639-1 codes."
+              property languageText
+                languageText elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description="The text (e.g. label, title, description)"
+      property id
+        id elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description="The global unique identifier (GUID) of the information object assigned by the owner agency."
+      property lastUpdatedBy
+        lastUpdatedBy elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description="Last updated by."
+      property lastUpdatedDate
+        lastUpdatedDate elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description="The date on which the object was last updated."
+      property name
+        name elementType=EMBEDDED jsonTypes=[array] refTypes=[] required=[] isRequired=true description="A term which designates a concept, in this case an information object. The identifying name will be the preferred designation. There will be many terms to designate the same information object, such as synonyms and terms in other languages."
+          items
+            MultilingualText elementType=null jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+              property languageCode
+                languageCode elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description="The language code. Use only ISO 639-1 codes."
+              property languageText
+                languageText elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description="The text (e.g. label, title, description)"
+      property role
+        role elementType=REF jsonTypes=[string] refTypes=[Role] required=[] isRequired=true description="The responsible function involved in the statistical Business Process."
+      property validFrom
+        validFrom elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description="The date on which the information object is effective or valid. Set this date only once (constant). The same date for all versions of this information object."
+      property validUntil
+        validUntil elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description="The date on which the information object is no longer effective or valid."
+      property version
+        version elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description="Formal versioning of the information object. The version designator of the information object assigned by the owner agency. "major.minor.patch", e.g. "1.12.5"."
+      property versionRationale
+        versionRationale elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description="The reason for making this version of the information object."
+      property versionValidFrom
+        versionValidFrom elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description="The date on which the current version of the infomation object is effective or valid."
+  property Cat
+    Cat elementType=MANAGED jsonTypes=[object] refTypes=[] required=[name] isRequired=false description=""
+      property age
+        age elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+      property name
+        name elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description=""
+  property Dog
+    Dog elementType=MANAGED jsonTypes=[object] refTypes=[] required=[name] isRequired=false description=""
+      property age
+        age elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+      property name
+        name elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description=""
+  property MultilingualText
+    MultilingualText elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[languageCode, languageText] isRequired=false description=""
+      property languageCode
+        languageCode elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description="The language code. Use only ISO 639-1 codes."
+      property languageText
+        languageText elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description="The text (e.g. label, title, description)"
+  property Owner
+    Owner elementType=MANAGED jsonTypes=[object] refTypes=[] required=[email, name] isRequired=false description=""
+      property age
+        age elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+      property animals
+        animals elementType=REF jsonTypes=[array] refTypes=[Cat, Dog] required=[] isRequired=false description=""
+          items
+             elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+      property email
+        email elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description=""
+      property favorite
+        favorite elementType=REF jsonTypes=[array] refTypes=[Cat, Dog] required=[] isRequired=false description=""
+          items
+             elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+      property name
+        name elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description=""
+  property Role
+    Role elementType=MANAGED jsonTypes=[object] refTypes=[] required=[createdBy, createdDate, id, name, validFrom, versionValidFrom] isRequired=false description="The responsible function involved in the statistical Business Process."
+      property administrativeDetails
+        administrativeDetails elementType=EMBEDDED jsonTypes=[array] refTypes=[] required=[] isRequired=false description="Administrative details (e.g. default language, documentation, localID, ...)."
+          items
+            AdministrativeDetails elementType=null jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+              property administrativeDetailType
+                administrativeDetailType elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description="The type (key) of the AdministrativeDetails-attribute."
+              property values
+                values elementType=EMBEDDED jsonTypes=[array] refTypes=[] required=[] isRequired=false description="One or more values (a list) for this administrativeDetailType."
+                  items
+                     elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+      property administrativeStatus
+        administrativeStatus elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description="Indicator for access to an item."
+      property agentInRoles
+        agentInRoles elementType=REF jsonTypes=[array] refTypes=[AgentInRole] required=[] isRequired=false description="Agent(s) acting in the Role(s) for this information object."
+          items
+             elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+      property createdBy
+        createdBy elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description="Information object created by."
+      property createdDate
+        createdDate elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description="The date on which the information object was created"
+      property description
+        description elementType=EMBEDDED jsonTypes=[array] refTypes=[] required=[] isRequired=false description="The description of the information object"
+          items
+            MultilingualText elementType=null jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+              property languageCode
+                languageCode elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description="The language code. Use only ISO 639-1 codes."
+              property languageText
+                languageText elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description="The text (e.g. label, title, description)"
+      property id
+        id elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description="The global unique identifier (GUID) of the information object assigned by the owner agency."
+      property lastUpdatedBy
+        lastUpdatedBy elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description="Last updated by."
+      property lastUpdatedDate
+        lastUpdatedDate elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description="The date on which the object was last updated."
+      property name
+        name elementType=EMBEDDED jsonTypes=[array] refTypes=[] required=[] isRequired=true description="A term which designates a concept, in this case an information object. The identifying name will be the preferred designation. There will be many terms to designate the same information object, such as synonyms and terms in other languages."
+          items
+            MultilingualText elementType=null jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+              property languageCode
+                languageCode elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description="The language code. Use only ISO 639-1 codes."
+              property languageText
+                languageText elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description="The text (e.g. label, title, description)"
+      property validFrom
+        validFrom elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description="The date on which the information object is effective or valid. Set this date only once (constant). The same date for all versions of this information object."
+      property validUntil
+        validUntil elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description="The date on which the information object is no longer effective or valid."
+      property version
+        version elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description="Formal versioning of the information object. The version designator of the information object assigned by the owner agency. "major.minor.patch", e.g. "1.12.5"."
+      property versionRationale
+        versionRationale elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description="The reason for making this version of the information object."
+      property versionValidFrom
+        versionValidFrom elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description="The date on which the current version of the infomation object is effective or valid."
+  property address
+    address elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[city, street] isRequired=false description=""
+      property city
+        city elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description=""
+      property street
+        street elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description=""
+  property contact
+    contact elementType=MANAGED jsonTypes=[object] refTypes=[] required=[email, name] isRequired=false description=""
+      property email
+        email elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description=""
+      property name
+        name elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description=""
+  property provisionagreement
+    provisionagreement elementType=MANAGED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+      property address
+        address elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+      property contacts
+        contacts elementType=REF jsonTypes=[array] refTypes=[contact] required=[] isRequired=false description=""
+          items
+             elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+      property friend
+        friend elementType=REF jsonTypes=[string] refTypes=[contact] required=[] isRequired=false description=""
+      property name
+        name elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+      property support
+        support elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+          property businessSupport
+            businessSupport elementType=REF jsonTypes=[array] refTypes=[contact] required=[] isRequired=false description=""
+              items
+                 elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+          property technicalSupport
+            technicalSupport elementType=REF jsonTypes=[array] refTypes=[contact] required=[] isRequired=false description=""
+              items
+                 elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+  property support
+    support elementType=MANAGED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+      property businessSupport
+        businessSupport elementType=REF jsonTypes=[array] refTypes=[contact] required=[] isRequired=false description=""
+          items
+             elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+      property otherSupport
+        otherSupport elementType=REF jsonTypes=[string] refTypes=[contact] required=[] isRequired=false description=""
+      property technicalSupport
+        technicalSupport elementType=REF jsonTypes=[array] refTypes=[contact] required=[] isRequired=false description=""
+          items
+             elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""

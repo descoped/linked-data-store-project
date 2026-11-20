@@ -15,7 +15,7 @@ public class SearchIndexConfigurator {
     public static SearchIndex configureSearchIndex(DynamicConfiguration configuration) {
         boolean graphqlSearchEnabled = configuration.getBoolean("graphql.search.enabled", false);
         if (graphqlSearchEnabled) {
-            final String providerId = configuration.find("search.index.provider").orElse(null);
+            final String providerId = configuration.get("search.index.provider");
 
             ServiceLoader<SearchIndexProvider> loader = ServiceLoader.load(SearchIndexProvider.class);
             for (SearchIndexProvider provider : loader) {

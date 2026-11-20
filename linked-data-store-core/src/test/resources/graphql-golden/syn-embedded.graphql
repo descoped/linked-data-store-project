@@ -1,0 +1,18 @@
+directive @domain on OBJECT
+directive @link on FIELD_DEFINITION
+type Person @domain {
+  name: String!
+  home: Address
+  homes: [Address!]!
+  work: Address!
+  jobs: [Job]
+}
+type Address { street: String! city: City @link cities: [City] @link zip: Zip lines: [String!]! }
+type Zip { code: String! area: [City!] @link }
+type Job @domain { title: String boss: Person @link staff: [Person] @link }
+type City @domain { name: String! }
+type Query { x: String }
+
+scalar Date
+scalar DateTime
+scalar Time

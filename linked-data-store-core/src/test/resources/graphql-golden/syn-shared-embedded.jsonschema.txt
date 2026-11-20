@@ -1,0 +1,190 @@
+ORDER B,C,Z
+ENTITY B
+{
+  "#schema" : "http://json-schema.org/draft-04/schema#",
+  "$ref" : "#/definitions/B",
+  "definitions" : {
+    "B" : {
+      "properties" : {
+        "again" : {
+          "displayName" : "",
+          "items" : {
+            "$ref" : "#/definitions/Part"
+          },
+          "type" : "array"
+        },
+        "last" : {
+          "displayName" : ""
+        },
+        "more" : {
+          "displayName" : ""
+        },
+        "name" : {
+          "displayName" : "",
+          "type" : "string"
+        },
+        "part" : {
+          "displayName" : ""
+        }
+      },
+      "required" : [ "again", "more", "part" ],
+      "type" : "object"
+    },
+    "Inner" : {
+      "properties" : {
+        "_link_property_c" : {
+          "properties" : {
+            "C" : {
+              "type" : "null"
+            }
+          },
+          "type" : "object"
+        },
+        "c" : {
+          "displayName" : "",
+          "type" : "string"
+        }
+      },
+      "required" : [ ],
+      "type" : "object"
+    },
+    "Part" : {
+      "properties" : {
+        "_link_property_owner" : {
+          "properties" : {
+            "C" : {
+              "type" : "null"
+            }
+          },
+          "type" : "object"
+        },
+        "_link_property_owners" : {
+          "properties" : {
+            "C" : {
+              "type" : "null"
+            }
+          },
+          "type" : "object"
+        },
+        "inner" : {
+          "displayName" : ""
+        },
+        "label" : {
+          "displayName" : "",
+          "type" : "string"
+        },
+        "owner" : {
+          "displayName" : "",
+          "type" : "string"
+        },
+        "owners" : {
+          "displayName" : "",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        }
+      },
+      "required" : [ "label" ],
+      "type" : "object"
+    }
+  }
+}
+ENTITY C
+{
+  "#schema" : "http://json-schema.org/draft-04/schema#",
+  "$ref" : "#/definitions/C",
+  "definitions" : {
+    "C" : {
+      "properties" : {
+        "name" : {
+          "displayName" : "",
+          "type" : "string"
+        }
+      },
+      "required" : [ ],
+      "type" : "object"
+    }
+  }
+}
+ENTITY Z
+{
+  "#schema" : "http://json-schema.org/draft-04/schema#",
+  "$ref" : "#/definitions/Z",
+  "definitions" : {
+    "Inner" : {
+      "properties" : {
+        "_link_property_c" : {
+          "properties" : {
+            "C" : {
+              "type" : "null"
+            }
+          },
+          "type" : "object"
+        },
+        "c" : {
+          "displayName" : "",
+          "type" : "string"
+        }
+      },
+      "required" : [ ],
+      "type" : "object"
+    },
+    "Part" : {
+      "properties" : {
+        "_link_property_owner" : {
+          "properties" : {
+            "C" : {
+              "type" : "null"
+            }
+          },
+          "type" : "object"
+        },
+        "_link_property_owners" : {
+          "properties" : {
+            "C" : {
+              "type" : "null"
+            }
+          },
+          "type" : "object"
+        },
+        "inner" : {
+          "displayName" : ""
+        },
+        "label" : {
+          "displayName" : "",
+          "type" : "string"
+        },
+        "owner" : {
+          "displayName" : "",
+          "type" : "string"
+        },
+        "owners" : {
+          "displayName" : "",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        }
+      },
+      "required" : [ "label" ],
+      "type" : "object"
+    },
+    "Z" : {
+      "properties" : {
+        "part" : {
+          "displayName" : ""
+        },
+        "parts" : {
+          "displayName" : "",
+          "items" : {
+            "$ref" : "#/definitions/Part"
+          },
+          "type" : "array"
+        }
+      },
+      "required" : [ ],
+      "type" : "object"
+    }
+  }
+}

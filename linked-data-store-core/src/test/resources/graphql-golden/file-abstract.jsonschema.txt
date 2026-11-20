@@ -1,0 +1,110 @@
+ORDER Cat,Dog,Owner
+ENTITY Cat
+{
+  "#schema" : "http://json-schema.org/draft-04/schema#",
+  "$ref" : "#/definitions/Cat",
+  "definitions" : {
+    "Cat" : {
+      "description" : "This is a cat\n\nAnd this is a long description of what a cat is. It contains\nnew lines.",
+      "displayName" : "This is a cat",
+      "properties" : {
+        "age" : {
+          "displayName" : ""
+        },
+        "alive" : {
+          "displayName" : "",
+          "type" : "boolean"
+        },
+        "name" : {
+          "displayName" : "",
+          "type" : "string"
+        }
+      },
+      "required" : [ "name" ],
+      "type" : "object"
+    }
+  }
+}
+ENTITY Dog
+{
+  "#schema" : "http://json-schema.org/draft-04/schema#",
+  "$ref" : "#/definitions/Dog",
+  "definitions" : {
+    "Dog" : {
+      "description" : "This is a dog\n Kinda like a cat.",
+      "displayName" : "This is a dog",
+      "properties" : {
+        "age" : {
+          "displayName" : ""
+        },
+        "friendly" : {
+          "displayName" : "",
+          "type" : "boolean"
+        },
+        "name" : {
+          "displayName" : "",
+          "type" : "string"
+        }
+      },
+      "required" : [ "friendly", "name" ],
+      "type" : "object"
+    }
+  }
+}
+ENTITY Owner
+{
+  "#schema" : "http://json-schema.org/draft-04/schema#",
+  "$ref" : "#/definitions/Owner",
+  "definitions" : {
+    "Owner" : {
+      "properties" : {
+        "_link_property_animals" : {
+          "properties" : {
+            "Cat" : {
+              "type" : "null"
+            },
+            "Dog" : {
+              "type" : "null"
+            }
+          },
+          "type" : "object"
+        },
+        "_link_property_favorite" : {
+          "properties" : {
+            "Cat" : {
+              "type" : "null"
+            },
+            "Dog" : {
+              "type" : "null"
+            }
+          },
+          "type" : "object"
+        },
+        "age" : {
+          "displayName" : ""
+        },
+        "animals" : {
+          "displayName" : "",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "email" : {
+          "displayName" : "",
+          "type" : "string"
+        },
+        "favorite" : {
+          "displayName" : "",
+          "type" : "string"
+        },
+        "name" : {
+          "displayName" : "",
+          "type" : "string"
+        }
+      },
+      "required" : [ "email", "name" ],
+      "type" : "object"
+    }
+  }
+}

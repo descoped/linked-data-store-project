@@ -1,0 +1,161 @@
+query=Query mutation=null subscription=null
+directive-definition @domain locations=[OBJECT] description="Marks a type definition as a managed domain object"
+  arg searchable: Boolean default=Boolean:true value=null description=null
+directive-definition @link locations=[FIELD_DEFINITION] description="Defines a field as a link to another managed domain"
+  arg pagination: Boolean default=Boolean:true value=null description=null
+  arg reverseName: String default=null value=null description=null
+directive-definition @reverseLink locations=[FIELD_DEFINITION] description="Defines a field as a reverse link to another managed domain"
+  arg mappedBy: String default=null value=null description=null
+  arg pagination: Boolean default=Boolean:true value=null description=null
+GraphQLScalarType Boolean
+  description="Built-in Boolean"
+GraphQLScalarType ID
+  description="Built-in ID"
+GraphQLScalarType Int
+  description="Built-in Int"
+GraphQLObjectType PageInfo
+  description=null
+  interfaces=[]
+  field hasNextPage: Boolean! description=null deprecated=null
+    fetcher=default
+  field hasPreviousPage: Boolean! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType Query
+  description=null
+  interfaces=[]
+  field Search: SearchResultConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg filter: [TypeFilters] default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    arg query: String! default=null description=null
+    @search
+    fetcher=QueryConnectionFetcher{{entity=SearchResultConnection, nameSpace=ns, persistence=persistence, searchIndex=searchIndex}}
+  field Source: SourceConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceRootConnectionFetcher{{entityName=Source, nameSpace=ns, persistence=persistence}}
+  field SourceById: Source! description=null deprecated=null
+    arg id: ID! default=null description=null
+    @link
+      pagination: Boolean value=Boolean:false default=Boolean:true
+    fetcher=PersistenceFetcher{{backend=persistence, entity=Source, nameSpace=ns}}
+  field Target: TargetConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceRootConnectionFetcher{{entityName=Target, nameSpace=ns, persistence=persistence}}
+  field TargetById: Target! description=null deprecated=null
+    arg id: ID! default=null description=null
+    @link
+      pagination: Boolean value=Boolean:false default=Boolean:true
+    fetcher=PersistenceFetcher{{backend=persistence, entity=Target, nameSpace=ns}}
+GraphQLUnionType SearchResult
+  description="Union type for possible search results"
+  members=[Source, Target]
+  typeResolver=true
+GraphQLObjectType SearchResultConnection
+  description=null
+  interfaces=[]
+  field edges: [SearchResultEdge!]! description=null deprecated=null
+    fetcher=default
+  field pageInfo: PageInfo! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType SearchResultEdge
+  description=null
+  interfaces=[]
+  field cursor: String! description=null deprecated=null
+    fetcher=default
+  field node: SearchResult! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType Source
+  description=null
+  interfaces=[]
+  @domain
+  field foo: String description=null deprecated=null
+    fetcher=default
+  field link: TargetConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=Boolean:true default=null
+      reverseName: String value="sources" default=null
+    fetcher=PersistenceLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.link[], sourceEntityName=Source, targetEntityName=Target}}
+  field one: Target description=null deprecated=null
+    @link
+      pagination: Boolean value=null default=null
+      reverseName: String value="ones" default=null
+    fetcher=PersistenceLinkFetcher{{field=one, namespace=ns, pattern=pattern:/(?<type>Target)/(?<id>.*), persistence=persistence}}
+GraphQLObjectType SourceConnection
+  description=null
+  interfaces=[]
+  field edges: [SourceEdge!]! description=null deprecated=null
+    fetcher=default
+  field pageInfo: PageInfo! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType SourceEdge
+  description=null
+  interfaces=[]
+  field cursor: String! description=null deprecated=null
+    fetcher=default
+  field node: Source! description=null deprecated=null
+    fetcher=default
+GraphQLScalarType String
+  description="Built-in String"
+GraphQLObjectType Target
+  description=null
+  interfaces=[]
+  @domain
+  field back: [Source!]! description=null deprecated=null
+    @reverseLink
+      mappedBy: String value="$.link[]" default=null
+      pagination: Boolean value=Boolean:false default=null
+    fetcher=default
+  field bar: String description=null deprecated=null
+    fetcher=default
+  field ones: SourceConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @reverseLink
+      mappedBy: String value="$.one" default=null
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceReverseLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.one, sourceEntityName=Source, targetEntityName=Target}}
+  field sources: SourceConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @reverseLink
+      mappedBy: String value="$.link[]" default=null
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceReverseLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.link[], sourceEntityName=Source, targetEntityName=Target}}
+GraphQLObjectType TargetConnection
+  description=null
+  interfaces=[]
+  field edges: [TargetEdge!]! description=null deprecated=null
+    fetcher=default
+  field pageInfo: PageInfo! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType TargetEdge
+  description=null
+  interfaces=[]
+  field cursor: String! description=null deprecated=null
+    fetcher=default
+  field node: Target! description=null deprecated=null
+    fetcher=default
+GraphQLEnumType TypeFilters
+  description="Defines valid type filters"
+  value Source = "Source" description=null deprecated=null
+  value Target = "Target" description=null deprecated=null

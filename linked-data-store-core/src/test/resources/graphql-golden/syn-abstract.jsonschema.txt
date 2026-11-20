@@ -1,0 +1,165 @@
+ORDER Ball,Cat,Dog,Mouse
+ENTITY Ball
+{
+  "#schema" : "http://json-schema.org/draft-04/schema#",
+  "$ref" : "#/definitions/Ball",
+  "definitions" : {
+    "Ball" : {
+      "properties" : {
+        "colour" : {
+          "displayName" : "",
+          "type" : "string"
+        }
+      },
+      "required" : [ ],
+      "type" : "object"
+    }
+  }
+}
+ENTITY Cat
+{
+  "#schema" : "http://json-schema.org/draft-04/schema#",
+  "$ref" : "#/definitions/Cat",
+  "definitions" : {
+    "Cat" : {
+      "properties" : {
+        "_link_property_friends" : {
+          "properties" : {
+            "Cat" : {
+              "type" : "null"
+            }
+          },
+          "type" : "object"
+        },
+        "_link_property_mate" : {
+          "properties" : {
+            "Dog" : {
+              "type" : "null"
+            }
+          },
+          "type" : "object"
+        },
+        "_link_property_prey" : {
+          "properties" : {
+            "Ball" : {
+              "type" : "null"
+            },
+            "Mouse" : {
+              "type" : "null"
+            }
+          },
+          "type" : "object"
+        },
+        "_link_property_toy" : {
+          "properties" : {
+            "Ball" : {
+              "type" : "null"
+            },
+            "Mouse" : {
+              "type" : "null"
+            }
+          },
+          "type" : "object"
+        },
+        "age" : {
+          "displayName" : ""
+        },
+        "friends" : {
+          "displayName" : "",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "mate" : {
+          "displayName" : "",
+          "type" : "string"
+        },
+        "name" : {
+          "displayName" : "",
+          "type" : "string"
+        },
+        "prey" : {
+          "displayName" : "",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "toy" : {
+          "displayName" : "",
+          "type" : "string"
+        }
+      },
+      "required" : [ "name" ],
+      "type" : "object"
+    }
+  }
+}
+ENTITY Dog
+{
+  "#schema" : "http://json-schema.org/draft-04/schema#",
+  "$ref" : "#/definitions/Dog",
+  "definitions" : {
+    "Dog" : {
+      "properties" : {
+        "_link_property_friends" : {
+          "properties" : {
+            "Cat" : {
+              "type" : "null"
+            }
+          },
+          "type" : "object"
+        },
+        "_link_property_mate" : {
+          "properties" : {
+            "Dog" : {
+              "type" : "null"
+            }
+          },
+          "type" : "object"
+        },
+        "friends" : {
+          "displayName" : "",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "mate" : {
+          "displayName" : "",
+          "type" : "string"
+        },
+        "name" : {
+          "displayName" : "",
+          "type" : "string"
+        },
+        "owner" : {
+          "displayName" : ""
+        },
+        "owners" : {
+          "displayName" : "",
+          "type" : "array"
+        }
+      },
+      "required" : [ "name", "name", "owners" ],
+      "type" : "object"
+    }
+  }
+}
+ENTITY Mouse
+{
+  "#schema" : "http://json-schema.org/draft-04/schema#",
+  "$ref" : "#/definitions/Mouse",
+  "definitions" : {
+    "Mouse" : {
+      "properties" : {
+        "size" : {
+          "displayName" : ""
+        }
+      },
+      "required" : [ "size" ],
+      "type" : "object"
+    }
+  }
+}

@@ -93,11 +93,12 @@ public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
 
         // handle scalar types(string, date-time)
         GraphQLType graphQLType = GraphQLTypeUtil.unwrapOne(node.getType());
-        if (GraphQLTypeUtil.isScalar(graphQLType)) {
-            if (name(graphQLType).equalsIgnoreCase("string")) {
+        if (graphQLType instanceof GraphQLScalarType scalarType) {
+            String scalarName = scalarType.getName();
+            if (scalarName.equalsIgnoreCase("string")) {
                 propertyElements.put("type", "string");
             }
-            switch (name(graphQLType)) {
+            switch (scalarName) {
                 case "String":
                     propertyElements.put("type", "string");
                     break;
@@ -232,8 +233,8 @@ public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
                     }
                 }
             }
-        } else if (type instanceof GraphQLScalarType) {
-            if (name(type).equalsIgnoreCase("string")) {
+        } else if (type instanceof GraphQLScalarType scalarType) {
+            if (scalarType.getName().equalsIgnoreCase("string")) {
                 itemList.put("type", "string");
             }
             fieldProperties.put("items", itemList);

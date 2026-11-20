@@ -1,0 +1,42 @@
+MANAGED [Ball, Cat, Dog, Mouse]
+root elementType=ROOT jsonTypes=[object] refTypes=[] required=[] isRequired=false description=null
+  property Ball
+    Ball elementType=MANAGED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+      property colour
+        colour elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+  property Cat
+    Cat elementType=MANAGED jsonTypes=[object] refTypes=[] required=[name] isRequired=false description=""
+      property age
+        age elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+      property friends
+        friends elementType=REF jsonTypes=[array] refTypes=[Cat] required=[] isRequired=false description=""
+          items
+             elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+      property mate
+        mate elementType=REF jsonTypes=[string] refTypes=[Dog] required=[] isRequired=false description=""
+      property name
+        name elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description=""
+      property prey
+        prey elementType=REF jsonTypes=[array] refTypes=[Ball, Mouse] required=[] isRequired=false description=""
+          items
+             elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+      property toy
+        toy elementType=REF jsonTypes=[string] refTypes=[Ball, Mouse] required=[] isRequired=false description=""
+  property Dog
+    Dog elementType=MANAGED jsonTypes=[object] refTypes=[] required=[name, owners] isRequired=false description=""
+      property friends
+        friends elementType=REF jsonTypes=[array] refTypes=[Cat] required=[] isRequired=false description=""
+          items
+             elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+      property mate
+        mate elementType=REF jsonTypes=[string] refTypes=[Dog] required=[] isRequired=false description=""
+      property name
+        name elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description=""
+      property owner
+        owner elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+      property owners
+        owners elementType=EMBEDDED jsonTypes=[array] refTypes=[] required=[] isRequired=true description=""
+  property Mouse
+    Mouse elementType=MANAGED jsonTypes=[object] refTypes=[] required=[size] isRequired=false description=""
+      property size
+        size elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=true description=""

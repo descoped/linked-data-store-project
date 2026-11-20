@@ -1,0 +1,275 @@
+query=Query mutation=null subscription=null
+directive-definition @domain locations=[OBJECT] description="Marks a type definition as a managed domain object"
+  arg searchable: Boolean default=Boolean:true value=null description=null
+directive-definition @link locations=[FIELD_DEFINITION] description="Defines a field as a link to another managed domain"
+  arg pagination: Boolean default=Boolean:true value=null description=null
+  arg reverseName: String default=null value=null description=null
+directive-definition @reverseLink locations=[FIELD_DEFINITION] description="Defines a field as a reverse link to another managed domain"
+  arg mappedBy: String default=null value=null description=null
+  arg pagination: Boolean default=Boolean:true value=null description=null
+GraphQLScalarType Boolean
+  description="Built-in Boolean"
+GraphQLScalarType Date
+  description="An RFC-3339 compliant Full Date Scalar"
+GraphQLScalarType DateTime
+  description="An RFC-3339 compliant DateTime Scalar"
+GraphQLScalarType Float
+  description="Built-in Float"
+GraphQLObjectType House
+  description=null
+  interfaces=[]
+  @domain
+    searchable: Boolean value=Boolean:true default=null
+  field owners: PersonConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @reverseLink
+      mappedBy: String value="$.houses[]" default=null
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceReverseLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.houses[], sourceEntityName=Person, targetEntityName=House}}
+  field street: String! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType HouseConnection
+  description=null
+  interfaces=[]
+  field edges: [HouseEdge!]! description=null deprecated=null
+    fetcher=default
+  field pageInfo: PageInfo! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType HouseEdge
+  description=null
+  interfaces=[]
+  field cursor: String! description=null deprecated=null
+    fetcher=default
+  field node: House! description=null deprecated=null
+    fetcher=default
+GraphQLScalarType ID
+  description="Built-in ID"
+GraphQLScalarType Int
+  description="Built-in Int"
+GraphQLEnumType Kind
+  description=null
+  value A = "A" description=null deprecated=null
+  value B = "B" description=null deprecated=null
+GraphQLObjectType PageInfo
+  description=null
+  interfaces=[]
+  field hasNextPage: Boolean! description=null deprecated=null
+    fetcher=default
+  field hasPreviousPage: Boolean! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType Person
+  description="A person\nwith two lines"
+  interfaces=[]
+  @domain
+    searchable: Boolean value=null default=null
+  field age: Int description=null deprecated=null
+    fetcher=default
+  field at: Time description=null deprecated=null
+    fetcher=default
+  field best: Pet description=null deprecated=null
+    @link
+      pagination: Boolean value=null default=null
+      reverseName: String value="bestOf" default=null
+    fetcher=PersistenceLinkFetcher{{field=best, namespace=ns, pattern=pattern:/(?<type>Pet)/(?<id>.*), persistence=persistence}}
+  field born: Date description=null deprecated=null
+    fetcher=default
+  field codes: [String!] description=null deprecated=null
+    fetcher=default
+  field friends: PersonConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=null default=null
+      reverseName: String value=null default=null
+    fetcher=PersistenceLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.friends[], sourceEntityName=Person, targetEntityName=Person}}
+  field height: Float! description=null deprecated=null
+    fetcher=default
+  field houses: HouseConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=Boolean:true default=null
+      reverseName: String value="owners" default=null
+    fetcher=PersistenceLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.houses[], sourceEntityName=Person, targetEntityName=House}}
+  field key: ID! description=null deprecated=null
+    fetcher=default
+  field kind: Kind! description=null deprecated=null
+    fetcher=default
+  field kinds: [Kind] description=null deprecated=null
+    fetcher=default
+  field name: String! description="the name" deprecated=null
+    fetcher=default
+  field nick: [String!]! description=null deprecated=null
+    fetcher=default
+  field ok: Boolean description=null deprecated=null
+    fetcher=default
+  field pets: [Pet!]! description=null deprecated=null
+    @link
+      pagination: Boolean value=Boolean:false default=null
+      reverseName: String value=null default=null
+    fetcher=PersistenceLinksFetcher{{field=pets, namespace=ns, pattern=pattern:/Pet/(?<id>.*), persistence=persistence, target=Pet}}
+  field reversePersonFriends: PersonConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @reverseLink
+      mappedBy: String value="$.friends[]" default=null
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceReverseLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.friends[], sourceEntityName=Person, targetEntityName=Person}}
+  field seen: DateTime! description=null deprecated=null
+    fetcher=default
+  field tags: [String] description=null deprecated=null
+    fetcher=default
+  field worst: Pet! description=null deprecated=null
+    @link
+      pagination: Boolean value=null default=null
+      reverseName: String value=null default=null
+    fetcher=PersistenceLinkFetcher{{field=worst, namespace=ns, pattern=pattern:/(?<type>Pet)/(?<id>.*), persistence=persistence}}
+GraphQLObjectType PersonConnection
+  description=null
+  interfaces=[]
+  field edges: [PersonEdge!]! description=null deprecated=null
+    fetcher=default
+  field pageInfo: PageInfo! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType PersonEdge
+  description=null
+  interfaces=[]
+  field cursor: String! description=null deprecated=null
+    fetcher=default
+  field node: Person! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType Pet
+  description=null
+  interfaces=[]
+  @domain
+    searchable: Boolean value=Boolean:false default=null
+  field bestOf: PersonConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @reverseLink
+      mappedBy: String value="$.best" default=null
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceReverseLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.best, sourceEntityName=Person, targetEntityName=Pet}}
+  field name: String description=null deprecated=null
+    fetcher=default
+  field reversePersonPets: PersonConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @reverseLink
+      mappedBy: String value="$.pets[]" default=null
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceReverseLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.pets[], sourceEntityName=Person, targetEntityName=Pet}}
+  field reversePersonWorst: PersonConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @reverseLink
+      mappedBy: String value="$.worst" default=null
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceReverseLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.worst, sourceEntityName=Person, targetEntityName=Pet}}
+GraphQLObjectType PetConnection
+  description=null
+  interfaces=[]
+  field edges: [PetEdge!]! description=null deprecated=null
+    fetcher=default
+  field pageInfo: PageInfo! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType PetEdge
+  description=null
+  interfaces=[]
+  field cursor: String! description=null deprecated=null
+    fetcher=default
+  field node: Pet! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType Query
+  description=null
+  interfaces=[]
+  field House: HouseConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceRootConnectionFetcher{{entityName=House, nameSpace=ns, persistence=persistence}}
+  field HouseById: House! description=null deprecated=null
+    arg id: ID! default=null description=null
+    @link
+      pagination: Boolean value=Boolean:false default=Boolean:true
+    fetcher=PersistenceFetcher{{backend=persistence, entity=House, nameSpace=ns}}
+  field Person: PersonConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceRootConnectionFetcher{{entityName=Person, nameSpace=ns, persistence=persistence}}
+  field PersonById: Person! description=null deprecated=null
+    arg id: ID! default=null description=null
+    @link
+      pagination: Boolean value=Boolean:false default=Boolean:true
+    fetcher=PersistenceFetcher{{backend=persistence, entity=Person, nameSpace=ns}}
+  field Pet: PetConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceRootConnectionFetcher{{entityName=Pet, nameSpace=ns, persistence=persistence}}
+  field PetById: Pet! description=null deprecated=null
+    arg id: ID! default=null description=null
+    @link
+      pagination: Boolean value=Boolean:false default=Boolean:true
+    fetcher=PersistenceFetcher{{backend=persistence, entity=Pet, nameSpace=ns}}
+  field Search: SearchResultConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg filter: [TypeFilters] default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    arg query: String! default=null description=null
+    @search
+    fetcher=QueryConnectionFetcher{{entity=SearchResultConnection, nameSpace=ns, persistence=persistence, searchIndex=searchIndex}}
+GraphQLUnionType SearchResult
+  description="Union type for possible search results"
+  members=[House, Person, Pet]
+  typeResolver=true
+GraphQLObjectType SearchResultConnection
+  description=null
+  interfaces=[]
+  field edges: [SearchResultEdge!]! description=null deprecated=null
+    fetcher=default
+  field pageInfo: PageInfo! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType SearchResultEdge
+  description=null
+  interfaces=[]
+  field cursor: String! description=null deprecated=null
+    fetcher=default
+  field node: SearchResult! description=null deprecated=null
+    fetcher=default
+GraphQLScalarType String
+  description="Built-in String"
+GraphQLScalarType Time
+  description="An RFC-3339 compliant Full Time Scalar"
+GraphQLEnumType TypeFilters
+  description="Defines valid type filters"
+  value House = "House" description=null deprecated=null
+  value Person = "Person" description=null deprecated=null
+  value Pet = "Pet" description=null deprecated=null

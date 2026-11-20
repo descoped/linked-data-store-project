@@ -1,0 +1,32 @@
+MANAGED [Cat, Dog, Owner]
+root elementType=ROOT jsonTypes=[object] refTypes=[] required=[] isRequired=false description=null
+  property Cat
+    Cat elementType=MANAGED jsonTypes=[object] refTypes=[] required=[name] isRequired=false description="This is a cat\n\nAnd this is a long description of what a cat is. It contains\nnew lines."
+      property age
+        age elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+      property alive
+        alive elementType=EMBEDDED jsonTypes=[boolean] refTypes=[] required=[] isRequired=false description=""
+      property name
+        name elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description=""
+  property Dog
+    Dog elementType=MANAGED jsonTypes=[object] refTypes=[] required=[friendly, name] isRequired=false description="This is a dog\n Kinda like a cat."
+      property age
+        age elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+      property friendly
+        friendly elementType=EMBEDDED jsonTypes=[boolean] refTypes=[] required=[] isRequired=true description=""
+      property name
+        name elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description=""
+  property Owner
+    Owner elementType=MANAGED jsonTypes=[object] refTypes=[] required=[email, name] isRequired=false description=""
+      property age
+        age elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+      property animals
+        animals elementType=REF jsonTypes=[array] refTypes=[Cat, Dog] required=[] isRequired=false description=""
+          items
+             elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+      property email
+        email elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description=""
+      property favorite
+        favorite elementType=REF jsonTypes=[string] refTypes=[Cat, Dog] required=[] isRequired=false description=""
+      property name
+        name elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description=""

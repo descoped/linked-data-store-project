@@ -1,0 +1,8 @@
+directive @domain on OBJECT
+directive @link on FIELD_DEFINITION
+type Z @domain { part: Part parts: [Part] }
+type B @domain { part: Part! name: String again: [Part!]! more: [Part!]! last: [Part!] }
+type Part { owner: C @link owners: [C] @link label: String! inner: Inner }
+type Inner { c: C @link }
+type C @domain { name: String }
+type Query { x: String }

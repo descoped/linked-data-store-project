@@ -1,0 +1,60 @@
+MANAGED [House, Person, Pet]
+root elementType=ROOT jsonTypes=[object] refTypes=[] required=[] isRequired=false description=null
+  property House
+    House elementType=MANAGED jsonTypes=[object] refTypes=[] required=[street] isRequired=false description=""
+      property street
+        street elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description=""
+  property Person
+    Person elementType=MANAGED jsonTypes=[object] refTypes=[] required=[height, key, kind, name, nick, pets, seen, worst] isRequired=false description="A person\nwith two lines"
+      property age
+        age elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+      property at
+        at elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+      property best
+        best elementType=REF jsonTypes=[string] refTypes=[Pet] required=[] isRequired=false description=""
+      property born
+        born elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+      property codes
+        codes elementType=EMBEDDED jsonTypes=[array] refTypes=[] required=[] isRequired=false description=""
+          items
+             elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+      property friends
+        friends elementType=REF jsonTypes=[array] refTypes=[Person] required=[] isRequired=false description=""
+          items
+             elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+      property height
+        height elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=true description=""
+      property houses
+        houses elementType=REF jsonTypes=[array] refTypes=[House] required=[] isRequired=false description=""
+          items
+             elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+      property key
+        key elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=true description=""
+      property kind
+        kind elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description=""
+      property kinds
+        kinds elementType=EMBEDDED jsonTypes=[array] refTypes=[] required=[] isRequired=false description=""
+      property name
+        name elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description="the name"
+      property nick
+        nick elementType=EMBEDDED jsonTypes=[array] refTypes=[] required=[] isRequired=true description=""
+          items
+             elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+      property ok
+        ok elementType=EMBEDDED jsonTypes=[boolean] refTypes=[] required=[] isRequired=false description=""
+      property pets
+        pets elementType=REF jsonTypes=[array] refTypes=[Pet] required=[] isRequired=true description=""
+          items
+             elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+      property seen
+        seen elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description=""
+      property tags
+        tags elementType=EMBEDDED jsonTypes=[array] refTypes=[] required=[] isRequired=false description=""
+          items
+             elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+      property worst
+        worst elementType=REF jsonTypes=[string] refTypes=[Pet] required=[] isRequired=true description=""
+  property Pet
+    Pet elementType=MANAGED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+      property name
+        name elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""

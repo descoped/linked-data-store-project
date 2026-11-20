@@ -1,0 +1,796 @@
+query=Query mutation=null subscription=null
+directive-definition @domain locations=[OBJECT] description="Marks a type definition as a managed domain object"
+  arg searchable: Boolean default=Boolean:true value=null description=null
+directive-definition @link locations=[FIELD_DEFINITION] description="Defines a field as a link to another managed domain"
+  arg pagination: Boolean default=Boolean:true value=null description=null
+  arg reverseName: String default=null value=null description=null
+directive-definition @reverseLink locations=[FIELD_DEFINITION] description="Defines a field as a reverse link to another managed domain"
+  arg mappedBy: String default=null value=null description=null
+  arg pagination: Boolean default=Boolean:true value=null description=null
+GraphQLEnumType AdministrativeDetailType
+  description=null
+  value ALIAS = "ALIAS" description=null deprecated=null
+  value ANNOTATION = "ANNOTATION" description=null deprecated=null
+  value DEFAULTLANGUAGE = "DEFAULTLANGUAGE" description=null deprecated=null
+  value DOCUMENTATION = "DOCUMENTATION" description=null deprecated=null
+  value LOCALID = "LOCALID" description=null deprecated=null
+  value ORIGIN = "ORIGIN" description=null deprecated=null
+  value URL = "URL" description=null deprecated=null
+GraphQLObjectType AdministrativeDetails
+  description="A generic and expandable key-value-store for adding present and future AdministrativeDetails-attributes to any information object."
+  interfaces=[]
+  field administrativeDetailType: AdministrativeDetailType! description="The type (key) of the AdministrativeDetails-attribute." deprecated=null
+    fetcher=default
+  field values: [String!]! description="One or more values (a list) for this administrativeDetailType." deprecated=null
+    fetcher=default
+GraphQLEnumType AdministrativeStatusType
+  description=null
+  value DEPRECATED = "DEPRECATED" description=null deprecated=null
+  value DRAFT = "DRAFT" description=null deprecated=null
+  value INTERNAL = "INTERNAL" description=null deprecated=null
+  value OPEN = "OPEN" description=null deprecated=null
+GraphQLObjectType Agent
+  description="An actor that performs a role in relation to the statistical Business Process."
+  interfaces=[IdentifiableArtefact]
+  @domain
+  field administrativeDetails: [AdministrativeDetails!] description="Administrative details (e.g. default language, documentation, localID, ...)." deprecated=null
+    fetcher=default
+  field administrativeStatus: AdministrativeStatusType description="Indicator for access to an item." deprecated=null
+    fetcher=default
+  field agentDetails: [AgentDetails!] description="Agent details (e.g. contackt adress, email, phone, mobile ...)." deprecated=null
+    fetcher=default
+  field agentInRoles: AgentInRoleConnection description="Agent(s) acting in the Role(s) for this information object." deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+    fetcher=PersistenceLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.agentInRoles[], sourceEntityName=Agent, targetEntityName=AgentInRole}}
+  field agentType: AgentType! description="The type of agent." deprecated=null
+    fetcher=default
+  field createdBy: String! description="Information object created by." deprecated=null
+    fetcher=default
+  field createdDate: DateTime! description="The date on which the information object was created" deprecated=null
+    fetcher=default
+  field description: [MultilingualText!] description="The description of the information object" deprecated=null
+    fetcher=default
+  field id: String! description="The global unique identifier (GUID) of the information object assigned by the owner agency." deprecated=null
+    fetcher=default
+  field isExternal: Boolean! description="Is this an external agent?" deprecated=null
+    fetcher=default
+  field lastUpdatedBy: String description="Last updated by." deprecated=null
+    fetcher=default
+  field lastUpdatedDate: DateTime description="The date on which the object was last updated." deprecated=null
+    fetcher=default
+  field name: [MultilingualText!]! description="A term which designates a concept, in this case an information object. The identifying name will be the preferred designation. There will be many terms to designate the same information object, such as synonyms and terms in other languages." deprecated=null
+    fetcher=default
+  field parentAgents: AgentConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+    fetcher=PersistenceLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.parentAgents[], sourceEntityName=Agent, targetEntityName=Agent}}
+  field reverseAgentInRoleAgents: AgentInRoleConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @reverseLink
+      mappedBy: String value="$.agents[]" default=null
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceReverseLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.agents[], sourceEntityName=AgentInRole, targetEntityName=Agent}}
+  field reverseAgentParentAgents: AgentConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @reverseLink
+      mappedBy: String value="$.parentAgents[]" default=null
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceReverseLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.parentAgents[], sourceEntityName=Agent, targetEntityName=Agent}}
+  field validFrom: DateTime! description="The date on which the information object is effective or valid. Set this date only once (constant). The same date for all versions of this information object." deprecated=null
+    fetcher=default
+  field validUntil: DateTime description="The date on which the information object is no longer effective or valid." deprecated=null
+    fetcher=default
+  field version: String description="Formal versioning of the information object. The version designator of the information object assigned by the owner agency. "major.minor.patch", e.g. "1.12.5"." deprecated=null
+    fetcher=default
+  field versionRationale: [MultilingualText!] description="The reason for making this version of the information object." deprecated=null
+    fetcher=default
+  field versionValidFrom: DateTime! description="The date on which the current version of the infomation object is effective or valid." deprecated=null
+    fetcher=default
+GraphQLObjectType AgentConnection
+  description=null
+  interfaces=[]
+  field edges: [AgentEdge!]! description=null deprecated=null
+    fetcher=default
+  field pageInfo: PageInfo! description=null deprecated=null
+    fetcher=default
+GraphQLEnumType AgentDetailType
+  description=null
+  value CONTACT_ADDRESS = "CONTACT_ADDRESS" description=null deprecated=null
+  value CONTACT_EMAIL = "CONTACT_EMAIL" description=null deprecated=null
+  value CONTACT_MOBILE = "CONTACT_MOBILE" description=null deprecated=null
+  value CONTACT_PHONE = "CONTACT_PHONE" description=null deprecated=null
+GraphQLObjectType AgentDetails
+  description="A generic and expandable key-value-store for adding present and future AgentDetails-attributes to the Agent-object."
+  interfaces=[]
+  field agentDetailType: AgentDetailType! description="The type (key) of the AgentDetails-attribute." deprecated=null
+    fetcher=default
+  field values: [String!]! description="One or more values (a list) for this agentDetailType." deprecated=null
+    fetcher=default
+GraphQLObjectType AgentEdge
+  description=null
+  interfaces=[]
+  field cursor: String! description=null deprecated=null
+    fetcher=default
+  field node: Agent! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType AgentInRole
+  description="Reflects an agent acting in a specific role."
+  interfaces=[IdentifiableArtefact]
+  @domain
+  field administrativeDetails: [AdministrativeDetails!] description="Administrative details (e.g. default language, documentation, localID, ...)." deprecated=null
+    fetcher=default
+  field administrativeStatus: AdministrativeStatusType description="Indicator for access to an item." deprecated=null
+    fetcher=default
+  field agentInRoles: AgentInRoleConnection description="Agent(s) acting in the Role(s) for this information object." deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+      reverseName: String value="reverseAgentInRoleAgentInRoles" default=null
+    fetcher=PersistenceLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.agentInRoles[], sourceEntityName=AgentInRole, targetEntityName=AgentInRole}}
+  field agents: AgentConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+      reverseName: String value="reverseAgentInRoleAgents" default=null
+    fetcher=PersistenceLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.agents[], sourceEntityName=AgentInRole, targetEntityName=Agent}}
+  field createdBy: String! description="Information object created by." deprecated=null
+    fetcher=default
+  field createdDate: DateTime! description="The date on which the information object was created" deprecated=null
+    fetcher=default
+  field description: [MultilingualText!] description="The description of the information object" deprecated=null
+    fetcher=default
+  field id: String! description="The global unique identifier (GUID) of the information object assigned by the owner agency." deprecated=null
+    fetcher=default
+  field lastUpdatedBy: String description="Last updated by." deprecated=null
+    fetcher=default
+  field lastUpdatedDate: DateTime description="The date on which the object was last updated." deprecated=null
+    fetcher=default
+  field name: [MultilingualText!]! description="A term which designates a concept, in this case an information object. The identifying name will be the preferred designation. There will be many terms to designate the same information object, such as synonyms and terms in other languages." deprecated=null
+    fetcher=default
+  field reverseAgentAgentInRoles: AgentConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @reverseLink
+      mappedBy: String value="$.agentInRoles[]" default=null
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceReverseLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.agentInRoles[], sourceEntityName=Agent, targetEntityName=AgentInRole}}
+  field reverseAgentInRoleAgentInRoles: AgentInRoleConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @reverseLink
+      mappedBy: String value="$.agentInRoles[]" default=null
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceReverseLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.agentInRoles[], sourceEntityName=AgentInRole, targetEntityName=AgentInRole}}
+  field reverseRoleAgentInRoles: RoleConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @reverseLink
+      mappedBy: String value="$.agentInRoles[]" default=null
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceReverseLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.agentInRoles[], sourceEntityName=Role, targetEntityName=AgentInRole}}
+  field role: Role! description=null deprecated=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+      reverseName: String value="reverseAgentInRoleRole" default=null
+    fetcher=PersistenceLinkFetcher{{field=role, namespace=ns, pattern=pattern:/(?<type>Role)/(?<id>.*), persistence=persistence}}
+  field validFrom: DateTime! description="The date on which the information object is effective or valid. Set this date only once (constant). The same date for all versions of this information object." deprecated=null
+    fetcher=default
+  field validUntil: DateTime description="The date on which the information object is no longer effective or valid." deprecated=null
+    fetcher=default
+  field version: String description="Formal versioning of the information object. The version designator of the information object assigned by the owner agency. "major.minor.patch", e.g. "1.12.5"." deprecated=null
+    fetcher=default
+  field versionRationale: [MultilingualText!] description="The reason for making this version of the information object." deprecated=null
+    fetcher=default
+  field versionValidFrom: DateTime! description="The date on which the current version of the infomation object is effective or valid." deprecated=null
+    fetcher=default
+GraphQLObjectType AgentInRoleConnection
+  description=null
+  interfaces=[]
+  field edges: [AgentInRoleEdge!]! description=null deprecated=null
+    fetcher=default
+  field pageInfo: PageInfo! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType AgentInRoleEdge
+  description=null
+  interfaces=[]
+  field cursor: String! description=null deprecated=null
+    fetcher=default
+  field node: AgentInRole! description=null deprecated=null
+    fetcher=default
+GraphQLEnumType AgentType
+  description=null
+  value INDIVIDUAL = "INDIVIDUAL" description=null deprecated=null
+  value ORGANIZATION = "ORGANIZATION" description=null deprecated=null
+  value SYSTEM = "SYSTEM" description=null deprecated=null
+GraphQLScalarType Boolean
+  description="Built-in Boolean"
+GraphQLObjectType Cat
+  description=null
+  interfaces=[]
+  @domain
+  field age: Int description=null deprecated=null
+    fetcher=default
+  field name: String! description=null deprecated=null
+    fetcher=default
+  field reverseOwnerAnimals: OwnerConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @reverseLink
+      mappedBy: String value="$.animals[]" default=null
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceReverseLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.animals[], sourceEntityName=Owner, targetEntityName=Cat}}
+  field reverseOwnerFavorite: OwnerConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @reverseLink
+      mappedBy: String value="$.favorite[]" default=null
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceReverseLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.favorite[], sourceEntityName=Owner, targetEntityName=Cat}}
+GraphQLObjectType CatConnection
+  description=null
+  interfaces=[]
+  field edges: [CatEdge!]! description=null deprecated=null
+    fetcher=default
+  field pageInfo: PageInfo! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType CatEdge
+  description=null
+  interfaces=[]
+  field cursor: String! description=null deprecated=null
+    fetcher=default
+  field node: Cat! description=null deprecated=null
+    fetcher=default
+GraphQLScalarType DateTime
+  description="An RFC-3339 compliant DateTime Scalar"
+GraphQLObjectType Dog
+  description=null
+  interfaces=[]
+  @domain
+  field age: Int description=null deprecated=null
+    fetcher=default
+  field name: String! description=null deprecated=null
+    fetcher=default
+  field reverseOwnerAnimals: OwnerConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @reverseLink
+      mappedBy: String value="$.animals[]" default=null
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceReverseLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.animals[], sourceEntityName=Owner, targetEntityName=Dog}}
+  field reverseOwnerFavorite: OwnerConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @reverseLink
+      mappedBy: String value="$.favorite[]" default=null
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceReverseLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.favorite[], sourceEntityName=Owner, targetEntityName=Dog}}
+GraphQLObjectType DogConnection
+  description=null
+  interfaces=[]
+  field edges: [DogEdge!]! description=null deprecated=null
+    fetcher=default
+  field pageInfo: PageInfo! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType DogEdge
+  description=null
+  interfaces=[]
+  field cursor: String! description=null deprecated=null
+    fetcher=default
+  field node: Dog! description=null deprecated=null
+    fetcher=default
+GraphQLScalarType ID
+  description="Built-in ID"
+GraphQLInterfaceType IdentifiableArtefact
+  description="IdentifiableArtefact is reusable abstract object (type). All identifiable objects inherits all attributes from this object (type)."
+  field administrativeDetails: [AdministrativeDetails!] description="Administrative details (e.g. default language, documentation, localID, ...)." deprecated=null
+  field administrativeStatus: AdministrativeStatusType description="Indicator for access to an item." deprecated=null
+  field agentInRoles: AgentInRoleConnection description="Agent(s) acting in the Role(s) for this information object." deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+  field createdBy: String! description="Information object created by." deprecated=null
+  field createdDate: DateTime! description="The date on which the information object was created" deprecated=null
+  field description: [MultilingualText!] description="The description of the information object" deprecated=null
+  field id: String! description="The global unique identifier (GUID) of the information object assigned by the owner agency." deprecated=null
+  field lastUpdatedBy: String description="Last updated by." deprecated=null
+  field lastUpdatedDate: DateTime description="The date on which the object was last updated." deprecated=null
+  field name: [MultilingualText!]! description="A term which designates a concept, in this case an information object. The identifying name will be the preferred designation. There will be many terms to designate the same information object, such as synonyms and terms in other languages." deprecated=null
+  field validFrom: DateTime! description="The date on which the information object is effective or valid. Set this date only once (constant). The same date for all versions of this information object." deprecated=null
+  field validUntil: DateTime description="The date on which the information object is no longer effective or valid." deprecated=null
+  field version: String description="Formal versioning of the information object. The version designator of the information object assigned by the owner agency. "major.minor.patch", e.g. "1.12.5"." deprecated=null
+  field versionRationale: [MultilingualText!] description="The reason for making this version of the information object." deprecated=null
+  field versionValidFrom: DateTime! description="The date on which the current version of the infomation object is effective or valid." deprecated=null
+  typeResolver=true
+GraphQLScalarType Int
+  description="Built-in Int"
+GraphQLEnumType LanguageCodeType
+  description=null
+  value en = "en" description=null deprecated=null
+  value nb = "nb" description=null deprecated=null
+  value nn = "nn" description=null deprecated=null
+GraphQLObjectType MultilingualText
+  description="A reusable type for supporting multilingual texts."
+  interfaces=[]
+  field languageCode: LanguageCodeType! description="The language code. Use only ISO 639-1 codes." deprecated=null
+    fetcher=default
+  field languageText: String! description="The text (e.g. label, title, description)" deprecated=null
+    fetcher=default
+GraphQLObjectType Owner
+  description=null
+  interfaces=[]
+  @domain
+  field age: Int description=null deprecated=null
+    fetcher=default
+  field animals: animalsConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+      reverseName: String value="reverseOwnerAnimals" default=null
+    fetcher=PersistenceLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.animals[], sourceEntityName=Owner, targetEntityName=animals}}
+  field email: String! description=null deprecated=null
+    fetcher=default
+  field favorite: animalsConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+      reverseName: String value="reverseOwnerFavorite" default=null
+    fetcher=PersistenceLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.favorite[], sourceEntityName=Owner, targetEntityName=animals}}
+  field name: String! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType OwnerConnection
+  description=null
+  interfaces=[]
+  field edges: [OwnerEdge!]! description=null deprecated=null
+    fetcher=default
+  field pageInfo: PageInfo! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType OwnerEdge
+  description=null
+  interfaces=[]
+  field cursor: String! description=null deprecated=null
+    fetcher=default
+  field node: Owner! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType PageInfo
+  description=null
+  interfaces=[]
+  field hasNextPage: Boolean! description=null deprecated=null
+    fetcher=default
+  field hasPreviousPage: Boolean! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType Query
+  description=null
+  interfaces=[]
+  field Agent: AgentConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceRootConnectionFetcher{{entityName=Agent, nameSpace=ns, persistence=persistence}}
+  field AgentById: Agent! description=null deprecated=null
+    arg id: ID! default=null description=null
+    @link
+      pagination: Boolean value=Boolean:false default=Boolean:true
+    fetcher=PersistenceFetcher{{backend=persistence, entity=Agent, nameSpace=ns}}
+  field AgentInRole: AgentInRoleConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceRootConnectionFetcher{{entityName=AgentInRole, nameSpace=ns, persistence=persistence}}
+  field AgentInRoleById: AgentInRole! description=null deprecated=null
+    arg id: ID! default=null description=null
+    @link
+      pagination: Boolean value=Boolean:false default=Boolean:true
+    fetcher=PersistenceFetcher{{backend=persistence, entity=AgentInRole, nameSpace=ns}}
+  field Cat: CatConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceRootConnectionFetcher{{entityName=Cat, nameSpace=ns, persistence=persistence}}
+  field CatById: Cat! description=null deprecated=null
+    arg id: ID! default=null description=null
+    @link
+      pagination: Boolean value=Boolean:false default=Boolean:true
+    fetcher=PersistenceFetcher{{backend=persistence, entity=Cat, nameSpace=ns}}
+  field Dog: DogConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceRootConnectionFetcher{{entityName=Dog, nameSpace=ns, persistence=persistence}}
+  field DogById: Dog! description=null deprecated=null
+    arg id: ID! default=null description=null
+    @link
+      pagination: Boolean value=Boolean:false default=Boolean:true
+    fetcher=PersistenceFetcher{{backend=persistence, entity=Dog, nameSpace=ns}}
+  field Owner: OwnerConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceRootConnectionFetcher{{entityName=Owner, nameSpace=ns, persistence=persistence}}
+  field OwnerById: Owner! description=null deprecated=null
+    arg id: ID! default=null description=null
+    @link
+      pagination: Boolean value=Boolean:false default=Boolean:true
+    fetcher=PersistenceFetcher{{backend=persistence, entity=Owner, nameSpace=ns}}
+  field Role: RoleConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceRootConnectionFetcher{{entityName=Role, nameSpace=ns, persistence=persistence}}
+  field RoleById: Role! description=null deprecated=null
+    arg id: ID! default=null description=null
+    @link
+      pagination: Boolean value=Boolean:false default=Boolean:true
+    fetcher=PersistenceFetcher{{backend=persistence, entity=Role, nameSpace=ns}}
+  field Search: SearchResultConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg filter: [TypeFilters] default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    arg query: String! default=null description=null
+    @search
+    fetcher=QueryConnectionFetcher{{entity=SearchResultConnection, nameSpace=ns, persistence=persistence, searchIndex=searchIndex}}
+  field contact: contactConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceRootConnectionFetcher{{entityName=contact, nameSpace=ns, persistence=persistence}}
+  field contactById: contact! description=null deprecated=null
+    arg id: ID! default=null description=null
+    @link
+      pagination: Boolean value=Boolean:false default=Boolean:true
+    fetcher=PersistenceFetcher{{backend=persistence, entity=contact, nameSpace=ns}}
+  field provisionagreement: provisionagreementConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceRootConnectionFetcher{{entityName=provisionagreement, nameSpace=ns, persistence=persistence}}
+  field provisionagreementById: provisionagreement! description=null deprecated=null
+    arg id: ID! default=null description=null
+    @link
+      pagination: Boolean value=Boolean:false default=Boolean:true
+    fetcher=PersistenceFetcher{{backend=persistence, entity=provisionagreement, nameSpace=ns}}
+  field support: supportConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceRootConnectionFetcher{{entityName=support, nameSpace=ns, persistence=persistence}}
+  field supportById: support! description=null deprecated=null
+    arg id: ID! default=null description=null
+    @link
+      pagination: Boolean value=Boolean:false default=Boolean:true
+    fetcher=PersistenceFetcher{{backend=persistence, entity=support, nameSpace=ns}}
+GraphQLObjectType Role
+  description="The responsible function involved in the statistical Business Process."
+  interfaces=[IdentifiableArtefact]
+  @domain
+  field administrativeDetails: [AdministrativeDetails!] description="Administrative details (e.g. default language, documentation, localID, ...)." deprecated=null
+    fetcher=default
+  field administrativeStatus: AdministrativeStatusType description="Indicator for access to an item." deprecated=null
+    fetcher=default
+  field agentInRoles: AgentInRoleConnection description="Agent(s) acting in the Role(s) for this information object." deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+      reverseName: String value="reverseRoleAgentInRoles" default=null
+    fetcher=PersistenceLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.agentInRoles[], sourceEntityName=Role, targetEntityName=AgentInRole}}
+  field createdBy: String! description="Information object created by." deprecated=null
+    fetcher=default
+  field createdDate: DateTime! description="The date on which the information object was created" deprecated=null
+    fetcher=default
+  field description: [MultilingualText!] description="The description of the information object" deprecated=null
+    fetcher=default
+  field id: String! description="The global unique identifier (GUID) of the information object assigned by the owner agency." deprecated=null
+    fetcher=default
+  field lastUpdatedBy: String description="Last updated by." deprecated=null
+    fetcher=default
+  field lastUpdatedDate: DateTime description="The date on which the object was last updated." deprecated=null
+    fetcher=default
+  field name: [MultilingualText!]! description="A term which designates a concept, in this case an information object. The identifying name will be the preferred designation. There will be many terms to designate the same information object, such as synonyms and terms in other languages." deprecated=null
+    fetcher=default
+  field reverseAgentInRoleRole: AgentInRoleConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @reverseLink
+      mappedBy: String value="$.role" default=null
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceReverseLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.role, sourceEntityName=AgentInRole, targetEntityName=Role}}
+  field validFrom: DateTime! description="The date on which the information object is effective or valid. Set this date only once (constant). The same date for all versions of this information object." deprecated=null
+    fetcher=default
+  field validUntil: DateTime description="The date on which the information object is no longer effective or valid." deprecated=null
+    fetcher=default
+  field version: String description="Formal versioning of the information object. The version designator of the information object assigned by the owner agency. "major.minor.patch", e.g. "1.12.5"." deprecated=null
+    fetcher=default
+  field versionRationale: [MultilingualText!] description="The reason for making this version of the information object." deprecated=null
+    fetcher=default
+  field versionValidFrom: DateTime! description="The date on which the current version of the infomation object is effective or valid." deprecated=null
+    fetcher=default
+GraphQLObjectType RoleConnection
+  description=null
+  interfaces=[]
+  field edges: [RoleEdge!]! description=null deprecated=null
+    fetcher=default
+  field pageInfo: PageInfo! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType RoleEdge
+  description=null
+  interfaces=[]
+  field cursor: String! description=null deprecated=null
+    fetcher=default
+  field node: Role! description=null deprecated=null
+    fetcher=default
+GraphQLUnionType SearchResult
+  description="Union type for possible search results"
+  members=[Agent, AgentInRole, Cat, Dog, Owner, Role, contact, provisionagreement, support]
+  typeResolver=true
+GraphQLObjectType SearchResultConnection
+  description=null
+  interfaces=[]
+  field edges: [SearchResultEdge!]! description=null deprecated=null
+    fetcher=default
+  field pageInfo: PageInfo! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType SearchResultEdge
+  description=null
+  interfaces=[]
+  field cursor: String! description=null deprecated=null
+    fetcher=default
+  field node: SearchResult! description=null deprecated=null
+    fetcher=default
+GraphQLScalarType String
+  description="Built-in String"
+GraphQLEnumType TypeFilters
+  description="Defines valid type filters"
+  value Agent = "Agent" description=null deprecated=null
+  value AgentInRole = "AgentInRole" description=null deprecated=null
+  value Cat = "Cat" description=null deprecated=null
+  value Dog = "Dog" description=null deprecated=null
+  value Owner = "Owner" description=null deprecated=null
+  value Role = "Role" description=null deprecated=null
+  value contact = "contact" description=null deprecated=null
+  value provisionagreement = "provisionagreement" description=null deprecated=null
+  value support = "support" description=null deprecated=null
+GraphQLObjectType address
+  description=null
+  interfaces=[]
+  field city: String! description=null deprecated=null
+    fetcher=default
+  field street: String! description=null deprecated=null
+    fetcher=default
+GraphQLUnionType animals
+  description=null
+  members=[Cat, Dog]
+  typeResolver=true
+GraphQLObjectType animalsConnection
+  description=null
+  interfaces=[]
+  field edges: [animalsEdge!]! description=null deprecated=null
+    fetcher=default
+  field pageInfo: PageInfo! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType animalsEdge
+  description=null
+  interfaces=[]
+  field cursor: String! description=null deprecated=null
+    fetcher=default
+  field node: animals! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType contact
+  description=null
+  interfaces=[]
+  @domain
+  field email: String! description=null deprecated=null
+    fetcher=default
+  field name: String! description=null deprecated=null
+    fetcher=default
+  field reverseProvisionagreementContacts: provisionagreementConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @reverseLink
+      mappedBy: String value="$.contacts[]" default=null
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceReverseLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.contacts[], sourceEntityName=provisionagreement, targetEntityName=contact}}
+  field reverseProvisionagreementFriend: provisionagreementConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @reverseLink
+      mappedBy: String value="$.friend" default=null
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceReverseLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.friend, sourceEntityName=provisionagreement, targetEntityName=contact}}
+  field reverseSupportBusinessSupport: supportConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @reverseLink
+      mappedBy: String value="$.businessSupport[]" default=null
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceReverseLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.businessSupport[], sourceEntityName=support, targetEntityName=contact}}
+  field reverseSupportOtherSupport: supportConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @reverseLink
+      mappedBy: String value="$.otherSupport" default=null
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceReverseLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.otherSupport, sourceEntityName=support, targetEntityName=contact}}
+  field reverseSupportTechnicalSupport: supportConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @reverseLink
+      mappedBy: String value="$.technicalSupport[]" default=null
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceReverseLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.technicalSupport[], sourceEntityName=support, targetEntityName=contact}}
+GraphQLObjectType contactConnection
+  description=null
+  interfaces=[]
+  field edges: [contactEdge!]! description=null deprecated=null
+    fetcher=default
+  field pageInfo: PageInfo! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType contactEdge
+  description=null
+  interfaces=[]
+  field cursor: String! description=null deprecated=null
+    fetcher=default
+  field node: contact! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType provisionagreement
+  description=null
+  interfaces=[]
+  @domain
+  field address: address description=null deprecated=null
+    fetcher=default
+  field contacts: contactConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+      reverseName: String value="reverseProvisionagreementContacts" default=null
+    fetcher=PersistenceLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.contacts[], sourceEntityName=provisionagreement, targetEntityName=contact}}
+  field friend: contact description=null deprecated=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+      reverseName: String value="reverseProvisionagreementFriend" default=null
+    fetcher=PersistenceLinkFetcher{{field=friend, namespace=ns, pattern=pattern:/(?<type>contact)/(?<id>.*), persistence=persistence}}
+  field name: String description=null deprecated=null
+    fetcher=default
+  field support: [support] description=null deprecated=null
+    fetcher=default
+GraphQLObjectType provisionagreementConnection
+  description=null
+  interfaces=[]
+  field edges: [provisionagreementEdge!]! description=null deprecated=null
+    fetcher=default
+  field pageInfo: PageInfo! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType provisionagreementEdge
+  description=null
+  interfaces=[]
+  field cursor: String! description=null deprecated=null
+    fetcher=default
+  field node: provisionagreement! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType support
+  description=null
+  interfaces=[]
+  @domain
+  field businessSupport: contactConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+      reverseName: String value="reverseSupportBusinessSupport" default=null
+    fetcher=PersistenceLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.businessSupport[], sourceEntityName=support, targetEntityName=contact}}
+  field otherSupport: contact description=null deprecated=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+      reverseName: String value="reverseSupportOtherSupport" default=null
+    fetcher=PersistenceLinkFetcher{{field=otherSupport, namespace=ns, pattern=pattern:/(?<type>contact)/(?<id>.*), persistence=persistence}}
+  field technicalSupport: contactConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+      reverseName: String value="reverseSupportTechnicalSupport" default=null
+    fetcher=PersistenceLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.technicalSupport[], sourceEntityName=support, targetEntityName=contact}}
+GraphQLObjectType supportConnection
+  description=null
+  interfaces=[]
+  field edges: [supportEdge!]! description=null deprecated=null
+    fetcher=default
+  field pageInfo: PageInfo! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType supportEdge
+  description=null
+  interfaces=[]
+  field cursor: String! description=null deprecated=null
+    fetcher=default
+  field node: support! description=null deprecated=null
+    fetcher=default

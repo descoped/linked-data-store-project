@@ -143,5 +143,6 @@ The main class is `io.descoped.lds.server.Server` in `linked-data-store-server`.
 `application-defaults.properties`, `application-server-defaults.properties`, `conf/application.properties` and
 `conf_dev/application.properties` (relative to the working directory), then `LDS_`-prefixed environment variables
 and system properties (dynamic-configuration 3: the variable `LDS_HTTP_PORT` sets `http.port`, and a variable or a
-system property sets only a key that one of the files has). The `conf` files, the Dockerfiles and the compose file there are from before the monorepo
-(they expect Neo4j, PostgreSQL and Solr from that compose file) and are rebuilt with the server module.
+system property sets only a key that one of the files has). The `conf` files, the Dockerfiles and the compose
+file there are from before the monorepo (they expect Neo4j, PostgreSQL and Solr from that compose file) and are
+rebuilt with the server module.

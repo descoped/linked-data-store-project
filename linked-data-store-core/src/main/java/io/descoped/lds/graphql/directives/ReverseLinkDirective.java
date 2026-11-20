@@ -59,10 +59,22 @@ public class ReverseLinkDirective {
                 .build();
     }
 
+    /**
+     * The directive of graphql-java this reverse link directive stands for: what is put on an element of a
+     * schema, or given to a schema as the definition.
+     *
+     * @return the directive
+     */
     public GraphQLDirective getDirective() {
         return directive;
     }
 
+    /**
+     * An argument of the directive.
+     *
+     * @param name the name of the argument
+     * @return the argument, or null when the directive has none of that name
+     */
     public GraphQLArgument getArgument(String name) {
         return directive.getArgument(name);
     }

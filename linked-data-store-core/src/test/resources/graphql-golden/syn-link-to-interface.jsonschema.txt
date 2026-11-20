@@ -1,0 +1,22 @@
+ORDER Cat
+ENTITY Cat
+{
+  "#schema" : "http://json-schema.org/draft-04/schema#",
+  "$ref" : "#/definitions/Cat",
+  "definitions" : {
+    "Cat" : {
+      "properties" : {
+        "friends" : {
+          "displayName" : "",
+          "type" : "array"
+        },
+        "name" : {
+          "displayName" : "",
+          "type" : "string"
+        }
+      },
+      "required" : [ "name", "name" ],
+      "type" : "object"
+    }
+  }
+}

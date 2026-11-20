@@ -1,0 +1,184 @@
+ORDER City,Job,Person
+ENTITY City
+{
+  "#schema" : "http://json-schema.org/draft-04/schema#",
+  "$ref" : "#/definitions/City",
+  "definitions" : {
+    "City" : {
+      "properties" : {
+        "name" : {
+          "displayName" : "",
+          "type" : "string"
+        }
+      },
+      "required" : [ "name" ],
+      "type" : "object"
+    }
+  }
+}
+ENTITY Job
+{
+  "#schema" : "http://json-schema.org/draft-04/schema#",
+  "$ref" : "#/definitions/Job",
+  "definitions" : {
+    "Job" : {
+      "properties" : {
+        "_link_property_boss" : {
+          "properties" : {
+            "Person" : {
+              "type" : "null"
+            }
+          },
+          "type" : "object"
+        },
+        "_link_property_staff" : {
+          "properties" : {
+            "Person" : {
+              "type" : "null"
+            }
+          },
+          "type" : "object"
+        },
+        "boss" : {
+          "displayName" : "",
+          "type" : "string"
+        },
+        "staff" : {
+          "displayName" : "",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "title" : {
+          "displayName" : "",
+          "type" : "string"
+        }
+      },
+      "required" : [ ],
+      "type" : "object"
+    }
+  }
+}
+ENTITY Person
+{
+  "#schema" : "http://json-schema.org/draft-04/schema#",
+  "$ref" : "#/definitions/Person",
+  "definitions" : {
+    "Address" : {
+      "properties" : {
+        "_link_property_cities" : {
+          "properties" : {
+            "City" : {
+              "type" : "null"
+            }
+          },
+          "type" : "object"
+        },
+        "_link_property_city" : {
+          "properties" : {
+            "City" : {
+              "type" : "null"
+            }
+          },
+          "type" : "object"
+        },
+        "cities" : {
+          "displayName" : "",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "city" : {
+          "displayName" : "",
+          "type" : "string"
+        },
+        "lines" : {
+          "displayName" : "",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "street" : {
+          "displayName" : "",
+          "type" : "string"
+        },
+        "zip" : {
+          "displayName" : ""
+        }
+      },
+      "required" : [ "lines", "street" ],
+      "type" : "object"
+    },
+    "Person" : {
+      "properties" : {
+        "home" : {
+          "displayName" : ""
+        },
+        "homes" : {
+          "displayName" : "",
+          "items" : {
+            "$ref" : "#/definitions/Address"
+          },
+          "type" : "array"
+        },
+        "jobs" : {
+          "displayName" : "",
+          "properties" : {
+            "_link_property_staff" : {
+              "properties" : {
+                "Person" : {
+                  "type" : "null"
+                }
+              },
+              "type" : "object"
+            },
+            "staff" : {
+              "items" : {
+                "type" : "string"
+              },
+              "type" : "array"
+            }
+          },
+          "type" : "object"
+        },
+        "name" : {
+          "displayName" : "",
+          "type" : "string"
+        },
+        "work" : {
+          "displayName" : ""
+        }
+      },
+      "required" : [ "homes", "name", "work" ],
+      "type" : "object"
+    },
+    "Zip" : {
+      "properties" : {
+        "_link_property_area" : {
+          "properties" : {
+            "City" : {
+              "type" : "null"
+            }
+          },
+          "type" : "object"
+        },
+        "area" : {
+          "displayName" : "",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "code" : {
+          "displayName" : "",
+          "type" : "string"
+        }
+      },
+      "required" : [ "code" ],
+      "type" : "object"
+    }
+  }
+}

@@ -1,0 +1,5 @@
+directive @domain(searchable: Boolean = false) on OBJECT
+directive @link(pagination: Boolean = false, reverseName: String = "dflt") on FIELD_DEFINITION
+type A @domain { b: [B] @link c: [B] @link(pagination: true) d: B @link(reverseName: "x") e: [B] @link(pagination: false, reverseName: "y") }
+type B @domain(searchable: true) { name: String }
+type Query { x: String }

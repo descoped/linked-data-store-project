@@ -1,0 +1,64 @@
+MANAGED [B, C, Z]
+root elementType=ROOT jsonTypes=[object] refTypes=[] required=[] isRequired=false description=null
+  property B
+    B elementType=MANAGED jsonTypes=[object] refTypes=[] required=[again, more, part] isRequired=false description=""
+      property again
+        again elementType=EMBEDDED jsonTypes=[array] refTypes=[] required=[] isRequired=true description=""
+          items
+            Part elementType=null jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+              property inner
+                inner elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+              property label
+                label elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+              property owner
+                owner elementType=REF jsonTypes=[string] refTypes=[C] required=[] isRequired=false description=""
+              property owners
+                owners elementType=REF jsonTypes=[array] refTypes=[C] required=[] isRequired=false description=""
+                  items
+                     elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+      property last
+        last elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+      property more
+        more elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=true description=""
+      property name
+        name elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+      property part
+        part elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=true description=""
+  property C
+    C elementType=MANAGED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+      property name
+        name elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+  property Inner
+    Inner elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+      property c
+        c elementType=REF jsonTypes=[string] refTypes=[C] required=[] isRequired=false description=""
+  property Part
+    Part elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[label] isRequired=false description=""
+      property inner
+        inner elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+      property label
+        label elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description=""
+      property owner
+        owner elementType=REF jsonTypes=[string] refTypes=[C] required=[] isRequired=false description=""
+      property owners
+        owners elementType=REF jsonTypes=[array] refTypes=[C] required=[] isRequired=false description=""
+          items
+             elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+  property Z
+    Z elementType=MANAGED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+      property part
+        part elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+      property parts
+        parts elementType=EMBEDDED jsonTypes=[array] refTypes=[] required=[] isRequired=false description=""
+          items
+            Part elementType=null jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+              property inner
+                inner elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+              property label
+                label elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+              property owner
+                owner elementType=REF jsonTypes=[string] refTypes=[C] required=[] isRequired=false description=""
+              property owners
+                owners elementType=REF jsonTypes=[array] refTypes=[C] required=[] isRequired=false description=""
+                  items
+                     elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""

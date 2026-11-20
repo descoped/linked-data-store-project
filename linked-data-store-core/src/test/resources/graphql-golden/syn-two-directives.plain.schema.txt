@@ -1,0 +1,135 @@
+query=Query mutation=null subscription=null
+directive-definition @domain locations=[OBJECT] description="Marks a type definition as a managed domain object"
+  arg searchable: Boolean default=Boolean:true value=null description=null
+directive-definition @link locations=[FIELD_DEFINITION] description="Defines a field as a link to another managed domain"
+  arg pagination: Boolean default=Boolean:true value=null description=null
+  arg reverseName: String default=null value=null description=null
+directive-definition @reverseLink locations=[FIELD_DEFINITION] description="Defines a field as a reverse link to another managed domain"
+  arg mappedBy: String default=null value=null description=null
+  arg pagination: Boolean default=Boolean:true value=null description=null
+GraphQLObjectType A
+  description=null
+  interfaces=[]
+  @zeta
+  @domain
+  @alpha
+    n: Int value=Integer:1 default=Integer:1
+  field b: BConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @zeta
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+      reverseName: String value="reverseAB" default=null
+    @alpha
+      n: Int value=Integer:2 default=Integer:1
+    fetcher=PersistenceLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.b[], sourceEntityName=A, targetEntityName=B}}
+  field c: B description=null deprecated="No longer supported"
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+      reverseName: String value="reverseAC" default=null
+    @deprecated
+      reason: String value="No longer supported" default="No longer supported"
+    fetcher=PersistenceLinkFetcher{{field=c, namespace=ns, pattern=pattern:/(?<type>B)/(?<id>.*), persistence=persistence}}
+  field n: String description=null deprecated=null
+    @alpha
+      n: Int value=Integer:1 default=Integer:1
+    fetcher=default
+GraphQLObjectType AConnection
+  description=null
+  interfaces=[]
+  field edges: [AEdge!]! description=null deprecated=null
+    fetcher=default
+  field pageInfo: PageInfo! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType AEdge
+  description=null
+  interfaces=[]
+  field cursor: String! description=null deprecated=null
+    fetcher=default
+  field node: A! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType B
+  description=null
+  interfaces=[]
+  @domain
+  field name: String description=null deprecated=null
+    fetcher=default
+  field reverseAB: AConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @reverseLink
+      mappedBy: String value="$.b[]" default=null
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceReverseLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.b[], sourceEntityName=A, targetEntityName=B}}
+  field reverseAC: AConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @reverseLink
+      mappedBy: String value="$.c" default=null
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceReverseLinksConnectionFetcher{{nameSpace=ns, persistence=persistence, relationPath=path:$.c, sourceEntityName=A, targetEntityName=B}}
+GraphQLObjectType BConnection
+  description=null
+  interfaces=[]
+  field edges: [BEdge!]! description=null deprecated=null
+    fetcher=default
+  field pageInfo: PageInfo! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType BEdge
+  description=null
+  interfaces=[]
+  field cursor: String! description=null deprecated=null
+    fetcher=default
+  field node: B! description=null deprecated=null
+    fetcher=default
+GraphQLScalarType Boolean
+  description="Built-in Boolean"
+GraphQLScalarType ID
+  description="Built-in ID"
+GraphQLScalarType Int
+  description="Built-in Int"
+GraphQLObjectType PageInfo
+  description=null
+  interfaces=[]
+  field hasNextPage: Boolean! description=null deprecated=null
+    fetcher=default
+  field hasPreviousPage: Boolean! description=null deprecated=null
+    fetcher=default
+GraphQLObjectType Query
+  description=null
+  interfaces=[]
+  field A: AConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceRootConnectionFetcher{{entityName=A, nameSpace=ns, persistence=persistence}}
+  field AById: A! description=null deprecated=null
+    arg id: ID! default=null description=null
+    @link
+      pagination: Boolean value=Boolean:false default=Boolean:true
+    fetcher=PersistenceFetcher{{backend=persistence, entity=A, nameSpace=ns}}
+  field B: BConnection description=null deprecated=null
+    arg after: String default=null description=null
+    arg before: String default=null description=null
+    arg first: Int default=null description=null
+    arg last: Int default=null description=null
+    @link
+      pagination: Boolean value=Boolean:true default=Boolean:true
+    fetcher=PersistenceRootConnectionFetcher{{entityName=B, nameSpace=ns, persistence=persistence}}
+  field BById: B! description=null deprecated=null
+    arg id: ID! default=null description=null
+    @link
+      pagination: Boolean value=Boolean:false default=Boolean:true
+    fetcher=PersistenceFetcher{{backend=persistence, entity=B, nameSpace=ns}}
+GraphQLScalarType String
+  description="Built-in String"

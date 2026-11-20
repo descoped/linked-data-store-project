@@ -1,0 +1,10 @@
+directive @domain on OBJECT
+directive @link(pagination: Boolean, reverseName: String) on FIELD_DEFINITION
+directive @reverseLink(mappedBy: String, pagination: Boolean) on FIELD_DEFINITION
+type Source @domain { foo: String link: [Target] @link(pagination: true, reverseName: "sources") one: Target @link(reverseName: "ones") }
+type Target @domain { bar: String back: [Source!]! @reverseLink(mappedBy: "$.link[]", pagination: false) }
+type Query { x: String }
+
+scalar Date
+scalar DateTime
+scalar Time

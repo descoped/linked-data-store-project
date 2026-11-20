@@ -1,0 +1,62 @@
+ORDER A,B
+ENTITY A
+{
+  "#schema" : "http://json-schema.org/draft-04/schema#",
+  "$ref" : "#/definitions/A",
+  "definitions" : {
+    "A" : {
+      "properties" : {
+        "_link_property_b" : {
+          "properties" : {
+            "B" : {
+              "type" : "null"
+            }
+          },
+          "type" : "object"
+        },
+        "_link_property_c" : {
+          "properties" : {
+            "B" : {
+              "type" : "null"
+            }
+          },
+          "type" : "object"
+        },
+        "b" : {
+          "displayName" : "",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "c" : {
+          "displayName" : "",
+          "type" : "string"
+        },
+        "n" : {
+          "displayName" : "",
+          "type" : "string"
+        }
+      },
+      "required" : [ ],
+      "type" : "object"
+    }
+  }
+}
+ENTITY B
+{
+  "#schema" : "http://json-schema.org/draft-04/schema#",
+  "$ref" : "#/definitions/B",
+  "definitions" : {
+    "B" : {
+      "properties" : {
+        "name" : {
+          "displayName" : "",
+          "type" : "string"
+        }
+      },
+      "required" : [ ],
+      "type" : "object"
+    }
+  }
+}

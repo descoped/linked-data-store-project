@@ -1,0 +1,18 @@
+MANAGED [Source, Target]
+root elementType=ROOT jsonTypes=[object] refTypes=[] required=[] isRequired=false description=null
+  property Source
+    Source elementType=MANAGED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+      property foo
+        foo elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+      property link
+        link elementType=REF jsonTypes=[array] refTypes=[Target] required=[] isRequired=false description=""
+          items
+             elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+      property one
+        one elementType=REF jsonTypes=[string] refTypes=[Target] required=[] isRequired=false description=""
+  property Target
+    Target elementType=MANAGED jsonTypes=[object] refTypes=[] required=[back] isRequired=false description=""
+      property back
+        back elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=true description=""
+      property bar
+        bar elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""

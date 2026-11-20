@@ -50,7 +50,7 @@ public class PersistenceConfigurator {
         Set<String> configurationKeys = initializer.configurationKeys();
         Set<String> missingConfigurationKeys = new LinkedHashSet<>();
         for (String key : configurationKeys) {
-            if (configuration.find(key).orElse(null) == null) {
+            if (configuration.find(key).isEmpty()) {
                 missingConfigurationKeys.add(key);
             }
         }
@@ -60,10 +60,7 @@ public class PersistenceConfigurator {
 
         Map<String, String> configurationByKey = new LinkedHashMap<>();
         for (String key : configurationKeys) {
-            String value = configuration.find(key).orElse(null);
-            if (value != null) {
-                configurationByKey.put(key, value);
-            }
+            configuration.find(key).ifPresent(value -> configurationByKey.put(key, value));
         }
 
         int maxWaitSeconds = configuration.getInt("persistence.initialization.max-wait-seconds");

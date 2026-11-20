@@ -226,7 +226,7 @@ public class UndertowApplication {
             specification = createJsonSpecification(jsonMap);
 
         } else {
-            String schemaConfigStr = configuration.find("specification.schema").orElse(null);
+            String schemaConfigStr = configuration.get("specification.schema");
             String[] specificationSchema = ("".equals(schemaConfigStr) ? new String[0] : schemaConfigStr.split(","));
             LOG.info("Creating specification using json-schema: {}", schemaConfigStr);
             specification = JsonSchemaBasedSpecification.create(specificationSchema);
