@@ -17,7 +17,7 @@ reactor, group `io.descoped.lds`.
 | `linked-data-store-persistence-provider-tck` | none yet (class path) | `PersistenceIntegrationTest` (TestNG), the suite every persistence provider extends |
 | `linked-data-store-persistence-provider-memory` | `io.descoped.lds.persistence.memory` | provider `mem`: fragments in a sorted map in memory, the keys packed as tuples with `io.descoped.tuple:java-tuple`, behind the bridge (`MemoryRxPersistence`). For tests and for trying LDS, not for production |
 | `linked-data-store-persistence-provider-postgres` | `io.descoped.lds.persistence.postgres` | provider `postgres`, revised for 3.0: one table, `fragment`, created at start, holding every namespace; every read is one statement whose rows are fetched as they are asked for |
-| `linked-data-store-persistence-provider-neo4j` | `io.descoped.lds.persistence.neo4j` | provider `neo4j`, revised for 3.0 on Neo4j 2026 (community edition is enough): a document is a node with its entity as label and `namespace` and `id` as properties, unique together, so one database holds every namespace; a version is a `VERSION` relationship (`from`, `to`) to the root of a tree of `<entity>_E` nodes; a link is a `REF` relationship to the document node it points at. The constraints and indexes are created at start |
+| `linked-data-store-persistence-provider-neo4j` | `io.descoped.lds.persistence.neo4j` | provider `neo4j`, revised for 3.0 on Neo4j 2026 (community edition is enough): a document is a node with its entity as label and `namespace` and `id` as properties, unique together, so one database holds every namespace; a version is a `VERSION` relationship (`from`, `to`) to the root of a tree of `<entity>_E` nodes, one node for every object, array and value the document holds (`Neo4jDocumentWriter`); a link is a `REF` relationship to the document node it points at. The constraints and indexes are created at start |
 | `linked-data-store-search-provider-api` | `io.descoped.lds.search.api` | the search SPI (`SearchIndexProvider`, `SearchIndex`) |
 | `linked-data-store-search-provider-solr` | `io.descoped.lds.search.provider.solr` | provider `solr`, on the client of Solr 10 that uses the HTTP client of the JDK. It indexes into one core, named in `search.index.url` |
 | `linked-data-store-core` | `io.descoped.lds.core` | the application: `UndertowApplication`, REST (`NamespaceController`), GraphQL, sagas, transaction log |
@@ -43,6 +43,14 @@ Neo4j implements `RxJsonPersistence` directly: a read is one statement that retu
 and a record is taken from the driver when a document is asked for (`Neo4jTransaction.executeCypherAsync`). Keep
 the mechanism when changing this code: a stream is not replaced by a call that returns a complete list, and no
 blocking call is added to an interface.
+
+A provider stores a document as it is given and gives it back the same: also a field the model does not have, a
+value of another kind than the model says, a null, an array inside an array. Whether a document may be like that
+is for the validation before a write to say, not for the store. The model tells a provider one thing: which
+fields are links. A link is the text `/Entity/id` in such a field, naming an entity the field may link to; any
+other value there is the value it is and is not followed. The shared suite holds every provider to this. One
+thing differs, and LDS does not ask for it: memory and PostgreSQL also follow such a text in a field that the
+model does not call a link, when asked for that path; Neo4j does not.
 
 ## The GraphQL schema
 
@@ -108,7 +116,8 @@ module makes that module meet them.
   through Testcontainers, so **the build needs Docker**.
 - The Neo4j provider's tests (the shared suite, `Neo4jProviderTest` for what the suite does not cover,
   `Neo4jRoundTripTest` for documents of every shape and `Neo4jTransactionTest`) run on a real Neo4j 2026
-  (`neo4j:2026.10-community`) through Testcontainers.
+  (`neo4j:2026.10-community`) through Testcontainers. `Neo4jDocumentWriterTest` checks the statement that writes
+  and its parameters, without Neo4j.
 - The Solr provider's tests run on a real Solr 10 (`solr:10.1`) through Testcontainers, started as the compose
   file of the server starts it: the image as it is, with the core `lds-index` created from the configuration the
   image comes with. A write is in the index within the five seconds the provider gives Solr to commit it.
