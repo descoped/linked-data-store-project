@@ -78,13 +78,6 @@ public interface RxJsonPersistence {
                                                String sourceEntityName, String sourceId, JsonNavigationPath relationPath,
                                                String targetEntityName, Range<String> range);
 
-    @Deprecated
-    default Flowable<JsonDocument> readLinkedDocuments(Transaction tx, ZonedDateTime snapshot, String ns,
-                                                       String sourceEntityName, String sourceId, JsonNavigationPath relationPath,
-                                                       String targetEntityName, Range<String> range) {
-        return readTargetDocuments(tx, snapshot, ns, sourceEntityName, sourceId, relationPath, targetEntityName, range);
-    }
-
     /**
      * Read the <b>source</b> {@link JsonDocument}s that links to a <b>target</b> document.
      * <p>

@@ -1183,7 +1183,7 @@ public abstract class PersistenceIntegrationTest {
     private void readLinksAndCheckDocuments(Transaction tx, String jsonNavigationPath, String personId, ZonedDateTime timestamp, Map<String, List<String>> entityIdsByEntityName) throws JSONException {
         for (String targetEntity : Set.of("Address", "FunkyLongAddress")) {
             List<JsonDocument> actualDocuments = new ArrayList<>();
-            persistence.readLinkedDocuments(tx, timestamp, namespace, "Person", personId, JsonNavigationPath.from(jsonNavigationPath), targetEntity, Range.unbounded())
+            persistence.readTargetDocuments(tx, timestamp, namespace, "Person", personId, JsonNavigationPath.from(jsonNavigationPath), targetEntity, Range.unbounded())
                     .blockingForEach(actualJsonDocument -> actualDocuments.add(actualJsonDocument));
             assertEquals(actualDocuments.size(), entityIdsByEntityName.get(targetEntity).size(), String.format("for entity: '%s'", targetEntity));
             for (JsonDocument actualDoc : actualDocuments) {
@@ -1196,7 +1196,7 @@ public abstract class PersistenceIntegrationTest {
     private void readLinkAndCheckDocument(Transaction tx, String jsonNavigationPath, String personId, ZonedDateTime timestamp) throws JSONException {
         List<JsonDocument> actualDocuments = new ArrayList<>();
         for (String targetEntity : Set.of("Address", "FunkyLongAddress")) {
-            persistence.readLinkedDocuments(tx, timestamp, namespace, "Person", personId, JsonNavigationPath.from(jsonNavigationPath), targetEntity, Range.unbounded())
+            persistence.readTargetDocuments(tx, timestamp, namespace, "Person", personId, JsonNavigationPath.from(jsonNavigationPath), targetEntity, Range.unbounded())
                     .blockingForEach(actualJsonDocument -> actualDocuments.add(actualJsonDocument));
         }
         assertEquals(actualDocuments.size(), 1);
@@ -1329,11 +1329,11 @@ public abstract class PersistenceIntegrationTest {
             assertReadAsWritten(tx, specification, "Person", "link-no-slash", "{'history':{'currentAddress':'Address/more-home'}}");
             assertReadAsWritten(tx, specification, "Person", "link-no-id", "{'history':{'currentAddress':'/Address/','previousAddresses':['/Address/']}}");
 
-            assertThat(persistence.readLinkedDocuments(tx, Y2020, namespace, "Person", "link-other-entity", JsonNavigationPath.from("$.history.currentAddress"), "Address", Range.unbounded())
+            assertThat(persistence.readTargetDocuments(tx, Y2020, namespace, "Person", "link-other-entity", JsonNavigationPath.from("$.history.currentAddress"), "Address", Range.unbounded())
                     .toList().blockingGet()).isEmpty();
             // a link is written /Entity/id: without its first slash it is a text, and is not followed
             writeAndRead(tx, specification, "Address", "more-home", json("{'city':'Home'}"));
-            assertThat(persistence.readLinkedDocuments(tx, Y2020, namespace, "Person", "link-no-slash", JsonNavigationPath.from("$.history.currentAddress"), "Address", Range.unbounded())
+            assertThat(persistence.readTargetDocuments(tx, Y2020, namespace, "Person", "link-no-slash", JsonNavigationPath.from("$.history.currentAddress"), "Address", Range.unbounded())
                     .toList().blockingGet()).isEmpty();
         }
     }
@@ -1350,9 +1350,9 @@ public abstract class PersistenceIntegrationTest {
             writeAndRead(tx, specification, "Person", "more-linker", json("{'firstname':'L','more':[1,{'x':'y'}],"
                     + "'history':{'note':'n','currentAddress':'/Address/more-home','previousAddresses':['/Address/more-before','no link'],'more':{'deep':true}}}"));
 
-            assertThat(persistence.readLinkedDocuments(tx, Y2020, namespace, "Person", "more-linker", JsonNavigationPath.from("$.history.currentAddress"), "Address", Range.unbounded())
+            assertThat(persistence.readTargetDocuments(tx, Y2020, namespace, "Person", "more-linker", JsonNavigationPath.from("$.history.currentAddress"), "Address", Range.unbounded())
                     .map(document -> document.jackson().get("city").asString()).toList().blockingGet()).containsExactly("Home");
-            assertThat(persistence.readLinkedDocuments(tx, Y2020, namespace, "Person", "more-linker", JsonNavigationPath.from("$.history.previousAddresses[]"), "Address", Range.unbounded())
+            assertThat(persistence.readTargetDocuments(tx, Y2020, namespace, "Person", "more-linker", JsonNavigationPath.from("$.history.previousAddresses[]"), "Address", Range.unbounded())
                     .map(document -> document.jackson().get("city").asString()).toList().blockingGet()).containsExactly("Before");
             assertThat(persistence.readSourceDocuments(tx, Y2020, namespace, "Address", "more-home", JsonNavigationPath.from("$.history.currentAddress"), "Person", Range.unbounded())
                     .map(document -> document.key().id()).toList().blockingGet()).containsExactly("more-linker");
