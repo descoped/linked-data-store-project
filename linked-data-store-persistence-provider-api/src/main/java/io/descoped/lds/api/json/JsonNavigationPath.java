@@ -4,6 +4,7 @@ import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.api.specification.SpecificationElement;
 import io.descoped.lds.api.specification.SpecificationElementType;
 
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Deque;
 import java.util.LinkedList;
@@ -13,7 +14,7 @@ import java.util.regex.Pattern;
 
 public class JsonNavigationPath {
 
-    private static final Pattern arrayElementPattern = Pattern.compile("\\[(?<index>[0-9]*)]");
+    private static final Pattern arrayElementPattern = Pattern.compile("\\[\\d*]");
 
     public static JsonNavigationPath from(String serializedJsonNavigationPath) {
         return new JsonNavigationPath(deserialize(serializedJsonNavigationPath));
@@ -62,8 +63,8 @@ public class JsonNavigationPath {
             if (arrayElementPattern.matcher(element).matches()) {
                 continue;
             }
-            if (element.contains("[") || element.contains("[")) {
-                throw new IllegalArgumentException(String.format("json-path element at index %d contain square bracket symbol without being formatted as a proper array element"));
+            if (element.contains("[") || element.contains("]")) {
+                throw new IllegalArgumentException(String.format("json-path element at index %d contain square bracket symbol without being formatted as a proper array element", i));
             }
         }
     }
@@ -77,19 +78,7 @@ public class JsonNavigationPath {
         String[] dotSeparated = relationName.split("\\.");
         for (String dotPart : dotSeparated) {
             if (dotPart.endsWith("]")) {
-                if (dotPart.startsWith("[")) {
-                    throw new IllegalArgumentException("Malformed json-path, array-index path-element must be prepended by field");
-                }
-                int indexOfFirstOpenSquareBracket = dotPart.indexOf("[");
-                if (indexOfFirstOpenSquareBracket == -1) {
-                    throw new IllegalArgumentException("Malformed json-path, path-element contains ']' without also containing '['");
-                }
-                String fieldIdentifier = dotPart.substring(0, indexOfFirstOpenSquareBracket);
-                parts.add(fieldIdentifier); // array-field
-                Matcher m = arrayElementPattern.matcher(dotPart.substring(indexOfFirstOpenSquareBracket));
-                while (m.find()) {
-                    parts.add(m.group()); // array-items field
-                }
+                addArrayParts(dotPart, parts);
             } else {
                 if (dotPart.contains("[") || dotPart.contains("]")) {
                     throw new IllegalArgumentException("Malformed json-path, path-element contain square-bracket symbol in a bad way");
@@ -98,6 +87,25 @@ public class JsonNavigationPath {
             }
         }
         return parts.toArray(new String[parts.size()]);
+    }
+
+    /*
+     * The parts of a path-element that ends with an array index: the array-field, then one part for each index.
+     */
+    private static void addArrayParts(String dotPart, List<String> parts) {
+        if (dotPart.startsWith("[")) {
+            throw new IllegalArgumentException("Malformed json-path, array-index path-element must be prepended by field");
+        }
+        int indexOfFirstOpenSquareBracket = dotPart.indexOf("[");
+        if (indexOfFirstOpenSquareBracket == -1) {
+            throw new IllegalArgumentException("Malformed json-path, path-element contains ']' without also containing '['");
+        }
+        String fieldIdentifier = dotPart.substring(0, indexOfFirstOpenSquareBracket);
+        parts.add(fieldIdentifier); // array-field
+        Matcher m = arrayElementPattern.matcher(dotPart.substring(indexOfFirstOpenSquareBracket));
+        while (m.find()) {
+            parts.add(m.group()); // array-items field
+        }
     }
 
     public String serialize() {
@@ -136,11 +144,7 @@ public class JsonNavigationPath {
     }
 
     public JsonNavigationPath popBack() {
-        String[] result = new String[path.length - 1];
-        for (int i = 0; i < path.length - 1; i++) {
-            result[i] = path[i];
-        }
-        return JsonNavigationPath.from(result);
+        return JsonNavigationPath.from(Arrays.copyOf(path, path.length - 1));
     }
 
     public String back() {

@@ -161,4 +161,25 @@ class FlattenedDocumentToJsonTest {
         assertThat(FlattenedDocumentToJson.steps("$.a[1234567890]")).containsExactly("a[1234567890]");
         assertThat(FlattenedDocumentToJson.steps("$.a[x].b[]")).containsExactly("a[x]", "b[]");
     }
+
+    @Test
+    void thePlacesAtTheEndOfAPartAreTheLongestRunOfPlaces() {
+        assertThat(FlattenedDocumentToJson.steps("$[0]")).containsExactly(0);
+        assertThat(FlattenedDocumentToJson.steps("$[0][1].a")).containsExactly(0, 1, "a");
+        assertThat(FlattenedDocumentToJson.steps("$.a[0]b[1]")).containsExactly("a[0]b", 1);
+        assertThat(FlattenedDocumentToJson.steps("$.a[1][1234567890]")).containsExactly("a[1][1234567890]");
+        assertThat(FlattenedDocumentToJson.steps("$.a[1234567890][1]")).containsExactly("a[1234567890]", 1);
+        assertThat(FlattenedDocumentToJson.steps("$.a[123456789]")).containsExactly("a", 123456789);
+        assertThat(FlattenedDocumentToJson.steps("$.a[]][2]")).containsExactly("a[]]", 2);
+        assertThat(FlattenedDocumentToJson.steps("$.a[[3]")).containsExactly("a[", 3);
+        assertThat(FlattenedDocumentToJson.steps("$.[4][5]")).containsExactly("", 4, 5);
+        assertThat(FlattenedDocumentToJson.steps("$.a\n[6]")).containsExactly("a\n", 6);
+        assertThat(FlattenedDocumentToJson.steps("$.a[\u0663]")).containsExactly("a[\u0663]"); // an Arabic-Indic digit is not a place
+    }
+
+    @Test
+    void aPartWithVeryManyPlacesOrAVeryLongNameDoesNotOverflowTheStack() {
+        assertThat(FlattenedDocumentToJson.steps("$.a" + "[1]".repeat(100_000))).hasSize(100_001).startsWith("a", 1);
+        assertThat(FlattenedDocumentToJson.steps("$." + "x".repeat(100_000) + "[2]")).containsExactly("x".repeat(100_000), 2);
+    }
 }

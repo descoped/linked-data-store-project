@@ -25,7 +25,6 @@ import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -102,7 +101,7 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
     static Flowable<JsonDocument> toDocuments(Flowable<Fragment> fragmentFlowable, int fragmentSize, boolean includeDeleted) {
         return RxGroupByTools.groupByOrdered(
                 fragmentFlowable.takeWhile(fragment -> !fragment.isStreamingControl()),
-                fragment -> DocumentKey.from(fragment)
+                DocumentKey::from
 
         ).concatMap(group -> {
             // For each group, create a FlattenedDocument.
@@ -124,14 +123,6 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
         });
     }
 
-    private static FlattenedDocument documentFromFragments(DocumentKey key, List<Fragment> fragments, int fragmentSize) {
-        Map<String, List<Fragment>> map = new LinkedHashMap<>();
-        for (Fragment fragment : fragments) {
-            map.computeIfAbsent(fragment.path(), path -> new ArrayList<>()).add(fragment);
-        }
-        return FlattenedDocument.decodeDocument(key, map, fragmentSize);
-    }
-
     static Flowable<JsonDocument> doReadDocuments(Flowable<Fragment> fragments, Range<String> range, int fragmentSize) {
         Flowable<JsonDocument> documents = toDocuments(fragments, fragmentSize, false);
         return limit(documents, d -> d.key().id(), range);
@@ -139,14 +130,9 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
 
     static Flowable<JsonDocument> doReadDocumentVersions(Flowable<Fragment> fragments, Range<ZonedDateTime> range, int fragmentSize) {
         Flowable<JsonDocument> documents = toDocuments(fragments, fragmentSize, true);
-        // TODO: ZonedDateTime is a bad choice for API. Internal temporal values should be Instant.
-        Range<Instant> instantRange = Range.copy(range, zonedDateTime -> zonedDateTime.toInstant());
+        // ZonedDateTime is a bad choice for the API: internal temporal values should be Instant.
+        Range<Instant> instantRange = Range.copy(range, ZonedDateTime::toInstant);
         return limit(documents, document -> document.key().timestamp().toInstant(), instantRange);
-    }
-
-    static Flowable<JsonDocument> doFindDocuments(Flowable<Fragment> fragments, Range<String> range, int fragmentSize) {
-        Flowable<JsonDocument> documents = toDocuments(fragments, fragmentSize, false);
-        return limit(documents, d -> d.key().id(), range);
     }
 
     @Override
@@ -183,7 +169,7 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
     @Override
     public Flowable<JsonDocument> findDocument(Transaction tx, ZonedDateTime snapshot, String namespace,
                                                String entityName, JsonNavigationPath navigationPath, String value, Range<String> range) {
-        // TODO support stronger typing of value
+        // Only a text value is supported.
         Map<Integer, byte[]> valueByOffset = FlattenedDocumentLeafNode.valueByOffset(FragmentType.STRING, fragmentSize, value);
         byte[] bytesValue = valueByOffset.get(0);
         Flowable<Fragment> fragments = persistence.find(tx, snapshot, namespace, entityName, navigationPath.serialize(), bytesValue,
@@ -194,23 +180,16 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
                 ? fragments.sorted(Comparator.reverseOrder())
                 : fragments.sorted();
 
-        return doFindDocuments(fragments, range, fragmentSize).filter(document -> {
+        return doReadDocuments(fragments, range, fragmentSize).filter(document -> {
             // Post filter since fragment based implementation can return false positive.
             AtomicBoolean match = new AtomicBoolean(false);
             document.traverseField(navigationPath, (node, path) -> {
-                if (node.isString()) {
-                    boolean equals = node.stringValue().equals(value);
-                    if (equals) {
-                        match.set(true);
-                    }
-                } else {
-                    // TODO support matching values of other types
+                // Only a text is matched, not a value of another type.
+                if (node.isString() && node.stringValue().equals(value)) {
+                    match.set(true);
                 }
             });
-            if (match.get() == false) {
-                return false; // discard false-positive match from underlying persistence layer
-            }
-            return true;
+            return match.get(); // false discards a false-positive match from the underlying persistence layer
         });
     }
 
@@ -218,7 +197,7 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
     public Flowable<JsonDocument> readTargetDocuments(Transaction tx, ZonedDateTime snapshot, String ns,
                                                       String entityName, String id, JsonNavigationPath jsonNavigationPath,
                                                       String targetEntityName, Range<String> range) {
-        // TODO support reading only from relevant jsonPath in RxPersistence instead of reading entire document.
+        // The whole source document is read from RxPersistence, not only what is at the path.
         return readDocument(tx, snapshot, ns, entityName, id)
                 .flattenAsFlowable(document -> {
                     List<String> links = new ArrayList<>();

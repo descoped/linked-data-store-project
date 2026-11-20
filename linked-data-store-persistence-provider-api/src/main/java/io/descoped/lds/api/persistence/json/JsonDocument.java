@@ -14,7 +14,7 @@ public class JsonDocument {
 
     private final DocumentKey key;
 
-    private JsonNode jackson;
+    private final JsonNode jackson;
 
     public JsonDocument(DocumentKey key, Map<String, Object> document) {
         this.key = key;
@@ -62,7 +62,7 @@ public class JsonDocument {
             return;
         }
         if (index >= schemaPath.length) {
-            visitCallback.accept(node, path.stream().collect(Collectors.joining(".")).replaceAll("\\.\\[", "["));
+            visitCallback.accept(node, path.stream().collect(Collectors.joining(".")).replace(".[", "["));
             return;
         }
         String childName = schemaPath[index];

@@ -12,16 +12,9 @@ public interface Transaction extends AutoCloseable {
     default void close() {
         boolean committed = false;
         try {
+            // join throws only unchecked exceptions (CompletionException, CancellationException), which pass as they are
             commit().join();
             committed = true;
-        } catch (Throwable t) {
-            if (t instanceof RuntimeException) {
-                throw (RuntimeException) t;
-            }
-            if (t instanceof Error) {
-                throw (Error) t;
-            }
-            throw new RuntimeException(t);
         } finally {
             if (!committed) {
                 cancel().join();

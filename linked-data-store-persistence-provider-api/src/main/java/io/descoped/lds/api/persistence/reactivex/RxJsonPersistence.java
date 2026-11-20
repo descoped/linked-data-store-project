@@ -21,7 +21,7 @@ public interface RxJsonPersistence {
     /**
      * Read a single {@link JsonDocument}.
      * <p>
-     * TODO: onError(PersistenceException) in case of persistence exception
+     * Not settled: whether a failure of the store is given as {@code onError(PersistenceException)}.
      *
      * @param tx         The transaction to use.
      * @param snapshot   Upper bound of the returned version
@@ -36,7 +36,7 @@ public interface RxJsonPersistence {
     /**
      * Read {@link JsonDocument}s.
      * <p>
-     * TODO: onError(PersistenceException) in case of persistence exception
+     * Not settled: whether a failure of the store is given as {@code onError(PersistenceException)}.
      *
      * @param tx         the transaction
      * @param snapshot   upper bound of the returned version
@@ -50,7 +50,7 @@ public interface RxJsonPersistence {
     /**
      * Read {@link JsonDocument}s.
      * <p>
-     * TODO: onError(PersistenceException) in case of persistence exception
+     * Not settled: whether a failure of the store is given as {@code onError(PersistenceException)}.
      *
      * @param tx         the transaction
      * @param ns         the name space
@@ -103,25 +103,25 @@ public interface RxJsonPersistence {
                                                String sourceEntityName, Range<String> range);
 
     /**
-     * TODO: onError(PersistenceException) in case of persistence exception
+     * Not settled: whether a failure of the store is given as {@code onError(PersistenceException)}.
      */
     default Completable createOrOverwrite(Transaction tx, JsonDocument document, Specification specification) {
         return createOrOverwrite(tx, Flowable.just(document), specification);
     }
 
     /**
-     * TODO: onError(PersistenceException) in case of persistence exception
+     * Not settled: whether a failure of the store is given as {@code onError(PersistenceException)}.
      */
     Completable createOrOverwrite(Transaction tx, Flowable<JsonDocument> documentFlowable, Specification specification);
 
     /**
-     * TODO: onError(PersistenceException) in case of persistence exception
+     * Not settled: whether a failure of the store is given as {@code onError(PersistenceException)}.
      */
     Completable deleteDocument(Transaction tx, String ns, String entityName, String id, ZonedDateTime version,
                                PersistenceDeletePolicy policy);
 
     /**
-     * TODO: onError(PersistenceException) in case of persistence exception
+     * Not settled: whether a failure of the store is given as {@code onError(PersistenceException)}.
      */
     Completable deleteAllDocumentVersions(Transaction tx, String ns, String entity, String id,
                                           PersistenceDeletePolicy policy);
@@ -129,20 +129,22 @@ public interface RxJsonPersistence {
     Completable deleteAllEntities(Transaction tx, String namespace, String entity, Specification specification);
 
     /**
-     * TODO: onError(PersistenceException) in case of persistence exception
+     * Not settled: whether a failure of the store is given as {@code onError(PersistenceException)}.
      */
     Completable markDocumentDeleted(Transaction transaction, String ns, String entityName, String id,
                                     ZonedDateTime version, PersistenceDeletePolicy policy);
 
     /**
      * Checks if there is a {@link JsonDocument} before the given id.
-     * TODO: onError(PersistenceException) in case of persistence exception
+     * <p>
+     * Not settled: whether a failure of the store is given as {@code onError(PersistenceException)}.
      */
     Single<Boolean> hasPrevious(Transaction tx, ZonedDateTime snapshot, String ns, String entityName, String id);
 
     /**
      * Checks if there is a {@link JsonDocument} after the given id.
-     * TODO: onError(PersistenceException) in case of persistence exception
+     * <p>
+     * Not settled: whether a failure of the store is given as {@code onError(PersistenceException)}.
      */
     Single<Boolean> hasNext(Transaction tx, ZonedDateTime snapshot, String ns, String entityName, String id);
 

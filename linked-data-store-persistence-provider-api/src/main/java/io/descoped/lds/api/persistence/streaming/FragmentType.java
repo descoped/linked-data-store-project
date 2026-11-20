@@ -14,22 +14,15 @@ public enum FragmentType {
     }
 
     public static FragmentType fromTypeCode(byte typeCode) {
-        switch (typeCode) {
-            case 0:
-                return NULL;
-            case 1:
-                return DELETED;
-            case 2:
-                return EMPTY_OBJECT;
-            case 3:
-                return EMPTY_ARRAY;
-            case 4:
-                return STRING;
-            case 5:
-                return NUMERIC;
-            case 6:
-                return BOOLEAN;
-        }
-        throw new IllegalArgumentException("typeCode not supported: " + typeCode);
+        return switch (typeCode) {
+            case 0 -> NULL;
+            case 1 -> DELETED;
+            case 2 -> EMPTY_OBJECT;
+            case 3 -> EMPTY_ARRAY;
+            case 4 -> STRING;
+            case 5 -> NUMERIC;
+            case 6 -> BOOLEAN;
+            default -> throw new IllegalArgumentException("typeCode not supported: " + typeCode);
+        };
     }
 }
