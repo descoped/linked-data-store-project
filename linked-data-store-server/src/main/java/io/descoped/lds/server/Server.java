@@ -34,7 +34,7 @@ public class Server {
         // file wins. A later name wins over an earlier one; the environment and the system properties come last.
         DynamicConfiguration.Builder builder = DynamicConfiguration.builder();
         for (String name : List.of(
-                UndertowApplication.getDefaultConfigurationResourcePath(),
+                UndertowApplication.DEFAULT_CONFIGURATION_RESOURCE_PATH,
                 "application-server-defaults.properties",
                 "conf/application.properties",
                 "conf_dev/application.properties")) {

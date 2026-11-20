@@ -395,7 +395,7 @@ class ApplicationStopTest {
 
     private TestServer start() {
         DynamicConfiguration configuration = DynamicConfiguration.builder()
-                .classpath(UndertowApplication.getDefaultConfigurationResourcePath())
+                .classpath(UndertowApplication.DEFAULT_CONFIGURATION_RESOURCE_PATH)
                 .classpath("application_test.properties")
                 .values(Map.of(
                         "sagalog.provider", SlowTruncateSagaLogInitializer.class.getName(),

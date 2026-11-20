@@ -10,6 +10,7 @@ import tools.jackson.databind.node.ObjectNode;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.SequencedMap;
 
 public class GraphQLToJsonConverter {
     private static final Logger LOG = LoggerFactory.getLogger(GraphQLToJsonConverter.class);
@@ -20,7 +21,7 @@ public class GraphQLToJsonConverter {
         this.graphQLSchema = schema;
     }
 
-    public LinkedHashMap<String, ObjectNode> createSpecification(GraphQLSchema graphQLSchema) {
+    public SequencedMap<String, ObjectNode> createSpecification(GraphQLSchema graphQLSchema) {
         Map<String, GraphQLNamedType> typeMap = graphQLSchema.getTypeMap();
         LinkedHashMap<String, ObjectNode> jsonMap = new LinkedHashMap<>();
         StringBuilder sb = new StringBuilder();

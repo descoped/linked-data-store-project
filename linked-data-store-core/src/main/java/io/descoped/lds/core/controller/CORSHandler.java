@@ -59,28 +59,48 @@ public class CORSHandler implements HttpHandler {
     }
 
     public CORSHandler(HttpHandler next, HttpHandler fail, List<Pattern> originPatterns, boolean supportsCredential) {
-        this(next, fail, originPatterns, supportsCredential, DEFAULT_PREFLIGHT, DEFAULT_MAX_AGE,
+        this(next, fail, new Policy(originPatterns, supportsCredential, DEFAULT_PREFLIGHT, DEFAULT_MAX_AGE,
                 DEFAULT_ALLOW_METHODS.stream().map(HttpString::toString).collect(Collectors.toSet()),
                 DEFAULT_ALLOW_HEADERS.stream().map(HttpString::toString).collect(Collectors.toSet())
-        );
+        ));
     }
 
     public CORSHandler(HttpHandler next, List<Pattern> originPatterns, boolean supportsCredential,
                        int preflightResponseCode, long maxAge, Set<String> allowedMethods, Set<String> allowedHeaders) {
-        this(next, next, originPatterns, supportsCredential, preflightResponseCode, maxAge, allowedMethods,
-                allowedHeaders);
+        this(next, next, new Policy(originPatterns, supportsCredential, preflightResponseCode, maxAge, allowedMethods,
+                allowedHeaders));
     }
 
-    public CORSHandler(HttpHandler next, HttpHandler fail, List<Pattern> originPatterns, boolean supportsCredential,
-                       int preflightResponseCode, long maxAge, Set<String> allowedMethods, Set<String> allowedHeaders) {
+    /**
+     * A handler that answers by a policy.
+     *
+     * @param next   the handler a request goes on to when it is allowed
+     * @param fail   the handler a request goes on to when it is not
+     * @param policy what is allowed
+     */
+    public CORSHandler(HttpHandler next, HttpHandler fail, Policy policy) {
         this.next = next;
         this.fail = fail;
-        this.originPatterns = originPatterns;
-        this.supportsCredential = supportsCredential;
-        this.preflightResponseCode = preflightResponseCode;
-        this.maxAge = maxAge;
-        this.allowedMethods = allowedMethods;
-        this.allowedHeaders = allowedHeaders;
+        this.originPatterns = policy.originPatterns();
+        this.supportsCredential = policy.supportsCredential();
+        this.preflightResponseCode = policy.preflightResponseCode();
+        this.maxAge = policy.maxAge();
+        this.allowedMethods = policy.allowedMethods();
+        this.allowedHeaders = policy.allowedHeaders();
+    }
+
+    /**
+     * What a {@link CORSHandler} allows.
+     *
+     * @param originPatterns        the origins a request may come from
+     * @param supportsCredential    whether a request may carry credentials
+     * @param preflightResponseCode the status code of the answer to a preflight request
+     * @param maxAge                how long, in seconds, a browser may keep the answer to a preflight request
+     * @param allowedMethods        the methods a request may use
+     * @param allowedHeaders        the headers a request may send
+     */
+    public record Policy(List<Pattern> originPatterns, boolean supportsCredential, int preflightResponseCode,
+                         long maxAge, Set<String> allowedMethods, Set<String> allowedHeaders) {
     }
 
     private static final class OutOfScopeException extends Exception {

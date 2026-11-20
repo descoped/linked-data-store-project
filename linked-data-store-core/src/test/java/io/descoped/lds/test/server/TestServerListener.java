@@ -179,7 +179,7 @@ public class TestServerListener implements ITestListener, IInvokedMethodListener
             profile = "TEST_DEFAULT";
         }
         DynamicConfiguration.Builder builder = DynamicConfiguration.builder()
-                .classpath(UndertowApplication.getDefaultConfigurationResourcePath())
+                .classpath(UndertowApplication.DEFAULT_CONFIGURATION_RESOURCE_PATH)
                 .classpath("application_test.properties");
         if (configurationOverride != null) {
             String[] keysAndValues = configurationOverride.value();

@@ -48,6 +48,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Optional;
+import java.util.SequencedMap;
 import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.TreeMap;
@@ -85,22 +86,36 @@ public class UndertowApplication {
     private final SagaRecoveryTrigger sagaRecoveryTrigger;
     private final TxlogRawdataPool txlogRawdataPool;
 
-    UndertowApplication(Specification specification, RxJsonPersistence persistence, SagaExecutionCoordinator sec,
-                        SagaRepository sagaRepository, SagasObserver sagasObserver, SagaRecoveryTrigger sagaRecoveryTrigger, String host, int port,
-                        SagaLogPool sagaLogPool, SelectableThreadPoolExecutor sagaThreadPool,
+    /**
+     * The parts of the write path the application runs and stops.
+     *
+     * @param sec              runs the sagas
+     * @param repository       the sagas there are
+     * @param observer         sees each saga complete or fail
+     * @param recoveryTrigger  starts the recovery of sagas that did not complete
+     * @param logPool          the saga logs
+     * @param threadPool       the threads the sagas run on
+     * @param txlogRawdataPool the transaction log
+     */
+    record SagaParts(SagaExecutionCoordinator sec, SagaRepository repository, SagasObserver observer,
+                     SagaRecoveryTrigger recoveryTrigger, SagaLogPool logPool, SelectableThreadPoolExecutor threadPool,
+                     TxlogRawdataPool txlogRawdataPool) {
+    }
+
+    UndertowApplication(Specification specification, RxJsonPersistence persistence, SagaParts sagas, int port,
                         NamespaceController namespaceController, SearchIndex searchIndex,
-                        DynamicConfiguration configuration, TxlogRawdataPool txlogRawdataPool) {
+                        DynamicConfiguration configuration) {
         this.specification = specification;
-        this.sagaRecoveryTrigger = sagaRecoveryTrigger;
-        this.host = host;
+        this.sagaRecoveryTrigger = sagas.recoveryTrigger();
+        this.host = configuration.find("http.host").orElse(null);
         this.port = port;
         this.persistence = persistence;
-        this.sec = sec;
-        this.sagaRepository = sagaRepository;
-        this.sagasObserver = sagasObserver;
-        this.sagaLogPool = sagaLogPool;
-        this.sagaThreadPool = sagaThreadPool;
-        this.txlogRawdataPool = txlogRawdataPool;
+        this.sec = sagas.sec();
+        this.sagaRepository = sagas.repository();
+        this.sagasObserver = sagas.observer();
+        this.sagaLogPool = sagas.logPool();
+        this.sagaThreadPool = sagas.threadPool();
+        this.txlogRawdataPool = sagas.txlogRawdataPool();
 
         LOG.info("Initializing Http handlers ...");
 
@@ -169,9 +184,9 @@ public class UndertowApplication {
 
         // inside the CORS handler, so that its 503 has the CORS headers and a browser can read the answer
         this.requests = new GracefulShutdownHandler(httpHandler);
-        CORSHandler corsHandler = new CORSHandler(requests, requests, corsAllowOrigin,
+        CORSHandler corsHandler = new CORSHandler(requests, requests, new CORSHandler.Policy(corsAllowOrigin,
                 corsAllowCredentials, StatusCodes.NO_CONTENT, corsMaxAge, corsAllowMethods, corsAllowHeaders
-        );
+        ));
 
         LOG.info("Initializing Undertow ...");
 
@@ -193,9 +208,8 @@ public class UndertowApplication {
         return definitionRegistry;
     }
 
-    public static String getDefaultConfigurationResourcePath() {
-        return "application-defaults.properties";
-    }
+    /** The class path resource that holds the defaults of the configuration of core */
+    public static final String DEFAULT_CONFIGURATION_RESOURCE_PATH = "application-defaults.properties";
 
     public static UndertowApplication initializeUndertowApplication(DynamicConfiguration configuration) {
         int port = configuration.getInt("http.port");
@@ -219,7 +233,7 @@ public class UndertowApplication {
 
             GraphQLSchema schema = GraphQLSchemaBuilder.parseSchema(definitionRegistry);
             GraphQLToJsonConverter graphQLToJsonConverter = new GraphQLToJsonConverter(schema);
-            LinkedHashMap<String, ObjectNode> jsonMap = graphQLToJsonConverter.createSpecification(schema);
+            SequencedMap<String, ObjectNode> jsonMap = graphQLToJsonConverter.createSpecification(schema);
 
             LOG.info("Creating specification using GraphQL schema: {}", graphQLSchemaPath.get());
             specification = createJsonSpecification(jsonMap);
@@ -325,14 +339,13 @@ public class UndertowApplication {
                 txlogRawdataPool
         );
 
-        String host = configuration.find("http.host").orElse(null);
-
-        return new UndertowApplication(specification, persistence, sec, sagaRepository, sagasObserver, sagaRecoveryTrigger, host, port,
-                sagaLogPool, sagaThreadPool, namespaceController,
-                searchIndex, configuration, txlogRawdataPool);
+        SagaParts sagas = new SagaParts(sec, sagaRepository, sagasObserver, sagaRecoveryTrigger, sagaLogPool,
+                sagaThreadPool, txlogRawdataPool);
+        return new UndertowApplication(specification, persistence, sagas, port, namespaceController, searchIndex,
+                configuration);
     }
 
-    private static JsonSchemaBasedSpecification createJsonSpecification(LinkedHashMap<String, ObjectNode> jsonMap) {
+    private static JsonSchemaBasedSpecification createJsonSpecification(SequencedMap<String, ObjectNode> jsonMap) {
         JsonSchemaBasedSpecification jsonSchemaBasedSpecification = null;
         JsonSchema jsonSchema = null;
         for (Map.Entry<String, ObjectNode> item : jsonMap.entrySet()) {

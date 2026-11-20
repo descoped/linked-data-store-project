@@ -1075,7 +1075,7 @@ AssertJ. The others are TestNG.
 Not finished: the paging of the fetchers that read persistence has no test that runs.
 `fetcher/PersistenceRootConnectionFetcherTest` is disabled as a class, and `testForwardPagination` and
 `testBackwardPagination`, the only tests of `fetcher/PersistenceLinksConnectionFetcherTest`, are disabled, all
-with `@Ignore` and a note that they hang. `schemas/GraphQLSchemaBuilderTest` has a `main` method and no test.
+with `@Ignore` and a note that they hang.
 
 The command for a single test class has the form
 `./mvnw test -pl linked-data-store-core -Dtest=GraphQLSchemaGoldenTest`. `./mvnw verify -pl linked-data-store-core -am`
@@ -1173,7 +1173,7 @@ gets for a list of links in such a type is computed in the same way; the expecte
 `Zip.area`.
 
 Not finished: `LinkDirective.getPagination` and `ReverseLinkDirective.getPagination` return the default in both
-branches. `ReverseLinkDirective.REVERSE_LINK_DIRECTIVE` is not used. `EmptyPersistence` is used by the `main` of
+branches. `ReverseLinkDirective.REVERSE_LINK_DIRECTIVE` is not used. `EmptyPersistence` is used by
 `GraphQLSchemaBuilderTest` only. `GraphQLContext` has the name of a class of graphql-java.
 
 ### In the fetchers and in search

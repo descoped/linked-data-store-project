@@ -485,7 +485,7 @@ answers it before the `GracefulShutdownHandler` sees it.
 ## Configuration
 
 Core reads its configuration from a `DynamicConfiguration` (`io.descoped.config:dynamic-configuration`). The
-caller builds it. `UndertowApplication.getDefaultConfigurationResourcePath()` gives the name of the file with the
+caller builds it. `UndertowApplication.DEFAULT_CONFIGURATION_RESOURCE_PATH` is the name of the file with the
 defaults of core, `application-defaults.properties`, which `Server` and the tests read first. `Server` reads the
 defaults of the server over them, and those differ for some keys: see [the server](server.md).
 

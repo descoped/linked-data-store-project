@@ -16,7 +16,7 @@ public class DevServer {
         long now = System.currentTimeMillis();
 
         DynamicConfiguration configuration = DynamicConfiguration.builder()
-                .classpath(UndertowApplication.getDefaultConfigurationResourcePath()).file(Path.of(UndertowApplication.getDefaultConfigurationResourcePath()))
+                .classpath(UndertowApplication.DEFAULT_CONFIGURATION_RESOURCE_PATH).file(Path.of(UndertowApplication.DEFAULT_CONFIGURATION_RESOURCE_PATH))
                 .values(Map.of("persistence.provider", "mem",
                         "persistence.fragment.capacity", "8192",
                         "specification.schema", "spec/demo/contact.json,spec/demo/provisionagreement.json"))
