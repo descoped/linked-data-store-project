@@ -17,6 +17,7 @@ import javax.inject.Inject;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -136,9 +137,14 @@ public class TestServerListener implements ITestListener, IInvokedMethodListener
         return from + random.nextInt((to + 1) - from);
     }
 
+    /*
+     * Free on every address and on 127.0.0.1 by itself. On macOS a port can be opened on every address while
+     * another program listens on it at 127.0.0.1, and a request to localhost then reaches that program.
+     */
     private static boolean isLocalPortFree(int port) {
         try {
             new ServerSocket(port).close();
+            new ServerSocket(port, 1, InetAddress.getLoopbackAddress()).close();
             return true;
         } catch (IOException e) {
             return false;

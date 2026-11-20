@@ -24,6 +24,16 @@
       "enabled": false
     },
     {
+      "description": "PostgreSQL stays at 18 by the owner's decision (19 is too new); the owner says when it is raised (see .claude/CLAUDE.md, Invariants)",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "postgres"
+      ],
+      "allowedVersions": "/^18([.-]|$)/"
+    },
+    {
       "description": "Maven bumps through the wrapper: Renovate does not update distributionSha256Sum, so CI fails until it is set by hand (see .claude/CLAUDE.md, Maven Wrapper)",
       "matchManagers": [
         "maven-wrapper"

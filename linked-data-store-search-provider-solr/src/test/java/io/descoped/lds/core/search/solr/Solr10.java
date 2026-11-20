@@ -27,6 +27,7 @@ final class Solr10 {
                 .withExposedPorts(PORT)
                 .waitingFor(Wait.forHttp("/solr/" + CORE + "/admin/ping").forStatusCode(200));
         container.start();
+        LoopbackPorts.check(container);
         return container;
     }
 

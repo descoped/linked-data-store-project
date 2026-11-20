@@ -75,9 +75,11 @@ of graphql-java-extended-scalars now always writes three digits.
   concatenated into SQL, Cypher, Solr queries, keys or file paths.
 - **Time.** Document versions are stored and compared as UTC instants.
 - **Transactions** commit only when asked and roll back otherwise.
-- **Always the latest stable version** of every library, plugin, action, image and engine (PostgreSQL 18, Neo4j
-  2026, Solr 10). Pre-releases only on request. Old and outdated code and configuration is removed,
-  not carried along. No version is held back: Renovate moves every dependency, and CI on JDK 27 is the gate.
+- **Always the latest stable version** of every library, plugin, action, image and engine (Neo4j 2026, Solr 10).
+  Pre-releases only on request. Old and outdated code and configuration is removed, not carried along. Renovate
+  moves every dependency, and CI on JDK 27 is the gate. One version is held, by the owner's decision: **PostgreSQL
+  stays at 18** (19.0 came out in November 2026 and is too new). The owner says when it is raised; Renovate is
+  told to stay below 19 (`.github/renovate.json`).
 - **No leftovers** of the earlier hosts and pipelines: no Statistics Norway (SSB) references, Azure Pipelines,
   Travis, Drone or OSSRH configuration.
 - **Secrets.** Nothing but documented development defaults (the `lds` database user in tests and compose files).
@@ -110,6 +112,12 @@ module makes that module meet them.
 - The Solr provider's tests run on a real Solr 10 (`solr:10.1`) through Testcontainers, started as the compose
   file of the server starts it: the image as it is, with the core `lds-index` created from the configuration the
   image comes with. A write is in the index within the five seconds the provider gives Solr to commit it.
+- Every container of the tests is published on 127.0.0.1 only, the one Testcontainers starts itself (Ryuk)
+  included: `LoopbackPorts`, which Testcontainers finds through `META-INF/services`, in each module that starts
+  a container (PostgreSQL, Neo4j, Solr, core). A module that starts containers needs its own. Without it Docker
+  Desktop on macOS can give a container a port that another program listens on at 127.0.0.1, and the build fails
+  with "Could not connect to Ryuk" or with an engine that never answers. The helper that starts a container
+  checks it (`LoopbackPorts.check`).
 - The shared suite runs for every provider: memory, PostgreSQL and Neo4j. The memory provider also runs the
   Reactive Streams TCK for `AsyncIterablePublisher`.
 - Core's `SagaLogPostgresTest` runs the write path with the saga log in a PostgreSQL 18 container: concurrent

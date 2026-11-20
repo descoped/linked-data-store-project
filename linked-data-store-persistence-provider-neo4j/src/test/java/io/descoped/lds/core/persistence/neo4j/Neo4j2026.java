@@ -24,6 +24,7 @@ final class Neo4j2026 {
         Neo4jContainer container = new Neo4jContainer(IMAGE)
                 .withAdminPassword("lds-development");
         container.start();
+        LoopbackPorts.check(container);
         return container;
     }
 

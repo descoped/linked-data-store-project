@@ -53,6 +53,7 @@ public class SagaLogPostgresTest {
                 .withUsername("lds")
                 .withPassword("lds");
         postgres.start();
+        LoopbackPorts.check(postgres);
     }
 
     @AfterClass(alwaysRun = true)
