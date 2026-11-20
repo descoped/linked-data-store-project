@@ -1,3 +1,9 @@
+---
+title: "The GraphQL API"
+description: "The queries LDS makes from a model, paging, links, as-of reads, search."
+order: 5
+---
+
 # The GraphQL API
 
 This document describes the GraphQL API of Linked Data Store (LDS): its address, how a query is sent, the queries

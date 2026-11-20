@@ -1,3 +1,9 @@
+---
+title: "The persistence interface"
+description: "What a persistence provider implements: fragments, documents, reactive streams, transactions."
+order: 2
+---
+
 # The persistence interface
 
 This document describes the module `linked-data-store-persistence-provider-api`: the interface between LDS and

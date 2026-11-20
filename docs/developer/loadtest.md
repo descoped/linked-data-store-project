@@ -1,3 +1,9 @@
+---
+title: "The load test"
+description: "What a run of the load test does and what it is made of."
+order: 14
+---
+
 # The load test
 
 This document describes the load test of Linked Data Store (LDS): what a run does, the files it is made of, the

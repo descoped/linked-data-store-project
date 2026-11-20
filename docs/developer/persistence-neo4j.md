@@ -1,3 +1,9 @@
+---
+title: "The Neo4j provider"
+description: "Persistence as a graph in Neo4j."
+order: 6
+---
+
 # The Neo4j persistence provider
 
 This document describes the [persistence provider](../glossary.md#persistence-provider) `neo4j` of Linked Data Store

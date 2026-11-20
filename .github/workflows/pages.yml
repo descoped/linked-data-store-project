@@ -1,0 +1,66 @@
+name: Documentation site
+
+# Builds the site (site/, a krantho static site: a landing page, and the markdown files in docs/ as the documentation)
+# and publishes it to GitHub Pages when either changes on master. Nothing of the Maven build runs here, and CI does not
+# run for these paths. Pages is set to publish from GitHub Actions.
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'docs/**'
+      - 'site/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions: {}
+
+# One deployment at a time, and one that has started always finishes
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: site
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # The whole history: each page is dated by its file's last commit
+          fetch-depth: 0
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115  # v6.1.1
+        with:
+          package_json_file: site/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: 26
+          cache: pnpm
+          cache-dependency-path: site/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - id: pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d  # v6.0.0
+      # Where Pages serves the site (https://descoped.github.io/linked-data-store-project), which every page's
+      # canonical link, the sitemap and robots.txt name; its path is the path every page is served under
+      - run: KRANTHO_SITE_BASE_URL="https://${BASE_URL#*://}" pnpm run build
+        env:
+          BASE_URL: ${{ steps.pages.outputs.base_url }}
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5.0.0
+        with:
+          path: site/out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346  # v5.0.1

@@ -1,3 +1,9 @@
+---
+title: "Core: the REST API"
+description: "How a request becomes a read or a write of a document, a part of it, or a link."
+order: 10
+---
+
 # Core: the REST API of documents
 
 This document describes the code in `linked-data-store-core` that answers REST requests for documents: how a

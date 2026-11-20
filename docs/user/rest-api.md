@@ -1,3 +1,9 @@
+---
+title: "The REST API"
+description: "Every address, method, parameter and answer."
+order: 4
+---
+
 # The REST API
 
 This document is the reference for the REST API of Linked Data Store (LDS): every address, method and query

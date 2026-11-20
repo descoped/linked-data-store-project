@@ -1,3 +1,11 @@
+---
+title: "Documentation"
+description: >-
+  The documentation of Linked Data Store, for those who use it and for those who develop it, with a glossary of its
+  terms.
+order: 0
+---
+
 # Linked Data Store: documentation
 
 Linked Data Store (LDS) is a server that gives REST and GraphQL access to versioned, linked JSON documents. The

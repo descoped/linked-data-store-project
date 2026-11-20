@@ -1,3 +1,9 @@
+---
+title: "The shared suite"
+description: "The tests every persistence provider passes."
+order: 3
+---
+
 # The shared suite for persistence providers
 
 This document covers the module `linked-data-store-persistence-provider-tck`: the tests that every persistence
