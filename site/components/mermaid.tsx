@@ -40,7 +40,11 @@ export function Mermaid(): null {
       await mermaid.run({ nodes: blocks })
     }
 
-    const redraw = (): void => void draw()
+    // One drawing at a time: a change of theme during a drawing waits for it to end
+    let drawing = Promise.resolve()
+    const redraw = (): void => {
+      drawing = drawing.then(draw, draw)
+    }
     redraw()
     system.addEventListener('change', redraw)
     window.addEventListener('themechange', redraw)

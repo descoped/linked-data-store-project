@@ -31,8 +31,8 @@ The build publishes nothing. No artifact and no image leaves the machine that bu
 | `.github/workflows/ci.yml` | The build in GitHub Actions. |
 | `.github/workflows/claude.yml` | The review of a pull request by Claude, and its answer to an `@claude` mention. It builds nothing by itself. |
 | `.github/workflows/pages.yml` | The build of the [documentation site](#the-documentation-site) and its publication to GitHub Pages. |
-| `site/` | The documentation site. |
 | `.github/renovate.json` | What Renovate moves, and the versions it is told to leave. |
+| `site/` | The documentation site. |
 | `.gitignore`, `.gitattributes` | Build output, local configuration and release leftovers are ignored. Every text file is checked out with LF line ends, so that a checkout on any system makes the same sources jar. |
 
 ## The modules

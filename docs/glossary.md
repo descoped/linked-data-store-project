@@ -129,7 +129,9 @@ as written; [The model](user/model.md#shapes-that-do-not-work-as-written) lists 
 ### Saga
 
 The unit of work of one write: an ordered set of steps that LDS records in the saga log as it runs them, so that a write
-that has started also completes, when a step failed or LDS stopped before the end (forward recovery). The first step
+that did not complete, because a step failed or LDS stopped before the end, is run again later; a step that was done
+is not undone (forward recovery). A saga that fails again when it is run again is set aside and its write is not done
+([Concepts](user/concepts.md#what-a-write-goes-through)). The first step
 writes the transaction log entry; the steps for persistence and for the search index follow it, in parallel. Code:
 `SagaExecutionCoordinator`, on Cantara distributed saga.
 

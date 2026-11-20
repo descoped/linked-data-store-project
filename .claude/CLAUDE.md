@@ -25,8 +25,9 @@ search are pluggable. One Maven reactor, group `io.descoped.lds`.
 
 | `linked-data-store-loadtest` | `io.descoped.lds.loadtest` | the load test, run by hand: scripts and a compose file that start LDS from the image of the server with one persistence provider and drive a load at it, and the program that turns the results into plot files (`HTTPLoadTestBaselineStatistics`). Not in the BOM and not in a release |
 
-Not in the reactor: `docs/`, the documentation, and `site/`, the documentation site (see "The documentation" below). The cluster test of before 3.0
-is removed: it needed images and a saga log that do not exist any more. Its history is in git.
+Not in the reactor: `docs/`, the documentation, and `site/`, the documentation site (see "The documentation" below).
+The cluster test of before 3.0 is removed: it needed images and a saga log that do not exist any more. Its history
+is in git.
 
 Until 2026-11 every module was a repository of its own; their histories were imported here with `git filter-repo`
 (old tags prefixed with the repository name, e.g. `linked-data-store-core/v0.16`). Nothing was released under
@@ -271,7 +272,8 @@ one document for each part of the code). `docs/README.md` is the index. Keep the
 - **The documentation site** (`site/`, `site/README.md`) is a krantho static site (Next.js) that makes pages of
   `docs/` and adds a landing page (`site/content/landing/home.md`, held to the same rules: only what the code does,
   the status said plainly). `.github/workflows/pages.yml` publishes it to GitHub Pages
-  (https://descoped.github.io/linked-data-store-project/) when `docs/` or `site/` changes on `master`; CI does not
+  (https://descoped.github.io/linked-data-store-project/) when `docs/`, `site/` or the workflow changes on `master`, or
+  when started by hand; CI does not
   build it. Its mark is Descoped's (`|>o|`). Check a change with `cd site && pnpm build`, and look at it in light
   and dark at phone and desktop widths.
 - Lines of at most 120 characters, except a row of a table. A link to another document is a relative path, and

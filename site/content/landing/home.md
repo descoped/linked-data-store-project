@@ -43,8 +43,9 @@ instant. A link is not checked on write, so it may point at a document that is w
 
 ### A write is a saga
 
-The transaction log is written first, then the store and the search index side by side. A write that has started
-also completes when a step failed or LDS stopped before the end. [The write path](/docs/developer/core-write-path/)
+The transaction log is written first, then the store and the search index side by side. Each step is recorded in a
+saga log, and a write that did not complete, because a step failed or LDS stopped, is run again from it later.
+[The write path](/docs/developer/core-write-path/)
 
 ### Storage you choose
 
