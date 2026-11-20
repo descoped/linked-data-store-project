@@ -45,6 +45,10 @@ import static io.descoped.lds.core.persistence.neo4j.Neo4jCreationalPatternFacto
  * namespace, for the index that a search for a value looks up.</li>
  * <li>A link is a {@code REF} relationship to the document node it points at, in the same namespace. That node is
  * created with the link when the document is not written yet.</li>
+ * <li>A version that marks the document as deleted is a root with {@code deleted: true} and nothing below it. A
+ * read at a time leaves it out; with the versions of a document it is read as an empty document.</li>
+ * <li>The versions of a document follow each other without a gap: a version is valid until the next one, and a
+ * version that is deleted gives its time to the version before it.</li>
  * </ul>
  * A read is one statement that returns one record for each document, and a record is taken from the driver when
  * a document is asked for.
@@ -54,15 +58,15 @@ final class Neo4jPersistence implements RxJsonPersistence {
     static final ZoneId UTC = ZoneId.of("Etc/UTC");
 
     /*
-     * The end of every read. r is the document node, v the version and m its root; "leaves" holds every node
-     * below the root with the relationships that lead to it.
-     */
-    /*
      * The version that is valid at a time, unless it marks the document as deleted: then there is no document at
      * that time. For a statement that names the version v and its root m.
      */
     private static final String VALID_AT_SNAPSHOT = "v.from <= $snapshot AND $snapshot < v.to AND m.deleted IS NULL";
 
+    /*
+     * The end of every read. r is the document node, v the version and m its root; "leaves" holds every node
+     * below the root with the relationships that lead to it.
+     */
     private static final String RETURN_DOCUMENT = "RETURN r, v, m, [p = (m)-[:EMBED|REF*]->(e) | [relationships(p), e]] AS leaves";
 
     private final Neo4jTransactionFactory transactionFactory;
