@@ -30,7 +30,8 @@ until that is done, treat the code as work in progress.
 
 ## Build
 
-Needs JDK 27 and Docker (the PostgreSQL tests start PostgreSQL 18 in a container).
+Needs JDK 27 and Docker with its `docker` command and `docker compose`: the tests start PostgreSQL 18, Neo4j 2026
+and Solr 10 in containers, build the image of the server and start the whole stack of the compose file.
 
 ```sh
 ./mvnw verify
@@ -38,28 +39,69 @@ Needs JDK 27 and Docker (the PostgreSQL tests start PostgreSQL 18 in a container
 
 ## Run
 
+Build first, then start LDS in one of three ways. As it comes, LDS keeps everything in memory and has an example
+model (`linked-data-store-server/schemas/schema.graphql`, a person and a company); it answers on port 9090.
+
+```sh
+./mvnw package -DskipTests
+```
+
+**In a container:**
+
+```sh
+docker build -t lds-server linked-data-store-server
+docker run --rm -p 127.0.0.1:9090:9090 lds-server
+```
+
+**The whole stack**, with Neo4j for the documents, PostgreSQL for the saga log and the transaction log, and Solr
+for search. For development only: the passwords are written in the file.
+
+```sh
+docker compose -f linked-data-store-server/compose.yaml up --build
+```
+
+**On the JDK**, from the module directory:
+
+```sh
+cd linked-data-store-server
+java -cp "target/*:target/lib/*" io.descoped.lds.server.Server
+```
+
+Then:
+
+```sh
+curl -X PUT 'http://localhost:9090/ns/Company/acme?sync=true' -H 'Content-Type: application/json' \
+     -d '{"name":"Acme"}'
+curl -X PUT 'http://localhost:9090/ns/Person/ola?sync=true' -H 'Content-Type: application/json' \
+     -d '{"name":"Ola","employer":"/Company/acme"}'
+curl 'http://localhost:9090/ns/Person/ola'
+curl 'http://localhost:9090/graphql' -H 'Content-Type: application/json' \
+     -d '{"query":"{ CompanyById(id: \"acme\") { name employees { edges { node { name } } } } }"}'
+```
+
+### Configuration
+
 The main class is `io.descoped.lds.server.Server` in `linked-data-store-server`. Configuration is read in this
-order, later sources winning: the defaults in
-`linked-data-store-core/src/main/resources/application-defaults.properties` (port 9090), the server's own defaults
-(in-memory persistence), `conf/application.properties`, `conf_dev/application.properties`, environment variables
-prefixed `LDS_`, and system properties.
+order, later sources winning: the defaults of core
+(`linked-data-store-core/src/main/resources/application-defaults.properties`), the defaults of the server
+(`linked-data-store-server/src/main/resources/application-server-defaults.properties`, which lists the keys of
+every provider), `conf/application.properties` and `conf_dev/application.properties` under the working directory
+(`/lds` in the image), environment variables prefixed `LDS_`, and system properties.
 
 The configuration is read with dynamic-configuration 3, which has these rules:
 
 - An environment variable is the key in upper case with `_` for every other character, after the prefix:
-  `LDS_HTTP_PORT` sets `http.port`.
+  `LDS_HTTP_PORT` sets `http.port`, `LDS_NEO4J_DRIVER_URL` sets `neo4j.driver.url`.
 - An environment variable or a system property (`-Dhttp.port=8080`) sets only a key that one of the properties
-  files has. The keys of a provider (`postgres.driver.*`, `neo4j.driver.*`, `search.index.url`, `sagalog.config.*`,
-  `txlog.config.*`) are in no default file: give them in `conf/application.properties`, and they can be set from
-  outside as well.
+  files has. The defaults of the server have the keys LDS is usually configured with; any other key of a provider
+  is given in `conf/application.properties`, and can then be set from outside as well.
 - `${key}` in a value is the value of another key, and `${key:default}` gives it a default.
 - A boolean is `true` or `false`; anything else stops LDS at start with the name of the key.
 
-The `conf/` and `conf_dev/` files, the Dockerfiles and the compose file in `linked-data-store-server` are from
-before the merge: they expect Neo4j, PostgreSQL and Solr from that compose file and a schema folder that a script
-used to fetch. They are being rebuilt with the server module, so there is no supported way to start a full LDS from
-this repository yet. The tests in `linked-data-store-core` start the application in memory and show how it is
-configured.
+In the image, the model is read from `/lds/schemas` (mount your own there), options of the JVM are given in
+`JAVA_TOOL_OPTIONS`, and LDS runs as the user `lds`. The image is built here and is not published anywhere.
+
+Search finds a document by the texts of its fields named `languageText`, which is what the Solr provider indexes.
 
 ## History
 

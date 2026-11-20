@@ -105,7 +105,8 @@ public class CORSHandler implements HttpHandler {
                 next.handleRequest(exchange);
             }
         } catch (OutOfScopeException oose) {
-            log.warn("Request out of scope: {}", oose.getMessage());
+            // not a request the CORS rules are about, as any request without an Origin is: nothing to warn about
+            log.debug("Request out of scope: {}", oose.getMessage());
             fail.handleRequest(exchange);
         }
     }

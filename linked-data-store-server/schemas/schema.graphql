@@ -1,0 +1,48 @@
+# An example model, to try LDS with. Replace it with your own: a type with @domain is an entity that LDS keeps
+# documents of, a field with @link holds a link to a document of another entity, and a type without @domain is
+# a part of the documents it is used in.
+
+directive @domain(searchable: Boolean) on OBJECT
+directive @link(pagination: Boolean, reverseName: String) on FIELD_DEFINITION
+
+"""
+A person
+"""
+type Person @domain {
+  name: String!
+  born: DateTime
+  address: Address
+  employer: Company @link(reverseName: "employees")
+  friends: [Person] @link
+}
+
+type Address {
+  street: String
+  city: String!
+}
+
+"""
+A company
+"""
+type Company @domain {
+  name: String!
+  founded: DateTime
+  about: [Text]
+}
+
+"""
+A text in one language. Search finds a document by the texts of its fields named languageText, wherever in the
+document they are.
+"""
+type Text {
+  languageCode: String
+  languageText: String!
+}
+
+type Query {
+  x: String
+}
+
+scalar Date
+scalar DateTime
+scalar Time

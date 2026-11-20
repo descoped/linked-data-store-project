@@ -1,35 +1,31 @@
-FROM descoped/lds-server-base:latest as build
+# The image of the LDS server. It is made of what Maven has built, so build the reactor first; the context is
+# this directory:
+#
+#   ./mvnw package -DskipTests
+#   docker build -t lds-server linked-data-store-server
+#
+# LDS listens on 9090 and reads its model from /lds/schemas, which holds an example. It is configured by
+# environment variables (LDS_PERSISTENCE_PROVIDER, LDS_NEO4J_DRIVER_URL, ...) or by a file mounted as
+# /lds/conf/application.properties; options of the JVM are given in JAVA_TOOL_OPTIONS.
+#
+# The JDK is the baseline of LDS and is raised by hand, together with java.version in the root POM.
+FROM eclipse-temurin:27-jre-alpine
 
-#
-# Build LDS Server
-#
-RUN ["jlink", "--strip-debug", "--no-header-files", "--no-man-pages", "--compress=2", "--module-path", "/opt/jdk/jmods", "--output", "/linked",\
- "--add-modules", "jdk.unsupported,java.base,java.management,java.net.http,java.xml,java.naming,java.desktop,java.sql"]
-COPY pom.xml /lds/
-WORKDIR /lds
-RUN mvn -B verify dependency:go-offline
-COPY src /lds/src/
-RUN mvn -B -o verify && mvn -B -o dependency:copy-dependencies
-
-#
-# Build LDS image
-#
-FROM alpine:latest
-
-#
-# Resources from build image
-#
-COPY run.sh /lds/run.sh
-COPY --from=build /linked /jdk/
-COPY --from=build /lds/target/dependency /lds/lib/
-COPY --from=build /lds/target/linked-data-store-*.jar /lds/lib/
-
-ENV PATH=/jdk/bin:$PATH
+RUN addgroup -S lds && adduser -S -D -H -G lds -h /lds lds
 
 WORKDIR /lds
 
-VOLUME ["/lds/conf", "/lds/schemas"]
+COPY target/lib/ lib/
+COPY target/linked-data-store-server-*.jar lib/
+COPY schemas/ schemas/
+
+USER lds
 
 EXPOSE 9090
 
-CMD ["./run.sh"]
+HEALTHCHECK --start-period=60s --start-interval=1s --interval=10s --timeout=3s --retries=3 \
+    CMD wget -q -O /dev/null "http://127.0.0.1:${LDS_HTTP_PORT:-9090}/ping" || exit 1
+
+# java is the process of the container, so that the signal that stops the container reaches it: LDS then answers
+# what it is handling and completes its sagas before it ends.
+ENTRYPOINT ["java", "-cp", "/lds/lib/*", "io.descoped.lds.server.Server"]

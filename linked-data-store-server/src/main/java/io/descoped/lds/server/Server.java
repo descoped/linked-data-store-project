@@ -8,10 +8,25 @@ import org.slf4j.LoggerFactory;
 import java.nio.file.Path;
 import java.util.List;
 
+/**
+ * The LDS server: reads the configuration, starts the application and keeps it running until the process is
+ * asked to end. The application is then stopped in order, so that what it is handling is completed.
+ */
 public class Server {
 
     private static final Logger LOG = LoggerFactory.getLogger(Server.class);
 
+    private Server() {
+    }
+
+    /**
+     * Starts LDS. The configuration is read from the defaults of core and of the server, then from
+     * {@code conf/application.properties} and {@code conf_dev/application.properties} under the working
+     * directory, then from the environment variables that start with {@code LDS_} and from the system
+     * properties; a later source wins over an earlier one.
+     *
+     * @param args not used
+     */
     public static void main(String[] args) {
         long now = System.currentTimeMillis();
 
