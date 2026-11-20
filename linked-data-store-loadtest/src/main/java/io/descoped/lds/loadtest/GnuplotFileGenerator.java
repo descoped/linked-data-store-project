@@ -18,6 +18,7 @@ import java.util.TreeMap;
  */
 public final class GnuplotFileGenerator {
 
+    private static final String WIDE = "1920,1080";
     private static final String UNSET_FORMAT_X = "unset format x\n";
     private static final String GRID_YTICS_MYTICS = "set grid ytics mytics\n";
     private static final String STYLE_LINE_1_BLUE_POINTS = "set style line 1 lc rgb '#0060ad' lt 1 lw 1 pt 7 pi 0 ps 0.5\n";
@@ -93,7 +94,7 @@ public final class GnuplotFileGenerator {
 
     private static void writeThroughputAndLatencyScript(Map<String, Integer> indexByStatistic, String xlabel, Path plotfilesFolder, String plotfilesBasename) {
         try (BufferedWriter bw = open(plotfilesFolder, plotfilesBasename + ".gnu")) {
-            writeAxes(bw, "1920,1080", plotfilesBasename);
+            writeAxes(bw, WIDE, plotfilesBasename);
             bw.write("set grid ytics\n");
             bw.write(STYLE_LINE_1_BLUE_POINTS);
             bw.write("set style line 2 lc rgb '#dd181f' lt 1 lw 1 pt 7 pi 0 ps 0.5\n");
@@ -119,7 +120,7 @@ public final class GnuplotFileGenerator {
     private static void writeTotalThroughputScript(Map<String, Integer> indexByStatistic, String xlabel, Path plotfilesFolder, String plotfilesBasename) {
         String name = plotfilesBasename + "_total_throughput";
         try (BufferedWriter bw = open(plotfilesFolder, name + ".gnu")) {
-            writeAxes(bw, "1920,1080", name);
+            writeAxes(bw, WIDE, name);
             bw.write("set grid ytics\n");
             bw.write(STYLE_LINE_1_BLUE_POINTS);
             bw.write("set style line 2 lc rgb '#dd181f' lt 1 lw 1 pt 13 pi 0 ps 0.5\n");
@@ -142,7 +143,7 @@ public final class GnuplotFileGenerator {
                                            String suffix, String prefix) {
         String name = plotfilesBasename + suffix;
         try (BufferedWriter bw = open(plotfilesFolder, name + ".gnu")) {
-            writeAxes(bw, "1920,1080", name);
+            writeAxes(bw, WIDE, name);
             bw.write(GRID_YTICS_MYTICS);
             bw.write(STYLE_LINE_1_BLUE_POINTS);
             bw.write("set style line 2 lc rgb '#ffc400' lt 1 lw 1 pt 9 pi 0 ps 0.5\n");
