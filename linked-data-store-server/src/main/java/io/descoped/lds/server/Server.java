@@ -1,10 +1,10 @@
 package io.descoped.lds.server;
 
 import io.descoped.config.DynamicConfiguration;
-import io.descoped.config.StoreBasedDynamicConfiguration;
 import io.descoped.lds.core.UndertowApplication;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import java.nio.file.Path;
 
 public class Server {
 
@@ -13,11 +13,11 @@ public class Server {
     public static void main(String[] args) {
         long now = System.currentTimeMillis();
 
-        DynamicConfiguration configuration = new StoreBasedDynamicConfiguration.Builder()
-                .propertiesResource(UndertowApplication.getDefaultConfigurationResourcePath())
-                .propertiesResource("application-server-defaults.properties")
-                .propertiesResource("conf/application.properties")
-                .propertiesResource("conf_dev/application.properties")
+        DynamicConfiguration configuration = DynamicConfiguration.builder()
+                .classpath(UndertowApplication.getDefaultConfigurationResourcePath()).file(Path.of(UndertowApplication.getDefaultConfigurationResourcePath()))
+                .classpath("application-server-defaults.properties").file(Path.of("application-server-defaults.properties"))
+                .classpath("conf/application.properties").file(Path.of("conf/application.properties"))
+                .classpath("conf_dev/application.properties").file(Path.of("conf_dev/application.properties"))
                 .environment("LDS_")
                 .systemProperties()
                 .build();

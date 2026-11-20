@@ -4,90 +4,108 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.json.JsonDocument;
 import io.descoped.lds.api.persistence.json.JsonTools;
+import io.descoped.lds.api.search.SearchIndex;
 import io.descoped.lds.api.search.SearchResponse;
-import org.apache.commons.io.FileUtils;
-import org.apache.solr.client.solrj.embedded.EmbeddedSolrServer;
-import org.apache.solr.core.CoreContainer;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
-import org.testng.annotations.Test;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.io.InputStream;
-import java.net.URL;
-import java.net.URLConnection;
-import java.nio.ByteBuffer;
-import java.nio.CharBuffer;
-import java.nio.charset.Charset;
-import java.nio.charset.CoderResult;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.time.Duration;
 import java.time.ZonedDateTime;
+import java.util.List;
 import java.util.Set;
+import java.util.function.Supplier;
 
-import static org.testng.Assert.assertEquals;
+import static org.assertj.core.api.Assertions.assertThat;
 
-public class SolrSearchIndexTest {
+/**
+ * The Solr provider on a real Solr 10, reached over HTTP as LDS reaches it. A write is in the index within the
+ * five seconds the provider gives Solr to commit it, so the tests wait for what they search for.
+ */
+class SolrSearchIndexTest {
 
-    private static EmbeddedSolrServer server;
-    private SolrSearchIndex searchIndex;
+    private static final Duration COMMIT_WAIT = Duration.ofSeconds(30);
 
-    @BeforeClass
-    public void setUp() {
-        CoreContainer container = new CoreContainer("src/test/resources/solr");
-        server = new EmbeddedSolrServer(container, "lds-index");
-        searchIndex = new SolrSearchIndex(server, server);
-        container.load();
+    private static SearchIndex searchIndex;
+
+    @BeforeAll
+    static void start() {
+        searchIndex = new SolrProvider().getSearchIndex(Solr10.configuration());
     }
 
-    @AfterClass
-    public void tearDown() throws Exception {
-        Path solrHome = Paths.get("src/test/resources/solr/lds-index/data");
-        if (solrHome.toFile().exists()) {
-            FileUtils.deleteDirectory(solrHome.toFile());
-        }
+    @BeforeEach
+    void emptyTheIndex() {
+        searchIndex.deleteAll().blockingAwait();
     }
 
     @Test
-    public void testSearch() throws Exception {
-        JsonNode json = JsonTools.toJsonNode(getResourceAsString("UnitDataSet_Person_1.json", StandardCharsets.UTF_8));
-        final JsonDocument jsonDocument = new JsonDocument(new DocumentKey("ns", "UnitDataSet", json.get("id").textValue(),
-                ZonedDateTime.now()), json);
-        searchIndex.createOrOverwrite(jsonDocument).blockingAwait();
-        server.commit();
+    void aDocumentIsFoundByItsTextAndNotAfterItIsDeleted() throws IOException {
+        JsonDocument person = document("UnitDataSet", "UnitDataSet_Person_1.json");
 
-        SearchResponse response = searchIndex.search("Norway", Set.of("UnitDataSet"), 0, 10).blockingGet();
-        assertEquals(response.getTotalHits(), 1);
-        assertEquals(response.getResults().iterator().next().getDocumentKey().entity(), "UnitDataSet");
-        assertEquals(response.getResults().iterator().next().getDocumentKey().id(), "b9c10b86-5867-4270-b56e-ee7439fe381e");
+        searchIndex.createOrOverwrite(person).blockingAwait();
 
-        searchIndex.delete(jsonDocument).blockingAwait();
-        server.commit();
-        response = searchIndex.search("Norway", null, 0, 10).blockingGet();
-        assertEquals(response.getTotalHits(), 0);
+        SearchResponse found = await(() -> searchIndex.search("Norway", Set.of("UnitDataSet"), 0, 10).blockingGet(), 1);
+        assertThat(found.getTotalHits()).isEqualTo(1);
+        DocumentKey key = found.getResults().iterator().next().getDocumentKey();
+        assertThat(key.entity()).isEqualTo("UnitDataSet");
+        assertThat(key.id()).isEqualTo("b9c10b86-5867-4270-b56e-ee7439fe381e");
+        assertThat(key.namespace()).isEqualTo("ns");
+        assertThat(key.timestamp()).isEqualTo(person.key().timestamp());
+
+        searchIndex.delete(person).blockingAwait();
+
+        assertThat(await(() -> searchIndex.search("Norway", null, 0, 10).blockingGet(), 0).getTotalHits()).isZero();
     }
 
-    private static String getResourceAsString(String path, Charset charset) {
-        try {
-            URL systemResource = ClassLoader.getSystemResource(path);
-            if (systemResource == null) {
-                return null;
+    @Test
+    void aSearchIsNarrowedToTheEntitiesItNamesAndToItsPage() throws IOException {
+        searchIndex.createOrOverwrite(List.of(
+                document("UnitDataSet", "UnitDataSet_Person_1.json"),
+                document("UnitDataSet", "UnitDataSet_Family_1.json"),
+                document("LogicalRecord", "LogicalRecord_Person_1.json")
+        )).blockingAwait();
+
+        SearchResponse all = await(() -> searchIndex.search("*:*", null, 0, 10).blockingGet(), 3);
+        assertThat(all.getResults()).extracting(result -> result.getDocumentKey().entity())
+                .containsExactlyInAnyOrder("UnitDataSet", "UnitDataSet", "LogicalRecord");
+
+        SearchResponse dataSets = searchIndex.search("*:*", Set.of("UnitDataSet"), 0, 10).blockingGet();
+        assertThat(dataSets.getTotalHits()).isEqualTo(2);
+        assertThat(dataSets.getResults()).extracting(result -> result.getDocumentKey().entity()).containsOnly("UnitDataSet");
+
+        SearchResponse either = searchIndex.search("*:*", Set.of("UnitDataSet", "LogicalRecord"), 0, 10).blockingGet();
+        assertThat(either.getTotalHits()).isEqualTo(3);
+
+        SearchResponse secondPage = searchIndex.search("*:*", null, 2, 2).blockingGet();
+        assertThat(secondPage.getTotalHits()).isEqualTo(3);
+        assertThat(secondPage.getResults()).hasSize(1);
+    }
+
+    /**
+     * Searches until the index has the number of hits the test expects, or the time a commit may take is over.
+     */
+    private static SearchResponse await(Supplier<SearchResponse> search, long hits) {
+        long deadline = System.nanoTime() + COMMIT_WAIT.toNanos();
+        SearchResponse response = search.get();
+        while (response.getTotalHits() != hits && System.nanoTime() < deadline) {
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(e);
             }
-            URLConnection conn = systemResource.openConnection();
-            try (InputStream is = conn.getInputStream()) {
-                byte[] bytes = is.readAllBytes();
-                CharBuffer cbuf = CharBuffer.allocate(bytes.length);
-                CoderResult coderResult = charset.newDecoder().decode(ByteBuffer.wrap(bytes), cbuf, true);
-                if (coderResult.isError()) {
-                    coderResult.throwException();
-                }
-                return cbuf.flip().toString();
-            }
-        } catch (RuntimeException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new RuntimeException(e);
+            response = search.get();
+        }
+        return response;
+    }
+
+    private static JsonDocument document(String entity, String resource) throws IOException {
+        try (InputStream in = SolrSearchIndexTest.class.getResourceAsStream("/" + resource)) {
+            JsonNode json = JsonTools.toJsonNode(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+            return new JsonDocument(new DocumentKey("ns", entity, json.get("id").textValue(), ZonedDateTime.now()), json);
         }
     }
-
 }

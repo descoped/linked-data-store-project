@@ -1,10 +1,11 @@
 package io.descoped.lds.server;
 
 import io.descoped.config.DynamicConfiguration;
-import io.descoped.config.StoreBasedDynamicConfiguration;
 import io.descoped.lds.core.UndertowApplication;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import java.util.Map;
+import java.nio.file.Path;
 
 public class DevServer {
 
@@ -13,12 +14,12 @@ public class DevServer {
     public static void main(String[] args) {
         long now = System.currentTimeMillis();
 
-        DynamicConfiguration configuration = new StoreBasedDynamicConfiguration.Builder()
-                .propertiesResource(UndertowApplication.getDefaultConfigurationResourcePath())
-                .values("persistence.provider", "mem",
+        DynamicConfiguration configuration = DynamicConfiguration.builder()
+                .classpath(UndertowApplication.getDefaultConfigurationResourcePath()).file(Path.of(UndertowApplication.getDefaultConfigurationResourcePath()))
+                .values(Map.of("persistence.provider", "mem",
                         "persistence.fragment.capacity", "8192",
-                        "specification.schema", "spec/demo/contact.json,spec/demo/provisionagreement.json")
-                .propertiesResource("conf/application.properties")
+                        "specification.schema", "spec/demo/contact.json,spec/demo/provisionagreement.json"))
+                .classpath("conf/application.properties").file(Path.of("conf/application.properties"))
                 .environment("LDS_")
                 .systemProperties()
                 .build();

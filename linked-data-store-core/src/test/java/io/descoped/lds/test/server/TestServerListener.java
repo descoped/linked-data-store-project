@@ -1,7 +1,6 @@
 package io.descoped.lds.test.server;
 
 import io.descoped.config.DynamicConfiguration;
-import io.descoped.config.StoreBasedDynamicConfiguration;
 import io.descoped.lds.core.UndertowApplication;
 import io.descoped.lds.test.ConfigurationOverride;
 import io.descoped.lds.test.ConfigurationProfile;
@@ -98,7 +97,7 @@ public class TestServerListener implements ITestListener, IInvokedMethodListener
     @Override
     public void onFinish(ITestContext context) {
         DynamicConfiguration configuration = configurationThreadLocal.get();
-        if (configuration != null && configuration.evaluateToBoolean("test.time.profiler")) {
+        if (configuration != null && configuration.getBoolean("test.time.profiler", false)) {
             StringBuilder sb = new StringBuilder();
             sb.append("\n\n");
             timeStopProfilerMap.entrySet().stream()
@@ -172,11 +171,14 @@ public class TestServerListener implements ITestListener, IInvokedMethodListener
         } else {
             profile = "TEST_DEFAULT";
         }
-        StoreBasedDynamicConfiguration.Builder builder = new StoreBasedDynamicConfiguration.Builder()
-                .propertiesResource(UndertowApplication.getDefaultConfigurationResourcePath())
-                .propertiesResource("application_test.properties");
+        DynamicConfiguration.Builder builder = DynamicConfiguration.builder()
+                .classpath(UndertowApplication.getDefaultConfigurationResourcePath())
+                .classpath("application_test.properties");
         if (configurationOverride != null) {
-            builder.values(configurationOverride.value());
+            String[] keysAndValues = configurationOverride.value();
+            for (int i = 0; i < keysAndValues.length; i += 2) {
+                builder.value(keysAndValues[i], keysAndValues[i + 1]);
+            }
         }
         addProfile(profile, builder.build());
         DynamicConfiguration configuration = configurationThreadLocal.get();
@@ -193,7 +195,7 @@ public class TestServerListener implements ITestListener, IInvokedMethodListener
         configuration = configurationInstance(profile);
         configurationThreadLocal.set(configuration);
 
-        if (configuration.evaluateToBoolean("test.time.profiler")) {
+        if (configuration.getBoolean("test.time.profiler", false)) {
             final String test = testResult.getTestClass().getName() + "." + method.getTestMethod().getMethodName();
             timeStartProfilerMap.put(test, System.currentTimeMillis());
         }
@@ -230,7 +232,7 @@ public class TestServerListener implements ITestListener, IInvokedMethodListener
     public void afterInvocation(IInvokedMethod method, ITestResult testResult) {
         LOG.trace("END {} # {}", method.getTestMethod().getTestClass().getRealClass().getSimpleName(), method.getTestMethod().getMethodName());
         DynamicConfiguration configuration = configurationThreadLocal.get();
-        if (configuration.evaluateToBoolean("test.time.profiler")) {
+        if (configuration.getBoolean("test.time.profiler", false)) {
             final String test = testResult.getTestClass().getName() + "." + method.getTestMethod().getMethodName();
             timeStopProfilerMap.put(test, System.currentTimeMillis() - timeStartProfilerMap.get(test));
         }

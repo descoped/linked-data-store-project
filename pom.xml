@@ -42,7 +42,7 @@
         <!-- Dependency versions. Kept as properties, not in dependencyManagement, so that importing
              linked-data-store-bom (which inherits this POM) manages the Linked Data Store modules only. -->
         <slf4j.version>2.0.20</slf4j.version>
-        <logback.version>1.6.7</logback.version>
+        <logback.version>1.6.8</logback.version>
         <jackson.version>2.23.0</jackson.version>
         <jackson-annotations.version>2.23</jackson-annotations.version>
         <msgpack.version>0.9.12</msgpack.version>
@@ -61,22 +61,22 @@
         <testcontainers.version>2.0.5</testcontainers.version>
         <rxjava.version>3.1.12</rxjava.version>
         <reactive-streams.version>1.0.4</reactive-streams.version>
-        <cantara-saga.version>2.1.1</cantara-saga.version>
+        <cantara-saga.version>2.1.2</cantara-saga.version>
 
         <!-- Held at the version the code was written for. Each one moves, to the latest stable, in the pull request
              that revises the code using it (see .claude/CLAUDE.md, "Held versions"); .github/renovate.json holds
              the same list. -->
-        <dynamic-configuration.version>2.0.0</dynamic-configuration.version>
+        <dynamic-configuration.version>3.0.1</dynamic-configuration.version>
         <graphql-java.version>12.0</graphql-java.version>
         <graphql-java-extended-scalars.version>1.0</graphql-java-extended-scalars.version>
-        <undertow.version>2.0.30.Final</undertow.version>
-        <xnio.version>3.8.0.Final</xnio.version>
-        <jboss-threads.version>2.3.3.Final</jboss-threads.version>
+        <undertow.version>2.4.4.Final</undertow.version>
+        <xnio.version>3.8.17.Final</xnio.version>
+        <jboss-threads.version>3.11.1</jboss-threads.version>
         <everit-json-schema.version>1.14.6</everit-json-schema.version>
         <org-json.version>20260814</org-json.version>
-        <tika.version>1.24.1</tika.version>
-        <okhttp.version>3.14.0</okhttp.version>
-        <solr.version>7.7.1</solr.version>
+        <tika.version>4.2.0</tika.version>
+        <okhttp.version>5.5.1</okhttp.version>
+        <solr.version>10.1.0</solr.version>
     </properties>
 
     <licenses>

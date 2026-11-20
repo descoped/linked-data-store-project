@@ -13,9 +13,9 @@ public class SearchIndexConfigurator {
     private static final Logger LOG = LoggerFactory.getLogger(SearchIndexConfigurator.class);
 
     public static SearchIndex configureSearchIndex(DynamicConfiguration configuration) {
-        boolean graphqlSearchEnabled = configuration.evaluateToBoolean("graphql.search.enabled");
+        boolean graphqlSearchEnabled = configuration.getBoolean("graphql.search.enabled", false);
         if (graphqlSearchEnabled) {
-            final String providerId = configuration.evaluateToString("search.index.provider");
+            final String providerId = configuration.find("search.index.provider").orElse(null);
 
             ServiceLoader<SearchIndexProvider> loader = ServiceLoader.load(SearchIndexProvider.class);
             for (SearchIndexProvider provider : loader) {

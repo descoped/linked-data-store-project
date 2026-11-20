@@ -105,12 +105,12 @@ public class UndertowApplication {
 
         LOG.info("Initializing Http handlers ...");
 
-        String namespace = configuration.evaluateToString("namespace.default");
-        boolean enableRequestDump = configuration.evaluateToBoolean("http.request.dump");
-        boolean graphqlEnabled = configuration.evaluateToBoolean("graphql.enabled");
-        String pathPrefix = configuration.evaluateToString("http.prefix");
+        String namespace = configuration.find("namespace.default").orElse(null);
+        boolean enableRequestDump = configuration.getBoolean("http.request.dump", false);
+        boolean graphqlEnabled = configuration.getBoolean("graphql.enabled", false);
+        String pathPrefix = configuration.find("http.prefix").orElse(null);
 
-        Optional<String> graphQLSchemaPath = ofNullable(configuration.evaluateToString("graphql.schema"))
+        Optional<String> graphQLSchemaPath = configuration.find("graphql.schema")
                 .map(path -> path.isEmpty() ? null : path);
 
         PathHandler pathHandler = Handlers.path();
@@ -159,14 +159,14 @@ public class UndertowApplication {
 
         LOG.info("Initializing CORS-handler ...");
 
-        List<Pattern> corsAllowOrigin = Stream.of(configuration.evaluateToString("http.cors.allow.origin")
+        List<Pattern> corsAllowOrigin = Stream.of(configuration.find("http.cors.allow.origin").orElse(null)
                 .split(",")).map(Pattern::compile).collect(Collectors.toUnmodifiableList());
-        Set<String> corsAllowMethods = Set.of(configuration.evaluateToString("http.cors.allow.methods")
+        Set<String> corsAllowMethods = Set.of(configuration.find("http.cors.allow.methods").orElse(null)
                 .split(","));
-        Set<String> corsAllowHeaders = Set.of(configuration.evaluateToString("http.cors.allow.header")
+        Set<String> corsAllowHeaders = Set.of(configuration.find("http.cors.allow.header").orElse(null)
                 .split(","));
-        boolean corsAllowCredentials = configuration.evaluateToBoolean("http.cors.allow.credentials");
-        int corsMaxAge = configuration.evaluateToInt("http.cors.allow.max-age");
+        boolean corsAllowCredentials = configuration.getBoolean("http.cors.allow.credentials", false);
+        int corsMaxAge = configuration.getInt("http.cors.allow.max-age");
 
         // inside the CORS handler, so that its 503 has the CORS headers and a browser can read the answer
         this.requests = new GracefulShutdownHandler(httpHandler);
@@ -199,7 +199,7 @@ public class UndertowApplication {
     }
 
     public static UndertowApplication initializeUndertowApplication(DynamicConfiguration configuration) {
-        int port = configuration.evaluateToInt("http.port");
+        int port = configuration.getInt("http.port");
         return initializeUndertowApplication(configuration, port);
     }
 
@@ -210,7 +210,7 @@ public class UndertowApplication {
 
         JsonSchemaBasedSpecification specification;
 
-        Optional<String> graphQLSchemaPath = ofNullable(configuration.evaluateToString("graphql.schema"))
+        Optional<String> graphQLSchemaPath = configuration.find("graphql.schema")
                 .map(path -> path.isEmpty() ? null : path);
 
         if (graphQLSchemaPath.isPresent()) {
@@ -226,7 +226,7 @@ public class UndertowApplication {
             specification = createJsonSpecification(jsonMap);
 
         } else {
-            String schemaConfigStr = configuration.evaluateToString("specification.schema");
+            String schemaConfigStr = configuration.find("specification.schema").orElse(null);
             String[] specificationSchema = ("".equals(schemaConfigStr) ? new String[0] : schemaConfigStr.split(","));
             LOG.info("Creating specification using json-schema: {}", schemaConfigStr);
             specification = JsonSchemaBasedSpecification.create(specificationSchema);
@@ -254,9 +254,9 @@ public class UndertowApplication {
         LOG.info("Initializing transaction-log ...");
 
         RawdataClient txLogClient = configureTxLogRawdataClient(configuration);
-        boolean splitSources = configuration.evaluateToBoolean("txlog.split.sources");
-        String defaultSource = ofNullable(configuration.evaluateToString("txlog.default-source")).filter(s -> !s.isBlank()).orElse("default");
-        String txLogTopicPrefix = ofNullable(configuration.evaluateToString("txlog.rawdata.topic-prefix")).map(String::trim).orElse("");
+        boolean splitSources = configuration.getBoolean("txlog.split.sources", false);
+        String defaultSource = configuration.find("txlog.default-source").filter(s -> !s.isBlank()).orElse("default");
+        String txLogTopicPrefix = configuration.find("txlog.rawdata.topic-prefix").map(String::trim).orElse("");
         TxlogRawdataPool txlogRawdataPool = new TxlogRawdataPool(txLogClient, splitSources, defaultSource, txLogTopicPrefix);
         sagaRepositoryBuilder.txLogRawdataPool(txlogRawdataPool);
 
@@ -271,15 +271,15 @@ public class UndertowApplication {
         LOG.info("Initializing saga thread-pool ...");
 
         final AtomicLong nextWorkerId = new AtomicLong(1);
-        int sagaThreadPoolQueueCapacity = configuration.evaluateToInt("saga.threadpool.queue.capacity");
-        int sagaThreadPoolCoreSize = configuration.evaluateToInt("saga.threadpool.core");
+        int sagaThreadPoolQueueCapacity = configuration.getInt("saga.threadpool.queue.capacity");
+        int sagaThreadPoolCoreSize = configuration.getInt("saga.threadpool.core");
         if (sagaThreadPoolQueueCapacity >= sagaThreadPoolCoreSize) {
             LOG.warn("Configuration: saga.threadpool.core ({}) must be greater than saga.threadpool.queue.capacity ({}) in order to avoid potential deadlocks.",
                     sagaThreadPoolCoreSize, sagaThreadPoolQueueCapacity);
         }
         SelectableThreadPoolExecutor sagaThreadPool = new SelectableThreadPoolExecutor(
-                sagaThreadPoolCoreSize, configuration.evaluateToInt("saga.threadpool.max"),
-                configuration.evaluateToInt("saga.threadpool.keepalive.seconds"), TimeUnit.SECONDS,
+                sagaThreadPoolCoreSize, configuration.getInt("saga.threadpool.max"),
+                configuration.getInt("saga.threadpool.keepalive.seconds"), TimeUnit.SECONDS,
                 new ArrayBlockingQueue<>(sagaThreadPoolQueueCapacity),
                 runnable -> {
                     Thread thread = new Thread(runnable);
@@ -292,9 +292,9 @@ public class UndertowApplication {
                 },
                 new ThreadPoolExecutor.AbortPolicy()
         );
-        int numberOfSagaLogs = configuration.evaluateToInt("saga.number-of-logs");
+        int numberOfSagaLogs = configuration.getInt("saga.number-of-logs");
 
-        boolean sagaCommandsEnabled = configuration.evaluateToBoolean("saga.commands.enabled");
+        boolean sagaCommandsEnabled = configuration.getBoolean("saga.commands.enabled", false);
 
         LOG.info("Initializing saga-recovery thread-pool ...");
 
@@ -309,18 +309,18 @@ public class UndertowApplication {
 
         LOG.info("Initializing saga-recovery-trigger ...");
 
-        boolean sagaRecoveryEnabled = configuration.evaluateToBoolean("saga.recovery.enabled");
+        boolean sagaRecoveryEnabled = configuration.getBoolean("saga.recovery.enabled", false);
         SagaRecoveryTrigger sagaRecoveryTrigger = null;
         if (sagaRecoveryEnabled) {
-            int intervalMinSec = configuration.evaluateToInt("saga.recovery.interval.seconds.min");
-            int intervalMaxSec = configuration.evaluateToInt("saga.recovery.interval.seconds.max");
+            int intervalMinSec = configuration.getInt("saga.recovery.interval.seconds.min");
+            int intervalMaxSec = configuration.getInt("saga.recovery.interval.seconds.max");
             sagaRecoveryTrigger = new SagaRecoveryTrigger(sec, intervalMinSec, intervalMaxSec, recoveryThreadPool);
         }
 
         LOG.info("Initializing namespace-controller ...");
 
         NamespaceController namespaceController = new NamespaceController(
-                configuration.evaluateToString("namespace.default"),
+                configuration.find("namespace.default").orElse(null),
                 specification,
                 specification,
                 persistence,
@@ -329,7 +329,7 @@ public class UndertowApplication {
                 txlogRawdataPool
         );
 
-        String host = configuration.evaluateToString("http.host");
+        String host = configuration.find("http.host").orElse(null);
 
         return new UndertowApplication(specification, persistence, sec, sagaRepository, sagasObserver, sagaRecoveryTrigger, host, port,
                 sagaLogPool, sagaThreadPool, namespaceController,
@@ -352,14 +352,14 @@ public class UndertowApplication {
     }
 
     private static SagaLogPool configureSagaLogProvider(DynamicConfiguration configuration) {
-        String providerClass = configuration.evaluateToString("sagalog.provider");
+        String providerClass = configuration.find("sagalog.provider").orElse(null);
         LOG.info("Using saga-log-pool provider-class: {}", providerClass);
         ServiceLoader<SagaLogInitializer> loader = ServiceLoader.load(SagaLogInitializer.class);
         SagaLogInitializer initializer = loader.stream().filter(c -> providerClass.equals(c.type().getName())).findFirst().orElseThrow().get();
         Map<String, String> providerConfig = subMapFromPrefix(configuration.asMap(), "sagalog.config.");
 
-        int retryIntervalSeconds = configuration.evaluateToInt("sagalog.provider.initialization.retry-interval-seconds");
-        int maxWaitSeconds = configuration.evaluateToInt("sagalog.provider.initialization.max-wait-seconds");
+        int retryIntervalSeconds = configuration.getInt("sagalog.provider.initialization.retry-interval-seconds");
+        int maxWaitSeconds = configuration.getInt("sagalog.provider.initialization.max-wait-seconds");
         long start = System.currentTimeMillis();
         for (int i = 1; ; i++) {
             try {
@@ -385,13 +385,13 @@ public class UndertowApplication {
     }
 
     public static RawdataClient configureTxLogRawdataClient(DynamicConfiguration configuration) {
-        String provider = configuration.evaluateToString("txlog.rawdata.provider");
+        String provider = configuration.find("txlog.rawdata.provider").orElse(null);
         LOG.info("Using transaction-log provider: {}", provider);
         Map<String, String> providerConfig = new LinkedHashMap<>(subMapFromPrefix(configuration.asMap(), "txlog.config."));
         providerConfig.put(RawdataClient.PROVIDER_KEY, provider);
 
-        int retryIntervalSeconds = configuration.evaluateToInt("txlog.rawdata.provider.initialization.retry-interval-seconds");
-        int maxWaitSeconds = configuration.evaluateToInt("txlog.rawdata.provider.initialization.max-wait-seconds");
+        int retryIntervalSeconds = configuration.getInt("txlog.rawdata.provider.initialization.retry-interval-seconds");
+        int maxWaitSeconds = configuration.getInt("txlog.rawdata.provider.initialization.max-wait-seconds");
         long start = System.currentTimeMillis();
         for (int i = 1; ; i++) {
             try {
