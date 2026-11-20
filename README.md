@@ -1,4 +1,4 @@
-[![Quality gate status](https://sonarcloud.io/api/project_badges/measure?project=descoped_linked-data-store-project&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=descoped_linked-data-store-project) [![Reliability rating](https://sonarcloud.io/api/project_badges/measure?project=descoped_linked-data-store-project&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=descoped_linked-data-store-project) [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=descoped_linked-data-store-project&metric=coverage)](https://sonarcloud.io/component_measures?id=descoped_linked-data-store-project&metric=coverage)
+[![CI](https://github.com/descoped/linked-data-store-project/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/descoped/linked-data-store-project/actions/workflows/ci.yml) [![Quality gate status](https://sonarcloud.io/api/project_badges/measure?project=descoped_linked-data-store-project&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=descoped_linked-data-store-project) [![Reliability rating](https://sonarcloud.io/api/project_badges/measure?project=descoped_linked-data-store-project&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=descoped_linked-data-store-project) [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=descoped_linked-data-store-project&metric=coverage)](https://sonarcloud.io/component_measures?id=descoped_linked-data-store-project&metric=coverage) [![Project status: WIP](https://www.repostatus.org/badges/latest/wip.svg)](https://www.repostatus.org/#wip) [![License](https://img.shields.io/github/license/descoped/linked-data-store-project)](LICENSE)
 
 # Linked Data Store
 
@@ -30,7 +30,8 @@ until that is done, treat the code as work in progress.
 
 The documentation is in [`docs/`](docs/README.md), in two parts: for those who use LDS (getting started, concepts,
 the model, the REST and GraphQL APIs, configuration, running LDS) and for those who develop and maintain it (the
-architecture and one document for each part of the code).
+architecture and one document for each part of the code). The same documents, with a landing page, are published at
+https://lds.descoped.io/.
 
 ## Build
 
