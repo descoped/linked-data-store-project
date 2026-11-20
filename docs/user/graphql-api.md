@@ -1,40 +1,38 @@
-= The GraphQL API
+# The GraphQL API
 
 This document describes the GraphQL API of Linked Data Store (LDS): its address, how a query is sent, the queries
 LDS makes from a model, lists and their pages, links, reading at a time, the scalars, search, and the errors.
 It is for people who read documents from LDS with GraphQL. It is a reference: every query and every argument is
 here, each with a request that was run and the answer that came.
 
-== What the GraphQL API is
+## What the GraphQL API is
 
-* It reads documents. It has queries only. There are no mutations and no subscriptions: documents are written
-  and deleted with xref:rest-api.adoc[the REST API]. A query changes nothing in LDS.
-* LDS makes the GraphQL schema from the model when it starts. For every entity of the model there is a query
+- It reads documents. It has queries only. There are no mutations and no subscriptions: documents are written
+  and deleted with [the REST API](rest-api.md). A query changes nothing in LDS.
+- LDS makes the GraphQL schema from the model when it starts. For every entity of the model there is a query
   for one document and a query for the documents of the entity, and a link of the model is a field that gives
   the documents the link points at.
-* Its address is `/graphql`. `/graphql/` is the same address.
-* It reads one namespace: the one named by the configuration key `namespace.default`, which is `ns` as LDS
+- Its address is `/graphql`. `/graphql/` is the same address.
+- It reads one namespace: the one named by the configuration key `namespace.default`, which is `ns` as LDS
   comes. A query cannot name another namespace.
-* It is there when the model is a GraphQL schema and the key `graphql.enabled` is `true`. That is how LDS
+- It is there when the model is a GraphQL schema and the key `graphql.enabled` is `true`. That is how LDS
   comes. A model given as JSON Schema files has no GraphQL API. Where there is no GraphQL API, `/graphql` is
   answered `400 Bad Request` with the text `Unsupported namespace: "graphql"`.
-* When the key `http.prefix` is set, the address is under it: with `/api` it is `/api/graphql`.
+- When the key `http.prefix` is set, the address is under it: with `/api` it is `/api/graphql`.
 
-xref:configuration.adoc[Configuration] has the keys. xref:concepts.adoc[The concepts] explains document,
+[Configuration](configuration.md) has the keys. [The concepts](concepts.md) explains document,
 entity, namespace, version and link.
 
-[[examples]]
-== The examples of this document
+## The examples of this document
 
 The examples were run on LDS 3.0.0-SNAPSHOT as it comes: in memory, with the example model.
-xref:getting-started.adoc[Getting started] tells how to start it. In the examples LDS answers at
+[Getting started](getting-started.md) tells how to start it. In the examples LDS answers at
 `http://localhost:9090`.
 
 The example model is the file `linked-data-store-server/schemas/schema.graphql`. This is the file without the
-comment at its top. xref:model.adoc[The model] explains how such a file is written.
+comment at its top. [The model](model.md) explains how such a file is written.
 
-[source,graphql]
-----
+```graphql
 directive @domain(searchable: Boolean) on OBJECT
 directive @link(pagination: Boolean, reverseName: String) on FIELD_DEFINITION
 
@@ -79,7 +77,7 @@ type Query {
 scalar Date
 scalar DateTime
 scalar Time
-----
+```
 
 `Person` and `Company` are the entities. `Address` and `Text` are embedded types: their values are parts of
 documents.
@@ -88,18 +86,16 @@ The documents of the examples are written with the REST API. This shell function
 document and prints the status code of the answer. `sync=true` makes LDS answer when the document is stored,
 and `timestamp` is the time from which the version is valid.
 
-[source,sh]
-----
+```sh
 put() {
   curl -s -o /dev/null -w '%{http_code}\n' -X PUT "http://localhost:9090/ns/$1?sync=true&timestamp=$2" \
        -H 'Content-Type: application/json' -d "$3"
 }
-----
+```
 
 The documents:
 
-[source,sh]
-----
+```sh
 put Company/acme 2020-01-01T00:00:00Z '{"name":"Acme","founded":"1999-05-01T08:00:00Z",
     "about":[{"languageCode":"en","languageText":"Makes anvils and rockets"}]}'
 put Company/globex 2020-01-01T00:00:00Z '{"name":"Globex","founded":"2001-09-09T09:09:09.120+02:00"}'
@@ -110,9 +106,9 @@ put Person/anne 2020-01-01T00:00:00Z '{"name":"Anne"}'
 put Person/ola 2020-01-01T00:00:00Z '{"name":"Ola","employer":"/Company/acme","friends":["/Person/kari"]}'
 put Person/ola 2022-01-01T00:00:00Z '{"name":"Ola Nordmann","born":"1980-02-03T04:05:06.123456Z",
     "employer":"/Company/globex","friends":["/Person/kari","/Person/per","/Person/anne"]}'
-----
+```
 
-----
+```
 201
 201
 201
@@ -120,27 +116,25 @@ put Person/ola 2022-01-01T00:00:00Z '{"name":"Ola Nordmann","born":"1980-02-03T0
 201
 201
 201
-----
+```
 
 The person `ola` has two versions. From 2020 Ola works at Acme and has one friend. From 2022 the name is Ola
 Nordmann, the employer is Globex and there are three friends.
 
-[[send]]
-== Send a query
+## Send a query
 
 A query is sent with POST or with GET. The answer is the same for both.
 
-=== POST with a JSON body
+### POST with a JSON body
 
 The body is a JSON object, and the content type is `application/json`.
 
-[source,sh]
-----
+```sh
 curl -i 'http://localhost:9090/graphql' -H 'Content-Type: application/json' \
      -d '{"query":"{ CompanyById(id: \"acme\") { name founded } }"}'
-----
+```
 
-----
+```
 HTTP/1.1 200 OK
 Connection: keep-alive
 Content-Type: application/json
@@ -148,192 +142,143 @@ Content-Length: 73
 Date: Fri, 20 Nov 2026 16:55:50 GMT
 
 {"data":{"CompanyById":{"name":"Acme","founded":"1999-05-01T08:00:00Z"}}}
-----
+```
 
-[cols="2,2,5",options="header"]
-|===
-| Field of the body | Value | Meaning
-
-| `query`
-| a text
-| The query. It must be there.
-
-| `variables`
-| an object
-| The values of the variables of the query. It can be left out or be `null`.
-
-| `operationName`
-| a text
-| The name of the operation to run, for a `query` text that holds more than one. It can be left out or be `null`.
-|===
+| Field of the body | Value | Meaning |
+|---|---|---|
+| `query` | a text | The query. It must be there. |
+| `variables` | an object | The values of the variables of the query. It can be left out or be `null`. |
+| `operationName` | a text | The name of the operation to run, for a `query` text that holds more than one. It can be left out or be `null`. |
 
 A request with variables and an operation name:
 
-[source,sh]
-----
+```sh
 curl 'http://localhost:9090/graphql' -H 'Content-Type: application/json' -d '{
   "query": "query One($id: ID!) { PersonById(id: $id) { name } } query All { Person { edges { cursor } } }",
   "variables": {"id": "per"},
   "operationName": "One"
 }'
-----
+```
 
-----
+```
 {"data":{"PersonById":{"name":"Per"}}}
-----
+```
 
 Only the body of a POST is read. `query`, `variables` and `operationName` in the address of a POST are ignored.
 
-=== GET
+### GET
 
 The query is in the query parameter `query` of the address. `variables` (a JSON object as text) and
 `operationName` are query parameters too. All three are URL-encoded; `curl -G --data-urlencode` does that.
 
-[source,sh]
-----
+```sh
 curl -G 'http://localhost:9090/graphql' \
      --data-urlencode 'query=query One($id: ID!) { PersonById(id: $id) { name } }' \
      --data-urlencode 'variables={"id":"kari"}' \
      --data-urlencode 'operationName=One'
-----
+```
 
-----
+```
 {"data":{"PersonById":{"name":"Kari"}}}
-----
+```
 
-=== POST with the query as the body
+### POST with the query as the body
 
 With the content type `application/graphql` the whole body is the query. Such a request has no variables and no
 operation name.
 
-[source,sh]
-----
+```sh
 curl 'http://localhost:9090/graphql' -H 'Content-Type: application/graphql' -d '{ CompanyById(id: "acme") { name } }'
-----
+```
 
-----
+```
 {"data":{"CompanyById":{"name":"Acme"}}}
-----
+```
 
-=== Content types
+### Content types
 
-[cols="3,5",options="header"]
-|===
-| Content type of a POST | The body is read as
-
-| `application/json`, or one that ends in `{plus}json` such as `application/vnd.example{plus}json`
-| a JSON object with `query`, `variables` and `operationName`
-
-| `application/graphql`, or one that ends in `{plus}graphql`
-| the query
-
-| another content type, or none
-| nothing: the answer is `415 Unsupported Media Type`
-|===
+| Content type of a POST | The body is read as |
+|---|---|
+| `application/json`, or one that ends in `+json` such as `application/vnd.example+json` | a JSON object with `query`, `variables` and `operationName` |
+| `application/graphql`, or one that ends in `+graphql` | the query |
+| another content type, or none | nothing: the answer is `415 Unsupported Media Type` |
 
 Not finished: the content type is matched in the case it is written. `APPLICATION/JSON` is answered `415`.
 Write the content type in small letters.
 
-=== Letters outside ASCII
+### Letters outside ASCII
 
 Not finished: the body of a POST is read as ISO-8859-1 when the content type names no character set. A query with
 a letter outside ASCII, such as `å`, is then read wrongly. Name the character set in the content type:
 `application/json; charset=utf-8`. A GET with a URL-encoded query has no such problem, and neither has a JSON
-body in which the letter is written as a JSON escape (`+\u00e5+` for `å`).
+body in which the letter is written as a JSON escape (`\u00e5` for `å`).
 
 A person with such an id, and a query for it:
 
-[source,sh]
-----
+```sh
 curl -s -o /dev/null -w '%{http_code}\n' -X PUT \
      'http://localhost:9090/ns/Person/%C3%A5se?sync=true&timestamp=2020-01-01T00:00:00Z' \
      -H 'Content-Type: application/json; charset=utf-8' -d '{"name":"Åse"}'
-----
+```
 
-----
+```
 201
-----
+```
 
-[source,sh]
-----
+```sh
 curl 'http://localhost:9090/graphql' -H 'Content-Type: application/json; charset=utf-8' \
      -d '{"query":"{ PersonById(id: \"åse\") { name } }"}'
-----
+```
 
-----
+```
 {"data":{"PersonById":{"name":"Åse"}}}
-----
+```
 
 The same request with `Content-Type: application/json` does not find the document.
 
-=== The answer
+### The answer
 
-* The answer is JSON, on one line and without spaces, in UTF-8, with `Content-Type: application/json`. In this
+- The answer is JSON, on one line and without spaces, in UTF-8, with `Content-Type: application/json`. In this
   document long answers are shown with line breaks and spaces so that they can be read.
-* The status is `200 OK` whenever LDS could read the request, also when the query is wrong or a field fails.
-  What went wrong is then in `errors` of the answer. <<errors>> has the other status codes.
-* `data` holds what the query asked for, under the names of the query.
+- The status is `200 OK` whenever LDS could read the request, also when the query is wrong or a field fails. What went
+  wrong is then in `errors` of the answer. [Errors and status codes](#errors-and-status-codes) has the other status
+  codes.
+- `data` holds what the query asked for, under the names of the query.
 
 From here on a query is shown as GraphQL text and its answer as JSON. Each of these queries was sent with POST,
 in the field `query` of a JSON body, as in the first example.
 
-=== Other methods
+### Other methods
 
 `OPTIONS /graphql` is answered `200 OK` with no body and with `Allow` headers that name `GET`, `POST` and
 `OPTIONS`. PUT, DELETE and HEAD are answered `405 Method Not Allowed`.
 
 A browser that sends a query from a page of another origin first asks with a preflight request. LDS answers it
-for `/graphql` as for every address; xref:rest-api.adoc[the REST API] tells how.
+for `/graphql` as for every address; [the REST API](rest-api.md) tells how.
 
-[[schema]]
-== The schema LDS makes from a model
+## The schema LDS makes from a model
 
 LDS serves a schema that it makes from the model. This is what becomes of each thing in the model:
 
-[cols="3,6",options="header"]
-|===
-| In the model | In the GraphQL API
+| In the model | In the GraphQL API |
+|---|---|
+| an entity `X` (a type with `@domain`) | The type `X`, and two fields of `Query`: `XById(id: ID!): X!` for one document, and `X(after: String, before: String, first: Int, last: Int): XConnection` for the documents of the entity. |
+| an embedded type (a type without `@domain`) | The same type. Its values are parts of documents, and are read inside the documents they are parts of. |
+| a field that is not a link | The same field with the same type. |
+| a field with `@link` that holds one link | The same field with the same type. It gives the document the link points at. |
+| a field with `@link` that holds a list of links | The field keeps its name and becomes `field(after: String, before: String, first: Int, last: Int): TargetConnection`, a list that is read in pages. |
+| a list of links with `@link(pagination: false)` | The same field with the same type: a plain list, without arguments. |
+| every field with `@link` | One more field, on the entity the link points at, for the reverse link: the documents that link to this one. Its name is the `reverseName` of the `@link`. Without a `reverseName` it is `reverse`, the name of the entity and the name of the field, each with a capital first letter: `Person.friends` gives `reversePersonFriends`. Its type is the connection of the entity that has the link. |
+| the type `Query` of the model | Not served. The model must have a `Query` type, and LDS puts its own fields in its place. |
+| a description of a type or a field | The description of the same type or field. |
 
-| an entity `X` (a type with `@domain`)
-| The type `X`, and two fields of `Query`: `XById(id: ID!): X!` for one document, and
-  `X(after: String, before: String, first: Int, last: Int): XConnection` for the documents of the entity.
-
-| an embedded type (a type without `@domain`)
-| The same type. Its values are parts of documents, and are read inside the documents they are parts of.
-
-| a field that is not a link
-| The same field with the same type.
-
-| a field with `@link` that holds one link
-| The same field with the same type. It gives the document the link points at.
-
-| a field with `@link` that holds a list of links
-| The field keeps its name and becomes
-  `field(after: String, before: String, first: Int, last: Int): TargetConnection`, a list that is read in pages.
-
-| a list of links with `@link(pagination: false)`
-| The same field with the same type: a plain list, without arguments.
-
-| every field with `@link`
-| One more field, on the entity the link points at, for the reverse link: the documents that link to this one.
-  Its name is the `reverseName` of the `@link`. Without a `reverseName` it is `reverse`, the name of the entity
-  and the name of the field, each with a capital first letter: `Person.friends` gives `reversePersonFriends`.
-  Its type is the connection of the entity that has the link.
-
-| the type `Query` of the model
-| Not served. The model must have a `Query` type, and LDS puts its own fields in its place.
-
-| a description of a type or a field
-| The description of the same type or field.
-|===
-
-For every type `T` that is read in pages LDS adds the types `TConnection` and `TEdge`, and once the type
-`PageInfo`. <<lists>> explains them. With search on LDS adds the field `Search` and its types; see <<search>>.
+For every type `T` that is read in pages LDS adds the types `TConnection` and `TEdge`, and once the type `PageInfo`.
+[Read the documents of an entity](#read-the-documents-of-an-entity) explains them. With search on LDS adds the field
+`Search` and its types; see [Search](#search).
 
 This is what LDS serves for the example model, written as a schema:
 
-[source,graphql]
-----
+```graphql
 type Query {
   Company(after: String, before: String, first: Int, last: Int): CompanyConnection
   CompanyById(id: ID!): Company!
@@ -385,33 +330,31 @@ type PageInfo {
   hasNextPage: Boolean!
   hasPreviousPage: Boolean!
 }
-----
+```
 
 `CompanyConnection` and `CompanyEdge` are like `PersonConnection` and `PersonEdge`. A connection field can be
 `null` in the schema, also when the field of the model has `!`.
 
 Not finished: LDS does not keep the names it makes free. Do not give a type of the model a name that ends in
 `Connection` or `Edge`, or the name `PageInfo`, or, with search on, `SearchResult` or `TypeFilters`. With most
-of these names LDS does not start; xref:model.adoc[The model] has the cases. One case shows in the GraphQL API
+of these names LDS does not start; [The model](model.md) has the cases. One case shows in the GraphQL API
 only: with an entity `PageInfo` that no list of links points at, LDS starts, and the field `pageInfo` of every
 list has that entity as its type. A query for `pageInfo { hasNextPage }` is then refused.
 
-=== See the schema of your own model
+### See the schema of your own model
 
 Introspection, the way GraphQL has to ask a server for its schema, is always on. This query lists the queries
 LDS made:
 
-[source,graphql]
-----
+```graphql
 {
   __type(name: "Query") {
     fields { name }
   }
 }
-----
+```
 
-[source,json]
-----
+```json
 {
   "data": {
     "__type": {
@@ -424,20 +367,18 @@ LDS made:
     }
   }
 }
-----
+```
 
-A request can hold `+__type+` once and `+__schema+` once. A request that has one of them twice is refused with
-the error `This request is not asking for introspection in good faith`; <<limits>> has more. The page for trying
-queries shows the whole schema; see <<graphiql>>.
+A request can hold `__type` once and `__schema` once. A request that has one of them twice is refused with
+the error `This request is not asking for introspection in good faith`; [Limits](#limits) has more. The page for trying
+queries shows the whole schema; see [The page for trying queries](#the-page-for-trying-queries).
 
-[[one]]
-== Read one document
+## Read one document
 
 `XById` gives the document of the entity `X` with the given id. Its one argument, `id`, is the id of the
 document, a text. It must be there. A whole number is read as its text: `id: 42` is the id `42`.
 
-[source,graphql]
-----
+```graphql
 {
   PersonById(id: "ola") {
     name
@@ -445,25 +386,23 @@ document, a text. It must be there. A whole number is read as its text: `id: 42`
     address { city }
   }
 }
-----
+```
 
-[source,json]
-----
+```json
 {
   "data": {
     "PersonById": {"name": "Ola Nordmann", "born": "1980-02-03T04:05:06.123456Z", "address": null}
   }
 }
-----
+```
 
-* The answer is the document as it is at the time of the query. That time is now, unless the request names
-  another; see <<time>>.
-* A field that the document does not have is `null`. Ola has no address.
-* A part of a document is read as an object inside it, and a list of parts as a list. One request can ask for
+- The answer is the document as it is at the time of the query. That time is now, unless the request names
+  another; see [Read at a time](#read-at-a-time).
+- A field that the document does not have is `null`. Ola has no address.
+- A part of a document is read as an object inside it, and a list of parts as a list. One request can ask for
   several fields of `Query`:
 
-[source,graphql]
-----
+```graphql
 {
   PersonById(id: "per") {
     name
@@ -474,10 +413,9 @@ document, a text. It must be there. A whole number is read as its text: `id: 42`
     about { languageCode languageText }
   }
 }
-----
+```
 
-[source,json]
-----
+```json
 {
   "data": {
     "PersonById": {"name": "Per", "address": {"street": "Storgata 1", "city": "Oslo"}},
@@ -487,20 +425,18 @@ document, a text. It must be there. A whole number is read as its text: `id: 42`
     }
   }
 }
-----
+```
 
-=== An id without a document
+### An id without a document
 
-[source,graphql]
-----
+```graphql
 {
   CompanyById(id: "acme") { name }
   PersonById(id: "nobody") { name }
 }
-----
+```
 
-[source,json]
-----
+```json
 {
   "errors": [
     {
@@ -511,27 +447,25 @@ document, a text. It must be there. A whole number is read as its text: `id: 42`
   ],
   "data": null
 }
-----
+```
 
 `XById` is declared as never `null` (`X!`). When there is no document with the id at the time of the query,
 because it was never written, is written with a later time, or is deleted, the answer has this error and `data`
 is `null` for the whole request. The other fields of the same request are lost too, as `CompanyById` is here.
 The message in full is:
 
-----
+```
 The field at path '/PersonById' was declared as a non null type, but the code involved in retrieving data has
 wrongly returned a null value.  The graphql specification requires that the parent field be set to null, or if
 that is non nullable that it bubble up null to its parent and so on. The non-nullable type is 'Person' within
 parent type 'Query'
-----
+```
 
-[[lists]]
-== Read the documents of an entity
+## Read the documents of an entity
 
 The field `X` of `Query` gives the documents of the entity `X` as a connection.
 
-[source,graphql]
-----
+```graphql
 {
   Person {
     edges {
@@ -541,10 +475,9 @@ The field `X` of `Query` gives the documents of the entity `X` as a connection.
     pageInfo { hasNextPage hasPreviousPage }
   }
 }
-----
+```
 
-[source,json]
-----
+```json
 {
   "data": {
     "Person": {
@@ -558,46 +491,20 @@ The field `X` of `Query` gives the documents of the entity `X` as a connection.
     }
   }
 }
-----
+```
 
-=== Connections, edges, cursors and page info
+### Connections, edges, cursors and page info
 
 A connection is a list that can be read in pages. A connection of the entity `X` has the type `XConnection`:
 
-[cols="2,2,2,5",options="header"]
-|===
-| Type | Field | Type of the field | Meaning
-
-| `XConnection`
-| `edges`
-| `[XEdge!]!`
-| The documents of this page, one edge for each.
-
-| `XConnection`
-| `pageInfo`
-| `PageInfo!`
-| Whether there is more before and after this page.
-
-| `XEdge`
-| `node`
-| `X!`
-| The document.
-
-| `XEdge`
-| `cursor`
-| `String!`
-| The place of the document in the list. In a list of documents the cursor is the id of the document.
-
-| `PageInfo`
-| `hasNextPage`
-| `Boolean!`
-| `true` when there is a document after the last edge of this page.
-
-| `PageInfo`
-| `hasPreviousPage`
-| `Boolean!`
-| `true` when there is a document before the first edge of this page.
-|===
+| Type | Field | Type of the field | Meaning |
+|---|---|---|---|
+| `XConnection` | `edges` | `[XEdge!]!` | The documents of this page, one edge for each. |
+| `XConnection` | `pageInfo` | `PageInfo!` | Whether there is more before and after this page. |
+| `XEdge` | `node` | `X!` | The document. |
+| `XEdge` | `cursor` | `String!` | The place of the document in the list. In a list of documents the cursor is the id of the document. |
+| `PageInfo` | `hasNextPage` | `Boolean!` | `true` when there is a document after the last edge of this page. |
+| `PageInfo` | `hasPreviousPage` | `Boolean!` | `true` when there is a document before the first edge of this page. |
 
 `PageInfo` has no `startCursor` and no `endCursor`; take the cursors from the edges. A connection has no count
 of its documents.
@@ -608,46 +515,29 @@ way, and none to choose documents by the value of a field.
 Not finished: with the memory provider a document whose id begins with a letter outside ASCII is left out of the
 list. The person `åse`, written above, is not among the edges. `PersonById(id: "åse")` gives it.
 
-[[paging]]
-=== Pages
+### Pages
 
 Every connection takes the same four arguments:
 
-[cols="2,2,5",options="header"]
-|===
-| Argument | Type | Meaning
-
-| `first`
-| `Int`
-| At most this many documents, counted from the start.
-
-| `after`
-| `String`
-| Only documents that come after this cursor.
-
-| `last`
-| `Int`
-| At most this many documents, counted from the end.
-
-| `before`
-| `String`
-| Only documents that come before this cursor.
-|===
+| Argument | Type | Meaning |
+|---|---|---|
+| `first` | `Int` | At most this many documents, counted from the start. |
+| `after` | `String` | Only documents that come after this cursor. |
+| `last` | `Int` | At most this many documents, counted from the end. |
+| `before` | `String` | Only documents that come before this cursor. |
 
 To read a list page by page, ask for the first page with `first`:
 
-[source,graphql]
-----
+```graphql
 {
   Person(first: 2) {
     edges { cursor node { name } }
     pageInfo { hasNextPage hasPreviousPage }
   }
 }
-----
+```
 
-[source,json]
-----
+```json
 {
   "data": {
     "Person": {
@@ -659,22 +549,20 @@ To read a list page by page, ask for the first page with `first`:
     }
   }
 }
-----
+```
 
 Then ask for the next page with the cursor of the last edge as `after`, until `hasNextPage` is `false`:
 
-[source,graphql]
-----
+```graphql
 {
   Person(first: 2, after: "kari") {
     edges { cursor node { name } }
     pageInfo { hasNextPage hasPreviousPage }
   }
 }
-----
+```
 
-[source,json]
-----
+```json
 {
   "data": {
     "Person": {
@@ -686,55 +574,29 @@ Then ask for the next page with the cursor of the last edge as `after`, until `h
     }
   }
 }
-----
+```
 
 What each combination of the arguments gives for a list of documents:
 
-[cols="3,6",options="header"]
-|===
-| Arguments | The answer
+| Arguments | The answer |
+|---|---|
+| none | every document |
+| `first: 2` | the first two |
+| `first: 2, after: "kari"` | the first two with an id after `kari` |
+| `after: "kari"` | every document with an id after `kari` |
+| `after: "anne", before: "per"` | the documents with an id between the two, without the two themselves |
+| `first: 1, after: "anne", before: "per"` | the first one of those between the two |
+| `last: 2` | the last two, the last id first |
+| `last: 2, before: "ola"` | the last two with an id before `ola`, the last id first |
+| `before: "ola"` | every document with an id before `ola`, the last id first |
+| `first` and `last` together | `last` is ignored |
+| `first: 0` | no edges; `hasNextPage` and `hasPreviousPage` are both `false` |
+| a negative `first` or `last` | an error, `The page size must not be negative: 'first'=-1`, and `null` for the field |
 
-| none
-| every document
-
-| `first: 2`
-| the first two
-
-| `first: 2, after: "kari"`
-| the first two with an id after `kari`
-
-| `after: "kari"`
-| every document with an id after `kari`
-
-| `after: "anne", before: "per"`
-| the documents with an id between the two, without the two themselves
-
-| `first: 1, after: "anne", before: "per"`
-| the first one of those between the two
-
-| `last: 2`
-| the last two, the last id first
-
-| `last: 2, before: "ola"`
-| the last two with an id before `ola`, the last id first
-
-| `before: "ola"`
-| every document with an id before `ola`, the last id first
-
-| `first` and `last` together
-| `last` is ignored
-
-| `first: 0`
-| no edges; `hasNextPage` and `hasPreviousPage` are both `false`
-
-| a negative `first` or `last`
-| an error, `The page size must not be negative: 'first'=-1`, and `null` for the field
-|===
-
-* A cursor does not have to be the id of a document. `after: "b"` gives the documents with an id after `b`.
-* `first` has no upper limit. A `first` larger than the number of documents gives them all.
-* `first` and `last` are numbers. `first: "2"` is refused.
-* A page with no edges has `false` for both fields of `pageInfo`.
+- A cursor does not have to be the id of a document. `after: "b"` gives the documents with an id after `b`.
+- `first` has no upper limit. A `first` larger than the number of documents gives them all.
+- `first` and `last` are numbers. `first: "2"` is refused.
+- A page with no edges has `false` for both fields of `pageInfo`.
 
 Not finished: reading backwards does not work as it should. With `last`, and with `before` alone, the edges come
 with the last id first, and `hasNextPage` and `hasPreviousPage` are wrong: `Person(last: 2)` gives the last two
@@ -744,26 +606,23 @@ Not finished: a page does not make a list of documents less work for LDS. With t
 PostgreSQL, LDS reads every document of the entity before it gives the page. The time a list takes grows with
 the number of documents of the entity, not with `first`.
 
-[[links]]
-== Follow links
+## Follow links
 
-=== A link to one document
+### A link to one document
 
 A field that holds one link gives the document the link points at. The fields of that document can be asked
-for, its links too, link after link. <<limits>> tells how deep a query can go.
+for, its links too, link after link. [Limits](#limits) tells how deep a query can go.
 
-[source,graphql]
-----
+```graphql
 {
   PersonById(id: "ola") {
     name
     employer { name founded }
   }
 }
-----
+```
 
-[source,json]
-----
+```json
 {
   "data": {
     "PersonById": {
@@ -772,23 +631,21 @@ for, its links too, link after link. <<limits>> tells how deep a query can go.
     }
   }
 }
-----
+```
 
 Not finished: when the document does not have the field of the link, the field is `null` and the answer has an
 error for it. The rest of the answer is there. Anne has no `employer`:
 
-[source,graphql]
-----
+```graphql
 {
   PersonById(id: "anne") {
     name
     employer { name }
   }
 }
-----
+```
 
-[source,json]
-----
+```json
 {
   "errors": [
     {
@@ -800,17 +657,16 @@ error for it. The rest of the answer is there. Anne has no `employer`:
   ],
   "data": {"PersonById": {"name": "Anne", "employer": null}}
 }
-----
+```
 
 The end of the message is not always the same. For the same request LDS also gives
 `Exception while fetching data (/PersonById/employer) : null`.
 
-=== A list of links
+### A list of links
 
-A field that holds a list of links is a connection, with edges, cursors and the four arguments of <<paging>>.
+A field that holds a list of links is a connection, with edges, cursors and the four arguments of [Pages](#pages).
 
-[source,graphql]
-----
+```graphql
 {
   PersonById(id: "ola") {
     friends {
@@ -818,10 +674,9 @@ A field that holds a list of links is a connection, with edges, cursors and the 
     }
   }
 }
-----
+```
 
-[source,json]
-----
+```json
 {
   "data": {
     "PersonById": {
@@ -835,7 +690,7 @@ A field that holds a list of links is a connection, with edges, cursors and the 
     }
   }
 }
-----
+```
 
 The edges come in the order of the ids, not in the order of the links in the document. A document that does not
 have the field gives no edges. With the memory provider, a link that is in the list twice gives two edges for
@@ -847,15 +702,14 @@ document, the last id first. `first` alone gives the first documents and `last` 
 first. `hasNextPage` and `hasPreviousPage` are both `true` whenever there is an edge. The other providers were
 not tried.
 
-[[reverse]]
-=== Reverse links
+### Reverse links
 
-A reverse link gives the documents that link to this one. LDS adds the field; <<schema>> tells its name. In the
-example model `Company.employees` gives the persons whose `employer` is the company, and
-`Person.reversePersonFriends` gives the persons who have the person among their `friends`.
+A reverse link gives the documents that link to this one. LDS adds the field; [The schema LDS makes from a
+model](#the-schema-lds-makes-from-a-model) tells its name. In the example model `Company.employees` gives the persons
+whose `employer` is the company, and `Person.reversePersonFriends` gives the persons who have the person among their
+`friends`.
 
-[source,graphql]
-----
+```graphql
 {
   CompanyById(id: "acme") {
     name
@@ -870,10 +724,9 @@ example model `Company.employees` gives the persons whose `employer` is the comp
     }
   }
 }
-----
+```
 
-[source,json]
-----
+```json
 {
   "data": {
     "CompanyById": {
@@ -889,40 +742,38 @@ example model `Company.employees` gives the persons whose `employer` is the comp
     "PersonById": {"reversePersonFriends": {"edges": [{"node": {"name": "Ola Nordmann"}}]}}
   }
 }
-----
+```
 
 A reverse link is a connection. Reading it forwards with `first` and `after` works:
 `employees(first: 1, after: "kari")` gives `per`. Reading it backwards has the fault that a list of documents
-has; see <<paging>>.
+has; see [Pages](#pages).
 
 Not finished: with the memory provider a reverse link has two faults. Both come from a write or a delete at the
 exact time of a version that is there, which replaces that version.
 
-* A link that was replaced in that way is still followed backward. A person was written with the `employer`
+- A link that was replaced in that way is still followed backward. A person was written with the `employer`
   `/Company/c1` and written again, with the same `timestamp`, with the `employer` `/Company/c2`. The person was
   then among the `employees` of both companies. A new version at a later time does not have this fault.
-* A query for a reverse link can stop LDS. Nine persons were written with the same `employer`, and each was
+- A query for a reverse link can stop LDS. Nine persons were written with the same `employer`, and each was
   deleted with the `timestamp` of its version. The query for the `employees` of that company then got no answer,
   and neither did any read or write after it, nor `/health/alive`: none was answered in 10 seconds. `/ping`
   was still answered `200`. LDS did not stop when it was told to and had to be ended with `kill -9`.
 
-=== A link to a document that is not there
+### A link to a document that is not there
 
 LDS does not check that the target of a link exists when a document is written, so a link can point at nothing.
 This person links to a company and to a person that were never written:
 
-[source,sh]
-----
+```sh
 put Person/nils 2020-01-01T00:00:00Z \
     '{"name":"Nils","employer":"/Company/initech","friends":["/Person/kari","/Person/nobody"]}'
-----
+```
 
-----
+```
 201
-----
+```
 
-[source,graphql]
-----
+```graphql
 {
   PersonById(id: "nils") {
     name
@@ -930,37 +781,35 @@ put Person/nils 2020-01-01T00:00:00Z \
     friends { edges { cursor } }
   }
 }
-----
+```
 
-[source,json]
-----
+```json
 {
   "data": {
     "PersonById": {"name": "Nils", "employer": null, "friends": {"edges": [{"cursor": "kari"}]}}
   }
 }
-----
+```
 
-* A link to one document gives `null`.
-* In a list of links that is read in pages, the link is left out.
-* In a list of links without pages, the link gives a `null` in the list; see the next section.
-* A link to one document whose field has `!` in the model, such as `car: Car! @link`, cannot give `null`. The answer
-  has the error of <<one>> for the field, and the document that holds the link is lost from the answer: `XById`
-  gives `"data": null`, and a list of the entity is `null` as a whole when one of its documents has such a link.
+- A link to one document gives `null`.
+- In a list of links that is read in pages, the link is left out.
+- In a list of links without pages, the link gives a `null` in the list; see the next section.
+- A link to one document whose field has `!` in the model, such as `car: Car! @link`, cannot give `null`. The answer has
+  the error of [Read one document](#read-one-document) for the field, and the document that holds the link is lost from
+  the answer: `XById` gives `"data": null`, and a list of the entity is `null` as a whole when one of its documents has
+  such a link.
 
 The target is looked for at the time of the query. When the company is written later, the same query gives it
 from the time its first version is valid.
 
-[[pets]]
-=== A list of links without pages, and a link to a union
+### A list of links without pages, and a link to a union
 
-In a model a list of links can be declared with `@link(pagination: false)`, and a link can point at a union of
-entities (`union Pet = Cat | Dog`): a document of any of them. The example model has neither. The examples of
-this section, and of <<scalars>>, were run on LDS started with this model (the key `graphql.schema` names the
-file):
+In a model a list of links can be declared with `@link(pagination: false)`, and a link can point at a union of entities
+(`union Pet = Cat | Dog`): a document of any of them. The example model has neither. The examples of this section, and
+of [Scalars and how values come out](#scalars-and-how-values-come-out), were run on LDS started with this model (the key
+`graphql.schema` names the file):
 
-[source,graphql]
-----
+```graphql
 directive @domain(searchable: Boolean) on OBJECT
 directive @link(pagination: Boolean, reverseName: String) on FIELD_DEFINITION
 
@@ -1005,13 +854,12 @@ type Query {
 scalar Date
 scalar DateTime
 scalar Time
-----
+```
 
-The documents, written with the function `put` of <<examples>>. The owner links to a car, `/Car/zz`, that is
-not written.
+The documents, written with the function `put` of [The examples of this document](#the-examples-of-this-document). The
+owner links to a car, `/Car/zz`, that is not written.
 
-[source,sh]
-----
+```sh
 put Cat/tom 2020-01-01T00:00:00Z '{"name":"Tom"}'
 put Dog/fido 2020-01-01T00:00:00Z '{"name":"Fido"}'
 put Dog/rex 2020-01-01T00:00:00Z '{"name":"Rex"}'
@@ -1021,43 +869,40 @@ put Owner/eva 2020-01-01T00:00:00Z '{"name":"Eva","key":"k-1","kind":"LARGE","ag
     "member":true,"since":"2019-03-11","wakes":"06:30:00+01:00","seen":"2019-03-11T10:15:30.120+01:00",
     "tags":["a","b"],
     "favourite":"/Cat/tom","pets":["/Dog/fido","/Cat/tom","/Dog/rex"],"cars":["/Car/a1","/Car/zz","/Car/b2"]}'
-----
+```
 
-----
+```
 201
 201
 201
 201
 201
 201
-----
+```
 
 A list of links with `@link(pagination: false)` is a plain list of documents, in the order of the links in the
 document. It takes no arguments.
 
-[source,graphql]
-----
+```graphql
 {
   OwnerById(id: "eva") {
     cars { plate }
   }
 }
-----
+```
 
-[source,json]
-----
+```json
 {"data": {"OwnerById": {"cars": [{"plate": "A1"}, null, {"plate": "B2"}]}}}
-----
+```
 
 Not finished: a document that comes from a list without pages cannot be asked for its connections. With
 `cars { plate reverseOwnerCars { edges { cursor } } }` the field `reverseOwnerCars` is `null` for every car, and
 the answer has an error for each.
 
-A link to a union gives a document of any entity of the union. Ask for `+__typename+` to learn the entity of a
-document, and for the fields of each entity with `+... on+`:
+A link to a union gives a document of any entity of the union. Ask for `__typename` to learn the entity of a
+document, and for the fields of each entity with `... on`:
 
-[source,graphql]
-----
+```graphql
 {
   OwnerById(id: "eva") {
     favourite {
@@ -1077,10 +922,9 @@ document, and for the fields of each entity with `+... on+`:
     }
   }
 }
-----
+```
 
-[source,json]
-----
+```json
 {
   "data": {
     "OwnerById": {
@@ -1095,13 +939,12 @@ document, and for the fields of each entity with `+... on+`:
     }
   }
 }
-----
+```
 
 For a link to a union LDS adds the field of the reverse link to every entity of the union. `Cat` and `Dog` both
 have `reverseOwnerFavourite` and `reverseOwnerPets`:
 
-[source,graphql]
-----
+```graphql
 {
   DogById(id: "rex") {
     name
@@ -1109,10 +952,9 @@ have `reverseOwnerFavourite` and `reverseOwnerPets`:
     reverseOwnerFavourite { edges { node { name } } }
   }
 }
-----
+```
 
-[source,json]
-----
+```json
 {
   "data": {
     "DogById": {
@@ -1122,24 +964,23 @@ have `reverseOwnerFavourite` and `reverseOwnerPets`:
     }
   }
 }
-----
+```
 
 Not finished: links to a union have two faults.
 
-* The pages of a list of links to a union are wrong, and the same request does not always get the same answer.
+- The pages of a list of links to a union are wrong, and the same request does not always get the same answer.
   With the three pets above, `pets(first: 2)` gave `fido` and `tom` and left out `rex`, and `pets(first: 1)`
   gave `tom` at one time and `fido` at another. `hasNextPage` and `hasPreviousPage` were `false` for every
   page. Read such a list without arguments.
-* A list of links to a union with `@link(pagination: false)` is always empty.
+- A list of links to a union with `@link(pagination: false)` is always empty.
 
-=== Links in a part of a document
+### Links in a part of a document
 
 Not finished: a link in a part of a document (a field with `@link` in an embedded type) works only in
 part. A link to one document is read as described above. A list of links gives `null` and an error. The field
 LDS adds for the reverse link of such a link never gives a document.
 
-[[time]]
-== Read at a time
+## Read at a time
 
 Every query is answered as of one time. `XById` gives the version of the document that is valid at that time,
 a list holds the documents that exist at that time, and every link, reverse link and search hit is followed at
@@ -1147,47 +988,45 @@ that time. Without a time in the request the time is now.
 
 The time is the query parameter `snapshot` of the address. It works for GET and for POST.
 
-[source,sh]
-----
+```sh
 curl 'http://localhost:9090/graphql?snapshot=2021-06-01T00:00:00Z' -H 'Content-Type: application/json' \
      -d '{"query":"{ PersonById(id: \"ola\") { name employer { name } friends { edges { cursor } } } }"}'
-----
+```
 
-----
+```
 {"data":{"PersonById":{"name":"Ola","employer":{"name":"Acme"},"friends":{"edges":[{"cursor":"kari"}]}}}}
-----
+```
 
-The time can also be given as the GraphQL variable `+__snapshot+`, with two underscores. The query does not
+The time can also be given as the GraphQL variable `__snapshot`, with two underscores. The query does not
 declare the variable. A query that declares it and does not use it is refused.
 
-[source,sh]
-----
+```sh
 curl 'http://localhost:9090/graphql' -H 'Content-Type: application/json' -d '{
   "query": "{ CompanyById(id: \"acme\") { employees { edges { cursor } } } }",
   "variables": {"__snapshot": "2021-06-01T00:00:00Z"}
 }'
-----
+```
 
-----
+```
 {"data":{"CompanyById":{"employees":{"edges":[{"cursor":"kari"},{"cursor":"ola"},{"cursor":"per"}]}}}}
-----
+```
 
-In 2021 Ola worked at Acme. Now the employees of Acme are `kari` and `per`, as in <<links>>.
+In 2021 Ola worked at Acme. Now the employees of Acme are `kari` and `per`, as in [Follow links](#follow-links).
 
-* When both are given, the parameter `snapshot` is used. When the parameter is not a time, the variable is used.
-* The value is a date and a time with `Z` or an offset: `2021-06-01T00:00:00Z`, `2021-06-01T02:00:00{plus}02:00`.
+- When both are given, the parameter `snapshot` is used. When the parameter is not a time, the variable is used.
+- The value is a date and a time with `Z` or an offset: `2021-06-01T00:00:00Z`, `2021-06-01T02:00:00+02:00`.
   A date alone, or a date and a time without `Z` or an offset, is not a time for LDS.
-* A version is read from its own time on. The second version of `ola` is valid from `2022-01-01T00:00:00Z`:
+- A version is read from its own time on. The second version of `ola` is valid from `2022-01-01T00:00:00Z`:
   `snapshot=2022-01-01T00:00:00Z` gives it, and `snapshot=2021-12-31T23:59:59Z` gives the first version.
-* The time can be in the future. A version whose time has not come is not read now. It is read with a
+- The time can be in the future. A version whose time has not come is not read now. It is read with a
   `snapshot` at or after its time.
-* In an address a `{plus}` is written `%2B`: `snapshot=2021-06-01T02:00:00%2B02:00`. A `{plus}` as it is
+- In an address a `+` is written `%2B`: `snapshot=2021-06-01T02:00:00%2B02:00`. A `+` as it is
   becomes a space, and the value is then not a time.
-* At a time before the first version of a document, and at a time after the document is deleted, `XById` gives
-  the error of <<one>>, and the document is not in a list and not among the documents of a link.
-* The REST API calls the same thing `timestamp`. The GraphQL API reads `snapshot` only.
+- At a time before the first version of a document, and at a time after the document is deleted, `XById` gives the error
+  of [Read one document](#read-one-document), and the document is not in a list and not among the documents of a link.
+- The REST API calls the same thing `timestamp`. The GraphQL API reads `snapshot` only.
 
-Not finished: a `snapshot` or a `+__snapshot+` that is not a time is not refused. The query is answered as of
+Not finished: a `snapshot` or a `__snapshot` that is not a time is not refused. The query is answered as of
 now, without an error. `snapshot=yesterday` gives the documents of today.
 
 Not finished: a time with an offset other than `Z` can give the wrong version. With the memory provider,
@@ -1195,68 +1034,37 @@ Not finished: a time with an offset other than `Z` can give the wrong version. W
 of `ola` is valid, gives that version. The REST API gives the earlier version for the same time. Write the time
 with `Z`.
 
-[[scalars]]
-== Scalars and how values come out
+## Scalars and how values come out
 
 A value comes out in the form of the scalar of its field. These are the scalars a model can have:
 
-[cols="2,3,4",options="header"]
-|===
-| Scalar | In the answer | Example
-
-| `String`
-| a text
-| `"Eva"`
-
-| `Int`
-| a whole number
-| `41`
-
-| `Float`
-| a number
-| `1.72`
-
-| `Boolean`
-| `true` or `false`
-| `true`
-
-| `ID`
-| a text
-| `"k-1"`
-
-| `DateTime`
-| a text: a date and a time of RFC 3339, with `Z` or an offset
-| `"2019-03-11T10:15:30.12+01:00"`
-
-| `Date`
-| a text: a date of RFC 3339
-| `"2019-03-11"`
-
-| `Time`
-| a text: a time of RFC 3339, with `Z` or an offset
-| `"06:30:00+01:00"`
-
-| an enum of the model
-| the name of the value, as a text
-| `"LARGE"`
-|===
+| Scalar | In the answer | Example |
+|---|---|---|
+| `String` | a text | `"Eva"` |
+| `Int` | a whole number | `41` |
+| `Float` | a number | `1.72` |
+| `Boolean` | `true` or `false` | `true` |
+| `ID` | a text | `"k-1"` |
+| `DateTime` | a text: a date and a time of RFC 3339, with `Z` or an offset | `"2019-03-11T10:15:30.12+01:00"` |
+| `Date` | a text: a date of RFC 3339 | `"2019-03-11"` |
+| `Time` | a text: a time of RFC 3339, with `Z` or an offset | `"06:30:00+01:00"` |
+| an enum of the model | the name of the value, as a text | `"LARGE"` |
 
 `DateTime`, `Date` and `Time` are there when the model declares them and a field uses them. A model cannot have
-other scalars of its own; xref:model.adoc[the model] tells more.
+other scalars of its own; [the model](model.md) tells more.
 
-With the model and the owner of <<pets>>:
+With the model and the owner of [A list of links without pages, and a link to a
+union](#a-list-of-links-without-pages-and-a-link-to-a-union):
 
-[source,graphql]
-----
+```graphql
 {
   OwnerById(id: "eva") {
     name key kind age height member since wakes seen tags
   }
 }
-----
+```
 
-[source,json]
-----
+```json
 {
   "data": {
     "OwnerById": {
@@ -1273,35 +1081,35 @@ With the model and the owner of <<pets>>:
     }
   }
 }
-----
+```
 
 A `DateTime` comes out as the same moment with the offset it was written with; it is not turned into UTC.
 
-* The fraction of a second comes out without zeros at its end. The document has
+- The fraction of a second comes out without zeros at its end. The document has
   `2019-03-11T10:15:30.120+01:00` and the answer has `.12`. A fraction of zero is left out, and a fraction of
   nine digits comes out with nine digits.
-* The offset `{plus}00:00` comes out as `Z`.
-* The REST API gives the text as it was written, with `.120`.
-* A `Time` follows the same two rules: `06:30:00.500Z` comes out as `06:30:00.5Z`, and `06:30:00{plus}00:00`
+- The offset `+00:00` comes out as `Z`.
+- The REST API gives the text as it was written, with `.120`.
+- A `Time` follows the same two rules: `06:30:00.500Z` comes out as `06:30:00.5Z`, and `06:30:00+00:00`
   as `06:30:00Z`.
 
-LDS does not check every value when a document is written; xref:model.adoc[The model] tells which it checks.
+LDS does not check every value when a document is written; [The model](model.md) tells which it checks.
 So a document can hold a value that is not of the type of its field.
 
-* When the value can be read as the type of the field, it comes out as that type. In an `Int` field the text
+- When the value can be read as the type of the field, it comes out as that type. In an `Int` field the text
   `"7"` comes out as `7` and the number `2.0` as `2`. In a `Float` field `2` comes out as `2.0`. In an `ID`
   field the number `5` comes out as `"5"`.
-* When it cannot, the field is `null` and the answer has an error. The text `"old"` in the `Int` field `age`
+- When it cannot, the field is `null` and the answer has an error. The text `"old"` in the `Int` field `age`
   gives this one, and the number `1.5` gives the same with `'Double'` at its end:
 
-----
+```
 Can't serialize value (/OwnerById/age) : Expected a value that can be converted to type 'Int' but it was a 'String'
-----
+```
 
-The time of a query is not a GraphQL argument, and no field takes a `DateTime` as an argument. See <<time>>.
+The time of a query is not a GraphQL argument, and no field takes a `DateTime` as an argument. See [Read at a
+time](#read-at-a-time).
 
-[[search]]
-== Search
+## Search
 
 Search finds documents by a text. Today it finds a document by the texts of its fields named `languageText`,
 wherever in the document they are. Nothing else of a document is searched: not a name, not a number, not a
@@ -1309,16 +1117,15 @@ date, not the id. In the example model only `Company` has such a field, in `abou
 review.
 
 Search is off as LDS comes. It is on when the key `graphql.search.enabled` is `true`, and it needs a search
-index, which is Solr. The compose stack of xref:getting-started.adoc[Getting started] has search on.
-xref:configuration.adoc[Configuration] has the keys and xref:operations.adoc[Operations] tells how Solr is
+index, which is Solr. The compose stack of [Getting started](getting-started.md) has search on.
+[Configuration](configuration.md) has the keys and [Operations](operations.md) tells how Solr is
 run. With search off there is no field `Search`, and a query for it is answered
 `Field 'Search' in type 'Query' is undefined`.
 
 With search on, LDS adds this to the schema. `TypeFilters` and `SearchResult` hold every entity of the model.
 This is what LDS serves for the example model:
 
-[source,graphql]
-----
+```graphql
 type Query {
   Company(after: String, before: String, first: Int, last: Int): CompanyConnection
   CompanyById(id: ID!): Company!
@@ -1352,35 +1159,23 @@ enum TypeFilters {
   Company
   Person
 }
-----
+```
 
-[cols="2,2,5",options="header"]
-|===
-| Argument of `Search` | Type | Meaning
-
-| `query`
-| `String!`
-| The text to search for. It must be there.
-
-| `filter`
-| `[TypeFilters]`
-| Only documents of these entities. The values are names of entities, without quotes: `filter: [Company]`.
-  Without it, or with an empty list, documents of every entity are found.
-
-| `first`, `after`, `last`, `before`
-| as in <<paging>>
-| The page of the result. The cursors are those of a search; see below.
-|===
+| Argument of `Search` | Type | Meaning |
+|---|---|---|
+| `query` | `String!` | The text to search for. It must be there. |
+| `filter` | `[TypeFilters]` | Only documents of these entities. The values are names of entities, without quotes: `filter: [Company]`. Without it, or with an empty list, documents of every entity are found. |
+| `first`, `after`, `last`, `before` | as in [Pages](#pages) | The page of the result. The cursors are those of a search; see below. |
 
 The search examples were not run on Solr. They were run on LDS with the example model and search on, with a
 test program in the place of Solr. That program finds a document when the search text is in one of the texts
 LDS sent to the index for it. The examples show the query and the form of the answer. Which documents Solr finds
 for a text is decided by Solr.
 
-The documents of the search examples, written with the function `put` of <<examples>>:
+The documents of the search examples, written with the function `put` of [The examples of this
+document](#the-examples-of-this-document):
 
-[source,sh]
-----
+```sh
 put Company/acme 2020-01-01T00:00:00Z \
     '{"name":"Acme","about":[{"languageCode":"en","languageText":"Makes anvils and rockets"}]}'
 put Company/globex 2020-01-01T00:00:00Z '{"name":"Globex","about":[
@@ -1388,20 +1183,19 @@ put Company/globex 2020-01-01T00:00:00Z '{"name":"Globex","about":[
 put Company/initech 2020-01-01T00:00:00Z \
     '{"name":"Initech","about":[{"languageCode":"en","languageText":"Writes software for rockets"}]}'
 put Person/kari 2020-01-01T00:00:00Z '{"name":"Kari","employer":"/Company/acme"}'
-----
+```
 
-----
+```
 201
 201
 201
 201
-----
+```
 
 A node of the result is a document of any entity, so the query says which fields it wants for which entity, with
-`+... on+`:
+`... on`:
 
-[source,graphql]
-----
+```graphql
 {
   Search(query: "rockets") {
     edges {
@@ -1415,10 +1209,9 @@ A node of the result is a document of any entity, so the query says which fields
     pageInfo { hasNextPage hasPreviousPage }
   }
 }
-----
+```
 
-[source,json]
-----
+```json
 {
   "data": {
     "Search": {
@@ -1431,12 +1224,11 @@ A node of the result is a document of any entity, so the query says which fields
     }
   }
 }
-----
+```
 
 A search with a filter and a page size:
 
-[source,graphql]
-----
+```graphql
 {
   Search(query: "rockets", filter: [Company], first: 2) {
     edges {
@@ -1446,10 +1238,9 @@ A search with a filter and a page size:
     pageInfo { hasNextPage hasPreviousPage }
   }
 }
-----
+```
 
-[source,json]
-----
+```json
 {
   "data": {
     "Search": {
@@ -1461,38 +1252,37 @@ A search with a filter and a page size:
     }
   }
 }
-----
+```
 
-=== What a search gives
+### What a search gives
 
-* `query` is given to Solr as it is. It is a query in the language of Solr, and a word in it is looked for in
+- `query` is given to Solr as it is. It is a query in the language of Solr, and a word in it is looked for in
   the texts of the `languageText` fields. How Solr compares words (capital letters, forms of a word) is decided
   by Solr, not by LDS.
-* A value of `filter` that is not an entity of the model is refused, and so is a value in quotes.
-* The result comes in the order Solr gives it. The number of documents found is not in the answer.
-* Every document of the result is read at the time of the query; see <<time>>. A document that does not exist at
-  that time is left out of the result.
-* LDS gives Solr five seconds to take a write in. A search right after a write may not find the document yet.
+- A value of `filter` that is not an entity of the model is refused, and so is a value in quotes.
+- The result comes in the order Solr gives it. The number of documents found is not in the answer.
+- Every document of the result is read at the time of the query; see [Read at a time](#read-at-a-time). A document that
+  does not exist at that time is left out of the result.
+- LDS gives Solr five seconds to take a write in. A search right after a write may not find the document yet.
   Documents written while search was off are not found.
-* When LDS cannot reach Solr, the answer has an error for `Search`, such as
+- When LDS cannot reach Solr, the answer has an error for `Search`, such as
   `Exception while fetching data (/Search) : java.net.ConnectException: Connection refused (connect failed)`,
   and `Search` is `null`.
 
-=== The pages of a search
+### The pages of a search
 
-* The cursor of an edge is the place of the edge in the result, not an id. `cWM6MA` is the first place,
+- The cursor of an edge is the place of the edge in the result, not an id. `cWM6MA` is the first place,
   `cWM6MQ` the second. Take the cursors from the edges. A cursor of another list, such as an id, is refused:
   `expecting a valid cursor value, got acme`.
-* Without `first` and `last` a search gives at most 10 documents.
-* `first` has no upper limit.
-* `hasPreviousPage` is `true` when the page does not start at the first place. `hasNextPage` is `true` when
+- Without `first` and `last` a search gives at most 10 documents.
+- `first` has no upper limit.
+- `hasPreviousPage` is `true` when the page does not start at the first place. `hasNextPage` is `true` when
   the result goes on after the page.
 
 Not finished: the page after a cursor starts at the cursor, not after it. The edge of the cursor comes again
 as the first edge of the next page:
 
-[source,graphql]
-----
+```graphql
 {
   Search(query: "rockets", first: 2, after: "cWM6MQ") {
     edges {
@@ -1502,10 +1292,9 @@ as the first edge of the next page:
     pageInfo { hasNextPage hasPreviousPage }
   }
 }
-----
+```
 
-[source,json]
-----
+```json
 {
   "data": {
     "Search": {
@@ -1517,84 +1306,61 @@ as the first edge of the next page:
     }
   }
 }
-----
+```
 
 Not finished: these are the other faults of search a caller can meet.
 
-* `last` without `before` counts back from the tenth place, not from the end of the result. With the three
+- `last` without `before` counts back from the tenth place, not from the end of the result. With the three
   documents above, `Search(query: "rockets", last: 2)` gives no edges.
-* Every version of a document is in the index by itself. A document is found by a text that only an earlier
+- Every version of a document is in the index by itself. A document is found by a text that only an earlier
   version of it has, and it comes as it is at the time of the query. A document with two versions that hold
   the text comes twice.
-* When a document of the result is left out because it does not exist at the time of the query, the cursors of
+- When a document of the result is left out because it does not exist at the time of the query, the cursors of
   the edges after it are no longer the places Solr gave them.
-* Every entity can be searched. `@domain(searchable: false)` in the model changes nothing.
+- Every entity can be searched. `@domain(searchable: false)` in the model changes nothing.
 
-[[errors]]
-== Errors and status codes
+## Errors and status codes
 
-=== Status codes
+### Status codes
 
-[cols="2,6",options="header"]
-|===
-| Status | When
-
-| `200 OK`
-| LDS read the request. The answer is JSON. A query that is wrong, or a field that failed, is told in `errors`
-  of the answer.
-
-| `204 No Content`
-| The answer to the preflight request of a browser.
-
-| `400 Bad Request`
-| There is no GraphQL API: the model is not a GraphQL schema, or `graphql.enabled` is `false`. The body is the
-  text `Unsupported namespace: "graphql"`.
-
-| `404 Not Found`
-| `/graphql` when `http.prefix` puts the API at another address.
-
-| `405 Method Not Allowed`
-| A method other than GET, POST and OPTIONS.
-
-| `415 Unsupported Media Type`
-| A POST with a content type that LDS does not read, or with none; see <<send>>.
-
-| `500 Internal Server Error`
-| A request that LDS cannot read. The answer has no body.
-
-| `503 Service Unavailable`
-| LDS is stopping; xref:operations.adoc[Operations] tells more.
-|===
+| Status | When |
+|---|---|
+| `200 OK` | LDS read the request. The answer is JSON. A query that is wrong, or a field that failed, is told in `errors` of the answer. |
+| `204 No Content` | The answer to the preflight request of a browser. |
+| `400 Bad Request` | There is no GraphQL API: the model is not a GraphQL schema, or `graphql.enabled` is `false`. The body is the text `Unsupported namespace: "graphql"`. |
+| `404 Not Found` | `/graphql` when `http.prefix` puts the API at another address. |
+| `405 Method Not Allowed` | A method other than GET, POST and OPTIONS. |
+| `415 Unsupported Media Type` | A POST with a content type that LDS does not read, or with none; see [Send a query](#send-a-query). |
+| `500 Internal Server Error` | A request that LDS cannot read. The answer has no body. |
+| `503 Service Unavailable` | LDS is stopping; [Operations](operations.md) tells more. |
 
 Not finished: a request that LDS cannot read is a mistake of the caller, and it is answered `500` with no body
 and no reason, not `400`. The reason is only in the log of LDS. These requests are answered so:
 
-* a JSON body without `query`, or with a `query` that is not a text (`null`, a number)
-* a GET without the parameter `query`
-* a body that is not JSON, text after the JSON object, or an empty body, with the content type
+- a JSON body without `query`, or with a `query` that is not a text (`null`, a number)
+- a GET without the parameter `query`
+- a body that is not JSON, text after the JSON object, or an empty body, with the content type
   `application/json`
-* a JSON body that is an array; several queries in one request are not possible
-* `variables` that is not an object, in a body or in a GET
-* more than one `query`, `variables` or `operationName` parameter in a GET
-* more than one `snapshot` parameter, or a `+__snapshot+` variable that is neither a text nor `null`
+- a JSON body that is an array; several queries in one request are not possible
+- `variables` that is not an object, in a body or in a GET
+- more than one `query`, `variables` or `operationName` parameter in a GET
+- more than one `snapshot` parameter, or a `__snapshot` variable that is neither a text nor `null`
 
 A `query` that is an empty text is no such request: it is answered `200 OK` with an `InvalidSyntax` error.
 
-=== Errors in the answer
+### Errors in the answer
 
 An error is an object in the list `errors`. It has a `message`, the `locations` in the query text as it was
 sent (line and column) where there is one, the `path` to the field in the answer when a field failed, and a
 `classification` in `extensions`. `data` holds what could be read; a field that failed is `null`.
 
-[source,graphql]
-----
+```graphql
 {
   PersonById(id: "ola") { nmae }
 }
-----
+```
 
-[source,json]
-----
+```json
 {
   "errors": [
     {
@@ -1604,146 +1370,65 @@ sent (line and column) where there is one, the `path` to the field in the answer
     }
   ]
 }
-----
+```
 
-[cols="3,5,3",options="header"]
-|===
-| Case | `message` | `classification`
+| Case | `message` | `classification` |
+|---|---|---|
+| The query cannot be read as GraphQL, or is empty. Here the last `}` of `{ PersonById(id: "ola") { name } }` is left out | `Invalid syntax with offending token '<EOF>' at line 1 column 33` | `InvalidSyntax` |
+| A field that the schema does not have | `Validation error (FieldUndefined@[PersonById/nmae]) : Field 'nmae' in type 'Person' is undefined` | `ValidationError` |
+| An argument that must be there is left out | `Validation error (MissingFieldArgument@[PersonById]) : Missing field argument 'id'` | `ValidationError` |
+| An argument of the wrong type | `Validation error (WrongType@[Person]) : argument 'first' with value 'StringValue{value='2'}' is not a valid 'Int' - Expected an AST type of 'IntValue' but it was a 'StringValue'` | `ValidationError` |
+| A variable that must have a value has none | `Variable 'id' has an invalid value: Variable 'id' has coerced Null value for NonNull type 'ID!'` | `ValidationError` |
+| A mutation or a subscription | `Validation error (UnknownOperation): The 'Mutation' operation is not supported by the schema` | `ValidationError` |
+| Several operations and no `operationName` | `Must provide operation name if query contains multiple operations.` | `ValidationError` |
+| An `operationName` that the query does not have | `Unknown operation named 'Z'.` | `ValidationError` |
+| `XById` with an id that has no document at the time of the query | `The field at path '/PersonById' was declared as a non null type, but ...`; see [Read one document](#read-one-document) | `NullValueInNonNullableField` |
+| A negative `first` or `last` | `Exception while fetching data (/Person) : The page size must not be negative: 'first'=-1` | `DataFetchingException` |
+| The field of a link to one document is not in the document | `Exception while fetching data (/PersonById/employer) : Cannot invoke "java.lang.CharSequence.length()" because "this.text" is null`, or the same with `null` after the colon | `DataFetchingException` |
+| A value in a document that the scalar of its field cannot give | `Can't serialize value (/OwnerById/age) : Expected a value that can be converted to type 'Int' but it was a 'String'` | `DataFetchingException` |
+| A query over a limit | see [Limits](#limits) | `InvalidSyntax`, `ValidationError` or `BadFaithIntrospection` |
+| Search: a `filter` value that is not an entity | `Validation error (WrongType@[Search]) : argument 'filter[0]' with value 'EnumValue{name='Address'}' is not a valid 'TypeFilters' - Literal value not in allowable values for enum 'TypeFilters' - 'EnumValue{name='Address'}'` | `ValidationError` |
+| Search: a cursor that is not one of a search | `Exception while fetching data (/Search) : expecting a valid cursor value, got acme` | `DataFetchingException` |
 
-| The query cannot be read as GraphQL, or is empty. Here the last `}` of `{ PersonById(id: "ola") { name } }`
-  is left out
-| `Invalid syntax with offending token '<EOF>' at line 1 column 33`
-| `InvalidSyntax`
-
-| A field that the schema does not have
-| `Validation error (FieldUndefined@[PersonById/nmae]) : Field 'nmae' in type 'Person' is undefined`
-| `ValidationError`
-
-| An argument that must be there is left out
-| `Validation error (MissingFieldArgument@[PersonById]) : Missing field argument 'id'`
-| `ValidationError`
-
-| An argument of the wrong type
-| `Validation error (WrongType@[Person]) : argument 'first' with value 'StringValue{value='2'}' is not a valid
-  'Int' - Expected an AST type of 'IntValue' but it was a 'StringValue'`
-| `ValidationError`
-
-| A variable that must have a value has none
-| `Variable 'id' has an invalid value: Variable 'id' has coerced Null value for NonNull type 'ID!'`
-| `ValidationError`
-
-| A mutation or a subscription
-| `Validation error (UnknownOperation): The 'Mutation' operation is not supported by the schema`
-| `ValidationError`
-
-| Several operations and no `operationName`
-| `Must provide operation name if query contains multiple operations.`
-| `ValidationError`
-
-| An `operationName` that the query does not have
-| `Unknown operation named 'Z'.`
-| `ValidationError`
-
-| `XById` with an id that has no document at the time of the query
-| `The field at path '/PersonById' was declared as a non null type, but ...`; see <<one>>
-| `NullValueInNonNullableField`
-
-| A negative `first` or `last`
-| `Exception while fetching data (/Person) : The page size must not be negative: 'first'=-1`
-| `DataFetchingException`
-
-| The field of a link to one document is not in the document
-| `Exception while fetching data (/PersonById/employer) : Cannot invoke "java.lang.CharSequence.length()"
-  because "this.text" is null`, or the same with `null` after the colon
-| `DataFetchingException`
-
-| A value in a document that the scalar of its field cannot give
-| `+Can't serialize value (/OwnerById/age) : Expected a value that can be converted to type 'Int' but it was a
-  'String'+`
-| `DataFetchingException`
-
-| A query over a limit
-| see <<limits>>
-| `InvalidSyntax`, `ValidationError` or `BadFaithIntrospection`
-
-| Search: a `filter` value that is not an entity
-| `Validation error (WrongType@[Search]) : argument 'filter[0]' with value 'EnumValue{name='Address'}' is not a
-  valid 'TypeFilters' - Literal value not in allowable values for enum 'TypeFilters' -
-  'EnumValue{name='Address'}'`
-| `ValidationError`
-
-| Search: a cursor that is not one of a search
-| `Exception while fetching data (/Search) : expecting a valid cursor value, got acme`
-| `DataFetchingException`
-|===
-
-[[limits]]
-=== Limits
+### Limits
 
 A query over one of these limits is not run. It is answered `200 OK` with the error of the table and without
 `data`.
 
-[cols="4,5,2",options="header"]
-|===
-| Limit | `message` | `classification`
+| Limit | `message` | `classification` |
+|---|---|---|
+| At most 15000 tokens in a query. A token is a piece of the query text: a name, a bracket, a value. | `More than 15,000 'grammar' tokens have been presented. To prevent Denial Of Service attacks, parsing has been cancelled.` | `InvalidSyntax` |
+| At most 200000 spaces and line breaks in a query | `More than 200,000 'whitespace' tokens have been presented. To prevent Denial Of Service attacks, parsing has been cancelled.` | `InvalidSyntax` |
+| At most 1048576 characters in a query | `More than 1,048,576 characters have been presented. To prevent Denial Of Service attacks, parsing has been cancelled.` | `InvalidSyntax` |
+| Fields at most 100 deep, the field of `Query` counted as the first | `Query depth 101 exceeds maximum allowed depth 100` | `ValidationError` |
+| At most 100000 fields in a request. The fields of a fragment count each time the fragment is used. | `Query has 100,091 fields which exceeds maximum allowed 100,000` | `ValidationError` |
+| `__type` and `__schema` each once in a request | `This request is not asking for introspection in good faith - Query.__type is present too often!` | `BadFaithIntrospection` |
+| In a query for the schema, no `fields` inside `fields` | `This request is not asking for introspection in good faith - __Type.fields is present too often!` | `BadFaithIntrospection` |
 
-| At most 15000 tokens in a query. A token is a piece of the query text: a name, a bracket, a value.
-| `More than 15,000 'grammar' tokens have been presented. To prevent Denial Of Service attacks, parsing has been
-  cancelled.`
-| `InvalidSyntax`
-
-| At most 200000 spaces and line breaks in a query
-| `More than 200,000 'whitespace' tokens have been presented. To prevent Denial Of Service attacks, parsing has
-  been cancelled.`
-| `InvalidSyntax`
-
-| At most 1048576 characters in a query
-| `More than 1,048,576 characters have been presented. To prevent Denial Of Service attacks, parsing has been
-  cancelled.`
-| `InvalidSyntax`
-
-| Fields at most 100 deep, the field of `Query` counted as the first
-| `Query depth 101 exceeds maximum allowed depth 100`
-| `ValidationError`
-
-| At most 100000 fields in a request. The fields of a fragment count each time the fragment is used.
-| `Query has 100,091 fields which exceeds maximum allowed 100,000`
-| `ValidationError`
-
-| `+__type+` and `+__schema+` each once in a request
-| `+This request is not asking for introspection in good faith - Query.__type is present too often!+`
-| `BadFaithIntrospection`
-
-| In a query for the schema, no `fields` inside `fields`
-| `+This request is not asking for introspection in good faith - __Type.fields is present too often!+`
-| `BadFaithIntrospection`
-|===
-
-* A link to one document is one field deep, and a list of links that is read in pages is three: the field,
+- A link to one document is one field deep, and a list of links that is read in pages is three: the field,
   `edges` and `node`. In `{ PersonById(id: "ola") { friends { edges { node { name } } } } }` the field `name` is
   five deep.
-* The messages for the depth and for the number of fields do not tell the size of the query: counting stops
+- The messages for the depth and for the number of fields do not tell the size of the query: counting stops
   when the limit is passed.
-* A query that is far deeper than the limit, 300 fields deep when it was tried, is refused with another
+- A query that is far deeper than the limit, 300 fields deep when it was tried, is refused with another
   message: `More than 500 deep 'grammar' rules have been entered. To prevent Denial Of Service attacks, parsing
   has been cancelled.`
-* LDS sets no limit on `first`.
+- LDS sets no limit on `first`.
 
 Everything else of GraphQL works as usual: aliases, fragments, variables with default values, `@skip` and
-`@include`, `+__typename+` and introspection.
+`@include`, `__typename` and introspection.
 
-[[graphiql]]
-== The page for trying queries
+## The page for trying queries
 
 LDS serves GraphiQL, a page for writing and sending queries in a browser, at `/graphiql`. It is there whenever
 the GraphQL API is there. With LDS as it comes, open `http://localhost:9090/graphiql`.
 
-* `/graphiql` answers with a redirect to `/graphiql/`, which is the page.
-* The page shows the schema LDS serves, with every query, type and field, under `Docs`.
-* The page sends its queries to `/graphql` with POST, as JSON.
-* What is written in the variables pane of the page is sent as `variables`. To read at a time, write
-  `+{"__snapshot": "2021-06-01T00:00:00Z"}+` there; see <<time>>.
-* The page keeps the query, the variables and the operation name in its own address, so the address can be
+- `/graphiql` answers with a redirect to `/graphiql/`, which is the page.
+- The page shows the schema LDS serves, with every query, type and field, under `Docs`.
+- The page sends its queries to `/graphql` with POST, as JSON.
+- What is written in the variables pane of the page is sent as `variables`. To read at a time, write
+  `{"__snapshot": "2021-06-01T00:00:00Z"}` there; see [Read at a time](#read-at-a-time).
+- The page keeps the query, the variables and the operation name in its own address, so the address can be
   kept or given to someone else. A page opened with such an address shows the query and the variables, and
   sends the query when the button of the page is pressed.
 
@@ -1751,4 +1436,4 @@ Not finished: LDS does not hold GraphiQL itself. The browser fetches GraphiQL 0.
 `unpkg.com` when the page is opened, so the browser needs access to the internet.
 
 Not finished: the page sends its queries without a character set in the content type, so a query with a letter
-outside ASCII is read wrongly; see <<send>>.
+outside ASCII is read wrongly; see [Send a query](#send-a-query).

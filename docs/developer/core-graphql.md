@@ -1,144 +1,79 @@
-= Core: the GraphQL API and how its schema is built
+# Core: the GraphQL API and how its schema is built
 
 This document covers the part of `linked-data-store-core` that serves GraphQL: how LDS builds the schema it serves
 from the schema file of the model, how a request is read and answered, and how a field reads documents from
 persistence. It is for developers and maintainers who change this code. How the same schema file becomes JSON
-Schema and the specification is in xref:core-model.adoc[the model]. How the handlers are put on their paths is in
-xref:core-application.adoc[the application].
+Schema and the specification is in [the model](core-model.md). How the handlers are put on their paths is in
+[the application](core-application.md).
 
-== What this part is for
+## What this part is for
 
 The GraphQL API reads documents. It has a query type and nothing else: no mutation and no subscription. Documents
-are written through REST (xref:core-rest.adoc[the REST handlers], xref:core-write-path.adoc[the write path]).
+are written through REST ([the REST handlers](core-rest.md), [the write path](core-write-path.md)).
 
 The schema that LDS serves is not the schema file. The file names the entities (the types with `@domain`), their
 fields and their links (the fields with `@link`). LDS builds the rest from it when it starts:
 
-* a `Query` type with two fields for every entity, `<Entity>ById` and `<Entity>`;
-* a field on the target of every link that goes the other way (a reverse link);
-* relay connections (`<Type>Connection`, `<Type>Edge`, `PageInfo`) for lists of links, with the arguments
+- a `Query` type with two fields for every entity, `<Entity>ById` and `<Entity>`;
+- a field on the target of every link that goes the other way (a reverse link);
+- relay connections (`<Type>Connection`, `<Type>Edge`, `PageInfo`) for lists of links, with the arguments
   `first`, `after`, `last` and `before`;
-* when search is on, a `Search` field with its types;
-* a data fetcher for every field that reads from persistence.
+- when search is on, a `Search` field with its types;
+- a data fetcher for every field that reads from persistence.
 
 The code is in the package `io.descoped.lds.graphql` and the packages under it. The package `jsonSchema` belongs to
-xref:core-model.adoc[the model] and is not described here. The module does not export these packages. It `opens`
+[the model](core-model.md) and is not described here. The module does not export these packages. It `opens`
 `io.descoped.lds.graphql.graphiql`, which holds the GraphiQL page. The libraries are graphql-java and
 graphql-java-extended-scalars (`graphql-java.version` and `graphql-java-extended-scalars.version` in the root POM).
 
-== Layout
+## Layout
 
-=== The request
+### The request
 
-[cols="2,5"]
-|===
-|Class |Responsibility
+| Class | Responsibility |
+|---|---|
+| `GraphqlHttpHandler` | The Undertow handler at `/graphql`. Reads the query, the variables and the operation name from a GET or a POST, executes the query and writes the answer as JSON. |
+| `GraphQLContext` | An interface of LDS (not the class of graphql-java with the same name): the exchange and the time of the query. The fetchers get it from the context of graphql-java, under the key `GraphQLContext.class`. |
+| `GraphQLUndertowContext` | The implementation. Works out the time of the query from the parameter `snapshot`, the variable `__snapshot` or the clock. |
+| `graphiql/graphiql.html` (a resource) | The GraphiQL page served at `/graphiql`. |
 
-|`GraphqlHttpHandler`
-|The Undertow handler at `/graphql`. Reads the query, the variables and the operation name from a GET or a POST,
-executes the query and writes the answer as JSON.
+### Building the schema (`schemas`, `schemas.visitors`, `directives`)
 
-|`GraphQLContext`
-|An interface of LDS (not the class of graphql-java with the same name): the exchange and the time of the query.
-The fetchers get it from the context of graphql-java, under the key `GraphQLContext.class`.
+| Class | Responsibility |
+|---|---|
+| `GraphQLSchemaBuilder` | `parseSchema` makes a graphql-java schema of the schema file. `getGraphQL` makes the served schema of that, in a fixed order of passes. |
+| `TypeTraverser` | The walk over a schema that every pass uses. LDS has its own; see [The walk, the type map and the builders](#the-walk-the-type-map-and-the-builders). |
+| `TypeCollectingVisitor` | Collects the named types met on a walk into a map, in the order met. |
+| `SchemaElements` | The builders LDS uses for types, fields and directives, the order of the parts of a type, and three helpers (`name`, `value`, `defaultValue`). |
+| `DateTimeScalar` | The scalar `DateTime` of LDS. |
+| `TypeReferencerVisitor` | Replaces the type of a field, the interfaces of an object and the members of a union by references by name. |
+| `ReverseLinkNameVisitor` | Gives every `@link` without a `reverseName` a name for its reverse link. |
+| `ReverseLinkBuildingVisitor` | Adds the reverse link field to the target of every link. `computePath` gives the path of a link field in its document; `getLinkDirective` reads `@link` of a field. |
+| `QueryBuildingVisitor` | Adds `<Entity>ById` and `<Entity>` to the `Query` type for every type with `@domain`. |
+| `AddSearchTypesVisitor` | Adds `TypeFilters`, `SearchResult` and the field `Search`. |
+| `AddConnectionVisitor` | Turns a paged list of links into a relay connection and makes the connection, edge and `PageInfo` types. |
+| `RegistrySetupVisitor` | Gives every link field its data fetcher and every interface and union its type resolver. |
+| `DomainDirective`, `LinkDirective`, `ReverseLinkDirective` | The definitions of `@domain`, `@link` and `@reverseLink` as LDS serves them, and readers of their arguments. Each holds a `GraphQLDirective`; a directive of graphql-java cannot be extended. |
 
-|`GraphQLUndertowContext`
-|The implementation. Works out the time of the query from the parameter `snapshot`, the variable `__snapshot` or
-the clock.
+### Reading documents (`fetcher`)
 
-|`graphiql/graphiql.html` (a resource)
-|The GraphiQL page served at `/graphiql`.
-|===
+| Class | Responsibility |
+|---|---|
+| `PersistenceFetcher` | `<Entity>ById`: one document by its id. |
+| `PersistenceLinkFetcher` | A single link: reads the document the link points at. |
+| `PersistenceLinksFetcher` | A list of links that is not paged: reads the document of every link. |
+| `ConnectionFetcher` | The base of the connection fetchers. Reads `first`, `after`, `last`, `before` and the time of the query, and makes a `Range` of them (`ConnectionParameters.getRange`). `toEdge` makes an edge of a document. |
+| `PersistenceRootConnectionFetcher` | `<Entity>`: the documents of an entity. |
+| `PersistenceLinksConnectionFetcher` | A paged list of links: the documents the links of one document point at. |
+| `PersistenceReverseLinksConnectionFetcher` | A reverse link: the documents that link to one document. |
+| `QueryConnectionFetcher`, `QueryConnectionCursor` | `Search`: asks the search index, then reads every hit from persistence. The cursor is a position in the result. |
 
-=== Building the schema (`schemas`, `schemas.visitors`, `directives`)
-
-[cols="2,5"]
-|===
-|Class |Responsibility
-
-|`GraphQLSchemaBuilder`
-|`parseSchema` makes a graphql-java schema of the schema file. `getGraphQL` makes the served schema of that, in a
-fixed order of passes.
-
-|`TypeTraverser`
-|The walk over a schema that every pass uses. LDS has its own; see <<walk>>.
-
-|`TypeCollectingVisitor`
-|Collects the named types met on a walk into a map, in the order met.
-
-|`SchemaElements`
-|The builders LDS uses for types, fields and directives, the order of the parts of a type, and three helpers
-(`name`, `value`, `defaultValue`).
-
-|`DateTimeScalar`
-|The scalar `DateTime` of LDS.
-
-|`TypeReferencerVisitor`
-|Replaces the type of a field, the interfaces of an object and the members of a union by references by name.
-
-|`ReverseLinkNameVisitor`
-|Gives every `@link` without a `reverseName` a name for its reverse link.
-
-|`ReverseLinkBuildingVisitor`
-|Adds the reverse link field to the target of every link. `computePath` gives the path of a link field in its
-document; `getLinkDirective` reads `@link` of a field.
-
-|`QueryBuildingVisitor`
-|Adds `<Entity>ById` and `<Entity>` to the `Query` type for every type with `@domain`.
-
-|`AddSearchTypesVisitor`
-|Adds `TypeFilters`, `SearchResult` and the field `Search`.
-
-|`AddConnectionVisitor`
-|Turns a paged list of links into a relay connection and makes the connection, edge and `PageInfo` types.
-
-|`RegistrySetupVisitor`
-|Gives every link field its data fetcher and every interface and union its type resolver.
-
-|`DomainDirective`, `LinkDirective`, `ReverseLinkDirective`
-|The definitions of `@domain`, `@link` and `@reverseLink` as LDS serves them, and readers of their arguments.
-Each holds a `GraphQLDirective`; a directive of graphql-java cannot be extended.
-|===
-
-=== Reading documents (`fetcher`)
-
-[cols="2,5"]
-|===
-|Class |Responsibility
-
-|`PersistenceFetcher`
-|`<Entity>ById`: one document by its id.
-
-|`PersistenceLinkFetcher`
-|A single link: reads the document the link points at.
-
-|`PersistenceLinksFetcher`
-|A list of links that is not paged: reads the document of every link.
-
-|`ConnectionFetcher`
-|The base of the connection fetchers. Reads `first`, `after`, `last`, `before` and the time of the query, and
-makes a `Range` of them (`ConnectionParameters.getRange`). `toEdge` makes an edge of a document.
-
-|`PersistenceRootConnectionFetcher`
-|`<Entity>`: the documents of an entity.
-
-|`PersistenceLinksConnectionFetcher`
-|A paged list of links: the documents the links of one document point at.
-
-|`PersistenceReverseLinksConnectionFetcher`
-|A reverse link: the documents that link to one document.
-
-|`QueryConnectionFetcher`, `QueryConnectionCursor`
-|`Search`: asks the search index, then reads every hit from persistence. The cursor is a position in the result.
-|===
-
-== The example used in this document
+## The example used in this document
 
 The requests below were sent to LDS started from the built runtime, in memory, on port 19111, with the example
 model `linked-data-store-server/schemas/schema.graphql`:
 
-[source,graphql]
-----
+```graphql
 directive @domain(searchable: Boolean) on OBJECT
 directive @link(pagination: Boolean, reverseName: String) on FIELD_DEFINITION
 
@@ -173,78 +108,46 @@ type Query {
 scalar Date
 scalar DateTime
 scalar Time
-----
+```
 
 The descriptions and the comment of the file are left out here. These documents were written through REST, all
 with `timestamp=2020-01-01T00:00:00Z` unless another time is given:
 
-[cols="1,1,4"]
-|===
-|Entity |Id |Document
-
-|`Company`
-|`acme`
-|`{"name":"Acme","founded":"1999-05-01T08:00:00Z","about":[{"languageCode":"en","languageText":"Makes anvils and
-rockets"}]}`
-
-|`Company`
-|`globex`
-|`{"name":"Globex","founded":"2001-09-09T09:09:09.120+02:00"}`
-
-|`Company`
-|`future`
-|`{"name":"Future Ltd"}`, valid from 2030-01-01
-
-|`Person`
-|`kari`
-|`{"name":"Kari","employer":"/Company/acme"}`
-
-|`Person`
-|`per`
-|`{"name":"Per","employer":"/Company/acme","address":{"street":"Storgata 1","city":"Oslo"}}`
-
-|`Person`
-|`anne`
-|`{"name":"Anne"}`
-
-|`Person`
-|`early`
-|`{"name":"Early","employer":"/Company/future"}`
-
-|`Person`
-|`ola`
-|`{"name":"Ola","born":"1980-02-03T04:05:06.123456Z","employer":"/Company/acme","friends":["/Person/kari",
-"/Person/per","/Person/anne"]}`
-
-|`Person`
-|`ola`
-|valid from 2022-01-01: `{"name":"Ola Nordmann","born":"1980-02-03T04:05:06.123456Z",
-"employer":"/Company/globex","friends":["/Person/kari"]}`
-|===
+| Entity | Id | Document |
+|---|---|---|
+| `Company` | `acme` | `{"name":"Acme","founded":"1999-05-01T08:00:00Z","about":[{"languageCode":"en","languageText":"Makes anvils and rockets"}]}` |
+| `Company` | `globex` | `{"name":"Globex","founded":"2001-09-09T09:09:09.120+02:00"}` |
+| `Company` | `future` | `{"name":"Future Ltd"}`, valid from 2030-01-01 |
+| `Person` | `kari` | `{"name":"Kari","employer":"/Company/acme"}` |
+| `Person` | `per` | `{"name":"Per","employer":"/Company/acme","address":{"street":"Storgata 1","city":"Oslo"}}` |
+| `Person` | `anne` | `{"name":"Anne"}` |
+| `Person` | `early` | `{"name":"Early","employer":"/Company/future"}` |
+| `Person` | `ola` | `{"name":"Ola","born":"1980-02-03T04:05:06.123456Z","employer":"/Company/acme","friends":["/Person/kari", "/Person/per","/Person/anne"]}` |
+| `Person` | `ola` | valid from 2022-01-01: `{"name":"Ola Nordmann","born":"1980-02-03T04:05:06.123456Z", "employer":"/Company/globex","friends":["/Person/kari"]}` |
 
 A long answer is broken over several lines below to be read. LDS sends it on one line. A long argument of a
 command is broken with a quote and a backslash at the end of a line and a quote at the start of the next; the
 shell joins the two parts to the one argument that was sent.
 
-== How the schema is built
+## How the schema is built
 
-=== Where it starts
+### Where it starts
 
 The constructor of `UndertowApplication` reads `graphql.enabled` and `graphql.schema`. When GraphQL is enabled and
 the path of a schema file is given, it does this:
 
-. `parseSchemaFile` reads the file into a `TypeDefinitionRegistry`. The path is tried as a resource of the class
-  path first and as a file after that.
-. `GraphQLSchemaBuilder.parseSchema` makes a graphql-java schema of the registry.
-. `new GraphQLSchemaBuilder(namespace, persistence, searchIndex).getGraphQL(schema)` makes the served schema. The
-  namespace is `namespace.default`. The search index is `null` when search is off.
-. `GraphQL.newGraphQL(schema).build()` makes the engine, and `GraphqlHttpHandler` is put at `/graphql` and the
-  GraphiQL page at `/graphiql`.
+1. `parseSchemaFile` reads the file into a `TypeDefinitionRegistry`. The path is tried as a resource of the class
+   path first and as a file after that.
+2. `GraphQLSchemaBuilder.parseSchema` makes a graphql-java schema of the registry.
+3. `new GraphQLSchemaBuilder(namespace, persistence, searchIndex).getGraphQL(schema)` makes the served schema. The
+   namespace is `namespace.default`. The search index is `null` when search is off.
+4. `GraphQL.newGraphQL(schema).build()` makes the engine, and `GraphqlHttpHandler` is put at `/graphql` and the
+   GraphiQL page at `/graphiql`.
 
-The file was parsed once before, for the specification (xref:core-model.adoc[the model]). The log of a start tells
+The file was parsed once before, for the specification ([the model](core-model.md)). The log of a start tells
 the passes at INFO. These are its lines about GraphQL, with the time and the thread left out:
 
-----
+```
 ... GraphQLToJsonConverter - Managed domains: /Company /Person
 ... UndertowApplication - Creating specification using GraphQL schema: schemas/schema.graphql
 ... SearchIndexConfigurator - GraphQL Search is disabled. Skipping search index initialisation
@@ -255,7 +158,7 @@ the passes at INFO. These are its lines about GraphQL, with the time and the thr
 ... GraphQLSchemaBuilder - Replacing all type with references
 ... GraphQLSchemaBuilder - Transforming paginated links to relay connections
 ... GraphQLSchemaBuilder - Resolving type references
-----
+```
 
 With search on, the line `Creating root "Query" search field and search types` comes after
 `Creating root "Query" fields`.
@@ -264,138 +167,63 @@ With search on, the line `Creating root "Query" search field and search types` c
 two passes, and the state after two earlier passes at TRACE ("Computing reverse links:", "Query:"). The logger is
 `io.descoped.lds.graphql.schemas.GraphQLSchemaBuilder`.
 
-=== `parseSchema`
+### `parseSchema`
 
 `parseSchema` builds the runtime wiring: the order of the parts of a type (`SchemaElements.ORDER`), the scalars
 `DateTime` (`DateTimeScalar.INSTANCE`), `Date` and `Time` (`ExtendedScalars.Date`, `ExtendedScalars.Time`), and
 the `EchoingWiringFactory` of graphql-java, so that the file needs no fetchers. Then graphql-java checks the file.
 What it refuses stops the start of LDS:
 
-[cols="3,4"]
-|===
-|The schema file |The exception that ends the start
-
-|uses `@domain` and does not declare `directive @domain`
-|`SchemaProblem{errors=['A' [@1:1] tried to use an undeclared directive 'domain']}`
-
-|has no `Query` type
-|`SchemaProblem{errors=[A schema MUST have a 'query' operation defined]}`
-
-|uses an argument that its own declaration of the directive does not have (`@link(pagination: false)` with
-`directive @link on FIELD_DEFINITION`)
-|`SchemaProblem{errors=['b' [@3:18] use an unknown argument 'pagination' on directive 'link']}`
-
-|declares a scalar other than `Date`, `DateTime` and `Time`
-|`SchemaProblem{errors=[There is no scalar implementation for the named  'Unused' scalar type]}`
-|===
+| The schema file | The exception that ends the start |
+|---|---|
+| uses `@domain` and does not declare `directive @domain` | `SchemaProblem{errors=['A' [@1:1] tried to use an undeclared directive 'domain']}` |
+| has no `Query` type | `SchemaProblem{errors=[A schema MUST have a 'query' operation defined]}` |
+| uses an argument that its own declaration of the directive does not have (`@link(pagination: false)` with `directive @link on FIELD_DEFINITION`) | `SchemaProblem{errors=['b' [@3:18] use an unknown argument 'pagination' on directive 'link']}` |
+| declares a scalar other than `Date`, `DateTime` and `Time` | `SchemaProblem{errors=[There is no scalar implementation for the named  'Unused' scalar type]}` |
 
 Each row was seen by starting LDS with such a file. The schema file must have a `Query` type, but LDS does not use
 it: `getGraphQL` makes its own. A `Query` type without fields is accepted. graphql-java does not build a schema
 with an empty `Query`, so `withFieldInEmptyQuery` gives it a field `_empty: String` in a copy of the registry.
 
-[[passes]]
-=== The passes of `getGraphQL`
+### The passes of `getGraphQL`
 
 `getGraphQL` works on one map from type name to type, the type map. Every pass is a walk with `TypeTraverser`
 over the values of that map, and most passes put changed copies of types back into it. The order matters: each
 pass reads what the earlier ones wrote.
 
-[cols="1,3,6"]
-|===
-|Pass |Visitor |What it does
-
-|1
-|none
-|Takes the types of the parsed schema, sorted by name. Removes `Query`, the types whose name starts with `__` and
-the scalars that no type and no directive uses (`typesInUse`).
-
-|2
-|`TypeCollectingVisitor`
-|Collects every named type that can be reached into the type map, in the order met.
-
-|3
-|`TypeReferencerVisitor`, then `GraphQLTypeResolvingVisitor` of graphql-java
-|Replaces types inside types by references by name, then resolves the references against the type map.
-
-|4
-|`ReverseLinkNameVisitor`
-|A `@link` field without `reverseName` gets one: `reverse`, then the name of the entity, then the names of the
-fields on the way from the entity to the link, each with a capital first letter. `Person.friends` gets
-`reversePersonFriends`. The way is the one the walk took to the field (`computeName` reads the parents of the
-field in the walk), so for a link in a type without `@domain` the name follows from where the walk met that type
-first. See <<unfinished>>.
-
-|5
-|`ReverseLinkBuildingVisitor`
-|For every `@link` field, adds a field to the target type (to every member, when the target is a union). Its name
-is the `reverseName`, its type is `[<Source>!]!`, and it has `@reverseLink(mappedBy: <path>, pagination: true)`.
-The path is that of the link field in its document: `$.friends[]`, `$.employer`.
-
-|6
-|`QueryBuildingVisitor`
-|For every object type with `@domain`, adds `<Name>ById(id: ID!): <Name>!` with `@link(pagination: false)` and
-`<Name>: [<Name>!]!` with `@link(pagination: true)` to the `Query` builder.
-
-|7
-|`AddSearchTypesVisitor`
-|Only when there is a search index. Adds the enum `TypeFilters` and the union `SearchResult`, both of every type
-with `@domain`, and the field `Search(query: String!, filter: [TypeFilters]): [SearchResult!]!` with the applied
-directive `search`.
-
-|8
-|none
-|Builds `Query` and puts it into the type map.
-
-|9
-|`TypeReferencerVisitor`
-|References again, now also in `Query` and the new fields.
-
-|10
-|`AddConnectionVisitor`
-|A field with `@link`, `@reverseLink` or `search` whose type is a list, and whose `pagination` is not `false`,
-keeps its name and becomes `(first: Int, after: String, last: Int, before: String): <Target>Connection`. The
-visitor makes `<Target>Connection` and `<Target>Edge` once for each target, and `PageInfo` once. It takes a type
-of that name from the type map when there is one, and makes it only when there is none.
-
-|11
-|none
-|Collects the directive definitions of the served schema: `domain`, `link` and `reverseLink` of LDS, and every
-other directive the schema file defines that is not one of graphql-java. The three of LDS come from a `Set.of`,
-so their order in the served schema is not fixed: the introspection showed them in another order after another
-start.
-
-|12
-|`GraphQLTypeResolvingVisitor`
-|Resolves the references again.
-
-|13
-|`RegistrySetupVisitor`
-|Sets the data fetchers and the type resolvers in a code registry. See <<fetcher-choice>>.
-
-|14
-|none
-|Builds the `GraphQLSchema`: `Query` as the query type, every other type of the map as an additional type, the
-directives of pass 11 and the code registry.
-|===
+| Pass | Visitor | What it does |
+|---|---|---|
+| 1 | none | Takes the types of the parsed schema, sorted by name. Removes `Query`, the types whose name starts with `__` and the scalars that no type and no directive uses (`typesInUse`). |
+| 2 | `TypeCollectingVisitor` | Collects every named type that can be reached into the type map, in the order met. |
+| 3 | `TypeReferencerVisitor`, then `GraphQLTypeResolvingVisitor` of graphql-java | Replaces types inside types by references by name, then resolves the references against the type map. |
+| 4 | `ReverseLinkNameVisitor` | A `@link` field without `reverseName` gets one: `reverse`, then the name of the entity, then the names of the fields on the way from the entity to the link, each with a capital first letter. `Person.friends` gets `reversePersonFriends`. The way is the one the walk took to the field (`computeName` reads the parents of the field in the walk), so for a link in a type without `@domain` the name follows from where the walk met that type first. See [Not finished and known to be wrong](#not-finished-and-known-to-be-wrong). |
+| 5 | `ReverseLinkBuildingVisitor` | For every `@link` field, adds a field to the target type (to every member, when the target is a union). Its name is the `reverseName`, its type is `[<Source>!]!`, and it has `@reverseLink(mappedBy: <path>, pagination: true)`. The path is that of the link field in its document: `$.friends[]`, `$.employer`. |
+| 6 | `QueryBuildingVisitor` | For every object type with `@domain`, adds `<Name>ById(id: ID!): <Name>!` with `@link(pagination: false)` and `<Name>: [<Name>!]!` with `@link(pagination: true)` to the `Query` builder. |
+| 7 | `AddSearchTypesVisitor` | Only when there is a search index. Adds the enum `TypeFilters` and the union `SearchResult`, both of every type with `@domain`, and the field `Search(query: String!, filter: [TypeFilters]): [SearchResult!]!` with the applied directive `search`. |
+| 8 | none | Builds `Query` and puts it into the type map. |
+| 9 | `TypeReferencerVisitor` | References again, now also in `Query` and the new fields. |
+| 10 | `AddConnectionVisitor` | A field with `@link`, `@reverseLink` or `search` whose type is a list, and whose `pagination` is not `false`, keeps its name and becomes `(first: Int, after: String, last: Int, before: String): <Target>Connection`. The visitor makes `<Target>Connection` and `<Target>Edge` once for each target, and `PageInfo` once. It takes a type of that name from the type map when there is one, and makes it only when there is none. |
+| 11 | none | Collects the directive definitions of the served schema: `domain`, `link` and `reverseLink` of LDS, and every other directive the schema file defines that is not one of graphql-java. The three of LDS come from a `Set.of`, so their order in the served schema is not fixed: the introspection showed them in another order after another start. |
+| 12 | `GraphQLTypeResolvingVisitor` | Resolves the references again. |
+| 13 | `RegistrySetupVisitor` | Sets the data fetchers and the type resolvers in a code registry. See [Which fetcher a field gets](#which-fetcher-a-field-gets). |
+| 14 | none | Builds the `GraphQLSchema`: `Query` as the query type, every other type of the map as an additional type, the directives of pass 11 and the code registry. |
 
 The `Query` builder is a field of `GraphQLSchemaBuilder`, so one instance builds one schema.
 
 The definitions of `@domain`, `@link` and `@reverseLink` in the served schema are those of LDS, whatever the file
 declares:
 
-[source,graphql]
-----
+```graphql
 directive @domain(searchable: Boolean = true) on OBJECT
 directive @link(pagination: Boolean = true, reverseName: String) on FIELD_DEFINITION
 directive @reverseLink(mappedBy: String, pagination: Boolean = true) on FIELD_DEFINITION
-----
+```
 
 They are written in `DomainDirective`, `LinkDirective` and `ReverseLinkDirective`, and the introspection of the
 running LDS (`{ __schema { directives { name locations args { name type { name } defaultValue } } } }`) showed
 the same.
 
-[[walk]]
-=== The walk, the type map and the builders
+### The walk, the type map and the builders
 
 LDS has three classes of its own where graphql-java has something close. They are kept, because what the passes
 write follows from them.
@@ -421,43 +249,21 @@ element holds now (its interfaces, its members, its type), not from the referenc
 directive of that name. `name(element)` is `null` for a list and a non-null type. `value(argument)` and
 `defaultValue(argument)` give the value of an argument of a directive as a Java value.
 
-[[fetcher-choice]]
-=== Which fetcher a field gets
+### Which fetcher a field gets
 
 `RegistrySetupVisitor` looks at every field that has `@link`, `@reverseLink` or the `search` directive, after the
 connections are made. A type whose name ends in `Connection` is taken for a connection (`isConnection`).
 
-[cols="3,3"]
-|===
-|The field |The fetcher
-
-|has the `search` directive
-|`QueryConnectionFetcher`
-
-|a connection, on `Query`
-|`PersistenceRootConnectionFetcher(entity)`
-
-|a connection with `@reverseLink`
-|`PersistenceReverseLinksConnectionFetcher` with the entity of the nodes, the `mappedBy` path and the name of the
-type that holds the field
-
-|another connection
-|`PersistenceLinksConnectionFetcher` with the name of the type that holds the field, the path from `computePath`
-and the name of the node type
-
-|a list that is not a connection, with `@reverseLink`
-|none. The visitor logs `ManyToOne: is not supported for reverse links` at WARN.
-
-|another list that is not a connection
-|`PersistenceLinksFetcher(field, target)`
-
-|not a list, on `Query`
-|`PersistenceFetcher(entity)`
-
-|not a list, elsewhere
-|`PersistenceLinkFetcher(field, target)`. When the target is a union the target is the pattern of its members,
-`(Cat\|Dog)`.
-|===
+| The field | The fetcher |
+|---|---|
+| has the `search` directive | `QueryConnectionFetcher` |
+| a connection, on `Query` | `PersistenceRootConnectionFetcher(entity)` |
+| a connection with `@reverseLink` | `PersistenceReverseLinksConnectionFetcher` with the entity of the nodes, the `mappedBy` path and the name of the type that holds the field |
+| another connection | `PersistenceLinksConnectionFetcher` with the name of the type that holds the field, the path from `computePath` and the name of the node type |
+| a list that is not a connection, with `@reverseLink` | none. The visitor logs `ManyToOne: is not supported for reverse links` at WARN. |
+| another list that is not a connection | `PersistenceLinksFetcher(field, target)` |
+| not a list, on `Query` | `PersistenceFetcher(entity)` |
+| not a list, elsewhere | `PersistenceLinkFetcher(field, target)`. When the target is a union the target is the pattern of its members, `(Cat\|Dog)`. |
 
 For a list that is not a connection on `Query` the visitor has a branch that sets `PersistenceLinkFetcher`. LDS
 makes no such field: the list of an entity on `Query` is always paged.
@@ -469,16 +275,14 @@ a fetcher above them read.
 Every interface and every union gets a type resolver. It reads the entry `__graphql_internal_document_key` of the
 map (a `DocumentKey`) and answers the object type with the name of the entity of that key.
 
-=== What is served for the example model
+### What is served for the example model
 
-[source,sh]
-----
+```sh
 curl -s http://localhost:19111/graphql -H 'Content-Type: application/json' \
   -d '{"query":"{ __schema { queryType { fields { name args { name } type { kind name ofType { name } } } } } }"}'
-----
+```
 
-[source,json]
-----
+```json
 {"data":{"__schema":{"queryType":{"fields":[
  {"name":"Company","args":[{"name":"after"},{"name":"before"},{"name":"first"},{"name":"last"}],
   "type":{"kind":"OBJECT","name":"CompanyConnection","ofType":null}},
@@ -488,7 +292,7 @@ curl -s http://localhost:19111/graphql -H 'Content-Type: application/json' \
   "type":{"kind":"OBJECT","name":"PersonConnection","ofType":null}},
  {"name":"PersonById","args":[{"name":"id"}],
   "type":{"kind":"NON_NULL","name":null,"ofType":{"name":"Person"}}}]}}}}
-----
+```
 
 The field `x` of the `Query` of the file is gone. The introspection (`{ __schema { types { kind name } } }`)
 showed these types beside those of the introspection itself: the objects `Address`, `Company`,
@@ -499,14 +303,12 @@ uses them.
 `Person` has got `reversePersonFriends`, and `friends` is a connection. `Company` has got `employees`, the
 `reverseName` of `Person.employer`:
 
-[source,sh]
-----
+```sh
 curl -s http://localhost:19111/graphql -H 'Content-Type: application/json' \
   -d '{"query":"{ __type(name: \"Person\") { fields { name args { name } type { kind name ofType { name } } } } }"}'
-----
+```
 
-[source,json]
-----
+```json
 {"data":{"__type":{"fields":[
  {"name":"address","args":[],"type":{"kind":"OBJECT","name":"Address","ofType":null}},
  {"name":"born","args":[],"type":{"kind":"SCALAR","name":"DateTime","ofType":null}},
@@ -516,25 +318,24 @@ curl -s http://localhost:19111/graphql -H 'Content-Type: application/json' \
  {"name":"name","args":[],"type":{"kind":"NON_NULL","name":null,"ofType":{"name":"String"}}},
  {"name":"reversePersonFriends","args":[{"name":"after"},{"name":"before"},{"name":"first"},{"name":"last"}],
   "type":{"kind":"OBJECT","name":"PersonConnection","ofType":null}}]}}}
-----
+```
 
 A connection type has `edges: [<Target>Edge!]!` and `pageInfo: PageInfo!`. An edge has `cursor: String!` and
 `node: <Target>!`. `PageInfo` has `hasNextPage: Boolean!` and `hasPreviousPage: Boolean!` and no cursors.
 
-=== `DateTimeScalar`
+### `DateTimeScalar`
 
 `DateTimeScalar` is the scalar `DateTime`. It writes a value with `DateTimeFormatter.ISO_OFFSET_DATE_TIME`, so the
 fraction of a second has the digits the value has. It reads a value with the `DateTime` of
 graphql-java-extended-scalars. That scalar writes three digits always, which is why LDS does not use it to write.
 `Date` and `Time` are the scalars of the library.
 
-[source,sh]
-----
+```sh
 curl -s -i http://localhost:19111/graphql -H 'Content-Type: application/json' \
   -d '{"query":"{ PersonById(id: \"ola\") { name born employer { name founded } } }"}'
-----
+```
 
-----
+```
 HTTP/1.1 200 OK
 Connection: keep-alive
 Content-Type: application/json
@@ -543,42 +344,25 @@ Date: Fri, 20 Nov 2026 15:39:02 GMT
 
 {"data":{"PersonById":{"name":"Ola Nordmann","born":"1980-02-03T04:05:06.123456Z",
  "employer":{"name":"Globex","founded":"2001-09-09T09:09:09.12+02:00"}}}}
-----
+```
 
 `founded` is stored as `2001-09-09T09:09:09.120+02:00` and comes out with `.12`.
 
-== A request
+## A request
 
-=== Reading the request
+### Reading the request
 
 `GraphqlHttpHandler.handleRequest` moves the request to a worker thread (`exchange.dispatch`) and then reads it by
 its method.
 
-[cols="2,5"]
-|===
-|Request |What is read
-
-|`GET`
-|The query parameters `query`, `operationName` and `variables`. `variables` is a JSON object as text. A parameter
-given twice is an `IllegalArgumentException` (`more than one "query" parameter`).
-
-|`POST` with a content type that holds `application/(.*\+)?graphql`
-|The whole body is the query. This is tested first.
-
-|`POST` with a content type that holds `application/(.*\+)?json`
-|The body is a JSON object. `query` is the query. `variables` is read when it is there and not `null`.
-`operationName` is read when it is there. The query parameters `query`, `variables` and `operationName` of the
-address are not read for a POST.
-
-|`POST` with another content type, or none
-|415, no body.
-
-|`OPTIONS`
-|200, no body, with the header `Allow` for GET, POST and OPTIONS.
-
-|another method
-|405, no body.
-|===
+| Request | What is read |
+|---|---|
+| `GET` | The query parameters `query`, `operationName` and `variables`. `variables` is a JSON object as text. A parameter given twice is an `IllegalArgumentException` (`more than one "query" parameter`). |
+| `POST` with a content type that holds `application/(.*\+)?graphql` | The whole body is the query. This is tested first. |
+| `POST` with a content type that holds `application/(.*\+)?json` | The body is a JSON object. `query` is the query. `variables` is read when it is there and not `null`. `operationName` is read when it is there. The query parameters `query`, `variables` and `operationName` of the address are not read for a POST. |
+| `POST` with another content type, or none | 415, no body. |
+| `OPTIONS` | 200, no body, with the header `Allow` for GET, POST and OPTIONS. |
+| another method | 405, no body. |
 
 The two patterns (`IS_GRAPHQL`, `IS_JSON`) are searched for in the `Content-Type` header, in the case it is
 written. So `application/json; charset=utf-8` and `application/vnd.x+json` are JSON, `application/jsonx` and
@@ -589,26 +373,23 @@ The body is read in the charset of the request (`exchange.getRequestCharset()`).
 `GraphQLUndertowContext` of the exchange and the input and puts it into the context of graphql-java under the key
 `GraphQLContext.class`.
 
-[source,sh]
-----
+```sh
 curl -s -G http://localhost:19111/graphql \
   --data-urlencode 'query=query A($id: ID!) { PersonById(id: $id) { name } } '\
 'query B($id: ID!) { CompanyById(id: $id) { name } }' \
   --data-urlencode 'variables={"id":"acme"}' --data-urlencode 'operationName=B'
-----
+```
 
-[source,json]
-----
+```json
 {"data":{"CompanyById":{"name":"Acme"}}}
-----
+```
 
-[source,sh]
-----
+```sh
 curl -s -i http://localhost:19111/graphql -H 'Content-Type: application/graphql' \
   -d '{ CompanyById(id: "acme") { name } }'
-----
+```
 
-----
+```
 HTTP/1.1 200 OK
 Connection: keep-alive
 Content-Type: application/json
@@ -616,90 +397,81 @@ Content-Length: 40
 Date: Fri, 20 Nov 2026 15:39:03 GMT
 
 {"data":{"CompanyById":{"name":"Acme"}}}
-----
+```
 
-=== The time of the query
+### The time of the query
 
 Every read is as of one time, the snapshot. `GraphQLUndertowContext.getSnapshot(queryParameters, variables,
 clock)` takes the first of these that gives a time:
 
-. the query parameter `snapshot` of the request (`SNAPSHOT_QUERY_NAME`), for GET and for POST;
-. the variable `__snapshot` (`SNAPSHOT_VARIABLE_NAME`);
-. now, from `Clock.systemUTC()`.
+1. the query parameter `snapshot` of the request (`SNAPSHOT_QUERY_NAME`), for GET and for POST;
+2. the variable `__snapshot` (`SNAPSHOT_VARIABLE_NAME`);
+3. now, from `Clock.systemUTC()`.
 
 The value is read with `ZonedDateTime.parse`. A value that cannot be parsed gives nothing, and the next source is
 tried. More than one `snapshot` parameter and a `__snapshot` that is not a string are `IllegalArgumentException`.
 The snapshot is computed once, when the context is made, and every fetcher of the request uses it.
 
-[source,sh]
-----
+```sh
 curl -s 'http://localhost:19111/graphql?snapshot=2021-06-01T00:00:00Z' -H 'Content-Type: application/json' \
   -d '{"query":"{ PersonById(id: \"ola\") { name employer { name } friends { edges { cursor } } } }"}'
-----
+```
 
-[source,json]
-----
+```json
 {"data":{"PersonById":{"name":"Ola","employer":{"name":"Acme"},
  "friends":{"edges":[{"cursor":"anne"},{"cursor":"kari"},{"cursor":"per"}]}}}}
-----
+```
 
-[source,sh]
-----
+```sh
 curl -s http://localhost:19111/graphql -H 'Content-Type: application/json' \
   -d '{"query":"{ PersonById(id: \"ola\") { name employer { name } } }",'\
 '"variables":{"__snapshot":"2021-06-01T00:00:00Z"}}'
-----
+```
 
-[source,json]
-----
+```json
 {"data":{"PersonById":{"name":"Ola","employer":{"name":"Acme"}}}}
-----
+```
 
 A link is followed at the same time. A link to a document that does not exist at the snapshot gives `null`, and
 the same link gives the document at a time when it exists:
 
-[source,sh]
-----
+```sh
 curl -s http://localhost:19111/graphql -H 'Content-Type: application/json' \
   -d '{"query":"{ PersonById(id: \"early\") { name employer { name } } }"}'; echo
 curl -s 'http://localhost:19111/graphql?snapshot=2031-01-01T00:00:00Z' -H 'Content-Type: application/json' \
   -d '{"query":"{ PersonById(id: \"early\") { name employer { name } } }"}'
-----
+```
 
-[source,json]
-----
+```json
 {"data":{"PersonById":{"name":"Early","employer":null}}}
 {"data":{"PersonById":{"name":"Early","employer":{"name":"Future Ltd"}}}}
-----
+```
 
-=== The answer and the status codes
+### The answer and the status codes
 
 The handler executes with `GraphQL.execute`, turns the result into JSON (`ExecutionResult.toSpecification`) and
 sends it with status 200 and `Content-Type: application/json`. An error that graphql-java reports is in `errors`
 of a 200 answer: a query that cannot be parsed, a field the schema does not have, an exception in a fetcher.
 
-[source,sh]
-----
+```sh
 curl -s http://localhost:19111/graphql -H 'Content-Type: application/json' \
   -d '{"query":"{ PersonById(id: \"ola\") { nmae } }"}'
-----
+```
 
-[source,json]
-----
+```json
 {"errors":[{"message":"Validation error (FieldUndefined@[PersonById/nmae]) : Field 'nmae' in type 'Person' is
  undefined","locations":[{"line":1,"column":27}],"extensions":{"classification":"ValidationError"}}]}
-----
+```
 
 `<Entity>ById` is declared non-null, so an id that has no document at the snapshot is an error of graphql-java,
 and `data` is `null` for the whole request:
 
-[source,sh]
-----
+```sh
 curl -s -i http://localhost:19111/graphql -H 'Content-Type: application/json' \
   -d '{"query":"{ PersonById(id: \"nobody\") { name } }"}'
-----
+```
 
-----
+```
 HTTP/1.1 200 OK
 Connection: keep-alive
 Content-Type: application/json
@@ -711,51 +483,50 @@ Date: Fri, 20 Nov 2026 15:39:03 GMT
  set to null, or if that is non nullable that it bubble up null to its parent and so on. The non-nullable type is
  'Person' within parent type 'Query'","path":["PersonById"],
  "extensions":{"classification":"NullValueInNonNullableField"}}],"data":null}
-----
+```
 
 The handler catches nothing. An exception while the request is read leaves the handler, and Undertow answers 500
 with no body and logs `UT005071: Undertow request failed` with the stack trace:
 
-[source,sh]
-----
+```sh
 curl -s -i http://localhost:19111/graphql -H 'Content-Type: application/json' -d '{}'
-----
+```
 
-----
+```
 HTTP/1.1 500 Internal Server Error
 Connection: keep-alive
 Content-Length: 0
 Date: Fri, 20 Nov 2026 15:39:03 GMT
-----
+```
 
-The same answer was seen for a GET without `query`, a body that is not JSON, text after the JSON document, an
-empty body, a body that is a JSON array, `query` that is `null` or a number, `variables` that is a text or an
-array, two `query`, two `variables` or two `operationName` parameters, `variables` of a GET that are not JSON, two
-`snapshot` parameters and a `__snapshot` that is a number. See <<unfinished>>. An `operationName` that is a
-number in a JSON body is read as none, and the query is answered.
+The same answer was seen for a GET without `query`, a body that is not JSON, text after the JSON document, an empty
+body, a body that is a JSON array, `query` that is `null` or a number, `variables` that is a text or an array, two
+`query`, two `variables` or two `operationName` parameters, `variables` of a GET that are not JSON, two `snapshot`
+parameters and a `__snapshot` that is a number. See [Not finished and known to be
+wrong](#not-finished-and-known-to-be-wrong). An `operationName` that is a number in a JSON body is read as none, and the
+query is answered.
 
 Two limits of graphql-java apply, both as `errors` of a 200 answer. A query of more than 15000 tokens is not
 parsed ("More than 15,000 'grammar' tokens have been presented. To prevent Denial Of Service attacks, parsing has
 been cancelled."). A request that asks for `__schema` or `__type` more than once is refused ("This request is not
-asking for introspection in good faith - Query.__type is present too often!"). LDS sets no limit of its own.
+asking for introspection in good faith - Query.\_\_type is present too often!"). LDS sets no limit of its own.
 
-The handler is behind the handlers every request passes (xref:core-application.adoc[the application]). An
+The handler is behind the handlers every request passes ([the application](core-application.md)). An
 `OPTIONS` request with `Origin` and `Access-Control-Request-Method` is answered by the CORS handler (204) and
 does not reach `GraphqlHttpHandler`.
 
-=== GraphiQL
+### GraphiQL
 
 `UndertowApplication` serves the folder `io/descoped/lds/graphql/graphiql` of the class path at `/graphiql`, with
 `graphiql.html` as the welcome file.
 
-[source,sh]
-----
+```sh
 curl -s -i http://localhost:19111/graphiql
 curl -s -o /dev/null -w '%{http_code} %{content_type}\n' http://localhost:19111/graphiql/
 curl -s http://localhost:19111/graphiql/ | grep -o 'unpkg.com/[^"]*'
-----
+```
 
-----
+```
 HTTP/1.1 302 Found
 Connection: keep-alive
 Location: http://localhost:19111/graphiql/
@@ -769,7 +540,7 @@ unpkg.com/react@16/umd/react.production.min.js
 unpkg.com/react-dom@16/umd/react-dom.production.min.js
 unpkg.com/graphiql@0.12.0/graphiql.css
 unpkg.com/graphiql@0.12.0/graphiql.min.js
-----
+```
 
 The page loads its scripts from `unpkg.com` when it is opened, so the browser needs access to that host. It reads
 `query`, `variables` and `operationName` from its own address, and posts JSON to `/graphql` under the same prefix.
@@ -777,12 +548,12 @@ Opened in a browser, the page sent an introspection query and then the query tha
 `{"__snapshot":"2021-06-01T00:00:00Z"}` as its variables the answer was as of that time. `/graphiql/graphiql.html`
 is not served: the path is an exact one, and the request is answered `400 Unsupported namespace: "graphiql"`.
 
-== How a field reads documents
+## How a field reads documents
 
-=== The pattern
+### The pattern
 
 A fetcher gets the snapshot from the `GraphQLContext` of LDS and reads through `RxJsonPersistence`
-(xref:persistence-api.adoc[the persistence interface]). Every read opens a read-only transaction
+([the persistence interface](persistence-api.md)). Every read opens a read-only transaction
 (`createTransaction(true)`) and closes it when the read is done. The methods of persistence return a `Maybe` or a
 `Flowable`. A data fetcher of this part returns a value, so the fetcher waits for the stream on the worker thread
 of the request: `blockingGet()` on a `Maybe`, `toList().blockingGet()` on a `Flowable`. The range of a
@@ -792,67 +563,40 @@ A document becomes a `Map` (`JsonDocument.toMap`). The fetchers that feed other 
 `__graphql_internal_document_key` with the `DocumentKey` of the document. The fetchers below need it to know which
 document they are in, and the type resolvers need it to name the entity.
 
-[cols="2,3,2"]
-|===
-|Fetcher |Reads with |Adds the document key
-
-|`PersistenceFetcher`
-|`readDocument(tx, snapshot, namespace, entity, id)`
-|yes
-
-|`PersistenceLinkFetcher`
-|`readDocument`, with the entity and the id taken from the link by the pattern `/(?<type>TARGET)/(?<id>.*)`
-|yes
-
-|`PersistenceLinksFetcher`
-|`readDocument` for each link that matches `/TARGET/(?<id>.*)`
-|no
-
-|`PersistenceRootConnectionFetcher`
-|`readDocuments(tx, snapshot, namespace, entity, range)`, then `hasPrevious` and `hasNext` with the ids of the
-first and the last edge
-|yes
-
-|`PersistenceLinksConnectionFetcher`
-|`readTargetDocuments` once for every concrete type of the target (the members of a union, the implementations
-of an interface), merged with `Flowable.merge`
-|yes
-
-|`PersistenceReverseLinksConnectionFetcher`
-|`readSourceDocuments` with the id of the document, the `mappedBy` path and the entity of the nodes
-|yes
-
-|`QueryConnectionFetcher`
-|`SearchIndex.search(query, filter, from, size)`, then `readDocument` for every hit
-|yes
-|===
+| Fetcher | Reads with | Adds the document key |
+|---|---|---|
+| `PersistenceFetcher` | `readDocument(tx, snapshot, namespace, entity, id)` | yes |
+| `PersistenceLinkFetcher` | `readDocument`, with the entity and the id taken from the link by the pattern `/(?<type>TARGET)/(?<id>.*)` | yes |
+| `PersistenceLinksFetcher` | `readDocument` for each link that matches `/TARGET/(?<id>.*)` | no |
+| `PersistenceRootConnectionFetcher` | `readDocuments(tx, snapshot, namespace, entity, range)`, then `hasPrevious` and `hasNext` with the ids of the first and the last edge | yes |
+| `PersistenceLinksConnectionFetcher` | `readTargetDocuments` once for every concrete type of the target (the members of a union, the implementations of an interface), merged with `Flowable.merge` | yes |
+| `PersistenceReverseLinksConnectionFetcher` | `readSourceDocuments` with the id of the document, the `mappedBy` path and the entity of the nodes | yes |
+| `QueryConnectionFetcher` | `SearchIndex.search(query, filter, from, size)`, then `readDocument` for every hit | yes |
 
 The namespace is the one the builder was made with, `namespace.default`. `QueryConnectionFetcher` reads a hit
 from the namespace of its key.
 
-=== Pages
+### Pages
 
 `ConnectionParameters.getRange` makes the `Range` that persistence gets:
 
-* `first` given: `Range.firstBetween(first, after, before)`. `first` wins when `last` is given too.
-* otherwise `last` given: `Range.lastBetween(last, after, before)`.
-* neither: `Range.between(after, before)`.
+- `first` given: `Range.firstBetween(first, after, before)`. `first` wins when `last` is given too.
+- otherwise `last` given: `Range.lastBetween(last, after, before)`.
+- neither: `Range.between(after, before)`.
 
 A negative `first` or `last` is an `IllegalArgumentException` ("The page size must not be negative: 'first'=-1"),
 which graphql-java reports in `errors`. The cursor of an edge is the id of its document
 (`DocumentKey.id()`), so `after` and `before` take ids.
 
-[source,sh]
-----
+```sh
 curl -s http://localhost:19111/graphql -H 'Content-Type: application/json' \
   -d '{"query":"{ Person(first: 2, after: \"early\") { edges { cursor } pageInfo { hasNextPage hasPreviousPage } } }"}'
-----
+```
 
-[source,json]
-----
+```json
 {"data":{"Person":{"edges":[{"cursor":"kari"},{"cursor":"ola"}],
  "pageInfo":{"hasNextPage":true,"hasPreviousPage":true}}}}
-----
+```
 
 `PersistenceRootConnectionFetcher` always asks persistence for `hasPrevious` and `hasNext`. The two link
 connection fetchers ask only when the query selects `pageInfo/hasPreviousPage` or `pageInfo/hasNextPage`, by
@@ -860,27 +604,25 @@ reading one document before the first edge and one after the last. An empty page
 
 A reverse link reads the documents that hold the link, at the snapshot:
 
-[source,sh]
-----
+```sh
 curl -s http://localhost:19111/graphql -H 'Content-Type: application/json' \
   -d '{"query":"{ CompanyById(id: \"acme\") { name employees { edges { cursor node { name } } '\
 'pageInfo { hasNextPage hasPreviousPage } } } }"}'
-----
+```
 
-[source,json]
-----
+```json
 {"data":{"CompanyById":{"name":"Acme","employees":{"edges":[{"cursor":"kari","node":{"name":"Kari"}},
  {"cursor":"per","node":{"name":"Per"}}],"pageInfo":{"hasNextPage":false,"hasPreviousPage":false}}}}}
-----
+```
 
-=== Search
+### Search
 
 `QueryConnectionFetcher` turns the range into a position and a size (`IndexBasedRange.fromRange`), with
 `MAX_SEARCH_LIMIT`, 10, as the size when the query gives none:
 
-* `first` given: from the position of `after`, or 0; size `first`.
-* `last` given: up to the position of `before`, or 10; size `last`.
-* neither: from the position of `after`, or 0, up to the position of `before`, or 10.
+- `first` given: from the position of `after`, or 0; size `first`.
+- `last` given: up to the position of `before`, or 10; size `last`.
+- neither: from the position of `after`, or 0, up to the position of `before`, or 10.
 
 It calls `SearchIndex.search(query, filter, from, size)` and waits for the answer. `filter` is the set of entity
 names of the argument, or `null`. Every hit is a `DocumentKey`; the fetcher reads the document of the key at the
@@ -889,7 +631,7 @@ snapshot and leaves out a hit that has no document at that time, with the line `
 `qc:<position>` in base64url without padding (`QueryConnectionCursor`). `hasPreviousPage` is `from > 0`, and
 `hasNextPage` is `from + size < total hits`. With no edges both are `false`.
 
-What a search finds is decided by the provider (xref:search.adoc[search]). The Solr provider finds a document by
+What a search finds is decided by the provider ([search](search.md)). The Solr provider finds a document by
 the texts of its fields named `languageText`. What search covers is under review.
 
 The requests below were sent to LDS with search on and the index of the tests of core,
@@ -898,132 +640,80 @@ it and applies neither the filter nor the page. LDS does not find that provider 
 was registered with a file `META-INF/services/io.descoped.lds.api.search.SearchIndexProvider` in a folder added to
 the class path. The model had the entities `Cat`, `Dog`, `Owner` and `Car`. Solr was not run for this document.
 
-[source,sh]
-----
+```sh
 curl -s http://localhost:19111/graphql -H 'Content-Type: application/json' \
   -d '{"query":"{ Search(query: \"the\") { edges { cursor node { __typename ... on Cat { name } '\
 '... on Dog { name } } } pageInfo { hasNextPage hasPreviousPage } } }"}'
-----
+```
 
-[source,json]
-----
+```json
 {"data":{"Search":{"edges":[
  {"cursor":"cWM6MA","node":{"__typename":"Cat","name":"Felix the cat"}},
  {"cursor":"cWM6MQ","node":{"__typename":"Dog","name":"Fido the dog"}},
  {"cursor":"cWM6Mg","node":{"__typename":"Cat","name":"Tom the cat"}},
  {"cursor":"cWM6Mw","node":{"__typename":"Dog","name":"Rex the dog"}}],
  "pageInfo":{"hasNextPage":false,"hasPreviousPage":false}}}}
-----
+```
 
-[source,sh]
-----
+```sh
 printf 'cWM6MQ==' | base64 -d
-----
+```
 
-----
+```
 qc:1
-----
+```
 
-== Configuration
+## Configuration
 
 The keys are read in `UndertowApplication` and `SearchIndexConfigurator`. The files and the rule for environment
-variables are in xref:core-application.adoc[the application].
+variables are in [the application](core-application.md).
 
-[cols="2,2,5"]
-|===
-|Key |Default |Meaning
+| Key | Default | Meaning |
+|---|---|---|
+| `graphql.enabled` | `true` | `true` puts `/graphql` and `/graphiql` in place, when `graphql.schema` is not empty. With `false`, or with an empty `graphql.schema`, both paths are answered as a namespace that does not exist: 400 `Unsupported namespace: "graphql"`. |
+| `graphql.schema` | empty in core, `schemas/schema.graphql` in the server | The path of the schema file. It is the model too ([the model](core-model.md)). |
+| `graphql.search.enabled` | `false` | `true` loads the search provider and adds the `Search` field. |
+| `search.index.provider` | empty in core, `solr` in the server | The id of the search provider. An id that no provider has stops the start: `No search index provider found for providerId: testSearchIndex`. |
+| `namespace.default` | `ns` | The namespace every fetcher reads from. |
+| `http.prefix` | `/` | With `/api`, GraphQL is at `/api/graphql` and the page at `/api/graphiql`. `/graphql` is then 404. |
 
-|`graphql.enabled`
-|`true`
-|`true` puts `/graphql` and `/graphiql` in place, when `graphql.schema` is not empty. With `false`, or with an
-empty `graphql.schema`, both paths are answered as a namespace that does not exist: 400
-`Unsupported namespace: "graphql"`.
+## Rules to keep
 
-|`graphql.schema`
-|empty in core, `schemas/schema.graphql` in the server
-|The path of the schema file. It is the model too (xref:core-model.adoc[the model]).
-
-|`graphql.search.enabled`
-|`false`
-|`true` loads the search provider and adds the `Search` field.
-
-|`search.index.provider`
-|empty in core, `solr` in the server
-|The id of the search provider. An id that no provider has stops the start:
-`No search index provider found for providerId: testSearchIndex`.
-
-|`namespace.default`
-|`ns`
-|The namespace every fetcher reads from.
-
-|`http.prefix`
-|`/`
-|With `/api`, GraphQL is at `/api/graphql` and the page at `/api/graphiql`. `/graphql` is then 404.
-|===
-
-== Rules to keep
-
-* *Keep `TypeTraverser`, `TypeCollectingVisitor` and `SchemaElements`.* What the passes write follows from the
+- **Keep `TypeTraverser`, `TypeCollectingVisitor` and `SchemaElements`.** What the passes write follows from the
   order of the walk and from how a type is built. The `SchemaTraverser` of graphql-java walks differently
   (`.claude/CLAUDE.md`, The GraphQL schema).
-* *Keep the order of the passes.* See <<passes>>. A pass reads what the earlier passes wrote into the type map.
-* *What LDS makes of a schema file is pinned.* `GraphQLSchemaGoldenTest` compares the served schema, the JSON
+- **Keep the order of the passes.** See [The passes of `getGraphQL`](#the-passes-of-getgraphql). A pass reads what the
+  earlier passes wrote into the type map.
+- **What LDS makes of a schema file is pinned.** `GraphQLSchemaGoldenTest` compares the served schema, the JSON
   Schema and the specification of ten schema files with the files in `src/test/resources/graphql-golden`. A
   difference is a change of what LDS serves or stores. It is understood before an expected file is changed.
-* *`DateTime` keeps the fraction the value has.* Do not replace `DateTimeScalar` by the scalar of
+- **`DateTime` keeps the fraction the value has.** Do not replace `DateTimeScalar` by the scalar of
   graphql-java-extended-scalars.
-* *Streams stay streams.* A read of persistence is a `Flowable` or a `Maybe` that the provider fills on demand.
+- **Streams stay streams.** A read of persistence is a `Flowable` or a `Maybe` that the provider fills on demand.
   A fetcher may wait for it. Do not add a blocking call to the persistence interface and do not replace a stream
   by a call that returns a whole list (`.claude/CLAUDE.md`, The persistence interface).
-* *No spliced identifiers.* An id, a cursor and a search text come from the request. They go to persistence and
+- **No spliced identifiers.** An id, a cursor and a search text come from the request. They go to persistence and
   to the search index as arguments (`.claude/CLAUDE.md`, Invariants).
-* *Time.* Versions are compared as UTC instants (`.claude/CLAUDE.md`, Invariants). This part does not meet the
-  rule yet; see <<unfinished>>.
-* *Tests.* A new test class is JUnit 6 with AssertJ. A class that takes its server from `TestServerListener` is
+- **Time.** Versions are compared as UTC instants (`.claude/CLAUDE.md`, Invariants). This part does not meet the
+  rule yet; see [Not finished and known to be wrong](#not-finished-and-known-to-be-wrong).
+- **Tests.** A new test class is JUnit 6 with AssertJ. A class that takes its server from `TestServerListener` is
   TestNG (`.claude/CLAUDE.md`, Testing).
 
-== Tests
+## Tests
 
 The tests are in `linked-data-store-core/src/test/java/io/descoped/lds/graphql`.
 
-[cols="2,4"]
-|===
-|Test |What it holds
-
-|`schemas/GraphQLSchemaGoldenTest`
-|Builds the schema as the application does, without and with a search index, for ten schema files, and compares
-four texts for each with the files in `src/test/resources/graphql-golden`: `.plain.schema.txt`,
-`.search.schema.txt`, `.jsonschema.txt` and `.specification.txt`. `CanonicalText` writes the texts; a schema text
-names the fetcher of every field. Three more tests: the directives a file defines stay defined
-(`syn-two-directives`), a list of links to an interface is refused with a `ClassCastException`
-(`syn-link-to-interface`), and an argument the directive does not declare is refused (`syn-undeclared-arg`).
-
-|`schemas/TypeTraverserTest`, `schemas/TypeCollectingVisitorTest`, `schemas/SchemaElementsTest`
-|The walk and where it stops, the order of the collected types, the builders.
-
-|`schemas/DateTimeScalarTest`
-|The fraction of a second out, the values in.
-
-|`directives/DirectivesTest`, `schemas/visitors/QueryVisitorsTest`
-|The definitions of the directives, the fields of `Query`.
-
-|`schemas/visitors/AddConnectionVisitorTest`, `schemas/visitors/ReverseLinkBuildingVisitorTest`
-|Connections and reverse links on small schemas.
-
-|`GraphqlHttpHandlerTest`
-|GET with `query`, `variables` and `operationName`; the content types of POST; a body or `variables` with
-something after the JSON document.
-
-|`GraphQLUndettowContextTest`
-|The rules of the snapshot.
-
-|`fetcher/PersistenceLinksFetcherTest`, `fetcher/QueryConnectionFetcherTest`, `fetcher/QueryConnectionCursorTest`
-|A list of links that is not paged, the position and the size that search makes of a range, the cursor of search.
-
-|`GraphQLIntegrationTest`
-|Queries against LDS in the JVM (`TestServerListener`) with the model `gqlschema/schema.graphql` and the search
-provider `testSearchIndex`: links to abstract types, CORS on `/graphql`, search, linked documents.
-|===
+| Test | What it holds |
+|---|---|
+| `schemas/GraphQLSchemaGoldenTest` | Builds the schema as the application does, without and with a search index, for ten schema files, and compares four texts for each with the files in `src/test/resources/graphql-golden`: `.plain.schema.txt`, `.search.schema.txt`, `.jsonschema.txt` and `.specification.txt`. `CanonicalText` writes the texts; a schema text names the fetcher of every field. Three more tests: the directives a file defines stay defined (`syn-two-directives`), a list of links to an interface is refused with a `ClassCastException` (`syn-link-to-interface`), and an argument the directive does not declare is refused (`syn-undeclared-arg`). |
+| `schemas/TypeTraverserTest`, `schemas/TypeCollectingVisitorTest`, `schemas/SchemaElementsTest` | The walk and where it stops, the order of the collected types, the builders. |
+| `schemas/DateTimeScalarTest` | The fraction of a second out, the values in. |
+| `directives/DirectivesTest`, `schemas/visitors/QueryVisitorsTest` | The definitions of the directives, the fields of `Query`. |
+| `schemas/visitors/AddConnectionVisitorTest`, `schemas/visitors/ReverseLinkBuildingVisitorTest` | Connections and reverse links on small schemas. |
+| `GraphqlHttpHandlerTest` | GET with `query`, `variables` and `operationName`; the content types of POST; a body or `variables` with something after the JSON document. |
+| `GraphQLUndettowContextTest` | The rules of the snapshot. |
+| `fetcher/PersistenceLinksFetcherTest`, `fetcher/QueryConnectionFetcherTest`, `fetcher/QueryConnectionCursorTest` | A list of links that is not paged, the position and the size that search makes of a range, the cursor of search. |
+| `GraphQLIntegrationTest` | Queries against LDS in the JVM (`TestServerListener`) with the model `gqlschema/schema.graphql` and the search provider `testSearchIndex`: links to abstract types, CORS on `/graphql`, search, linked documents. |
 
 `GraphQLSchemaGoldenTest`, `TypeTraverserTest`, `TypeCollectingVisitorTest`, `SchemaElementsTest`,
 `DateTimeScalarTest`, `DirectivesTest`, `QueryVisitorsTest` and `PersistenceLinksFetcherTest` are JUnit 6 with
@@ -1038,12 +728,11 @@ The Maven commands are in `.claude/CLAUDE.md` under Commands. The one for a sing
 `./mvnw test -pl linked-data-store-core -Dtest=GraphQLSchemaGoldenTest`. The build needs JDK 27 and Docker. The
 commands were not run when this document was written.
 
-[[unfinished]]
-== Not finished and known to be wrong
+## Not finished and known to be wrong
 
 Everything below was seen by running LDS in memory, or is read from the code where that is said.
 
-=== In the request handler
+### In the request handler
 
 Not finished: `GraphqlHttpHandler` answers a request it cannot read with 500 and no body, and the reason is only
 in the log. That is so for a missing `query`, a `query` that is not a text, a body that is not JSON or not a JSON
@@ -1074,7 +763,7 @@ memory provider a snapshot with an offset is compared by its local date and time
 `snapshot=2022-01-01T00:30:00%2B01:00` is 2021-12-31T23:30Z; GraphQL answered with the version of 2022-01-01 and
 REST, with the same value as `timestamp`, with the version of 2020-01-01.
 
-=== In the schema builder
+### In the schema builder
 
 Not finished: a link to an interface stops the start, for a single link and for a list.
 `ReverseLinkBuildingVisitor.addReverseField` casts the target to `GraphQLObjectType` and throws a
@@ -1112,7 +801,7 @@ deprecated and not called. A type with `@domain(searchable: false)` is in `TypeF
 
 Not finished: a field with `@reverseLink(pagination: false)` gets no fetcher and is always `null`. A
 `@reverseLink` field written in the schema file is also a property of the JSON Schema of its entity
-(xref:core-model.adoc[the model]).
+([the model](core-model.md)).
 
 Not finished: links in a type without `@domain` (a part of a document) work for a single link only. A list of
 links there fails with `Cannot invoke "io.descoped.lds.api.persistence.DocumentKey.id()" because "key" is null`,
@@ -1134,57 +823,51 @@ branches. `ReverseLinkDirective.REVERSE_LINK_DIRECTIVE` is not used. `JsonSchema
 `EmptyPersistence` is used by the `main` of `GraphQLSchemaBuilderTest` only. `GraphQLContext` has a `TODO` about
 its name, which is that of a class of graphql-java.
 
-=== In the fetchers and in search
+### In the fetchers and in search
 
 Not finished: `PersistenceLinkFetcher` does not check that the link field is there. A document without the field
 gives an error and `null` for the field:
 
-[source,sh]
-----
+```sh
 curl -s http://localhost:19111/graphql -H 'Content-Type: application/json' \
   -d '{"query":"{ PersonById(id: \"anne\") { name employer { name } } }"}'
-----
+```
 
-[source,json]
-----
+```json
 {"errors":[{"message":"Exception while fetching data (/PersonById/employer) : Cannot invoke
  \"java.lang.CharSequence.length()\" because \"this.text\" is null","locations":[{"line":1,"column":33}],
  "path":["PersonById","employer"],"extensions":{"classification":"DataFetchingException"}}],
  "data":{"PersonById":{"name":"Anne","employer":null}}}
-----
+```
 
 Not finished: with `last`, or with `before` alone, `PersistenceRootConnectionFetcher` and
 `PersistenceReverseLinksConnectionFetcher` give the edges with the last id first, and `hasNextPage` and
 `hasPreviousPage` are computed as if the first edge had the lowest id:
 
-[source,sh]
-----
+```sh
 curl -s http://localhost:19111/graphql -H 'Content-Type: application/json' \
   -d '{"query":"{ Person(last: 2) { edges { cursor } pageInfo { hasNextPage hasPreviousPage } } }"}'
-----
+```
 
-[source,json]
-----
+```json
 {"data":{"Person":{"edges":[{"cursor":"per"},{"cursor":"ola"}],
  "pageInfo":{"hasNextPage":true,"hasPreviousPage":true}}}}
-----
+```
 
 Not finished: a connection of links does not page with the memory provider. `after` and `before` are not applied,
 and `pageInfo` is `true` and `true` when there is an edge. Ola has three friends at this time, and `anne` is the
 first:
 
-[source,sh]
-----
+```sh
 curl -s 'http://localhost:19111/graphql?snapshot=2021-06-01T00:00:00Z' -H 'Content-Type: application/json' \
   -d '{"query":"{ PersonById(id: \"ola\") { friends(first: 1, after: \"anne\") { edges { cursor } '\
 'pageInfo { hasNextPage hasPreviousPage } } } }"}'
-----
+```
 
-[source,json]
-----
+```json
 {"data":{"PersonById":{"friends":{"edges":[{"cursor":"anne"}],
  "pageInfo":{"hasNextPage":true,"hasPreviousPage":true}}}}}
-----
+```
 
 The memory and PostgreSQL providers answer `readTargetDocuments` through
 `RxJsonPersistenceBridge.readTargetDocuments`, which sorts the links and takes the limit and does not apply

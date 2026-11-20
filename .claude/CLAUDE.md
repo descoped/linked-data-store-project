@@ -234,10 +234,10 @@ use. Keep these when changing them:
 
 ## The documentation
 
-`docs/` is AsciiDoc that GitHub renders, in two parts with two readers, and a document is for exactly one of them:
-`docs/user/` for those who use LDS (they run it, give it a model, read and write documents; no class, module or
-package names there) and `docs/developer/` for those who change the code (`architecture.adoc` is the map, then one
-document for each part of the code). `docs/README.adoc` is the index. Keep these when changing it:
+`docs/` is Markdown as GitHub renders it, in two parts with two readers, and a document is for exactly one of
+them: `docs/user/` for those who use LDS (they run it, give it a model, read and write documents; no class, module
+or package names there) and `docs/developer/` for those who change the code (`architecture.md` is the map, then
+one document for each part of the code). `docs/README.md` is the index. Keep these when changing it:
 
 - **Only what the code does.** A statement is one found in the code, in a test or by running LDS, and every
   request shown was run, with the answer that came. A change of behaviour changes the document in the same pull
@@ -246,7 +246,8 @@ document for each part of the code). `docs/README.adoc` is the index. Keep these
   the fault is corrected, the paragraph goes.
 - **Plain words, present tense, no history**: not how the code got this way, no earlier hosts or models.
 - **One word for one thing**: document, entity, namespace, id, version, link, model, provider, saga.
-- Lines of at most 120 characters, links between documents with `xref:` and a relative path.
+- Lines of at most 120 characters, except a row of a table. A link to another document is a relative path, and
+  a link to a section names the id GitHub gives its heading, so a heading that is renamed has its links renamed.
 
 ## The load test
 

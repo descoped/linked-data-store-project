@@ -26,7 +26,7 @@ until that is done, treat the code as work in progress.
 | `linked-data-store-bom` | Aligns the versions of the modules above |
 | `linked-data-store-loadtest` | A load test of LDS with each persistence provider, run by hand (see its [README](linked-data-store-loadtest/README.md)) |
 
-The documentation is in [`docs/`](docs/README.adoc), in two parts: for those who use LDS (getting started, concepts,
+The documentation is in [`docs/`](docs/README.md), in two parts: for those who use LDS (getting started, concepts,
 the model, the REST and GraphQL APIs, configuration, running LDS) and for those who develop and maintain it (the
 architecture and one document for each part of the code).
 
