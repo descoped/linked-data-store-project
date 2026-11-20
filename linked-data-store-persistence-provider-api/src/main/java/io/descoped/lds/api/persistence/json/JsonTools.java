@@ -1,17 +1,26 @@
 package io.descoped.lds.api.persistence.json;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
 public class JsonTools {
 
     public static final ObjectMapper mapper = new ObjectMapper();
+
+    /**
+     * The text a node holds.
+     *
+     * @param node a node of a document
+     * @return the text, or null when the node holds anything else than a text
+     */
+    public static String text(JsonNode node) {
+        return node.isString() ? node.stringValue() : null;
+    }
 
     public static Map<String, Object> toMap(JsonNode node) {
         return mapper.convertValue(node, new TypeReference<Map<String, Object>>() {
@@ -34,7 +43,7 @@ public class JsonTools {
     public static JsonNode toJsonNode(String json) {
         try {
             return mapper.readTree(json);
-        } catch (IOException e) {
+        } catch (JacksonException e) {
             throw new RuntimeException(e);
         }
     }
@@ -42,7 +51,7 @@ public class JsonTools {
     public static String toJson(JsonNode node) {
         try {
             return mapper.writeValueAsString(node);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new RuntimeException(e);
         }
     }
@@ -50,7 +59,7 @@ public class JsonTools {
     public static String toPrettyJson(JsonNode node) {
         try {
             return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(node);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new RuntimeException(e);
         }
     }

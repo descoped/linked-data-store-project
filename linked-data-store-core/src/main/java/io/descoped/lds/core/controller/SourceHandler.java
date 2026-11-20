@@ -1,8 +1,5 @@
 package io.descoped.lds.core.controller;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.NullNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.core.txlog.TxLogTools;
 import io.descoped.lds.core.txlog.TxlogRawdataPool;
@@ -10,6 +7,9 @@ import io.descoped.rawdata.api.RawdataMessage;
 import io.undertow.server.HttpHandler;
 import io.undertow.server.HttpServerExchange;
 import io.undertow.util.Headers;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.NullNode;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.nio.charset.StandardCharsets;
 

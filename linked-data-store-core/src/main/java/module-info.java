@@ -16,8 +16,8 @@ module io.descoped.lds.core {
     requires org.json;
     requires everit.json.schema;
     requires java.xml; // TODO this should be in test-scope only!
-    requires com.fasterxml.jackson.core;
-    requires com.fasterxml.jackson.databind;
+    requires tools.jackson.core;
+    requires tools.jackson.databind;
     requires jackson.dataformat.msgpack;
     requires org.apache.tika.core;
 

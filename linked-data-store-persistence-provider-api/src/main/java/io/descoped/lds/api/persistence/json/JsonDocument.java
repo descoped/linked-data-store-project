@@ -1,8 +1,8 @@
 package io.descoped.lds.api.persistence.json;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import io.descoped.lds.api.json.JsonNavigationPath;
 import io.descoped.lds.api.persistence.DocumentKey;
+import tools.jackson.databind.JsonNode;
 
 import java.util.Deque;
 import java.util.LinkedList;

@@ -1,7 +1,5 @@
 package io.descoped.lds.core.domain.resource;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.descoped.lds.api.json.JsonNavigationPath;
 import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.api.specification.Specification;
@@ -9,6 +7,8 @@ import io.descoped.lds.api.specification.SpecificationElementType;
 import io.descoped.lds.core.specification.SpecificationBuilder;
 import org.testng.Assert;
 import org.testng.annotations.Test;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.time.ZoneId;
 import java.time.ZonedDateTime;

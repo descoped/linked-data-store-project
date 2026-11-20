@@ -118,24 +118,19 @@
             <version>${rxjava.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
+            <groupId>tools.jackson.core</groupId>
             <artifactId>jackson-core</artifactId>
             <version>${jackson.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
+            <groupId>tools.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
             <version>${jackson.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-annotations</artifactId>
-            <version>${jackson-annotations.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.msgpack</groupId>
+            <groupId>org.komamitsu</groupId>
             <artifactId>jackson-dataformat-msgpack</artifactId>
-            <version>${msgpack.version}</version>
+            <version>${jackson-dataformat-msgpack.version}</version>
         </dependency>
         <dependency>
             <groupId>com.graphql-java</groupId>

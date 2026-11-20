@@ -1,11 +1,11 @@
 package io.descoped.lds.core.persistence.neo4j;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.json.JsonDocument;
 import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.api.specification.SpecificationElement;
 import io.descoped.lds.api.specification.SpecificationElementType;
+import tools.jackson.databind.JsonNode;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -266,8 +266,8 @@ final class Neo4jDocumentWriter {
             }
         } else if (node.isNull()) {
             rows.add(parent, name, index, "null", path, null, null);
-        } else if (node.isTextual()) {
-            String text = node.textValue();
+        } else if (node.isString()) {
+            String text = node.stringValue();
             if (!addLink(rows, text, element, parent, name, index)) {
                 rows.add(parent, name, index, "string", path, text, text.length() > LONGEST_TEXT_LOOKED_UP_AS_IT_IS ? hashOf(text) : null);
             }

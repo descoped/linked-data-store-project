@@ -1,6 +1,5 @@
 package io.descoped.lds.api.persistence.reactivex;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import io.descoped.lds.api.json.JsonNavigationPath;
 import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.PersistenceDeletePolicy;
@@ -20,6 +19,7 @@ import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Flowable;
 import io.reactivex.rxjava3.core.Maybe;
 import io.reactivex.rxjava3.core.Single;
+import tools.jackson.databind.JsonNode;
 
 import java.time.Instant;
 import java.time.ZonedDateTime;
@@ -198,8 +198,8 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
             // Post filter since fragment based implementation can return false positive.
             AtomicBoolean match = new AtomicBoolean(false);
             document.traverseField(navigationPath, (node, path) -> {
-                if (node.isTextual()) {
-                    boolean equals = node.textValue().equals(value);
+                if (node.isString()) {
+                    boolean equals = node.stringValue().equals(value);
                     if (equals) {
                         match.set(true);
                     }
@@ -223,7 +223,11 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
                 .flattenAsFlowable(document -> {
                     List<String> links = new ArrayList<>();
                     document.traverseField(jsonNavigationPath, (node, path) -> {
-                        String link = node.asText();
+                        if (!node.isString()) {
+                            // a link is a text
+                            return;
+                        }
+                        String link = node.stringValue();
                         Matcher m = LINK_PATTERN.matcher(link);
                         if (!m.matches()) {
                             return;

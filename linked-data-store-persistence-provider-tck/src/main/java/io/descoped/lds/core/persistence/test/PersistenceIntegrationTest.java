@@ -1,8 +1,5 @@
 package io.descoped.lds.core.persistence.test;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.descoped.lds.api.json.JsonNavigationPath;
 import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.PersistenceDeletePolicy;
@@ -17,6 +14,9 @@ import io.reactivex.rxjava3.core.Flowable;
 import org.json.JSONException;
 import org.skyscreamer.jsonassert.JSONAssert;
 import org.testng.annotations.Test;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -685,7 +685,7 @@ public abstract class PersistenceIntegrationTest {
      */
     private String cityAt(Transaction tx, String id, ZonedDateTime snapshot) {
         JsonDocument document = persistence.readDocument(tx, snapshot, namespace, "Address", id).blockingGet();
-        return document == null ? null : document.jackson().get("city").asText();
+        return document == null ? null : document.jackson().get("city").asString();
     }
 
     /**
@@ -693,7 +693,7 @@ public abstract class PersistenceIntegrationTest {
      */
     private List<String> versionsOf(Transaction tx, String id) {
         return persistence.readDocumentVersions(tx, namespace, "Address", id, Range.unbounded())
-                .map(document -> document.key().timestamp().getYear() + ":" + (document.jackson().has("city") ? document.jackson().get("city").asText() : document.jackson().toString()))
+                .map(document -> document.key().timestamp().getYear() + ":" + (document.jackson().has("city") ? document.jackson().get("city").asString() : document.jackson().toString()))
                 .toList().blockingGet();
     }
 
@@ -930,7 +930,7 @@ public abstract class PersistenceIntegrationTest {
             Iterator<JsonDocument> iterator = persistence.findDocument(transaction, oct18, namespace, "Person", JsonNavigationPath.from("$.firstname"), "Simple", Range.unbounded()).blockingIterable().iterator();
             assertTrue(iterator.hasNext());
             JsonDocument person1 = iterator.next();
-            assertEquals(person1.jackson().get("firstname").textValue(), "Simple");
+            assertEquals(JsonTools.text(person1.jackson().get("firstname")), "Simple");
             assertFalse(iterator.hasNext());
         }
     }
@@ -959,11 +959,11 @@ public abstract class PersistenceIntegrationTest {
             JsonDocument person2 = iterator.next();
             assertFalse(iterator.hasNext());
 
-            if (person1.jackson().get("firstname").textValue().equals("Jane")) {
-                assertEquals(person2.jackson().get("firstname").textValue(), "James");
+            if (JsonTools.text(person1.jackson().get("firstname")).equals("Jane")) {
+                assertEquals(JsonTools.text(person2.jackson().get("firstname")), "James");
             } else {
-                assertEquals(person1.jackson().get("firstname").textValue(), "James");
-                assertEquals(person2.jackson().get("firstname").textValue(), "Jane");
+                assertEquals(JsonTools.text(person1.jackson().get("firstname")), "James");
+                assertEquals(JsonTools.text(person2.jackson().get("firstname")), "Jane");
             }
         }
     }
@@ -995,11 +995,11 @@ public abstract class PersistenceIntegrationTest {
             JsonDocument person2 = iterator.next();
             assertFalse(iterator.hasNext());
 
-            if (person1.jackson().get("firstname").textValue().equals("Jane")) {
-                assertEquals(person2.jackson().get("firstname").textValue(), "John");
+            if (JsonTools.text(person1.jackson().get("firstname")).equals("Jane")) {
+                assertEquals(JsonTools.text(person2.jackson().get("firstname")), "John");
             } else {
-                assertEquals(person1.jackson().get("firstname").textValue(), "John");
-                assertEquals(person2.jackson().get("firstname").textValue(), "Jane");
+                assertEquals(JsonTools.text(person1.jackson().get("firstname")), "John");
+                assertEquals(JsonTools.text(person2.jackson().get("firstname")), "Jane");
             }
 
         }
@@ -1027,7 +1027,7 @@ public abstract class PersistenceIntegrationTest {
             assertTrue(iterator.hasNext());
             JsonDocument foundDocument = iterator.next();
             assertFalse(iterator.hasNext());
-            String foundBigString = foundDocument.jackson().get("city").textValue();
+            String foundBigString = JsonTools.text(foundDocument.jackson().get("city"));
             assertEquals(foundBigString, bigString);
 
             // Finding funky long address by city (with non-matching value)
@@ -1246,7 +1246,7 @@ public abstract class PersistenceIntegrationTest {
     private static JsonNode json(String text) {
         try {
             return mapper.readTree(text.replace('\'', '"'));
-        } catch (java.io.IOException e) {
+        } catch (tools.jackson.core.JacksonException e) {
             throw new IllegalArgumentException(text, e);
         }
     }
@@ -1357,9 +1357,9 @@ public abstract class PersistenceIntegrationTest {
                     + "'history':{'note':'n','currentAddress':'/Address/more-home','previousAddresses':['/Address/more-before','no link'],'more':{'deep':true}}}"));
 
             assertThat(persistence.readLinkedDocuments(tx, Y2020, namespace, "Person", "more-linker", JsonNavigationPath.from("$.history.currentAddress"), "Address", Range.unbounded())
-                    .map(document -> document.jackson().get("city").asText()).toList().blockingGet()).containsExactly("Home");
+                    .map(document -> document.jackson().get("city").asString()).toList().blockingGet()).containsExactly("Home");
             assertThat(persistence.readLinkedDocuments(tx, Y2020, namespace, "Person", "more-linker", JsonNavigationPath.from("$.history.previousAddresses[]"), "Address", Range.unbounded())
-                    .map(document -> document.jackson().get("city").asText()).toList().blockingGet()).containsExactly("Before");
+                    .map(document -> document.jackson().get("city").asString()).toList().blockingGet()).containsExactly("Before");
             assertThat(persistence.readSourceDocuments(tx, Y2020, namespace, "Address", "more-home", JsonNavigationPath.from("$.history.currentAddress"), "Person", Range.unbounded())
                     .map(document -> document.key().id()).toList().blockingGet()).containsExactly("more-linker");
         }

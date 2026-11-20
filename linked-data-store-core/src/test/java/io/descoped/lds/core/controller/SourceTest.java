@@ -1,7 +1,5 @@
 package io.descoped.lds.core.controller;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.test.ConfigurationOverride;
 import io.descoped.lds.test.client.TestClient;
@@ -9,6 +7,8 @@ import io.descoped.lds.test.server.TestServer;
 import io.descoped.lds.test.server.TestServerListener;
 import org.testng.annotations.Listeners;
 import org.testng.annotations.Test;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ObjectNode;
 
 import javax.inject.Inject;
 

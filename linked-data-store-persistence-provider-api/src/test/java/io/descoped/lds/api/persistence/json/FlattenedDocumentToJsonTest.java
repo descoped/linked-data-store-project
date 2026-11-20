@@ -1,7 +1,5 @@
 package io.descoped.lds.api.persistence.json;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.flattened.FlattenedDocument;
 import io.descoped.lds.api.persistence.flattened.FlattenedDocumentLeafNode;
@@ -9,6 +7,8 @@ import io.descoped.lds.api.persistence.streaming.FragmentType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
 
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -30,7 +30,7 @@ class FlattenedDocumentToJsonTest {
     private static JsonNode json(String text) {
         try {
             return JsonTools.mapper.readTree(text.replace('\'', '"'));
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new IllegalArgumentException(text, e);
         }
     }

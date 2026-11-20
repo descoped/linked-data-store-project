@@ -1,12 +1,11 @@
 package io.descoped.lds.core.persistence.postgres;
 
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.descoped.lds.api.json.JsonNavigationPath;
 import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.PersistenceException;
 import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.json.JsonDocument;
+import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.api.persistence.reactivex.Range;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.api.persistence.streaming.Fragment;
@@ -14,6 +13,8 @@ import io.reactivex.rxjava3.core.Flowable;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -113,8 +114,8 @@ class PostgresProviderTest {
         write("ns-b", "Separate", "same", T1, city("from b"));
         write("ns-a", "Separate", "only-a", T1, city("from a"));
 
-        assertThat(read("ns-a", "Separate", "same", NOW).jackson().get("city").asText()).isEqualTo("from a");
-        assertThat(read("ns-b", "Separate", "same", NOW).jackson().get("city").asText()).isEqualTo("from b");
+        assertThat(read("ns-a", "Separate", "same", NOW).jackson().get("city").asString()).isEqualTo("from a");
+        assertThat(read("ns-b", "Separate", "same", NOW).jackson().get("city").asString()).isEqualTo("from b");
         assertThat(read("ns-c", "Separate", "same", NOW)).isNull();
         try (Transaction tx = persistence.createTransaction(true)) {
             assertThat(ids(persistence.readDocuments(tx, NOW, "ns-a", "Separate", Range.unbounded()))).containsExactly("only-a", "same");
@@ -241,7 +242,7 @@ class PostgresProviderTest {
         for (int length : new int[]{300, 5_000}) {
             String text = "€".repeat(length);
             write(NS, "Text", "euro" + length, T1, mapper.createObjectNode().put("text", text));
-            assertThat(read(NS, "Text", "euro" + length, NOW).jackson().get("text").asText()).isEqualTo(text);
+            assertThat(read(NS, "Text", "euro" + length, NOW).jackson().get("text").asString()).isEqualTo(text);
         }
     }
 
@@ -255,7 +256,7 @@ class PostgresProviderTest {
         write(NS, "Text", "long", T1, city(text.toString()));
         write(NS, "Text", "almost", T1, city(text.substring(0, text.length() - 1) + "å"));
 
-        assertThat(read(NS, "Text", "long", NOW).jackson().get("city").asText()).isEqualTo(text.toString());
+        assertThat(read(NS, "Text", "long", NOW).jackson().get("city").asString()).isEqualTo(text.toString());
         try (Transaction tx = persistence.createTransaction(true)) {
             assertThat(ids(persistence.findDocument(tx, NOW, NS, "Text", CITY, text.toString(), Range.unbounded()))).containsExactly("long");
         }
@@ -274,7 +275,7 @@ class PostgresProviderTest {
 
         JsonDocument read = read(NS, "Large", "document", NOW);
         assertThat(read.jackson().get("values")).hasSize(100_000);
-        assertThat(read.jackson().get("values").get(99_999).asText()).isEqualTo("v99999");
+        assertThat(read.jackson().get("values").get(99_999).asString()).isEqualTo("v99999");
     }
 
     @Test

@@ -1,6 +1,5 @@
 package io.descoped.lds.core.domain.managed;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.json.JsonDocument;
@@ -13,6 +12,7 @@ import io.descoped.lds.test.server.TestServerListener;
 import org.skyscreamer.jsonassert.JSONAssert;
 import org.testng.annotations.Listeners;
 import org.testng.annotations.Test;
+import tools.jackson.databind.JsonNode;
 
 import javax.inject.Inject;
 import java.time.ZoneId;
@@ -104,19 +104,19 @@ public class ManagedResourceHandlerTest {
         JsonNode timelineResult = JsonTools.toJsonNode(response.body());
         assertTrue(timelineResult.isArray());
         assertEquals(timelineResult.size(), 4);
-        Iterator<JsonNode> it = timelineResult.elements();
+        Iterator<JsonNode> it = timelineResult.iterator();
         JsonNode first = it.next();
-        assertEquals(first.get("version").textValue(), "2018-02-12T12:01Z[Etc/UTC]");
-        assertEquals(first.get("document").get("name").textValue(), "first");
+        assertEquals(JsonTools.text(first.get("version")), "2018-02-12T12:01Z[Etc/UTC]");
+        assertEquals(JsonTools.text(first.get("document").get("name")), "first");
         JsonNode second = it.next();
-        assertEquals(second.get("version").textValue(), "2018-05-03T13:02Z[Etc/UTC]");
-        assertEquals(second.get("document").get("name").textValue(), "second");
+        assertEquals(JsonTools.text(second.get("version")), "2018-05-03T13:02Z[Etc/UTC]");
+        assertEquals(JsonTools.text(second.get("document").get("name")), "second");
         JsonNode third = it.next();
-        assertEquals(third.get("version").textValue(), "2019-09-28T14:03Z[Etc/UTC]");
-        assertEquals(third.get("document").get("name").textValue(), "third");
+        assertEquals(JsonTools.text(third.get("version")), "2019-09-28T14:03Z[Etc/UTC]");
+        assertEquals(JsonTools.text(third.get("document").get("name")), "third");
         JsonNode fourth = it.next();
-        assertEquals(fourth.get("version").textValue(), "2020-04-30T15:04Z[Etc/UTC]");
-        assertEquals(fourth.get("document").get("name").textValue(), "fourth");
+        assertEquals(JsonTools.text(fourth.get("version")), "2020-04-30T15:04Z[Etc/UTC]");
+        assertEquals(JsonTools.text(fourth.get("document").get("name")), "fourth");
         assertFalse(it.hasNext());
     }
 

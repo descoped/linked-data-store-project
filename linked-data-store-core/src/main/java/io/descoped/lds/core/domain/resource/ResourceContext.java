@@ -1,11 +1,12 @@
 package io.descoped.lds.core.domain.resource;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.api.specification.SpecificationElement;
 import io.descoped.lds.api.specification.SpecificationElementType;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
@@ -170,14 +171,14 @@ public class ResourceContext {
                 // scan array
                 ArrayNode arrayNode = (ArrayNode) node;
                 for (int i = 0; i < arrayNode.size(); i++) {
-                    String idref = arrayNode.get(i).textValue();
+                    String idref = JsonTools.text(arrayNode.get(i));
                     if (vc.element.id().equals(idref)) {
                         return true;
                     }
                 }
                 return false;
             }
-            return vc.element.id().equals(ofNullable(vc.node.get(vc.element.name())).map(JsonNode::textValue).orElse(null));
+            return vc.element.id().equals(ofNullable(vc.node.get(vc.element.name())).map(JsonTools::text).orElse(null));
         }, () -> false);
     }
 
@@ -190,7 +191,7 @@ public class ResourceContext {
             if (vc.node == null) {
                 return null;
             }
-            if (!vc.node.isContainerNode()) {
+            if (!vc.node.isContainer()) {
                 throw new RuntimeException("");
             }
             if (vc.node.isObject()) {

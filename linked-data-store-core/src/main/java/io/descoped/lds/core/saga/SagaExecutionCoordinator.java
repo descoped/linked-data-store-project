@@ -1,6 +1,5 @@
 package io.descoped.lds.core.saga;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.rawdata.api.RawdataIds;
 import no.cantara.concurrent.futureselector.SelectableFuture;
@@ -21,6 +20,7 @@ import no.cantara.sagalog.SagaLogOwner;
 import no.cantara.sagalog.SagaLogPool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.databind.JsonNode;
 
 import java.util.ArrayList;
 import java.util.Collections;

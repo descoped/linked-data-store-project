@@ -1,6 +1,5 @@
 package io.descoped.lds.graphql.jsonSchema;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import graphql.schema.GraphQLNamedType;
 import graphql.schema.GraphQLSchema;
 import io.descoped.lds.graphql.jsonSchema.visitors.ParseObjectTypesVisitor;
@@ -8,6 +7,7 @@ import io.descoped.lds.graphql.schemas.TypeTraverser;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.databind.ObjectMapper;
 
 import java.util.LinkedHashMap;
 import java.util.Map;

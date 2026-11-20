@@ -1,11 +1,10 @@
 package io.descoped.lds.core.persistence.neo4j;
 
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.descoped.lds.api.json.JsonNavigationPath;
 import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.json.JsonDocument;
+import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.api.persistence.reactivex.Range;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.api.specification.Specification;
@@ -17,6 +16,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.neo4j.driver.Driver;
 import org.neo4j.driver.Session;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -520,7 +521,7 @@ class Neo4jProviderTest {
     }
 
     private static String name(JsonDocument document) {
-        return document.jackson().get("name").asText();
+        return document.jackson().get("name").asString();
     }
 
     private static List<String> ids(Flowable<JsonDocument> documents) {

@@ -1,6 +1,5 @@
 package io.descoped.lds.core.domain.embedded;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.json.JsonDocument;
 import io.descoped.lds.api.persistence.json.JsonTools;
@@ -26,6 +25,7 @@ import no.cantara.saga.execution.SagaHandoffResult;
 import no.cantara.saga.execution.adapter.AdapterLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.databind.JsonNode;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Deque;
@@ -92,7 +92,7 @@ public class EmbeddedResourceHandler implements HttpHandler {
         String result;
         if (subTreeRoot == null) {
             result = "[null]";
-        } else if (subTreeRoot.isContainerNode()) {
+        } else if (subTreeRoot.isContainer()) {
             result = JsonTools.toJson(subTreeRoot);
         } else {
             // wrap simple values in json array.

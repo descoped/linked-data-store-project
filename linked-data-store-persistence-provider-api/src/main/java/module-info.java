@@ -1,7 +1,7 @@
 module io.descoped.lds.persistence.api {
     requires transitive io.reactivex.rxjava3;
-    requires com.fasterxml.jackson.core;
-    requires transitive com.fasterxml.jackson.databind;
+    requires tools.jackson.core;
+    requires transitive tools.jackson.databind;
 
     exports io.descoped.lds.api.persistence;
     exports io.descoped.lds.api.persistence.flattened;

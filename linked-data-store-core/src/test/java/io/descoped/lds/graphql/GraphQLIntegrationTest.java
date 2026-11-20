@@ -1,7 +1,5 @@
 package io.descoped.lds.graphql;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.test.ConfigurationOverride;
 import io.descoped.lds.test.client.TestClient;
@@ -9,6 +7,8 @@ import io.descoped.lds.test.server.TestServerListener;
 import org.testng.Assert;
 import org.testng.annotations.Listeners;
 import org.testng.annotations.Test;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import javax.inject.Inject;
 import java.io.IOException;
@@ -87,7 +87,7 @@ public class GraphQLIntegrationTest {
         JsonNode result = executeGraphQLQuery("spec/demo/graphql/search_contact.json", "Duck");
         assertNoErrors(result);
         Assert.assertEquals(result.get("data").get("Search").get("edges").size(), 1);
-        Assert.assertEquals(result.get("data").get("Search").get("edges").get(0).get("node").get("name").textValue(), "Donald Duck");
+        Assert.assertEquals(JsonTools.text(result.get("data").get("Search").get("edges").get(0).get("node").get("name")), "Donald Duck");
         // Check that the entity is deleted from the index
         client.delete("/data/contact/821aa?sync=true");
         result = executeGraphQLQuery("spec/demo/graphql/search_contact.json", "Duck");
@@ -107,7 +107,7 @@ public class GraphQLIntegrationTest {
         JsonNode result = executeGraphQLQuery("spec/demo/graphql/search_address.json", "Andeby");
         assertNoErrors(result);
         Assert.assertEquals(result.get("data").get("Search").get("edges").size(), 1);
-        Assert.assertEquals(result.get("data").get("Search").get("edges").get(0).get("node").get("name").textValue(), "Sirius");
+        Assert.assertEquals(JsonTools.text(result.get("data").get("Search").get("edges").get(0).get("node").get("name")), "Sirius");
         // Check that the entity index is updated
         client.put("/data/provisionagreement/2a41c", readFileOrClasspathResource(
                 "demo/1-sirius.json").replace("Sirius", "Jupiter"));
