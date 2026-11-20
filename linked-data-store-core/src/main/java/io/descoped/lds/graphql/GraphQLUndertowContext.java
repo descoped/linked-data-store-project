@@ -24,11 +24,9 @@ public class GraphQLUndertowContext implements GraphQLContext {
 
     private final HttpServerExchange exchange;
     private final ZonedDateTime snapshot;
-    private final ExecutionInput executionInput;
 
     GraphQLUndertowContext(HttpServerExchange exchange, ExecutionInput executionInput) {
         this.exchange = Objects.requireNonNull(exchange);
-        this.executionInput = executionInput;
         // Init snapshot.
         this.snapshot = getSnapshot(exchange.getQueryParameters(), executionInput.getVariables(), Clock.systemUTC());
     }
@@ -73,7 +71,7 @@ public class GraphQLUndertowContext implements GraphQLContext {
                 return Optional.empty();
             }
             return Optional.of(ZonedDateTime.parse(snapshotString));
-        } catch (DateTimeParseException e) {
+        } catch (DateTimeParseException _) {
             return Optional.empty();
         }
     }
@@ -95,12 +93,12 @@ public class GraphQLUndertowContext implements GraphQLContext {
             if (snapshotObject == null) {
                 return Optional.empty();
             }
-            if (snapshotObject instanceof CharSequence) {
-                return Optional.of(ZonedDateTime.parse((CharSequence) snapshotObject));
+            if (snapshotObject instanceof CharSequence snapshotText) {
+                return Optional.of(ZonedDateTime.parse(snapshotText));
             } else {
                 throw new IllegalArgumentException("the variable " + SNAPSHOT_VARIABLE_NAME + " must be a string");
             }
-        } catch (DateTimeParseException e) {
+        } catch (DateTimeParseException _) {
             return Optional.empty();
         }
     }

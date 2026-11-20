@@ -88,20 +88,18 @@ public class ReverseLinkBuildingVisitor extends GraphQLTypeVisitorStub {
         types.addAll(context.getParentNodes());
         Deque<String> parts = new ArrayDeque<>();
         for (GraphQLSchemaElement type : types) {
-            if (type instanceof GraphQLNonNull) {
-                type = ((GraphQLNonNull) type).getWrappedType();
+            if (type instanceof GraphQLNonNull nonNull) {
+                type = nonNull.getWrappedType();
             }
-            // TODO: We need to use annotations to mark relation types.
+            // A connection is known by its name only; nothing in the model marks it.
             if (type instanceof GraphQLList
                     || name(type).endsWith("Connection")) {
                 parts.addFirst("[]");
-                continue;
-            }
-            if (type instanceof GraphQLFieldDefinition) {
-                parts.addFirst(name(type));
-            }
-            if (type instanceof GraphQLObjectType) {
-                if (!parts.isEmpty() && hasDomainDirective((GraphQLObjectType) type)) {
+            } else {
+                if (type instanceof GraphQLFieldDefinition) {
+                    parts.addFirst(name(type));
+                }
+                if (type instanceof GraphQLObjectType objectType && !parts.isEmpty() && hasDomainDirective(objectType)) {
                     break;
                 }
             }
@@ -159,15 +157,11 @@ public class ReverseLinkBuildingVisitor extends GraphQLTypeVisitorStub {
                 .withDirective(ReverseLinkDirective.newReverseLinkDirective(true, mappedBy.serialize()).getDirective())
                 .build();
 
-        log.debug("Adding reverseLink {} from target {} to source {}", fieldDefinition, name(target), name(source));
+        if (log.isDebugEnabled()) {
+            log.debug("Adding reverseLink {} from target {} to source {}", fieldDefinition, name(target), name(source));
+        }
         nodeCopy.field(fieldDefinition);
 
-        // TODO: Figure out why this fails. We should have tree with same instance of all types
-        //if (!typeMap.replace(existing.getName(), existing, newObject)) {
-        //    throw new IllegalArgumentException(String.format(
-        //            "Could not replace %s, the schema probably contains references", existing.getName()
-        //    ));
-        //}
         GraphQLNamedType oldObject = typeMap.put(name(target), nodeCopy.build());
         if (oldObject != null && Objects.equals(oldObject, target)) {
             log.debug("Existing object {} is not equal to visited object {}", target, oldObject);

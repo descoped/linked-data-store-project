@@ -128,7 +128,7 @@ public class GraphQLSchemaBuilder {
     public GraphQLSchema getGraphQL(GraphQLSchema schema) {
 
         Map<String, GraphQLNamedType> graphQLTypes = new TreeMap<>(schema.getTypeMap());
-        graphQLTypes.remove("Query");
+        graphQLTypes.remove(QUERY_NAME);
         graphQLTypes.keySet().removeIf(key -> key.startsWith("__"));
         Set<String> typesInUse = typesInUse(schema);
         graphQLTypes.values().removeIf(type -> type instanceof GraphQLScalarType && !typesInUse.contains(type.getName()));
@@ -174,7 +174,7 @@ public class GraphQLSchemaBuilder {
         }
 
         // Done with the query at this point so add it to the type map for the next passes.
-        typeMap.put("Query", query.build());
+        typeMap.put(QUERY_NAME, query.build());
 
         log.info("Replacing all type with references");
         TRAVERSER.depthFirst(new TypeReferencerVisitor(typeMap), typeMap.values());
@@ -210,7 +210,7 @@ public class GraphQLSchemaBuilder {
         RegistrySetupVisitor fetcherSetupVisitor = new RegistrySetupVisitor(persistence, namespace, searchIndex);
         TRAVERSER.depthFirst(fetcherSetupVisitor, typeMap.values());
 
-        GraphQLNamedType queryType = typeMap.remove("Query");
+        GraphQLNamedType queryType = typeMap.remove(QUERY_NAME);
 
         return GraphQLSchema.newSchema()
                 .query((GraphQLObjectType) queryType)

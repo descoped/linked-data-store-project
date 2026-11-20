@@ -41,6 +41,6 @@ public class GraphQLSchemaBuilderTest {
             log.error("Usage: --graphql file");
             return;
         }
-        GraphQLSchema graphQL = schemaBuilder.getGraphQL(schema);
+        schemaBuilder.getGraphQL(schema);
     }
 }

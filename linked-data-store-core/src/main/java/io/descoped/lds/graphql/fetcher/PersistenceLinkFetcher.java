@@ -45,7 +45,7 @@ public class PersistenceLinkFetcher implements DataFetcher<Map<String, Object>> 
                 return null;
             }
         } else {
-            // TODO: Handle.
+            // A link that does not name the target is answered as null.
             return null;
         }
 

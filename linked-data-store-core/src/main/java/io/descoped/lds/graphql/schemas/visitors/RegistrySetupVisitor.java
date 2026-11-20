@@ -51,6 +51,7 @@ import static io.descoped.lds.graphql.schemas.visitors.ReverseLinkBuildingVisito
 public class RegistrySetupVisitor extends GraphQLTypeVisitorStub {
 
     private static final Logger log = LoggerFactory.getLogger(RegistrySetupVisitor.class);
+    private static final String QUERY_NAME = "Query";
     private final GraphQLCodeRegistry.Builder registry;
     private final RxJsonPersistence persistence;
     private final SearchIndex searchIndex;
@@ -71,7 +72,7 @@ public class RegistrySetupVisitor extends GraphQLTypeVisitorStub {
         this.searchIndex = searchIndex;
     }
 
-    private static Boolean isMany(GraphQLOutputType type) {
+    private static boolean isMany(GraphQLOutputType type) {
         Stack<GraphQLType> types = unwrapType(type);
         for (GraphQLType currentType : types) {
             if (isList(currentType)) {
@@ -81,7 +82,7 @@ public class RegistrySetupVisitor extends GraphQLTypeVisitorStub {
         return false;
     }
 
-    private static Boolean isConnection(GraphQLOutputType type) {
+    private static boolean isConnection(GraphQLOutputType type) {
         Stack<GraphQLType> types = unwrapType(type);
         for (GraphQLType currentType : types) {
             if (isNotWrapped(currentType) && name(currentType).endsWith("Connection")) {
@@ -91,7 +92,7 @@ public class RegistrySetupVisitor extends GraphQLTypeVisitorStub {
         return false;
     }
 
-    private static Boolean hasReverseLinkDirective(GraphQLDirectiveContainer container) {
+    private static boolean hasReverseLinkDirective(GraphQLDirectiveContainer container) {
         for (GraphQLDirective directive : container.getDirectives()) {
             if (directive.getName().equals(ReverseLinkDirective.NAME)) {
                 return true;
@@ -100,7 +101,7 @@ public class RegistrySetupVisitor extends GraphQLTypeVisitorStub {
         return false;
     }
 
-    private static Boolean hasLinkDirective(GraphQLDirectiveContainer container) {
+    private static boolean hasLinkDirective(GraphQLDirectiveContainer container) {
         for (GraphQLDirective directive : container.getDirectives()) {
             if (directive.getName().equals(LinkDirective.NAME)) {
                 return true;
@@ -109,7 +110,7 @@ public class RegistrySetupVisitor extends GraphQLTypeVisitorStub {
         return false;
     }
 
-    private static Boolean hasSearchDirective(GraphQLDirectiveContainer container) {
+    private static boolean hasSearchDirective(GraphQLDirectiveContainer container) {
         for (GraphQLDirective directive : container.getDirectives()) {
             if (directive.getName().equals("search")) {
                 return true;
@@ -118,13 +119,23 @@ public class RegistrySetupVisitor extends GraphQLTypeVisitorStub {
         return container.getAppliedDirective(SEARCH_NAME) != null;
     }
 
-    private static boolean isOneToMany(GraphQLFieldDefinition field, TraverserContext<GraphQLSchemaElement> context) {
+    private static boolean isOneToMany(GraphQLFieldDefinition field) {
         GraphQLOutputType targetType = field.getType();
         return isMany(targetType);
     }
 
-    private static boolean isOneToOne(GraphQLFieldDefinition field, TraverserContext<GraphQLSchemaElement> context) {
-        return !isOneToMany(field, context);
+    private static boolean isOneToOne(GraphQLFieldDefinition field) {
+        return !isOneToMany(field);
+    }
+
+    /*
+     * Traces the fetcher given to a field: what it is, the type that holds the field, the field and the type of
+     * what the field gives.
+     */
+    private static void trace(String format, GraphQLType source, GraphQLFieldDefinition field, GraphQLType target) {
+        if (log.isTraceEnabled()) {
+            log.trace(format, simplePrint(source), field.getName(), simplePrint(target));
+        }
     }
 
     public GraphQLCodeRegistry getRegistry() {
@@ -134,11 +145,11 @@ public class RegistrySetupVisitor extends GraphQLTypeVisitorStub {
     private TraversalControl visitLinkField(GraphQLFieldDefinition field, TraverserContext<GraphQLSchemaElement> context) {
         if (hasSearchDirective(field)) {
             return visitSearchLink(field, context);
-        } else if (isOneToMany(field, context) && !isConnection(field, context)) {
+        } else if (isOneToMany(field) && !isConnection(field)) {
             return visitOneToManyLink(field, context);
-        } else if (!isOneToMany(field, context) && isConnection(field, context)) {
+        } else if (!isOneToMany(field) && isConnection(field)) {
             return visitConnectionLink(field, context);
-        } else if (isOneToOne(field, context)) {
+        } else if (isOneToOne(field)) {
             return visitOneToOneLink(field, context);
         } else {
             return TraversalControl.CONTINUE;
@@ -164,31 +175,19 @@ public class RegistrySetupVisitor extends GraphQLTypeVisitorStub {
         GraphQLUnmodifiedType nodeType = unwrapAll(
                 edgeType.getFieldDefinition("node").getType());
 
-        if (sourceObject.getName().equals("Query")) {
-            log.trace("RootConnection: {} -> {} -> {} ",
-                    simplePrint(sourceObject),
-                    field.getName(),
-                    simplePrint(nodeType)
-            );
+        if (sourceObject.getName().equals(QUERY_NAME)) {
+            trace("RootConnection: {} -> {} -> {} ", sourceObject, field, nodeType);
             registry.dataFetcher(FieldCoordinates.coordinates(sourceObject, field),
                     new PersistenceRootConnectionFetcher(persistence, namespace, nodeType.getName()));
         } else {
 
             if (hasReverseLinkDirective(field)) {
-                log.trace("ReverseConnection: {} -> {} -> {} ",
-                        simplePrint(sourceObject),
-                        field.getName(),
-                        simplePrint(nodeType)
-                );
+                trace("ReverseConnection: {} -> {} -> {} ", sourceObject, field, nodeType);
                 registry.dataFetcher(FieldCoordinates.coordinates(sourceObject, field),
                         new PersistenceReverseLinksConnectionFetcher(persistence, namespace, nodeType.getName(),
-                                getReverseJsonNavigationPath(field, context), sourceObject.getName()));
+                                getReverseJsonNavigationPath(field), sourceObject.getName()));
             } else {
-                log.trace("Connection: {} -> {} -> {} ",
-                        simplePrint(sourceObject),
-                        field.getName(),
-                        simplePrint(nodeType)
-                );
+                trace("Connection: {} -> {} -> {} ", sourceObject, field, nodeType);
                 registry.dataFetcher(FieldCoordinates.coordinates(sourceObject, field),
                         new PersistenceLinksConnectionFetcher(persistence, namespace, sourceObject.getName(),
                                 getJsonNavigationPath(field, context), nodeType.getName()));
@@ -197,12 +196,12 @@ public class RegistrySetupVisitor extends GraphQLTypeVisitorStub {
         return TraversalControl.CONTINUE;
     }
 
-    private boolean isConnection(GraphQLFieldDefinition field, TraverserContext<GraphQLSchemaElement> context) {
+    private static boolean isConnection(GraphQLFieldDefinition field) {
         GraphQLOutputType targetType = field.getType();
         return isConnection(targetType);
     }
 
-    private JsonNavigationPath getReverseJsonNavigationPath(GraphQLFieldDefinition field, TraverserContext<GraphQLSchemaElement> context) {
+    private static JsonNavigationPath getReverseJsonNavigationPath(GraphQLFieldDefinition field) {
         String mappedBy = (String) value(field.getDirective(ReverseLinkDirective.NAME)
                 .getArgument(ReverseLinkDirective.MAPPED_BY_NAME));
         return JsonNavigationPath.from(mappedBy);
@@ -217,28 +216,16 @@ public class RegistrySetupVisitor extends GraphQLTypeVisitorStub {
     private TraversalControl visitOneToManyLink(GraphQLFieldDefinition field, TraverserContext<GraphQLSchemaElement> context) {
         GraphQLFieldsContainer sourceObject = (GraphQLFieldsContainer) context.getParentNode();
         GraphQLOutputType targetType = field.getType();
-        if (sourceObject.getName().equals("Query")) {
-            log.trace("RootOneToMany: {} -> {} -> {} ",
-                    simplePrint(sourceObject),
-                    field.getName(),
-                    simplePrint(unwrapAll(targetType))
-            );
+        if (sourceObject.getName().equals(QUERY_NAME)) {
+            trace("RootOneToMany: {} -> {} -> {} ", sourceObject, field, unwrapAll(targetType));
             registry.dataFetcher(FieldCoordinates.coordinates(sourceObject, field),
                     new PersistenceLinkFetcher(persistence, namespace, field.getName(), unwrapAll(targetType).getName()));
         } else {
             if (hasReverseLinkDirective(field)) {
-                log.trace("ManyToOne: {} -> {} -> {}",
-                        simplePrint(sourceObject),
-                        field.getName(),
-                        simplePrint(unwrapAll(targetType))
-                );
+                trace("ManyToOne: {} -> {} -> {}", sourceObject, field, unwrapAll(targetType));
                 log.warn("ManyToOne: is not supported for reverse links");
             } else {
-                log.trace("OneToMany: {} -> {} -> {} ",
-                        simplePrint(sourceObject),
-                        field.getName(),
-                        simplePrint(unwrapAll(targetType))
-                );
+                trace("OneToMany: {} -> {} -> {} ", sourceObject, field, unwrapAll(targetType));
                 registry.dataFetcher(FieldCoordinates.coordinates(sourceObject, field), new PersistenceLinksFetcher(
                         persistence, namespace, field.getName(), unwrapAll(targetType).getName()));
             }
@@ -250,29 +237,21 @@ public class RegistrySetupVisitor extends GraphQLTypeVisitorStub {
         GraphQLFieldsContainer sourceObject = (GraphQLFieldsContainer) context.getParentNode();
         GraphQLUnmodifiedType targetType = unwrapAll(field.getType());
 
-        // TODO: Factorize the logic in PersistenceLinksConnectionFetcher.
+        // PersistenceLinksConnectionFetcher finds the members of a union in its own way.
         String targetTypeName;
-        if (targetType instanceof GraphQLUnionType) {
-            targetTypeName = ((GraphQLUnionType) targetType).getTypes().stream()
+        if (targetType instanceof GraphQLUnionType unionType) {
+            targetTypeName = unionType.getTypes().stream()
                     .map(GraphQLNamedType::getName)
                     .collect(Collectors.joining("|", "(", ")"));
         } else {
             targetTypeName = targetType.getName();
         }
-        if (sourceObject.getName().equals("Query")) {
-            log.trace("RootOneToOne: {} -> {} -> {} ",
-                    simplePrint(sourceObject),
-                    field.getName(),
-                    simplePrint(unwrapAll(targetType))
-            );
+        if (sourceObject.getName().equals(QUERY_NAME)) {
+            trace("RootOneToOne: {} -> {} -> {} ", sourceObject, field, unwrapAll(targetType));
             registry.dataFetcher(FieldCoordinates.coordinates(sourceObject, field), new PersistenceFetcher(persistence,
                     namespace, targetTypeName));
         } else {
-            log.trace("OneToOne: {} -> {} -> {} ",
-                    simplePrint(sourceObject),
-                    field.getName(),
-                    simplePrint(unwrapAll(targetType))
-            );
+            trace("OneToOne: {} -> {} -> {} ", sourceObject, field, unwrapAll(targetType));
             registry.dataFetcher(FieldCoordinates.coordinates(sourceObject, field), new PersistenceLinkFetcher(
                     persistence, namespace, field.getName(), targetTypeName));
         }
@@ -299,7 +278,7 @@ public class RegistrySetupVisitor extends GraphQLTypeVisitorStub {
 
     @Override
     public TraversalControl visitGraphQLFieldDefinition(GraphQLFieldDefinition field, TraverserContext<GraphQLSchemaElement> context) {
-        if (hasReverseLinkDirective(field) || hasLinkDirective(field) | hasSearchDirective(field)) {
+        if (hasReverseLinkDirective(field) || hasLinkDirective(field) || hasSearchDirective(field)) {
             return visitLinkField(field, context);
         } else {
             return TraversalControl.CONTINUE;

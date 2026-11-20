@@ -58,8 +58,8 @@ public class ReverseLinkNameVisitor extends GraphQLTypeVisitorStub {
 
     private Optional<GraphQLObjectType> firstObject(TraverserContext<GraphQLSchemaElement> context) {
         for (GraphQLSchemaElement parentNode : context.getParentNodes()) {
-            if (parentNode instanceof GraphQLObjectType) {
-                return Optional.of((GraphQLObjectType) parentNode);
+            if (parentNode instanceof GraphQLObjectType objectType) {
+                return Optional.of(objectType);
             }
         }
         return Optional.empty();
@@ -71,17 +71,15 @@ public class ReverseLinkNameVisitor extends GraphQLTypeVisitorStub {
         types.addAll(context.getParentNodes());
         Deque<String> parts = new ArrayDeque<>();
         for (GraphQLSchemaElement type : types) {
-            if (type instanceof GraphQLNonNull) {
-                type = ((GraphQLNonNull) type).getWrappedType();
+            if (type instanceof GraphQLNonNull nonNull) {
+                type = nonNull.getWrappedType();
             }
             if (type instanceof GraphQLFieldDefinition) {
                 parts.addFirst(name(type));
             }
-            if (type instanceof GraphQLObjectType) {
-                if (hasDomainDirective((GraphQLObjectType) type)) {
-                    parts.addFirst(name(type));
-                    break;
-                }
+            if (type instanceof GraphQLObjectType objectType && hasDomainDirective(objectType)) {
+                parts.addFirst(name(type));
+                break;
             }
         }
         return parts.stream().map(name -> {
@@ -111,12 +109,6 @@ public class ReverseLinkNameVisitor extends GraphQLTypeVisitorStub {
                             newDirective(linkDirective.getDirective()).argument(reverseNameArgument).build()
                     )).build();
 
-            // TODO: Figure out why this fails. We should have tree with same instance of all types
-            //if (!typeMap.replace(existing.getName(), existing, newObject)) {
-            //    throw new IllegalArgumentException(String.format(
-            //            "Could not replace %s, the schema probably contains references", existing.getName()
-            //    ));
-            //}
             GraphQLNamedType oldObject = typeMap.put(existing.getName(), newObject);
             if (oldObject != null && Objects.equals(oldObject, existing)) {
                 log.debug("Existing object {} is not equal to visited object {}", existing, oldObject);

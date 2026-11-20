@@ -117,11 +117,12 @@ class DateTimeScalarTest {
                 .isInstanceOf(OffsetDateTime.class)
                 .isEqualTo(LIBRARY.parseLiteral(literal, CoercedVariables.emptyVariables(), CONTEXT, Locale.ROOT));
 
+        CoercedVariables noVariables = CoercedVariables.emptyVariables();
         Value<?> malformed = StringValue.newStringValue("yesterday").build();
-        assertThatThrownBy(() -> COERCING.parseLiteral(malformed, CoercedVariables.emptyVariables(), CONTEXT, Locale.ROOT))
+        assertThatThrownBy(() -> COERCING.parseLiteral(malformed, noVariables, CONTEXT, Locale.ROOT))
                 .isInstanceOf(CoercingParseLiteralException.class);
         Value<?> number = IntValue.of(42);
-        assertThatThrownBy(() -> COERCING.parseLiteral(number, CoercedVariables.emptyVariables(), CONTEXT, Locale.ROOT))
+        assertThatThrownBy(() -> COERCING.parseLiteral(number, noVariables, CONTEXT, Locale.ROOT))
                 .isInstanceOf(CoercingParseLiteralException.class);
     }
 

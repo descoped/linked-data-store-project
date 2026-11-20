@@ -604,8 +604,7 @@ reaches it and the links in it by path. A list of an entity type that has no suc
 
 Not finished: `visitEmbeddedType` writes every list field of the entity type as a list of links, with
 `_link_property_<field>` naming the type of the items, also for `[String]`. The other fields are left out, so they
-are not checked. It makes the field one object, so a list is refused, and it writes each field definition and the
-result to standard output with `System.out.println`. The GraphQL schema keeps the field as a list
+are not checked. It makes the field one object, so a list is refused. The GraphQL schema keeps the field as a list
 of the entity type, and a query of it is answered with `type mismatch error, expected type LIST`. It ends the start
 with a `NullPointerException` when it meets a list of a list.
 
@@ -618,8 +617,8 @@ Not finished: `JsonSchemaBuilder.build` does not remove the link directives from
 `_link_property_<field>` objects stay in the schema that validates, so a document may hold a field of that name
 when its value is an object.
 
-Not finished: `io.descoped.lds.graphql.schemas.JsonSchemaBuilder` is an empty class. Several test resources are
-not used by any test (`spec/strangeschema`, `spec/v1`, `io/descoped/lds/graphql/schemas/examples`, the `.raml`
-files under `spec/abstract/schemas`), and several tests set `specification.schema` to files that do not exist
-(`spec/demo/contact.json`), which goes unseen because `graphql.schema` is set as well.
+Not finished: several test resources are not used by any test (`spec/strangeschema`, `spec/v1`,
+`io/descoped/lds/graphql/schemas/examples`, the `.raml` files under `spec/abstract/schemas`), and several tests set
+`specification.schema` to files that do not exist (`spec/demo/contact.json`), which goes unseen because
+`graphql.schema` is set as well.
 `SpecificationJsonSchemaBuilderTest.thatSpecificationBuiltFromJsonSchemaWithCustomLinkingWorks` asserts nothing.

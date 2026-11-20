@@ -42,9 +42,9 @@ public class ReverseLinkDirective {
     );
 
     public static final GraphQLDirective REVERSE_LINK_DIRECTIVE = SchemaElements.newDirective()
-            .name("reverseLink")
-            .argument(GraphQLArgument.newArgument().name("mappedBy").type(GraphQLNonNull.nonNull(GraphQLString)).build())
-            .argument(GraphQLArgument.newArgument().name("pagination").type(GraphQLBoolean).build())
+            .name(NAME)
+            .argument(GraphQLArgument.newArgument().name(MAPPED_BY_NAME).type(GraphQLNonNull.nonNull(GraphQLString)).build())
+            .argument(GraphQLArgument.newArgument().name(PAGINATION_NAME).type(GraphQLBoolean).build())
             .validLocation(DirectiveLocation.FIELD_DEFINITION)
             .build();
 

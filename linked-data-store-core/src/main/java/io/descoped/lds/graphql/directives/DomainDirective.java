@@ -72,7 +72,7 @@ public class DomainDirective {
         );
     }
 
-    public static Boolean hasDomainDirective(GraphQLDirectiveContainer container) {
+    public static boolean hasDomainDirective(GraphQLDirectiveContainer container) {
         for (GraphQLDirective directive : container.getDirectives()) {
             if (directive.getName().equals(DomainDirective.NAME)) {
                 return true;

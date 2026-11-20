@@ -23,8 +23,8 @@ public class PersistenceRootConnectionFetcher extends ConnectionFetcher<Map<Stri
 
 
     private final RxJsonPersistence persistence;
-    private String nameSpace;
-    private String entityName;
+    private final String nameSpace;
+    private final String entityName;
 
     public PersistenceRootConnectionFetcher(RxJsonPersistence persistence, String nameSpace, String entityName) {
         this.persistence = Objects.requireNonNull(persistence);

@@ -127,7 +127,7 @@ public class QueryConnectionFetcher extends ConnectionFetcher<Map<String, Object
                         ArrayList::addAll);
 
         if (edges.isEmpty()) {
-            LOG.debug("Search query resulted in 0 documents.", query);
+            LOG.debug("Search query resulted in 0 documents.");
             PageInfo pageInfo = new DefaultPageInfo(null, null, false, false);
             return new DefaultConnection<>(Collections.emptyList(), pageInfo);
         }

@@ -9,7 +9,7 @@ import java.time.ZonedDateTime;
  */
 public interface GraphQLContext {
 
-    // TODO: Find a better name. This clashes with graphql-java objects.
+    // The name is that of a class of graphql-java, graphql.GraphQLContext, which holds this object.
 
     /**
      * Returns the undertow server exchange that triggered the execution.
