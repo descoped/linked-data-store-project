@@ -1,4 +1,4 @@
-[![Quality gate status](https://sonarcloud.io/api/project_badges/measure?project=descoped_linked-data-store-project&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=descoped_linked-data-store-project) [![Reliability rating](https://sonarcloud.io/api/project_badges/measure?project=descoped_linked-data-store-project&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=descoped_linked-data-store-project)
+[![Quality gate status](https://sonarcloud.io/api/project_badges/measure?project=descoped_linked-data-store-project&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=descoped_linked-data-store-project) [![Reliability rating](https://sonarcloud.io/api/project_badges/measure?project=descoped_linked-data-store-project&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=descoped_linked-data-store-project) [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=descoped_linked-data-store-project&metric=coverage)](https://sonarcloud.io/component_measures?id=descoped_linked-data-store-project&metric=coverage)
 
 # Linked Data Store
 
