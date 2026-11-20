@@ -281,6 +281,20 @@ change afterwards.
 - Apart from the classes that implement an element (here and in the shared suite of the persistence providers),
   no main code calls `getDescription`, `getRequired`, `isRequired` or `getValidators`.
 
+What each part of a model becomes:
+
+```text
+In the model                         In the JSON Schema that is read     Element of the specification
+-----------------------------------  ----------------------------------  -----------------------------------
+type Person @domain, or Person.json  a definition named as an entity     MANAGED, a child of ROOT
+type Address  (no @domain)           any other definition                EMBEDDED, a child of ROOT
+name: String!          (a value)     a property                          EMBEDDED
+address: Address       (embedded)    a property                          EMBEDDED
+employer: Company @link              "employer" and                      REF, getRefTypes [Company]
+                                     "_link_property_employer"
+employer: Company      (no @link)    the same as with @link              REF
+```
+
 The specification of the example model, printed by walking `getRootElement()`:
 
 ```

@@ -16,7 +16,21 @@ The model says what LDS keeps:
 - the **embedded types**. An embedded type is not an entity: it has no documents of its own. Its values are parts
   of the documents it is used in, such as the chapters of a book.
 
-[Concepts](concepts.md) explains these ideas. This document shows how they are written.
+[Concepts](concepts.md#what-a-field-holds) explains these ideas. This document shows how they are written:
+
+```text
+A field holds ...     in a GraphQL schema                     in a JSON Schema file of the entity
+--------------------  --------------------------------------  ---------------------------------------------------
+a value               title: String!                          "title": { "type": "string" },
+                                                              and "title" in "required"
+an embedded object    cover: Cover                            "cover": { "$ref": "#/$defs/Cover" },
+                      and  type Cover { ... }  (no @domain)   and "Cover" as a further definition in the file
+a link                publisher: Publisher @link              "publisher": { "type": "string" },
+                                                              "_link_property_publisher": { "type": "object",
+                                                                "properties": { "Publisher": { "type": "null" } } }
+
+A document of its own is an entity:  type Book @domain { ... }  in the schema, or the file Book.json.
+```
 
 A model is written in one of two forms. LDS uses one of them, never both.
 
@@ -227,7 +241,35 @@ scalar DateTime
 ```
 
 `Book`, `Author` and `Publisher` are entities. `Chapter` and `Cover` are embedded types. `publisher`, `authors`
-and `rights` are links. These three documents fit the model: a publisher, an author and a book.
+and `rights` are links:
+
+```text
++-------------------------------------+
+| Book                         entity |
+|-------------------------------------|      values
+| title     : String!                 |
+| inPrint   : Boolean                 |
+| published : DateTime                |
+| pages     : Int                     |
+| keywords  : [String]                |
+| state     : State                   |-----> enum State: DRAFT | PUBLISHED
+|                                     |
+|                                     |      embedded types: parts of the book
+| chapters  : [Chapter]               |-----> Chapter: title!, summary
+| cover     : Cover                   |-----> Cover:   colour!
+|                                     |
+|                                     |      links: documents of their own
+| publisher : Publisher @link         |=====> one link ============> Publisher: name!
+|                                     |<..... books: the reverse link, in the GraphQL API
+| authors   : [Author] @link          |=====> a list of links =====> Author:    name!
+| rights    : RightsHolder @link      |=====> one link, to one ====> Author or Publisher (union RightsHolder)
+|                                     |       entity of a union
++-------------------------------------+
+
+----->  kept in the book                =====>  a link: the book holds the text "/Entity/id"
+```
+
+These three documents fit the model: a publisher, an author and a book.
 
 ```sh
 curl -i -X PUT 'http://localhost:9090/ns/Publisher/north?sync=true' -H 'Content-Type: application/json' \

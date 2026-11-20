@@ -246,6 +246,9 @@ one document for each part of the code). `docs/README.md` is the index. Keep the
   the fault is corrected, the paragraph goes.
 - **Plain words, present tense, no history**: not how the code got this way, no earlier hosts or models.
 - **One word for one thing**: document, entity, namespace, id, version, link, model, provider, saga.
+- **Figures are text**, in a `text` block, and show what the code does, as everything else does. What a model can
+  say (a value, an embedded object, a link) and the timeline of versions and snapshots are drawn where they are
+  explained; a change to them changes the figure.
 - Lines of at most 120 characters, except a row of a table. A link to another document is a relative path, and
   a link to a section names the id GitHub gives its heading, so a heading that is renamed has its links renamed.
 

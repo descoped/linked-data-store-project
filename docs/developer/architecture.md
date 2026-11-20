@@ -224,6 +224,21 @@ call to the provider. There is no "current" document in a store:
 - A link is the text `/Entity/id` in a field. No write checks that the target exists, so a link may point at a
   document that is written later. A link is followed at the time of the read.
 
+```text
+WRITE   PUT /ns/Person/ola?timestamp=T   -> validated against the model of the running LDS
+                                         -> SagaInput {..., "schema": "TODO", ...} -> transaction log entry
+                                         -> provider: the version DocumentKey(ns, Person, ola, T)
+
+READ    GET /ns/Person/ola?timestamp=T   -> provider: the latest version of ola whose time is not after T
+        POST /graphql?snapshot=T         -> the same for every document the query reaches; links followed at T
+
+MODEL   read once at start: one specification and one GraphQL schema, for every T
+```
+
+The model is not on the timeline. `SagaInput` has a field `schema`, which goes into the transaction log with every
+write, and every handler gives it the text `TODO`; nothing else records which model a version was written under.
+[Concepts](../user/concepts.md#snapshots-the-time-machine) draws snapshots as a user sees them.
+
 The example below follows the write of [The path of a write](#the-path-of-a-write) with two more: the company `acme`,
 and a second version of `ola` with a link to `/Company/later`, which does not exist. Each is answered as the write of
 [The path of a write](#the-path-of-a-write). Then the same GraphQL query is asked twice, as of a time in 2021 and as of

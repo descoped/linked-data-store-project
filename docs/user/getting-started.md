@@ -132,6 +132,30 @@ type Company @domain {
   links a person to other persons.
 - The `!` in `name: String!` says that every person must have a `name`.
 
+The whole model, drawn:
+
+```text
++------------------------------+         employer: a link          +------------------------------+
+| Person                entity | --------------------------------> | Company               entity |
+|------------------------------| <................................ |------------------------------|
+| name     : String!           |   employees: the reverse link,    | name    : String!            |
+| born     : DateTime          |   in the GraphQL API only         | founded : DateTime           |
+| address  : Address           |---+                               | about   : [Text]             |---+
+| employer : Company @link     |   |                               +------------------------------+   |
+| friends  : [Person] @link    |-+ |                                                                  |
++------------------------------+ | |                                                                  v
+     ^                           | |                                                 +----------------------------+
+     +---------------------------+ |   friends: links to other persons               | Text              embedded |
+                                   v                                                 | languageCode : String      |
+                    +----------------------------+                                   | languageText : String!     |
+                    | Address           embedded |                                   +----------------------------+
+                    | street : String            |
+                    | city   : String!           |
+                    +----------------------------+
+
+---->  a link: the document holds the text "/Entity/id"       ---+--> an embedded type: part of the document
+```
+
 Ask LDS which entities it has:
 
 ```sh

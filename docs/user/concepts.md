@@ -62,8 +62,14 @@ does not make ids.
 
 Together they are the address of a document:
 
-```
+```text
 /{namespace}/{Entity}/{id}
+
+/ns/Company/acme
+ |     |     |
+ |     |     +---- id: chosen by the one who writes the document
+ |     +---------- entity: the kind of document, named as the model names it
+ +---------------- namespace: the one the running LDS serves
 ```
 
 Write a document of the entity `Company` with the id `acme`, and read it:
@@ -133,6 +139,19 @@ Each was answered `201` with a `saga-execution-id`. What a read gives depends on
 | `curl "$LDS/ns/Company/fjord"` (in November 2026) | `{"name":"Fjord Seafood"}` |
 | `curl "$LDS/ns/Company/fjord?timestamp=2031-06-01T00:00:00Z"` | `{"name":"Fjord Group"}` |
 
+On the timeline:
+
+```text
+              written 1st             written 3rd             written 2nd
+              2020-01-01              2023-01-01              2030-01-01
+time  -------------+-----------------------+-----------------------+---------------------------->
+no document        | Fjord Fish            | Fjord Seafood         | Fjord Group
+                   |=======================|=======================|==========================>
+                   valid until 2023        valid until 2030        valid from 2030 on
+
+read at   2019-06: 404   2021-06: Fjord Fish   now (2026-11): Fjord Seafood   2031-06: Fjord Group
+```
+
 Every version of a document, oldest first, is its timeline:
 
 ```sh
@@ -178,6 +197,17 @@ The answer is `204` with no body. After it:
 | `curl "$LDS/ns/Company/fjord?timestamp=2024-06-01T00:00:00Z"` | `{"name":"Fjord Seafood"}` |
 | `curl "$LDS/ns/Company/fjord"` (in November 2026) | `404`, no body |
 | `curl "$LDS/ns/Company/fjord?timestamp=2031-06-01T00:00:00Z"` | `{"name":"Fjord Group"}` |
+
+On the timeline:
+
+```text
+              2020-01-01         2023-01-01         2025-01-01         2030-01-01
+time  -------------+------------------+------------------+------------------+--------------------->
+                   | Fjord Fish       | Fjord Seafood    | deleted          | Fjord Group
+                   |==================|==================|                  |======================>
+
+read at   2024-06: Fjord Seafood   now (2026-11): 404, and not in the list   2031-06: Fjord Group
+```
 
 In the timeline the delete is a version with an empty document:
 
@@ -269,6 +299,21 @@ curl "$LDS/graphql" -H 'Content-Type: application/json' \
 {"data":{"CompanyById":{"name":"Nordlys","employees":{"edges":[{"node":{"name":"Ola"}}]}}}}
 ```
 
+On the timeline:
+
+```text
+                     2020-01-01                      2021-01-01                     now (2026-11)
+time  --------------------+-------------------------------+-------------------------------+------->
+Person/ola                | name: Ola, employer: "/Company/nordlys" ..................................
+Company/nordlys                                           | name: Nordlys ...........................
+                                         ^                                                ^
+                                a query at 2020-06-01                                a query now
+
+at 2020-06-01   ola --employer--> nordlys has no version yet     "employer": null
+now             ola --employer--> nordlys as it is now           "employer": {"name":"Nordlys"}
+                nordlys --employees--> ola                       the reverse link: who links to nordlys
+```
+
 A delete does not look at links either. A document that other documents link to can be deleted. The links stay
 in those documents as they are, and lead nowhere from the time of the delete.
 
@@ -284,6 +329,21 @@ above.
 | A link | `/{namespace}/{Entity}/{id}/{link field}/{TargetEntity}/{target id}` | One link from the document to another document. It is there or it is not. |
 
 In its own messages LDS calls them a managed resource, an embedded resource and a reference resource.
+
+```text
+/ns/Person/kari ................................. the whole document: read, written and deleted as one
+ {"name": "Kari",
+  "address": {"street": "Storgata 1",  <......... /ns/Person/kari/address                 a part, by its path
+              "city": "Oslo"},
+  "employer": "/Company/acme"}         <......... /ns/Person/kari/employer/Company/acme   a link: there or not
+
+A write of a part or of a link is a write of the whole document:
+
+PUT /ns/Person/kari/employer/Company/acme
+  -> read kari as it is at the time of the write
+  -> put "/Company/acme" in employer
+  -> write the whole of kari as a new version, valid from that time
+```
 
 Write the person `kari` and read a part of that document:
 
@@ -350,6 +410,48 @@ type Person @domain {
 }
 ```
 
+### What a field holds
+
+This is the heart of a model. A field of a document holds one of three things:
+
+```text
+/ns/Person/ola       a document of the entity Person: an id, an address and versions of its own
++-------------------------------------------+
+| "name": "Ola"                             |   VALUE      a text, a number, true or false, a date-time,
+| "born": "1990-05-17T00:00:00Z"            |              the name of an enum, or a list of them
+|                                           |
+| "address": {                              |   EMBEDDED   an object of an embedded type, or a list of them.
+|     "street": "Storgata 1",               |              It is part of this document: no id, no versions of
+|     "city": "Oslo"                        |              its own, reached by its path. It holds values,
+| }                                         |              embedded objects and links in its turn.
+|                                           |
+| "employer": "/Company/acme" --------------+-- LINK --> /ns/Company/acme   a document of its own:
+| "friends": ["/Person/kari"] --------------+-- LINK --> /ns/Person/kari    an id and versions of its own
++-------------------------------------------+
+```
+
+- **A value**: a text, a number, `true` or `false`, a date-time, the name of an enum, or a list of them.
+- **An embedded object**, when the type of the field is an embedded type, a type without `@domain`: `address` is
+  an `Address`. A list of them is written `[Chapter]`. The object is part of the document it is in. It has no id
+  and no versions of its own; it is written and read with its document, and it can be reached by its path, as
+  [the three kinds of resource](#the-three-kinds-of-resource) shows. An embedded type has fields of the same three
+  kinds in its turn.
+- **A link**, when the type of the field is an entity: the text `/Entity/id`, or a list of them. The document it
+  points at is not copied into this one. It is a document of its own, with versions of its own, and a read
+  follows the link to that document as it is at the time the read asks for (see
+  [snapshots](#snapshots-the-time-machine)). A field may also link to a document of one of several entities: in a
+  GraphQL schema the type of the field is then a union of them, and in JSON Schema files the field names each.
+
+A document of an entity is never held inside another document. Between two entities there is only the link. A
+field whose type is an entity is read as a link also when `@link` is left out of the model, and an object in that
+field is refused.
+
+Not finished: a field whose type is an interface is none of the three. The fields of the interface become fields
+of the entity, and the field itself is not checked. [The model](model.md#shapes-that-do-not-work-as-written) lists
+this with other shapes LDS does not read as they are written.
+
+### Checked when a document is written
+
 LDS reads the model once, when it starts. To change the model, LDS is started again with the new one.
 
 Before a document is written, LDS checks it against the model. A document that does not fit is refused with
@@ -377,6 +479,87 @@ JSON Schema files has the REST API only.
 
 How to write a model, what exactly LDS checks in a document and what it does not check, is in
 [the model](model.md).
+
+## Snapshots: the time machine
+
+A **snapshot** is what LDS keeps, as it was at one time: every document in the version that is valid at that time,
+and every link followed at that time. A read asks for a snapshot by its time: `timestamp` in the REST API,
+`snapshot` in the GraphQL API, and now when no time is given. T1, T2 and Tn are three snapshots of one history:
+
+```text
+THE HISTORY: five writes, each valid from its time
+                    2020-01-01            2021-01-01          2023-01-01           2025-01-01
+time  -------------------+---------------------+-------------------+--------------------+--------------------->
+Person/ola               | Bergen, employer /Company/nordlys       | Oslo, employer /Company/acme .............
+Company/acme             | Acme ...............................................................................
+Company/nordlys                                | Nordlys .............................  | deleted .............
+                                    ^                    ^                                                  ^
+                          T1 = 2020-06-01         T2 = 2022-06-01                                  Tn = now
+
+THE SNAPSHOTS: every document as it was at T, and every link followed at T
+
+T1                                  T2                                    Tn
+ola      city: Bergen               ola      city: Bergen                 ola      city: Oslo
+         employer -> nothing yet             employer -> nordlys                   employer -> acme
+acme     Acme                       acme     Acme                         acme     Acme
+         employees: none                     employees: none                       employees: ola
+                                    nordlys  Nordlys                      nordlys  deleted: 404
+                                             employees: ola
+
+THE MODEL: one, read when LDS starts, the same for T1, T2 and Tn
+```
+
+These are the five writes, and the GraphQL query that was sent at T1, T2 and Tn:
+
+```sh
+curl -X PUT "$LDS/ns/Company/acme?sync=true&timestamp=2020-01-01T00:00:00Z" -H 'Content-Type: application/json' \
+     -d '{"name":"Acme"}'
+curl -X PUT "$LDS/ns/Person/ola?sync=true&timestamp=2020-01-01T00:00:00Z" -H 'Content-Type: application/json' \
+     -d '{"name":"Ola","address":{"city":"Bergen"},"employer":"/Company/nordlys"}'
+curl -X PUT "$LDS/ns/Company/nordlys?sync=true&timestamp=2021-01-01T00:00:00Z" -H 'Content-Type: application/json' \
+     -d '{"name":"Nordlys"}'
+curl -X PUT "$LDS/ns/Person/ola?sync=true&timestamp=2023-01-01T00:00:00Z" -H 'Content-Type: application/json' \
+     -d '{"name":"Ola","address":{"city":"Oslo"},"employer":"/Company/acme"}'
+curl -X DELETE "$LDS/ns/Company/nordlys?sync=true&timestamp=2025-01-01T00:00:00Z"
+curl "$LDS/graphql?snapshot=2020-06-01T00:00:00Z" -H 'Content-Type: application/json' \
+     -d '{"query":"{ PersonById(id: \"ola\") { name address { city } employer { name } } CompanyById(id: \"acme\") { name employees { edges { node { name } } } } }"}'
+```
+
+The writes were answered `201`, and the delete `204`. The answers to the query, at T1, at T2
+(`snapshot=2022-06-01T00:00:00Z`) and now (no `snapshot`):
+
+```json
+{"data":{"PersonById":{"name":"Ola","address":{"city":"Bergen"},"employer":null},
+         "CompanyById":{"name":"Acme","employees":{"edges":[]}}}}
+{"data":{"PersonById":{"name":"Ola","address":{"city":"Bergen"},"employer":{"name":"Nordlys"}},
+         "CompanyById":{"name":"Acme","employees":{"edges":[]}}}}
+{"data":{"PersonById":{"name":"Ola","address":{"city":"Oslo"},"employer":{"name":"Acme"}},
+         "CompanyById":{"name":"Acme","employees":{"edges":[{"node":{"name":"Ola"}}]}}}}
+```
+
+A snapshot is whole: a link is not followed to the document as it is now, but as it was at the time of the
+snapshot. At T2 `nordlys` was there and `ola` worked for it; at Tn `nordlys` is deleted (`GET
+/ns/Company/nordlys` is answered `404`) and the earlier link leads nowhere, while T2 still gives it.
+
+The model is the same for every snapshot. LDS reads one model when it starts, and uses it for every time: a write is
+checked against it whatever time the write is for, and the GraphQL API is made from it, the same for T1 as for Tn.
+A person written for 2019 without the `name` that the model asks for is refused as one written for now would be:
+
+```sh
+curl -X PUT "$LDS/ns/Person/per?sync=true&timestamp=2019-01-01T00:00:00Z" -H 'Content-Type: application/json' \
+     -d '{"born":"1970-01-01T00:00:00Z"}'
+```
+
+```
+Schema validation error: [$: required property 'name' not found]
+```
+
+The versions that are stored are not checked again when LDS is started with another model. They are given back
+as they were written.
+
+Not finished: the model is not kept on the timeline. A snapshot holds the documents of its time, not the model
+they were written under, and a write does not record which model it was checked against. When LDS is started with
+another model, every snapshot, T1 as well as Tn, is checked and served with that model.
 
 ## Providers
 
@@ -421,6 +604,23 @@ and of a link. The steps are:
 3. When search is on, the search index is updated.
 
 Step 1 is done first. Steps 2 and 3 both come after it, and neither waits for the other.
+
+```text
+PUT /ns/Person/ola  {...}
+  |
+  v
+checked against the model ---- does not fit ----> 400, nothing is written
+  | fits
+  v
+saga, recorded in the saga log -----------------> the answer {"saga-execution-id":"..."}, sent when the saga
+  |                                               is recorded, or when its steps have ended (see sync below)
+  v
+1. transaction log
+  |
+  +---------------------------+     side by side: neither waits for the other
+  v                           v
+2. persistence provider     3. search index, when search is on
+```
 
 LDS records the start of a saga, with the whole request, and the start and the end of each step in a **saga log**.
 A saga that does not complete, because a step failed or because LDS stopped, stays in the saga log and is run
