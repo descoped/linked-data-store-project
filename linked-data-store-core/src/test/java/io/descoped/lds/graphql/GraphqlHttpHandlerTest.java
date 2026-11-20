@@ -203,4 +203,35 @@ public class GraphqlHttpHandlerTest {
         assertEquals(response.body(), "{\"data\":{\"me\":{\"name\":\"Hadrien\"}}}");
 
     }
+
+    /**
+     * Jackson 2 read the first document of a body and ignored what came after it.
+     */
+    @Test
+    public void testPostBodyWithSomethingAfterTheDocumentIsRefused() throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder(URI.create(uriTemplate.expand()))
+                .POST(HttpRequest.BodyPublishers.ofString("{\"query\":\"{me{name}}\"} and more"))
+                .header("Content-Type", "application/json")
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        // answered as every body that cannot be read is: an error, and no data
+        assertEquals(response.statusCode(), 500);
+        assertEquals(response.body(), "");
+    }
+
+    @Test
+    public void testGetVariablesWithSomethingAfterTheDocumentAreRefused() throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder(URI.create(uriTemplate
+                .set("query", "{me{name}}")
+                .set("variables", "{\"foo\":true} and more")
+                .expand())).build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        // answered as every body that cannot be read is: an error, and no data
+        assertEquals(response.statusCode(), 500);
+        assertEquals(response.body(), "");
+    }
 }

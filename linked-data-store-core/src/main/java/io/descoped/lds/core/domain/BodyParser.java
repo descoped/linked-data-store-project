@@ -6,7 +6,6 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-
 public class BodyParser {
 
     final ObjectMapper jsonMapper = new ObjectMapper();

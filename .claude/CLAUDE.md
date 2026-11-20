@@ -70,7 +70,10 @@ answered null, an empty text or 0 for a node of another kind, so a text is taken
 `JsonTools.text` (the text, or null when the node holds anything else) unless the node is known to be a text. An
 entry of the transaction log is MessagePack (`TxLogTools`, on `org.komamitsu:jackson-dataformat-msgpack`, the
 MessagePack format for Jackson 3); `TxLogToolsTest` holds the bytes of a message as they have always been
-written. The client of Solr brings Jackson 2 for its own use; LDS code does not use it.
+written. Jackson 3 refuses a text with something after the document, where Jackson 2 read the document and
+ignored the rest: the body of a REST request (`BodyParser`), and the body and the `variables` parameter of a
+GraphQL request (`GraphqlHttpHandler`). The client of Solr brings Jackson 2 for its own use; LDS code does not use
+it.
 
 ## Invariants (never violate)
 
