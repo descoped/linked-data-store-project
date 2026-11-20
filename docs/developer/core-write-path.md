@@ -1,3 +1,9 @@
+---
+title: "Core: the write path"
+description: "Sagas, the saga log, the transaction log, recovery."
+order: 11
+---
+
 # Core: the write path
 
 This document covers how `linked-data-store-core` carries a write: the [saga](../glossary.md#saga) of a write and

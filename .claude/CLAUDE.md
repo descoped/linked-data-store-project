@@ -25,7 +25,7 @@ search are pluggable. One Maven reactor, group `io.descoped.lds`.
 
 | `linked-data-store-loadtest` | `io.descoped.lds.loadtest` | the load test, run by hand: scripts and a compose file that start LDS from the image of the server with one persistence provider and drive a load at it, and the program that turns the results into plot files (`HTTPLoadTestBaselineStatistics`). Not in the BOM and not in a release |
 
-Not in the reactor: `docs/`, the documentation (see "The documentation" below). The cluster test of before 3.0
+Not in the reactor: `docs/`, the documentation, and `site/`, the documentation site (see "The documentation" below). The cluster test of before 3.0
 is removed: it needed images and a saga log that do not exist any more. Its history is in git.
 
 Until 2026-11 every module was a repository of its own; their histories were imported here with `git filter-repo`
@@ -265,6 +265,15 @@ one document for each part of the code). `docs/README.md` is the index. Keep the
   commands and their answers is a `console` block with `$` before each command. An answer is an `http` block only
   when its body is JSON; an answer of text or HTML is a plain block, which GitHub does not colour as invalid.
   Every page is looked at as GitHub draws it, in light and dark, before it is pushed for review.
+- **Every document starts with front matter**: `title` (its name in the sidebar of the site), `description` (one
+  sentence, as in the index) and `order` (its place in its folder's group), then its own `# Title`. A new document gets
+  it, and a row in `docs/README.md`.
+- **The documentation site** (`site/`, `site/README.md`) is a krantho static site (Next.js) that makes pages of
+  `docs/` and adds a landing page (`site/content/landing/home.md`, held to the same rules: only what the code does,
+  the status said plainly). `.github/workflows/pages.yml` publishes it to GitHub Pages
+  (https://descoped.github.io/linked-data-store-project/) when `docs/` or `site/` changes on `master`; CI does not
+  build it. Its mark is Descoped's (`|>o|`). Check a change with `cd site && pnpm build`, and look at it in light
+  and dark at phone and desktop widths.
 - Lines of at most 120 characters, except a row of a table. A link to another document is a relative path, and
   a link to a section names the id GitHub gives its heading, so a heading that is renamed has its links renamed.
 

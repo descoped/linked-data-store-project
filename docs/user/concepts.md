@@ -1,3 +1,11 @@
+---
+title: "Concepts"
+description: >-
+  The ideas: document, entity type, namespace, version and valid time, link, model, provider, what a write goes
+  through.
+order: 2
+---
+
 # Concepts
 
 This document explains what Linked Data Store (LDS) is and the ideas it is built on: document, entity type,

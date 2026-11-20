@@ -1,3 +1,11 @@
+---
+title: "Getting started"
+description: >-
+  From nothing to a first document: start LDS, write a document, read it, read it as it was, link two documents, ask
+  with GraphQL.
+order: 1
+---
+
 # Getting started with Linked Data Store
 
 This guide takes you from nothing to a first document in Linked Data Store (LDS). You start LDS, write two

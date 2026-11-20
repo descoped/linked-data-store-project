@@ -1,3 +1,9 @@
+---
+title: "The server"
+description: "The main class, the defaults of the configuration, the image, the compose file."
+order: 13
+---
+
 # The server module, its image and the compose file
 
 This document covers the module `linked-data-store-server` of Linked Data Store (LDS): the main class, the

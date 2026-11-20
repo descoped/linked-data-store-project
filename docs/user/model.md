@@ -1,3 +1,9 @@
+---
+title: "The model"
+description: "How to write a model, as a GraphQL schema or as JSON Schema files, and what LDS checks against it."
+order: 3
+---
+
 # The model
 
 This document tells how to write a [model](../glossary.md#model) for Linked Data Store (LDS), how to give it to LDS, and

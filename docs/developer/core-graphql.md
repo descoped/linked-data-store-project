@@ -1,3 +1,9 @@
+---
+title: "Core: GraphQL"
+description: "How the GraphQL schema is built and how a query is answered."
+order: 12
+---
+
 # Core: the GraphQL API and how its schema is built
 
 This document covers the part of `linked-data-store-core` that serves GraphQL: how LDS builds the schema it serves from

@@ -1,3 +1,9 @@
+---
+title: "Configuration"
+description: "Every key, its default and its meaning, and how keys are set."
+order: 6
+---
+
 # Configuration of Linked Data Store
 
 This document tells how Linked Data Store (LDS) is configured and lists every key that can be set: what it

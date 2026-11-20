@@ -1,3 +1,9 @@
+---
+title: "The build"
+description: "The reactor, the BOM, the rules of the build, the tests, CI."
+order: 1
+---
+
 # The build
 
 This document covers how Linked Data Store (LDS) is built: the Maven reactor and its modules, the rules the build
@@ -24,6 +30,8 @@ The build publishes nothing. No artifact and no image leaves the machine that bu
 | `mvnw`, `mvnw.cmd`, `.mvn/wrapper/maven-wrapper.properties` | The Maven wrapper: which Maven is used, and the checksum of its download. |
 | `.github/workflows/ci.yml` | The build in GitHub Actions. |
 | `.github/workflows/claude.yml` | The review of a pull request by Claude, and its answer to an `@claude` mention. It builds nothing by itself. |
+| `.github/workflows/pages.yml` | The build of the [documentation site](#the-documentation-site) and its publication to GitHub Pages. |
+| `site/` | The documentation site. |
 | `.github/renovate.json` | What Renovate moves, and the versions it is told to leave. |
 | `.gitignore`, `.gitattributes` | Build output, local configuration and release leftovers are ignored. Every text file is checked out with LF line ends, so that a checkout on any system makes the same sources jar. |
 
@@ -497,6 +505,20 @@ dependency and moves like the others.
 The images of the tests are also written as text in Java classes (`Postgres18`, `Neo4j2026`, `Solr10`,
 `SagaLogPostgresTest`). `renovate.json` sets up no manager that reads Java sources. The rule is that the compose
 file uses the images the tests of the providers use, so compare the two by hand when one of them moves.
+
+## The documentation site
+
+The documents in `docs/` are also a site, which GitHub Pages serves at
+<https://descoped.github.io/linked-data-store-project/>, with a landing page in front of them. The site is in `site/`,
+outside the reactor: a static site made with krantho and Next.js, which Maven does not build. `site/README.md` says
+how to build it and where each page comes from.
+
+`.github/workflows/pages.yml` builds the site with pnpm on Node 26 and publishes it to Pages on a push to `master`
+that changes `docs/`, `site/` or the workflow, and on a start by hand. It has two jobs: `build`, with the permission
+`contents: read`, and `deploy`, with `pages: write` and `id-token: write`, which only GitHub Pages is given.
+
+Each document starts with front matter that the site reads: `title`, `description` and `order`. GitHub shows it as a
+table at the top of the file.
 
 ## How a release would be made
 

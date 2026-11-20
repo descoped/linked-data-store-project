@@ -1,3 +1,11 @@
+---
+title: "Architecture"
+description: >-
+  The map of the code: the modules, the path of a read and of a write, the ideas that hold the code together and the
+  rules a change must keep.
+order: 0
+---
+
 # The architecture of Linked Data Store
 
 This document is the map of the code of Linked Data Store (LDS): the modules and how they depend on each other,

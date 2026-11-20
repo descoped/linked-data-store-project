@@ -1,3 +1,9 @@
+---
+title: "The PostgreSQL provider"
+description: "Persistence in one table of PostgreSQL."
+order: 5
+---
+
 # The PostgreSQL persistence provider
 
 This document covers the module `linked-data-store-persistence-provider-postgres`: the persistence provider

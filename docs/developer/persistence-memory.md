@@ -1,3 +1,9 @@
+---
+title: "The memory provider"
+description: "Persistence in memory, for tests and for trying LDS."
+order: 4
+---
+
 # The memory provider
 
 This document covers the module `linked-data-store-persistence-provider-memory`: the persistence provider that

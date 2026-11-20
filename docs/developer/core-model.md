@@ -1,3 +1,9 @@
+---
+title: "Core: the model"
+description: "How a model is read and how a document is checked against it."
+order: 9
+---
+
 # Core: the model
 
 This document covers the part of `linked-data-store-core` that reads the [model](../glossary.md#model) when LDS

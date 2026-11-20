@@ -1,0 +1,5 @@
+packages:
+  - .
+# krantho is Descoped's own; its releases are used the day they come out
+minimumReleaseAgeExclude:
+  - '@krantho/*'

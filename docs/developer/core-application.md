@@ -1,3 +1,9 @@
+---
+title: "Core: the application"
+description: "How LDS is put together, started and stopped."
+order: 8
+---
+
 # Core: how the application is put together, started and stopped
 
 This document covers the part of `linked-data-store-core` that builds the LDS application from its configuration,

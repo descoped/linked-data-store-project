@@ -1,3 +1,9 @@
+---
+title: "Glossary"
+description: "The terms of this documentation, each with one meaning."
+order: 1
+---
+
 # Glossary
 
 The terms the documentation uses, each with one meaning. Where the code or the API has its own name for the same

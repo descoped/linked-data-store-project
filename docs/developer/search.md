@@ -1,3 +1,9 @@
+---
+title: "Search"
+description: "The search interface and the Solr provider."
+order: 7
+---
+
 # Search: the interface and the Solr provider
 
 This document describes the search interface of Linked Data Store (LDS) and the provider that implements it on

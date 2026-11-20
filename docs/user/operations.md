@@ -1,3 +1,9 @@
+---
+title: "Running LDS"
+description: "The image and the compose file, starting and stopping, health, logs, what is stored where."
+order: 7
+---
+
 # Running Linked Data Store
 
 This document is about running Linked Data Store (LDS): the container image and the compose file, starting and
