@@ -175,7 +175,7 @@ public class ManagedResourceHandler implements HttpHandler {
                     JsonNode requestData = bodyParser.deserializeBody(contentType, requestBody);
 
                     if (LOG.isTraceEnabled()) {
-                        LOG.trace("{}\u00A0{}\n{}", exchange.getRequestMethod(), exchange.getRequestPath(), requestBody);
+                        LOG.trace("{} {}\n{}", exchange.getRequestMethod(), exchange.getRequestPath(), requestBody);
                     }
 
                     try {

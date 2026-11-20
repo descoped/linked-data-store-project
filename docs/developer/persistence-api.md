@@ -785,8 +785,7 @@ not settled.
 
 Not finished: no provider makes a streaming-control fragment. The second constructor of `Fragment`,
 `isStreamingControl`, `isLimited`, `isNotLimited` and the codes `LIMITED_CODE` and `NOT_LIMITED_CODE` are used
-only by the `takeWhile` at the start of `toDocuments`. `Fragment.samePathAs` and `RxGroupByTools.debug` (which
-prints to `System.out`) are not called.
+only by the `takeWhile` at the start of `toDocuments`. `Fragment.samePathAs` is not called.
 
 Not finished: `groupByOrdered` starts a new thread for every group, which in the bridge is every document of a
 list. It keeps an entry for every group in a map and does not remove it. A cancel can fail: when the groups are

@@ -128,7 +128,7 @@ public class EmbeddedResourceHandler implements HttpHandler {
                     JsonNode embeddedJson = bodyParser.deserializeBody(contentType, message);
 
                     if (LOG.isTraceEnabled()) {
-                        LOG.trace("{}\u00A0{}\n{}", exchange.getRequestMethod(), exchange.getRequestPath(), message);
+                        LOG.trace("{} {}\n{}", exchange.getRequestMethod(), exchange.getRequestPath(), message);
                     }
 
                     mergeJson(resourceContext, managedDocument, embeddedJson);
