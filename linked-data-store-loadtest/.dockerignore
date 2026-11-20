@@ -1,0 +1,7 @@
+# The image is made of the jars Maven has built and the script that fills LDS, and nothing else.
+*
+!target/lib/
+!target/linked-data-store-loadtest-*.jar
+target/linked-data-store-loadtest-*-sources.jar
+target/linked-data-store-loadtest-*-javadoc.jar
+!prepopulate.sh

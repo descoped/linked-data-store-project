@@ -23,8 +23,10 @@ reactor, group `io.descoped.lds`.
 | `linked-data-store-core` | `io.descoped.lds.core` | the application: `UndertowApplication`, REST (`NamespaceController`), GraphQL, sagas, transaction log |
 | `linked-data-store-server` | `io.descoped.lds.server` | `Server` (the main class), the defaults of the configuration, the example model (`schemas/`), the Dockerfile and the compose file (`compose.yaml`) |
 
-Not in the reactor: `docs/` (AsciiDoc, describes the pre-3.0 layout). The load test and the cluster test of
-before 3.0 are removed: they needed images and a saga log that do not exist any more. Their history is in git.
+| `linked-data-store-loadtest` | `io.descoped.lds.loadtest` | the load test, run by hand: scripts and a compose file that start LDS from the image of the server with one persistence provider and drive a load at it, and the program that turns the results into plot files (`HTTPLoadTestBaselineStatistics`). Not in the BOM and not in a release |
+
+Not in the reactor: `docs/` (AsciiDoc, describes the pre-3.0 layout). The cluster test of before 3.0 is removed:
+it needed images and a saga log that do not exist any more. Its history is in git.
 
 Until 2026-11 every module was a repository of its own; their histories were imported here with `git filter-repo`
 (old tags prefixed with the repository name, e.g. `linked-data-store-core/v0.16`). Nothing was released under
@@ -222,6 +224,23 @@ use. Keep these when changing them:
 - **Every port of the compose file is published on 127.0.0.1**, and can be moved (`LDS_PORT`, ...), which is how
   `ServerStackIT` runs next to a stack that is up. The passwords in it are development defaults.
 - **The JDK of the image is the baseline**: Renovate is told to keep `eclipse-temurin` at 27.
+
+## The load test
+
+`linked-data-store-loadtest` is the load test LDS had before 3.0, brought up to date and kept as it was: the same
+steps, the same load (80 reads to 20 writes, 1 to 50 threads, ten seconds each), the same model and templates
+(`setup/gsim`, the schemas now JSON Schema 2020-12) and the same statistics and plots. `./ldsmemory.sh`,
+`./ldsneo4j.sh` and `./ldspostgres.sh` run it; its README says what a run does. Keep these when changing it:
+
+- **It is not part of the build**: nothing in `verify` or in CI starts it. Maven compiles and tests the
+  statistics program with the reactor, and that is all.
+- **It tests the image of the server module**, built by its compose file from `../linked-data-store-server`,
+  with the images of the engines the tests of the providers use. Nothing is published on the machine.
+- **The load tester is not ours**: `cantara/httploadtest-baseline:latest`, an image from 2021 for amd64 only,
+  which starts only with the start options in `httploadtest/service_override.properties` mounted over its own.
+- **A run leaves about 2 GB** in `lds<provider>/results` (every request is recorded), which git ignores.
+- What the owner wants the load test to become is not decided. Until it is, it is changed only to keep it
+  running.
 
 The Solr provider indexes the texts of the fields named `languageText` and nothing else, which is from the model
 LDS was first written for. The example model has such a field (`Company.about`) so that search can be tried.

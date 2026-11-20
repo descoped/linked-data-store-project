@@ -1,0 +1,113 @@
+{
+  "$ref" : "#/$defs/Protocol",
+  "$defs" : {
+    "MultilingualText" : {
+      "type" : "object",
+      "properties" : {
+        "languageCode" : {
+          "type" : "string"
+        },
+        "languageText" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "languageCode", "languageText" ]
+    },
+    "AdministrativeDetails" : {
+      "type" : "object",
+      "properties" : {
+        "administrativeDetailType" : {
+          "type" : "string"
+        },
+        "values" : {
+          "type" : "array",
+          "items" : { }
+        }
+      },
+      "required" : [ "administrativeDetailType", "values" ]
+    },
+    "Protocol" : {
+      "type" : "object",
+      "properties" : {
+        "id" : {
+          "type" : "string"
+        },
+        "name" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/$defs/MultilingualText"
+          }
+        },
+        "description" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/$defs/MultilingualText"
+          }
+        },
+        "administrativeStatus" : {
+          "type" : "string"
+        },
+        "createdDate" : {
+          "type" : "string",
+          "format" : "date-time"
+        },
+        "createdBy" : {
+          "type" : "string"
+        },
+        "version" : {
+          "type" : "string"
+        },
+        "versionValidFrom" : {
+          "type" : "string",
+          "format" : "date-time"
+        },
+        "versionRationale" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/$defs/MultilingualText"
+          }
+        },
+        "lastUpdatedDate" : {
+          "type" : "string",
+          "format" : "date-time"
+        },
+        "lastUpdatedBy" : {
+          "type" : "string"
+        },
+        "validFrom" : {
+          "type" : "string",
+          "format" : "date-time"
+        },
+        "validUntil" : {
+          "type" : "string",
+          "format" : "date-time"
+        },
+        "administrativeDetails" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/$defs/AdministrativeDetails"
+          }
+        },
+        "agentInRoles" : {
+          "type" : "array",
+          "items" : {
+            "type" : "string"
+          }
+        },
+        "_link_property_agentInRoles" : {
+          "type" : "object",
+          "properties" : {
+            "AgentInRole" : {
+              "type" : "null"
+            }
+          }
+        },
+        "protocolType" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "id", "name", "description", "createdDate", "createdBy", "versionValidFrom", "validFrom", "protocolType" ]
+    }
+  },
+  "$schema" : "https://json-schema.org/draft/2020-12/schema"
+}

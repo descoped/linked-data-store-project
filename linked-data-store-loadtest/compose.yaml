@@ -1,0 +1,94 @@
+# What a load test runs in: LDS with one persistence provider, the load tester (HTTPLoadTest-baseline) and a
+# controller with the tools of the scripts. It is started by the scripts (ldsmemory.sh, ldsneo4j.sh,
+# ldspostgres.sh), which say which provider LDS has (LDS_PERSISTENCE_PROVIDER), which engine is started with it
+# (COMPOSE_PROFILES) and where the results go (RESULTS_FOLDER).
+#
+# Nothing is published on the machine: the load is driven from inside the network. For development only: the
+# passwords are the ones written here.
+name: lds-loadtest
+
+services:
+
+  # LDS from the image of the server module, with the model of the load test: JSON Schema files, no GraphQL
+  # schema. The saga log is in memory and no transaction log is kept, so the test measures the provider.
+  lds:
+    build: ../linked-data-store-server
+    environment:
+      LDS_GRAPHQL_SCHEMA: ""
+      LDS_SPECIFICATION_SCHEMA: schemas
+      LDS_PERSISTENCE_PROVIDER: ${LDS_PERSISTENCE_PROVIDER:-mem}
+      LDS_NEO4J_DRIVER_URL: bolt://neo4j:7687
+      LDS_NEO4J_DRIVER_USERNAME: neo4j
+      LDS_NEO4J_DRIVER_PASSWORD: lds-development
+      LDS_POSTGRES_DRIVER_HOST: postgres
+      LDS_POSTGRES_DRIVER_USER: lds
+      LDS_POSTGRES_DRIVER_PASSWORD: lds
+      LDS_POSTGRES_DRIVER_DATABASE: lds
+    volumes:
+      - ./setup/gsim/schemas:/lds/schemas:ro
+    depends_on:
+      neo4j:
+        condition: service_healthy
+        required: false
+      postgres:
+        condition: service_healthy
+        required: false
+
+  neo4j:
+    profiles: ["neo4j"]
+    image: neo4j:2026.10-community
+    environment:
+      NEO4J_AUTH: neo4j/lds-development
+    healthcheck:
+      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "lds-development", "RETURN 1"]
+      start_period: 60s
+      start_interval: 2s
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  # PostgreSQL stays at 18 (see .claude/CLAUDE.md, Invariants).
+  postgres:
+    profiles: ["postgres"]
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: lds
+      POSTGRES_PASSWORD: lds
+      POSTGRES_DB: lds
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "lds", "-d", "lds"]
+      start_period: 60s
+      start_interval: 2s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # The load tester. Its image is from 2021 and for amd64 only; on another processor Docker emulates it, which
+  # makes the tester slower, not LDS. Its start options are corrected by the mounted file (see the file).
+  #
+  # It opens a connection for a request and closes it itself, so the port of the connection is held for a minute.
+  # With the 28 232 ports a container has it runs out of them after some time above 5 000 requests a second, and
+  # every request then fails in the tester without reaching LDS. So it gets every port, and may take one again
+  # after a second.
+  httploadtest:
+    image: cantara/httploadtest-baseline:latest
+    platform: linux/amd64
+    sysctls:
+      net.ipv4.ip_local_port_range: "1024 65535"
+      net.ipv4.tcp_tw_reuse: 1
+    volumes:
+      - ./httploadtest/service_override.properties:/home/HTTPLoadTest-baseline/config_override/service_override.properties:ro
+      - ${RESULTS_FOLDER:?the scripts say where the results go}:/home/HTTPLoadTest-baseline/results
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8086/HTTPLoadTest-baseline/health"]
+      start_period: 120s
+      start_interval: 2s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  controller:
+    build: .
+    volumes:
+      - ./setup:/loadtest
+      - ${RESULTS_FOLDER:?the scripts say where the results go}:/results

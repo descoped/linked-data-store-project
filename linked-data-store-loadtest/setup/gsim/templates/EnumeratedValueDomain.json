@@ -1,0 +1,23 @@
+{
+    "id": "#mrid",
+    "name": [
+      {
+        "languageCode": "nb",
+        "languageText": "Kjønn 1960"
+      }
+    ],
+    "description": [
+      {
+        "languageCode": "nb",
+        "languageText": "Standardkoder for kjønn"
+      }
+    ],
+    "administrativeStatus": "OPEN",
+    "version": "1.0.0",
+    "versionValidFrom": "#now",
+    "validFrom": "#now",
+    "createdDate": "#now",
+    "createdBy": "OHV",
+    "dataType": "TEKST",
+    "klassUrl": "https://example.org/klass/klassifikasjoner/2"
+}

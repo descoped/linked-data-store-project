@@ -1,0 +1,6 @@
+# What a load test leaves
+setup/*.zip
+setup/gsim.zip
+ldsmemory/
+ldsneo4j/
+ldspostgres/

@@ -24,6 +24,7 @@ until that is done, treat the code as work in progress.
 | `linked-data-store-core` | The application: REST, GraphQL, sagas, transaction log |
 | `linked-data-store-server` | The main class, configuration and container image |
 | `linked-data-store-bom` | Aligns the versions of the modules above |
+| `linked-data-store-loadtest` | A load test of LDS with each persistence provider, run by hand (see its [README](linked-data-store-loadtest/README.md)) |
 
 `docs/` holds the documentation from before the merge; it describes the earlier layout and is being rewritten.
 
