@@ -5,8 +5,8 @@ import graphql.schema.GraphQLSchema;
 import graphql.schema.idl.SchemaParser;
 import graphql.schema.idl.TypeDefinitionRegistry;
 import io.descoped.lds.graphql.schemas.GraphQLSchemaBuilder;
-import org.json.JSONObject;
 import org.testng.annotations.Test;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.io.File;
 import java.net.URL;
@@ -23,28 +23,32 @@ public class GraphQLToJsonConverterTest {
 
         GraphQLSchema schema = GraphQLSchemaBuilder.parseSchema(definitionRegistry);
         GraphQLToJsonConverter graphQLToJsonConverter = new GraphQLToJsonConverter(schema);
-        LinkedHashMap<String, JSONObject> jsonMap = graphQLToJsonConverter.createSpecification(schema);
+        LinkedHashMap<String, ObjectNode> jsonMap = graphQLToJsonConverter.createSpecification(schema);
 
         jsonMap.forEach((name, json) -> {
             System.out.printf("%s :: %s%n", name, json);
         });
 
-        Assert.assertTrue(jsonMap.get("Cat").getJSONObject("definitions").getJSONObject("Cat")
-                .getString("displayName").equals("This is a cat"));
+        Assert.assertTrue(jsonMap.get("Cat").get("$schema").stringValue().equals("https://json-schema.org/draft/2020-12/schema"));
 
-        Assert.assertTrue(jsonMap.get("Dog").getJSONObject("definitions").getJSONObject("Dog")
-                .getString("displayName").equals("This is a dog"));
+        Assert.assertTrue(jsonMap.get("Cat").get("$ref").stringValue().equals("#/$defs/Cat"));
 
-        Assert.assertTrue(jsonMap.get("Dog").getJSONObject("definitions").getJSONObject("Dog")
-                .getJSONObject("properties").getJSONObject("friendly")
-                .getString("type").equals("boolean"));
+        Assert.assertTrue(jsonMap.get("Cat").get("$defs").get("Cat")
+                .get("displayName").stringValue().equals("This is a cat"));
 
-        Assert.assertTrue(jsonMap.get("Cat").getJSONObject("definitions").getJSONObject("Cat")
-                .getJSONObject("properties").getJSONObject("alive")
-                .getString("type").equals("boolean"));
+        Assert.assertTrue(jsonMap.get("Dog").get("$defs").get("Dog")
+                .get("displayName").stringValue().equals("This is a dog"));
 
-        Assert.assertTrue(jsonMap.get("Cat").getJSONObject("definitions").getJSONObject("Cat")
-                .getJSONArray("required").length() == 1);
+        Assert.assertTrue(jsonMap.get("Dog").get("$defs").get("Dog")
+                .get("properties").get("friendly")
+                .get("type").stringValue().equals("boolean"));
+
+        Assert.assertTrue(jsonMap.get("Cat").get("$defs").get("Cat")
+                .get("properties").get("alive")
+                .get("type").stringValue().equals("boolean"));
+
+        Assert.assertTrue(jsonMap.get("Cat").get("$defs").get("Cat")
+                .get("required").size() == 1);
 
         Assert.assertNotEmpty(jsonMap.values());
     }

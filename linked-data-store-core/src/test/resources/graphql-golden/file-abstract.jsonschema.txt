@@ -1,9 +1,7 @@
 ORDER Cat,Dog,Owner
 ENTITY Cat
 {
-  "#schema" : "http://json-schema.org/draft-04/schema#",
-  "$ref" : "#/definitions/Cat",
-  "definitions" : {
+  "$defs" : {
     "Cat" : {
       "description" : "This is a cat\n\nAnd this is a long description of what a cat is. It contains\nnew lines.",
       "displayName" : "This is a cat",
@@ -23,13 +21,13 @@ ENTITY Cat
       "required" : [ "name" ],
       "type" : "object"
     }
-  }
+  },
+  "$ref" : "#/$defs/Cat",
+  "$schema" : "https://json-schema.org/draft/2020-12/schema"
 }
 ENTITY Dog
 {
-  "#schema" : "http://json-schema.org/draft-04/schema#",
-  "$ref" : "#/definitions/Dog",
-  "definitions" : {
+  "$defs" : {
     "Dog" : {
       "description" : "This is a dog\n Kinda like a cat.",
       "displayName" : "This is a dog",
@@ -49,13 +47,13 @@ ENTITY Dog
       "required" : [ "friendly", "name" ],
       "type" : "object"
     }
-  }
+  },
+  "$ref" : "#/$defs/Dog",
+  "$schema" : "https://json-schema.org/draft/2020-12/schema"
 }
 ENTITY Owner
 {
-  "#schema" : "http://json-schema.org/draft-04/schema#",
-  "$ref" : "#/definitions/Owner",
-  "definitions" : {
+  "$defs" : {
     "Owner" : {
       "properties" : {
         "_link_property_animals" : {
@@ -106,5 +104,7 @@ ENTITY Owner
       "required" : [ "email", "name" ],
       "type" : "object"
     }
-  }
+  },
+  "$ref" : "#/$defs/Owner",
+  "$schema" : "https://json-schema.org/draft/2020-12/schema"
 }

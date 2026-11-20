@@ -9,6 +9,7 @@ import io.descoped.lds.test.client.ResponseHelper;
 import io.descoped.lds.test.client.TestClient;
 import io.descoped.lds.test.server.TestServer;
 import io.descoped.lds.test.server.TestServerListener;
+import org.json.JSONException;
 import org.skyscreamer.jsonassert.JSONAssert;
 import org.testng.annotations.Listeners;
 import org.testng.annotations.Test;
@@ -47,7 +48,7 @@ public class ManagedResourceHandlerTest {
     }
 
     @Test
-    public void thatPUTIntegrationWorks() {
+    public void thatPUTIntegrationWorks() throws JSONException {
         String body = "{\"name\":\"pa-test-name\",\"contacts\":[\"/contact/c1\",\"/contact/c2\"]}";
         client.put("/data/provisionagreement/m1?sync=true", body).expectAnyOf(200, 201);
         String actual = client.get("/data/provisionagreement/m1").expect200Ok().body();
@@ -81,7 +82,15 @@ public class ManagedResourceHandlerTest {
     @Test
     public void thatJsonSchemaIsFoundForNamespace() {
         ResponseHelper<String> response = client.get("/data/contact?schema");
-        assertTrue(response.body().contains("\"$ref\":\"#/definitions/contact\""));
+        assertTrue(response.body().contains("\"$ref\":\"#/$defs/contact\""));
+        assertTrue(response.body().contains("\"$schema\":\"https://json-schema.org/draft/2020-12/schema\""));
+    }
+
+    @Test
+    public void thatADocumentThatDoesNotFollowTheSchemaIsAnsweredWithWhatIsWrong() {
+        String answer = client.put("/data/contact/notvalid1?sync=true", "{\"name\":7,\"email\":\"a@b.c\"}").expect400BadRequest().body();
+        assertEquals(answer, "Schema validation error: [$.name: integer found, string expected]");
+        client.get("/data/contact/notvalid1").expect404NotFound();
     }
 
     @Test

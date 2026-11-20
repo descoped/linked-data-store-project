@@ -1,9 +1,7 @@
 ORDER Agent,AgentInRole,Cat,Dog,Owner,Role,contact,provisionagreement,support
 ENTITY Agent
 {
-  "#schema" : "http://json-schema.org/draft-04/schema#",
-  "$ref" : "#/definitions/Agent",
-  "definitions" : {
+  "$defs" : {
     "AdministrativeDetails" : {
       "properties" : {
         "administrativeDetailType" : {
@@ -48,7 +46,7 @@ ENTITY Agent
           "description" : "Administrative details (e.g. default language, documentation, localID, ...).",
           "displayName" : "",
           "items" : {
-            "$ref" : "#/definitions/AdministrativeDetails"
+            "$ref" : "#/$defs/AdministrativeDetails"
           },
           "type" : "array"
         },
@@ -62,7 +60,7 @@ ENTITY Agent
           "description" : "Agent details (e.g. contackt adress, email, phone, mobile ...).",
           "displayName" : "",
           "items" : {
-            "$ref" : "#/definitions/AgentDetails"
+            "$ref" : "#/$defs/AgentDetails"
           },
           "type" : "array"
         },
@@ -95,7 +93,7 @@ ENTITY Agent
           "description" : "The description of the information object",
           "displayName" : "",
           "items" : {
-            "$ref" : "#/definitions/MultilingualText"
+            "$ref" : "#/$defs/MultilingualText"
           },
           "type" : "array"
         },
@@ -124,7 +122,7 @@ ENTITY Agent
           "description" : "A term which designates a concept, in this case an information object. The identifying name will be the preferred designation. There will be many terms to designate the same information object, such as synonyms and terms in other languages.",
           "displayName" : "",
           "items" : {
-            "$ref" : "#/definitions/MultilingualText"
+            "$ref" : "#/$defs/MultilingualText"
           },
           "type" : "array"
         },
@@ -203,13 +201,13 @@ ENTITY Agent
       "required" : [ "languageCode", "languageText" ],
       "type" : "object"
     }
-  }
+  },
+  "$ref" : "#/$defs/Agent",
+  "$schema" : "https://json-schema.org/draft/2020-12/schema"
 }
 ENTITY AgentInRole
 {
-  "#schema" : "http://json-schema.org/draft-04/schema#",
-  "$ref" : "#/definitions/AgentInRole",
-  "definitions" : {
+  "$defs" : {
     "AdministrativeDetails" : {
       "properties" : {
         "administrativeDetailType" : {
@@ -262,7 +260,7 @@ ENTITY AgentInRole
           "description" : "Administrative details (e.g. default language, documentation, localID, ...).",
           "displayName" : "",
           "items" : {
-            "$ref" : "#/definitions/AdministrativeDetails"
+            "$ref" : "#/$defs/AdministrativeDetails"
           },
           "type" : "array"
         },
@@ -302,7 +300,7 @@ ENTITY AgentInRole
           "description" : "The description of the information object",
           "displayName" : "",
           "items" : {
-            "$ref" : "#/definitions/MultilingualText"
+            "$ref" : "#/$defs/MultilingualText"
           },
           "type" : "array"
         },
@@ -326,7 +324,7 @@ ENTITY AgentInRole
           "description" : "A term which designates a concept, in this case an information object. The identifying name will be the preferred designation. There will be many terms to designate the same information object, such as synonyms and terms in other languages.",
           "displayName" : "",
           "items" : {
-            "$ref" : "#/definitions/MultilingualText"
+            "$ref" : "#/$defs/MultilingualText"
           },
           "type" : "array"
         },
@@ -383,13 +381,13 @@ ENTITY AgentInRole
       "required" : [ "languageCode", "languageText" ],
       "type" : "object"
     }
-  }
+  },
+  "$ref" : "#/$defs/AgentInRole",
+  "$schema" : "https://json-schema.org/draft/2020-12/schema"
 }
 ENTITY Cat
 {
-  "#schema" : "http://json-schema.org/draft-04/schema#",
-  "$ref" : "#/definitions/Cat",
-  "definitions" : {
+  "$defs" : {
     "Cat" : {
       "properties" : {
         "age" : {
@@ -403,13 +401,13 @@ ENTITY Cat
       "required" : [ "name" ],
       "type" : "object"
     }
-  }
+  },
+  "$ref" : "#/$defs/Cat",
+  "$schema" : "https://json-schema.org/draft/2020-12/schema"
 }
 ENTITY Dog
 {
-  "#schema" : "http://json-schema.org/draft-04/schema#",
-  "$ref" : "#/definitions/Dog",
-  "definitions" : {
+  "$defs" : {
     "Dog" : {
       "properties" : {
         "age" : {
@@ -423,13 +421,13 @@ ENTITY Dog
       "required" : [ "name" ],
       "type" : "object"
     }
-  }
+  },
+  "$ref" : "#/$defs/Dog",
+  "$schema" : "https://json-schema.org/draft/2020-12/schema"
 }
 ENTITY Owner
 {
-  "#schema" : "http://json-schema.org/draft-04/schema#",
-  "$ref" : "#/definitions/Owner",
-  "definitions" : {
+  "$defs" : {
     "Owner" : {
       "properties" : {
         "_link_property_animals" : {
@@ -483,13 +481,13 @@ ENTITY Owner
       "required" : [ "email", "name" ],
       "type" : "object"
     }
-  }
+  },
+  "$ref" : "#/$defs/Owner",
+  "$schema" : "https://json-schema.org/draft/2020-12/schema"
 }
 ENTITY Role
 {
-  "#schema" : "http://json-schema.org/draft-04/schema#",
-  "$ref" : "#/definitions/Role",
-  "definitions" : {
+  "$defs" : {
     "AdministrativeDetails" : {
       "properties" : {
         "administrativeDetailType" : {
@@ -543,7 +541,7 @@ ENTITY Role
           "description" : "Administrative details (e.g. default language, documentation, localID, ...).",
           "displayName" : "",
           "items" : {
-            "$ref" : "#/definitions/AdministrativeDetails"
+            "$ref" : "#/$defs/AdministrativeDetails"
           },
           "type" : "array"
         },
@@ -576,7 +574,7 @@ ENTITY Role
           "description" : "The description of the information object",
           "displayName" : "",
           "items" : {
-            "$ref" : "#/definitions/MultilingualText"
+            "$ref" : "#/$defs/MultilingualText"
           },
           "type" : "array"
         },
@@ -600,7 +598,7 @@ ENTITY Role
           "description" : "A term which designates a concept, in this case an information object. The identifying name will be the preferred designation. There will be many terms to designate the same information object, such as synonyms and terms in other languages.",
           "displayName" : "",
           "items" : {
-            "$ref" : "#/definitions/MultilingualText"
+            "$ref" : "#/$defs/MultilingualText"
           },
           "type" : "array"
         },
@@ -635,13 +633,13 @@ ENTITY Role
       "required" : [ "createdBy", "createdDate", "id", "name", "validFrom", "versionValidFrom" ],
       "type" : "object"
     }
-  }
+  },
+  "$ref" : "#/$defs/Role",
+  "$schema" : "https://json-schema.org/draft/2020-12/schema"
 }
 ENTITY contact
 {
-  "#schema" : "http://json-schema.org/draft-04/schema#",
-  "$ref" : "#/definitions/contact",
-  "definitions" : {
+  "$defs" : {
     "contact" : {
       "properties" : {
         "email" : {
@@ -656,13 +654,13 @@ ENTITY contact
       "required" : [ "email", "name" ],
       "type" : "object"
     }
-  }
+  },
+  "$ref" : "#/$defs/contact",
+  "$schema" : "https://json-schema.org/draft/2020-12/schema"
 }
 ENTITY provisionagreement
 {
-  "#schema" : "http://json-schema.org/draft-04/schema#",
-  "$ref" : "#/definitions/provisionagreement",
-  "definitions" : {
+  "$defs" : {
     "address" : {
       "properties" : {
         "city" : {
@@ -751,13 +749,13 @@ ENTITY provisionagreement
       "required" : [ ],
       "type" : "object"
     }
-  }
+  },
+  "$ref" : "#/$defs/provisionagreement",
+  "$schema" : "https://json-schema.org/draft/2020-12/schema"
 }
 ENTITY support
 {
-  "#schema" : "http://json-schema.org/draft-04/schema#",
-  "$ref" : "#/definitions/support",
-  "definitions" : {
+  "$defs" : {
     "support" : {
       "properties" : {
         "_link_property_businessSupport" : {
@@ -806,5 +804,7 @@ ENTITY support
       "required" : [ ],
       "type" : "object"
     }
-  }
+  },
+  "$ref" : "#/$defs/support",
+  "$schema" : "https://json-schema.org/draft/2020-12/schema"
 }

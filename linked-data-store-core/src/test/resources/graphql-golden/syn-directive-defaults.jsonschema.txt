@@ -1,9 +1,7 @@
 ORDER A,B
 ENTITY A
 {
-  "#schema" : "http://json-schema.org/draft-04/schema#",
-  "$ref" : "#/definitions/A",
-  "definitions" : {
+  "$defs" : {
     "A" : {
       "properties" : {
         "_link_property_b" : {
@@ -67,13 +65,13 @@ ENTITY A
       "required" : [ ],
       "type" : "object"
     }
-  }
+  },
+  "$ref" : "#/$defs/A",
+  "$schema" : "https://json-schema.org/draft/2020-12/schema"
 }
 ENTITY B
 {
-  "#schema" : "http://json-schema.org/draft-04/schema#",
-  "$ref" : "#/definitions/B",
-  "definitions" : {
+  "$defs" : {
     "B" : {
       "properties" : {
         "name" : {
@@ -84,5 +82,7 @@ ENTITY B
       "required" : [ ],
       "type" : "object"
     }
-  }
+  },
+  "$ref" : "#/$defs/B",
+  "$schema" : "https://json-schema.org/draft/2020-12/schema"
 }

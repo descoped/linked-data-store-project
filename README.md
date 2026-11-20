@@ -1,7 +1,8 @@
 # Linked Data Store
 
 Linked Data Store (LDS) is a server that gives REST and GraphQL access to versioned, linked JSON documents. The
-model is read at start, from a GraphQL schema or JSON Schema files, so the same server serves any structured data.
+model is read at start, from a GraphQL schema or JSON Schema 2020-12 files, so the same server serves any structured
+data.
 Every document version has a "valid from" time, and a read returns the document as it was at the time asked for.
 Persistence and search are pluggable.
 

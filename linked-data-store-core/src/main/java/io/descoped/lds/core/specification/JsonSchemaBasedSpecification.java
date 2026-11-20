@@ -1,9 +1,10 @@
 package io.descoped.lds.core.specification;
 
+import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.api.specification.SpecificationElement;
 import io.descoped.lds.core.schema.JsonSchema;
-import io.descoped.lds.core.schema.JsonSchema04Builder;
+import io.descoped.lds.core.schema.JsonSchemaBuilder;
 import io.descoped.lds.core.schema.SchemaRepository;
 import io.descoped.lds.core.utils.FileAndClasspathReaderUtils;
 import org.slf4j.Logger;
@@ -59,7 +60,7 @@ public class JsonSchemaBasedSpecification implements Specification, SchemaReposi
         String schemaFilename = filename.substring(filename.lastIndexOf("/") + 1);
         String managedDomain = schemaFilename.substring(0, schemaFilename.length() - ".json".length());
         sb.append(" /" + managedDomain);
-        jsonSchema = new JsonSchema04Builder(jsonSchema, managedDomain, json).build();
+        jsonSchema = new JsonSchemaBuilder(jsonSchema, managedDomain, JsonTools.toJsonNode(json)).build();
         return jsonSchema;
     }
 

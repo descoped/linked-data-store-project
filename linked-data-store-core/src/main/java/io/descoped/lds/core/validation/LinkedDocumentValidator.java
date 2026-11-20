@@ -5,19 +5,21 @@ import io.descoped.lds.api.specification.SpecificationElement;
 import io.descoped.lds.api.specification.SpecificationElementType;
 import io.descoped.lds.api.specification.SpecificationTraversal;
 import io.descoped.lds.core.schema.SchemaRepository;
-import org.everit.json.schema.Schema;
-import org.everit.json.schema.ValidationException;
-import org.json.JSONArray;
-import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.databind.JsonNode;
 
 import java.util.Deque;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+/**
+ * Says whether a document may be written: it is valid by the JSON Schema of its entity, and each of its links is
+ * a link ({@code /Entity/id}) to an entity that the model lets the field link to.
+ */
 public class LinkedDocumentValidator {
 
     private static final Logger LOG = LoggerFactory.getLogger(LinkedDocumentValidator.class);
@@ -31,24 +33,24 @@ public class LinkedDocumentValidator {
         this.schemaRepository = schemaRepository;
     }
 
-    public void validate(String managedDomain, String document) throws LinkedDocumentValidationException {
-
-        // TODO Use already parsed Jackson instead of org.json. Requires a change of json-schema validation library
-        JSONObject linkedDocument = new JSONObject(document);
-
-        Schema schema = schemaRepository.getJsonSchema().getSchema(managedDomain);
-        try {
-            schema.validate(linkedDocument);
-        } catch (ValidationException e) {
-            e.getAllMessages().forEach(m -> LOG.debug("{}", m));
-            throw new LinkedDocumentValidationException(e.getAllMessages().toString(), e);
+    /**
+     * @param managedDomain  the name of the entity
+     * @param linkedDocument the document
+     * @throws LinkedDocumentValidationException when the document is not valid; the message says what is wrong
+     */
+    public void validate(String managedDomain, JsonNode linkedDocument) throws LinkedDocumentValidationException {
+        List<String> errors = schemaRepository.getJsonSchema().validate(managedDomain, linkedDocument);
+        if (!errors.isEmpty()) {
+            errors.forEach(m -> LOG.debug("{}", m));
+            throw new LinkedDocumentValidationException(errors.toString());
         }
+
         SpecificationElement managedDomainElement = specification.getRootElement().getProperties().get(managedDomain);
         SpecificationTraversal.depthFirstPreOrderFullTraversal(managedDomainElement, (ancestors, te) -> {
             if (SpecificationElementType.REF != te.getSpecificationElementType()) {
                 return;
             }
-            JSONObject context = linkedDocument;
+            JsonNode context = linkedDocument;
             for (SpecificationElement ancestor : ancestors) {
                 if (SpecificationElementType.ROOT == ancestor.getSpecificationElementType()) {
                     continue;
@@ -56,27 +58,33 @@ public class LinkedDocumentValidator {
                 if (SpecificationElementType.MANAGED == ancestor.getSpecificationElementType()) {
                     continue;
                 }
-                if (!context.has(ancestor.getName())) {
+                context = context.get(ancestor.getName());
+                if (context == null || !context.isObject()) {
+                    // the document does not have the object the link would be in
                     return;
                 }
-                context = context.getJSONObject(ancestor.getName());
             }
-            if (!context.has(te.getName())) {
+            JsonNode value = context.get(te.getName());
+            if (value == null || value.isNull()) {
                 return;
             }
             if (te.getJsonTypes().contains("array")) {
-                JSONArray linkArray = context.getJSONArray(te.getName());
-                for (int i = 0; i < linkArray.length(); i++) {
-                    String link = linkArray.getString(i);
-                    validateLink(ancestors, te, link);
+                for (JsonNode link : value) {
+                    if (!link.isNull()) {
+                        validateLink(ancestors, te, text(link));
+                    }
                 }
             } else {
-                String link = context.optString(te.getName(), null);
-                if (link != null) {
-                    validateLink(ancestors, te, link);
-                }
+                validateLink(ancestors, te, text(value));
             }
         });
+    }
+
+    /*
+     * A link is a text. What is no text is given as it is written, and is then no link.
+     */
+    private static String text(JsonNode value) {
+        return value.isString() ? value.stringValue() : value.toString();
     }
 
     private void validateLink(Deque<SpecificationElement> ancestors, SpecificationElement te, String link) throws LinkedDocumentValidationException {

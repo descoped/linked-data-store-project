@@ -1,6 +1,6 @@
 {
-  "$ref" : "#/definitions/AgentInRole",
-  "definitions" : {
+  "$ref" : "#/$defs/AgentInRole",
+  "$defs" : {
     "MultilingualText" : {
       "type" : "object",
       "properties" : {
@@ -22,7 +22,7 @@
         "agentInRoleDescription" : {
           "type" : "array",
           "items" : {
-            "$ref" : "#/definitions/MultilingualText"
+            "$ref" : "#/$defs/MultilingualText"
           }
         },
         "role" : {
@@ -54,5 +54,5 @@
       "required" : [ "id", "role", "agents" ]
     }
   },
-  "$schema" : "http://json-schema.org/draft-04/schema#"
+  "$schema" : "https://json-schema.org/draft/2020-12/schema"
 }

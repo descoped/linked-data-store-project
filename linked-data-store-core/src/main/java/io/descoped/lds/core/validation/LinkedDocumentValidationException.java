@@ -6,8 +6,4 @@ public class LinkedDocumentValidationException extends RuntimeException {
         super(message);
     }
 
-    LinkedDocumentValidationException(String message, Throwable cause) {
-        super(message, cause);
-    }
-
 }

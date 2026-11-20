@@ -149,18 +149,14 @@
             </exclusions>
         </dependency>
         <dependency>
-            <groupId>org.json</groupId>
-            <artifactId>json</artifactId>
-            <version>${org-json.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.github.erosb</groupId>
-            <artifactId>everit-json-schema</artifactId>
-            <version>${everit-json-schema.version}</version>
+            <groupId>com.networknt</groupId>
+            <artifactId>json-schema-validator</artifactId>
+            <version>${json-schema-validator.version}</version>
             <exclusions>
+                <!-- For schemas written as YAML, which LDS does not read. -->
                 <exclusion>
-                    <groupId>commons-logging</groupId>
-                    <artifactId>commons-logging</artifactId>
+                    <groupId>tools.jackson.dataformat</groupId>
+                    <artifactId>jackson-dataformat-yaml</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>

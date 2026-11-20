@@ -1,9 +1,7 @@
 ORDER Source,Target
 ENTITY Source
 {
-  "#schema" : "http://json-schema.org/draft-04/schema#",
-  "$ref" : "#/definitions/Source",
-  "definitions" : {
+  "$defs" : {
     "Source" : {
       "properties" : {
         "_link_property_link" : {
@@ -41,13 +39,13 @@ ENTITY Source
       "required" : [ ],
       "type" : "object"
     }
-  }
+  },
+  "$ref" : "#/$defs/Source",
+  "$schema" : "https://json-schema.org/draft/2020-12/schema"
 }
 ENTITY Target
 {
-  "#schema" : "http://json-schema.org/draft-04/schema#",
-  "$ref" : "#/definitions/Target",
-  "definitions" : {
+  "$defs" : {
     "Target" : {
       "properties" : {
         "back" : {
@@ -63,5 +61,7 @@ ENTITY Target
       "required" : [ "back" ],
       "type" : "object"
     }
-  }
+  },
+  "$ref" : "#/$defs/Target",
+  "$schema" : "https://json-schema.org/draft/2020-12/schema"
 }

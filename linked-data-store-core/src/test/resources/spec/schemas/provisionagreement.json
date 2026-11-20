@@ -1,6 +1,6 @@
 {
-  "$ref" : "#/definitions/provisionagreement",
-  "definitions" : {
+  "$ref" : "#/$defs/provisionagreement",
+  "$defs" : {
     "provisionagreement" : {
       "type" : "object",
       "properties" : {
@@ -109,5 +109,5 @@
       }
     }
   },
-  "$schema" : "http://json-schema.org/draft-04/schema#"
+  "$schema" : "https://json-schema.org/draft/2020-12/schema"
 }

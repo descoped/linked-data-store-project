@@ -1,11 +1,12 @@
 package io.descoped.lds.core.specification;
 
 import io.descoped.lds.api.json.JsonNavigationPath;
+import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.api.specification.SpecificationElementType;
 import io.descoped.lds.api.specification.SpecificationTraversal;
 import io.descoped.lds.core.schema.JsonSchema;
-import io.descoped.lds.core.schema.JsonSchema04Builder;
+import io.descoped.lds.core.schema.JsonSchemaBuilder;
 import io.descoped.lds.core.utils.FileAndClasspathReaderUtils;
 import org.testng.annotations.Test;
 
@@ -20,10 +21,10 @@ public class SpecificationJsonSchemaBuilderTest {
     public void thatSpecificationBuiltFromJsonSchemaWithCustomLinkingWorks() {
         String contactJson = FileAndClasspathReaderUtils.getResourceAsString("spec/schemas/contact.json", StandardCharsets.UTF_8);
         String paJson = FileAndClasspathReaderUtils.getResourceAsString("spec/schemas/provisionagreement.json", StandardCharsets.UTF_8);
-        JsonSchema jsonSchema = new JsonSchema04Builder(
-                null, "contact", contactJson).build();
-        new JsonSchema04Builder(
-                jsonSchema, "contact", paJson).build();
+        JsonSchema jsonSchema = new JsonSchemaBuilder(
+                null, "contact", JsonTools.toJsonNode(contactJson)).build();
+        new JsonSchemaBuilder(
+                jsonSchema, "contact", JsonTools.toJsonNode(paJson)).build();
         Specification specification = SpecificationJsonSchemaBuilder.createBuilder(jsonSchema).build();
         print(specification);
     }

@@ -1,9 +1,7 @@
 ORDER House,Person,Pet
 ENTITY House
 {
-  "#schema" : "http://json-schema.org/draft-04/schema#",
-  "$ref" : "#/definitions/House",
-  "definitions" : {
+  "$defs" : {
     "House" : {
       "properties" : {
         "street" : {
@@ -14,13 +12,13 @@ ENTITY House
       "required" : [ "street" ],
       "type" : "object"
     }
-  }
+  },
+  "$ref" : "#/$defs/House",
+  "$schema" : "https://json-schema.org/draft/2020-12/schema"
 }
 ENTITY Person
 {
-  "#schema" : "http://json-schema.org/draft-04/schema#",
-  "$ref" : "#/definitions/Person",
-  "definitions" : {
+  "$defs" : {
     "Person" : {
       "description" : "A person\nwith two lines",
       "displayName" : "A person",
@@ -157,13 +155,13 @@ ENTITY Person
       "required" : [ "height", "key", "kind", "name", "nick", "pets", "seen", "worst" ],
       "type" : "object"
     }
-  }
+  },
+  "$ref" : "#/$defs/Person",
+  "$schema" : "https://json-schema.org/draft/2020-12/schema"
 }
 ENTITY Pet
 {
-  "#schema" : "http://json-schema.org/draft-04/schema#",
-  "$ref" : "#/definitions/Pet",
-  "definitions" : {
+  "$defs" : {
     "Pet" : {
       "properties" : {
         "name" : {
@@ -174,5 +172,7 @@ ENTITY Pet
       "required" : [ ],
       "type" : "object"
     }
-  }
+  },
+  "$ref" : "#/$defs/Pet",
+  "$schema" : "https://json-schema.org/draft/2020-12/schema"
 }

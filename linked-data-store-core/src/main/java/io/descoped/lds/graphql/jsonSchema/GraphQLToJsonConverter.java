@@ -4,17 +4,15 @@ import graphql.schema.GraphQLNamedType;
 import graphql.schema.GraphQLSchema;
 import io.descoped.lds.graphql.jsonSchema.visitors.ParseObjectTypesVisitor;
 import io.descoped.lds.graphql.schemas.TypeTraverser;
-import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 public class GraphQLToJsonConverter {
     private static final Logger LOG = LoggerFactory.getLogger(GraphQLToJsonConverter.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final TypeTraverser TRAVERSER = new TypeTraverser();
     GraphQLSchema graphQLSchema;
 
@@ -22,9 +20,9 @@ public class GraphQLToJsonConverter {
         this.graphQLSchema = schema;
     }
 
-    public LinkedHashMap<String, JSONObject> createSpecification(GraphQLSchema graphQLSchema) {
+    public LinkedHashMap<String, ObjectNode> createSpecification(GraphQLSchema graphQLSchema) {
         Map<String, GraphQLNamedType> typeMap = graphQLSchema.getTypeMap();
-        LinkedHashMap<String, JSONObject> jsonMap = new LinkedHashMap<>();
+        LinkedHashMap<String, ObjectNode> jsonMap = new LinkedHashMap<>();
         StringBuilder sb = new StringBuilder();
 
         ParseObjectTypesVisitor parseObjectTypesVisitor = new ParseObjectTypesVisitor(typeMap, jsonMap);
