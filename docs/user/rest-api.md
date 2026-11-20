@@ -29,8 +29,8 @@ The LDS that the examples ran on had another port (`http.port`); nothing else di
 
 An answer is shown as LDS sent it: the status line, the headers, an empty line and the body. The headers
 `Connection`, `Content-Length` and `Date` are left out. LDS sends a JSON answer as one line; here it is
-shown formatted, with the fields in the order LDS sent them. The ids of sagas and the times of versions differ from run to run. The
-requests were sent on 2026-11-20, which matters where a request names no time.
+shown formatted, with the fields in the order LDS sent them. The ids of sagas and the times of versions differ
+from run to run. The requests were sent on 2026-11-20, which matters where a request names no time.
 
 LDS has no authentication. It answers every caller that reaches it, over plain HTTP.
 
