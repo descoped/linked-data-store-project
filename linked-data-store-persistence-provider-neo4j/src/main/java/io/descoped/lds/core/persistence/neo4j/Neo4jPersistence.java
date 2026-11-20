@@ -31,7 +31,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
-import static io.descoped.lds.core.persistence.neo4j.Neo4jCreationalPatternFactory.hashOf;
+import static io.descoped.lds.core.persistence.neo4j.Neo4jDocumentWriter.LONGEST_TEXT_LOOKED_UP_AS_IT_IS;
+import static io.descoped.lds.core.persistence.neo4j.Neo4jDocumentWriter.hashOf;
 
 /**
  * Documents as a graph in Neo4j.
@@ -41,8 +42,11 @@ import static io.descoped.lds.core.persistence.neo4j.Neo4jCreationalPatternFacto
  * <li>Each version is a {@code VERSION} relationship from the document node to the root of that version, valid
  * from {@code from} until {@code to}. Both are instants, stored in UTC.</li>
  * <li>Below the root, objects, arrays and values are nodes with the label {@code <entity>_E}, joined by
- * {@code EMBED} relationships that carry the field name, or the index in an array. A value node also carries the
- * namespace, for the index that a search for a value looks up.</li>
+ * {@code EMBED} relationships that carry the field name, or the index in an array. A node has the type of what
+ * the document holds there ({@code map}, {@code array}, {@code string}, {@code number}, {@code boolean},
+ * {@code null}). A value node also carries the namespace, for the index that a search for a value looks up.</li>
+ * <li>A document is stored as it is given, also what the specification does not describe
+ * ({@link Neo4jDocumentWriter}). The specification tells which fields are links.</li>
  * <li>A link is a {@code REF} relationship to the document node it points at, in the same namespace. That node is
  * created with the link when the document is not written yet.</li>
  * <li>A version that marks the document as deleted is a root with {@code deleted: true} and nothing below it. A
@@ -70,11 +74,11 @@ final class Neo4jPersistence implements RxJsonPersistence {
     private static final String RETURN_DOCUMENT = "RETURN r, v, m, [p = (m)-[:EMBED|REF*]->(e) | [relationships(p), e]] AS leaves";
 
     private final Neo4jTransactionFactory transactionFactory;
-    private final Neo4jCreationalPatternFactory creationalPatternFactory;
+    private final Neo4jDocumentWriter writer;
 
     Neo4jPersistence(Neo4jTransactionFactory transactionFactory) {
         this.transactionFactory = transactionFactory;
-        this.creationalPatternFactory = new Neo4jCreationalPatternFactory();
+        this.writer = new Neo4jDocumentWriter();
     }
 
     /**
@@ -117,17 +121,10 @@ final class Neo4jPersistence implements RxJsonPersistence {
         return switch (type) {
             case "map" -> new FlattenedDocumentLeafNode(key, path, FragmentType.EMPTY_OBJECT, null, Integer.MAX_VALUE);
             case "array" -> new FlattenedDocumentLeafNode(key, path, FragmentType.EMPTY_ARRAY, null, Integer.MAX_VALUE);
-            case "string", "number", "boolean" -> {
-                if (value.isNull()) {
-                    // written as null: the node has no value
-                    yield new FlattenedDocumentLeafNode(key, path, FragmentType.NULL, null, Integer.MAX_VALUE);
-                }
-                yield switch (type) {
-                    case "string" -> new FlattenedDocumentLeafNode(key, path, FragmentType.STRING, value.asString(), Integer.MAX_VALUE);
-                    case "number" -> new FlattenedDocumentLeafNode(key, path, FragmentType.NUMERIC, String.valueOf(value.asNumber()), Integer.MAX_VALUE);
-                    default -> new FlattenedDocumentLeafNode(key, path, FragmentType.BOOLEAN, String.valueOf(value.asBoolean()), Integer.MAX_VALUE);
-                };
-            }
+            case "null" -> new FlattenedDocumentLeafNode(key, path, FragmentType.NULL, null, Integer.MAX_VALUE);
+            case "string" -> new FlattenedDocumentLeafNode(key, path, FragmentType.STRING, value.asString(), Integer.MAX_VALUE);
+            case "number" -> new FlattenedDocumentLeafNode(key, path, FragmentType.NUMERIC, String.valueOf(value.asNumber()), Integer.MAX_VALUE);
+            case "boolean" -> new FlattenedDocumentLeafNode(key, path, FragmentType.BOOLEAN, String.valueOf(value.asBoolean()), Integer.MAX_VALUE);
             default -> throw new IllegalStateException("type not supported: " + type);
         };
     }
@@ -195,7 +192,7 @@ final class Neo4jPersistence implements RxJsonPersistence {
             for (Map.Entry<String, List<JsonDocument>> entry : documentsByEntity.entrySet()) {
                 String entity = entry.getKey();
                 List<JsonDocument> documentForEntityList = entry.getValue();
-                Neo4jQueryAndParams qp = creationalPatternFactory.creationalQueryAndParams(specification, entity, documentForEntityList);
+                Neo4jQueryAndParams qp = writer.write(specification, entity, documentForEntityList);
                 completables.add(run(transaction, qp.query(), qp.params()));
             }
             return Completable.concat(completables);
@@ -208,8 +205,7 @@ final class Neo4jPersistence implements RxJsonPersistence {
         params.put("namespace", namespace);
         params.put("snapshot", inUtc(snapshot));
         params.put("path", path.serialize());
-        // TODO: Make configurable.
-        params.put("value", value.length() > 40 ? hashOf(value) : value);
+        params.put("value", value.length() > LONGEST_TEXT_LOOKED_UP_AS_IT_IS ? hashOf(value) : value);
         String cypher = "MATCH (e:" + Cypher.label(entityName + "_E") + " {namespace: $namespace, path: $path, hashOrValue: $value})<-[:EMBED*]-(m)<-[v:VERSION]-(r)\n" +
                 "WHERE v.from <= $snapshot AND $snapshot < v.to" + idConditions(range, params) + "\n" +
                 // DISTINCT: an array that holds the value more than once is one document

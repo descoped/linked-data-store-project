@@ -1,7 +1,6 @@
 package io.descoped.lds.api.persistence.json;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import io.descoped.lds.api.json.JsonNavigationPath;
 import io.descoped.lds.api.persistence.DocumentKey;
 
@@ -43,6 +42,15 @@ public class JsonDocument {
         return jackson == null;
     }
 
+    /**
+     * Visits what the document holds at a path. {@code []} in the path is every element of an array, so a path
+     * may be visited many times. Where the document does not have the path, nothing is visited: a field that is
+     * not there, an array where the path says object, or anything else where it says array.
+     *
+     * @param jsonNavigationPath the path, from the root of the document
+     * @param visitCallback      is given what is at the path, and the path to it with the place of each array
+     *                           element: {@code $.name[1].first}
+     */
     public void traverseField(JsonNavigationPath jsonNavigationPath, BiConsumer<JsonNode, String> visitCallback) {
         LinkedList<String> path = new LinkedList<>();
         path.add(jsonNavigationPath.getPath()[0]);
@@ -50,6 +58,9 @@ public class JsonDocument {
     }
 
     private void doTraverseField(JsonNode node, String[] schemaPath, int index, Deque<String> path, BiConsumer<JsonNode, String> visitCallback) {
+        if (node == null) {
+            return;
+        }
         if (index >= schemaPath.length) {
             visitCallback.accept(node, path.stream().collect(Collectors.joining(".")).replaceAll("\\.\\[", "["));
             return;
@@ -57,15 +68,17 @@ public class JsonDocument {
         String childName = schemaPath[index];
 
         if ("[]".equals(childName)) {
-            ArrayNode arrayNode = (ArrayNode) node;
-            for (int i = 0; i < arrayNode.size(); i++) {
-                JsonNode child = arrayNode.get(i);
+            if (!node.isArray()) {
+                return;
+            }
+            for (int i = 0; i < node.size(); i++) {
+                JsonNode child = node.get(i);
                 path.addLast("[" + i + "]");
                 doTraverseField(child, schemaPath, index + 1, path, visitCallback);
                 path.removeLast();
             }
         } else {
-            // Object node
+            // Object node; anything else has no field
             JsonNode childNode = node.get(childName);
             path.addLast(childName);
             doTraverseField(childNode, schemaPath, index + 1, path, visitCallback);

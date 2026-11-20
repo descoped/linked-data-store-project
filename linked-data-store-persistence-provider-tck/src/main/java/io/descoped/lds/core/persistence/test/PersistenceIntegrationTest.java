@@ -1223,6 +1223,211 @@ public abstract class PersistenceIntegrationTest {
         assertEquals(actualDocuments, expectedLinks);
     }
 
+    /*
+     * A specification with an array of objects and an array of texts, for documents that hold more than it says.
+     */
+    private static Specification peopleSpecification() {
+        return SpecificationBuilder.createSpecificationAndRoot(Set.of(
+                objectNode(SpecificationElementType.MANAGED, "People", Set.of(
+                        arrayNode("name",
+                                objectNode(SpecificationElementType.EMBEDDED, "[]", Set.of(
+                                        stringNode("first"),
+                                        stringNode("last")
+                                ))
+                        ),
+                        arrayNode("tags", stringNode("[]"))
+                ))
+        ));
+    }
+
+    /*
+     * JSON with ' for ", to keep a document on one line readable.
+     */
+    private static JsonNode json(String text) {
+        try {
+            return mapper.readTree(text.replace('\'', '"'));
+        } catch (java.io.IOException e) {
+            throw new IllegalArgumentException(text, e);
+        }
+    }
+
+    private static final ZonedDateTime Y2020 = of(2020, 1, 1, 0, 0, 0, 0, ZoneId.of("Etc/UTC"));
+
+    /*
+     * Writes the document, and reads it at the time it was written.
+     */
+    private JsonNode writeAndRead(Transaction tx, Specification specification, String entity, String id, JsonNode document) {
+        forget(tx, entity, id);
+        persistence.createOrOverwrite(tx, toDocument(namespace, entity, id, document, Y2020), specification).blockingAwait();
+        JsonDocument read = persistence.readDocument(tx, Y2020, namespace, entity, id).blockingGet();
+        return read == null ? null : read.jackson();
+    }
+
+    private void assertReadAsWritten(Transaction tx, Specification specification, String entity, String id, String document) throws JSONException {
+        JsonNode read = writeAndRead(tx, specification, entity, id, json(document));
+        assertThat(read).as("%s, written as %s", id, document).isNotNull();
+        JSONAssert.assertEquals("The document " + id + ", written as " + document, json(document).toString(), read.toString(), true);
+    }
+
+    /**
+     * A provider stores a document as it is given. What the specification does not describe is kept: a field it
+     * does not have, of any kind and at any depth.
+     */
+    @Test
+    public void thatAFieldTheSpecificationDoesNotHaveIsKept() throws JSONException {
+        Specification people = peopleSpecification();
+        try (Transaction tx = persistence.createTransaction(false)) {
+            assertReadAsWritten(tx, specification, "Address", "more-text", "{'city':'Oslo','more':'x'}");
+            assertReadAsWritten(tx, specification, "Address", "more-number", "{'city':'Oslo','more':7,'fraction':1.5}");
+            assertReadAsWritten(tx, specification, "Address", "more-boolean", "{'city':'Oslo','more':true}");
+            assertReadAsWritten(tx, specification, "Address", "more-null", "{'city':'Oslo','more':null}");
+            assertReadAsWritten(tx, specification, "Address", "more-empty-text", "{'city':'','more':''}");
+            assertReadAsWritten(tx, specification, "Address", "more-object", "{'city':'Oslo','more':{'a':1,'b':{'c':'d'}}}");
+            assertReadAsWritten(tx, specification, "Address", "more-array", "{'city':'Oslo','more':['a',2,false,null]}");
+            assertReadAsWritten(tx, specification, "Address", "more-array-of-objects", "{'city':'Oslo','more':[{'a':1},{'a':2,'b':[3,4]},{}]}");
+            assertReadAsWritten(tx, specification, "Address", "more-empty", "{'object':{},'array':[]}");
+            assertReadAsWritten(tx, specification, "Address", "more-name-with-space", "{'my field':'v'}");
+            assertReadAsWritten(tx, specification, "Address", "more-like-a-link", "{'more':'/Address/a'}");
+            assertReadAsWritten(tx, specification, "Person", "more-in-object", "{'firstname':'A','history':{'note':'n','more':{'deep':[1,2]}}}");
+            assertReadAsWritten(tx, people, "People", "more-in-array", "{'name':[{'first':'J','middle':'M'},{'last':'D','more':{'k':[1]}}],'tags':['a']}");
+            assertReadAsWritten(tx, specification, "Address", "more-arrays-in-arrays", "{'grid':[[1,2],[3]],'deep':[[[{'a':[[true]]}],[]],[],[null]]}");
+            assertReadAsWritten(tx, specification, "Address", "more-names", "{'':'no name','7':'digits','007':'more digits','12345678901234567890123':'many digits','9':1,'10':2,'1a':3}");
+            assertReadAsWritten(tx, specification, "Address", "nothing", "{}");
+        }
+    }
+
+    /**
+     * A provider stores a document as it is given, also where the specification describes a field as something
+     * else than the document holds there. Whether a document may be like that is for the validation before a
+     * write to say, not for the store.
+     */
+    @Test
+    public void thatAValueOfAnotherKindThanTheSpecificationSaysIsKept() throws JSONException {
+        Specification people = peopleSpecification();
+        try (Transaction tx = persistence.createTransaction(false)) {
+            assertReadAsWritten(tx, specification, "Address", "kind-null", "{'city':null,'state':'s'}");
+            assertReadAsWritten(tx, specification, "Address", "kind-number-for-text", "{'city':5}");
+            assertReadAsWritten(tx, specification, "Address", "kind-object-for-text", "{'city':{'a':1}}");
+            assertReadAsWritten(tx, specification, "Address", "kind-array-for-text", "{'city':['x','y']}");
+            assertReadAsWritten(tx, specification, "Person", "kind-text-for-number", "{'born':'text','isHuman':'yes'}");
+            assertReadAsWritten(tx, specification, "Person", "kind-text-for-object", "{'history':'text'}");
+            assertReadAsWritten(tx, specification, "Person", "kind-null-for-object", "{'firstname':'A','history':null}");
+            assertReadAsWritten(tx, people, "People", "kind-text-for-array", "{'tags':'text'}");
+            assertReadAsWritten(tx, people, "People", "kind-null-for-array", "{'tags':null,'name':null}");
+            assertReadAsWritten(tx, people, "People", "kind-null-in-array", "{'tags':['a',null],'name':[{},{'first':'x'},null]}");
+        }
+    }
+
+    /**
+     * A field that holds links is read as it was written, also when it holds something that is not a link to an
+     * entity the specification names: nothing, a text that is no link, a link to another entity, a number. Such
+     * a value is not followed as a link; it is the value it is.
+     */
+    @Test
+    public void thatALinkFieldIsReadAsItWasWritten() throws JSONException {
+        try (Transaction tx = persistence.createTransaction(false)) {
+            assertReadAsWritten(tx, specification, "Person", "link-null", "{'firstname':'A','history':{'currentAddress':null}}");
+            assertReadAsWritten(tx, specification, "Person", "link-no-link", "{'history':{'currentAddress':'notalink'}}");
+            assertReadAsWritten(tx, specification, "Person", "link-other-entity", "{'history':{'currentAddress':'/Nope/1'}}");
+            assertReadAsWritten(tx, specification, "Person", "link-number", "{'history':{'currentAddress':5}}");
+            assertReadAsWritten(tx, specification, "Person", "link-array-mixed", "{'history':{'previousAddresses':['/Address/a',null,'notalink','/Address/b']}}");
+            assertReadAsWritten(tx, specification, "Person", "link-not-an-array", "{'history':{'previousAddresses':'/Address/a'}}");
+            assertReadAsWritten(tx, specification, "Person", "link-no-slash", "{'history':{'currentAddress':'Address/more-home'}}");
+            assertReadAsWritten(tx, specification, "Person", "link-no-id", "{'history':{'currentAddress':'/Address/','previousAddresses':['/Address/']}}");
+
+            assertThat(persistence.readLinkedDocuments(tx, Y2020, namespace, "Person", "link-other-entity", JsonNavigationPath.from("$.history.currentAddress"), "Address", Range.unbounded())
+                    .toList().blockingGet()).isEmpty();
+            // a link is written /Entity/id: without its first slash it is a text, and is not followed
+            writeAndRead(tx, specification, "Address", "more-home", json("{'city':'Home'}"));
+            assertThat(persistence.readLinkedDocuments(tx, Y2020, namespace, "Person", "link-no-slash", JsonNavigationPath.from("$.history.currentAddress"), "Address", Range.unbounded())
+                    .toList().blockingGet()).isEmpty();
+        }
+    }
+
+    /**
+     * A link is followed in both directions in a document that holds more than the specification says, next to
+     * the link and around it.
+     */
+    @Test
+    public void thatALinkIsFollowedInADocumentThatHoldsMoreThanTheSpecificationSays() {
+        try (Transaction tx = persistence.createTransaction(false)) {
+            writeAndRead(tx, specification, "Address", "more-home", json("{'city':'Home','more':{'a':1}}"));
+            writeAndRead(tx, specification, "Address", "more-before", json("{'city':'Before'}"));
+            writeAndRead(tx, specification, "Person", "more-linker", json("{'firstname':'L','more':[1,{'x':'y'}],"
+                    + "'history':{'note':'n','currentAddress':'/Address/more-home','previousAddresses':['/Address/more-before','no link'],'more':{'deep':true}}}"));
+
+            assertThat(persistence.readLinkedDocuments(tx, Y2020, namespace, "Person", "more-linker", JsonNavigationPath.from("$.history.currentAddress"), "Address", Range.unbounded())
+                    .map(document -> document.jackson().get("city").asText()).toList().blockingGet()).containsExactly("Home");
+            assertThat(persistence.readLinkedDocuments(tx, Y2020, namespace, "Person", "more-linker", JsonNavigationPath.from("$.history.previousAddresses[]"), "Address", Range.unbounded())
+                    .map(document -> document.jackson().get("city").asText()).toList().blockingGet()).containsExactly("Before");
+            assertThat(persistence.readSourceDocuments(tx, Y2020, namespace, "Address", "more-home", JsonNavigationPath.from("$.history.currentAddress"), "Person", Range.unbounded())
+                    .map(document -> document.key().id()).toList().blockingGet()).containsExactly("more-linker");
+        }
+    }
+
+    /**
+     * A document is found by the text of a field that the specification does not have, as by one that it has.
+     */
+    @Test
+    public void thatADocumentIsFoundByAFieldTheSpecificationDoesNotHave() {
+        String longText = "0123456789012345678901234567890123456789ABCDEFGHIJ";
+        try (Transaction tx = persistence.createTransaction(false)) {
+            writeAndRead(tx, specification, "Address", "find-more", json("{'city':'Oslo','more':'findme','long':'" + longText + "','in':{'deep':{'er':'below'}},'list':['one','two'],'empty':''}"));
+            writeAndRead(tx, specification, "Address", "find-other", json("{'city':'Oslo','more':'other'}"));
+            writeAndRead(tx, specification, "Person", "find-in-known", json("{'history':{'note':'in a known object'}}"));
+
+            assertThat(idsFound(tx, "Address", "$.more", "findme")).containsExactly("find-more");
+            assertThat(idsFound(tx, "Address", "$.long", longText)).containsExactly("find-more");
+            assertThat(idsFound(tx, "Address", "$.in.deep.er", "below")).containsExactly("find-more");
+            assertThat(idsFound(tx, "Address", "$.list[]", "two")).containsExactly("find-more");
+            assertThat(idsFound(tx, "Address", "$.empty", "")).containsExactly("find-more");
+            assertThat(idsFound(tx, "Address", "$.more", "nothing has this")).isEmpty();
+            assertThat(idsFound(tx, "Person", "$.history.note", "in a known object")).containsExactly("find-in-known");
+
+            // a field that only some elements of an array have
+            writeAndRead(tx, peopleSpecification(), "People", "find-in-array", json("{'name':[{'first':'J','middle':'M'},{'last':'D'}]}"));
+            assertThat(idsFound(tx, "People", "$.name[].middle", "M")).containsExactly("find-in-array");
+            assertThat(idsFound(tx, "People", "$.name[].last", "D")).containsExactly("find-in-array");
+            assertThat(idsFound(tx, "People", "$.name[].middle", "D")).isEmpty();
+        }
+    }
+
+    private List<String> idsFound(Transaction tx, String entity, String path, String value) {
+        return persistence.findDocument(tx, Y2020, namespace, entity, JsonNavigationPath.from(path), value, Range.unbounded())
+                .map(document -> document.key().id()).toList().blockingGet();
+    }
+
+    /**
+     * A document of an entity that the specification does not have is stored and read like any other. Nothing
+     * says where its links are, so it has none.
+     */
+    @Test
+    public void thatADocumentOfAnEntityTheSpecificationDoesNotHaveIsKept() throws JSONException {
+        try (Transaction tx = persistence.createTransaction(false)) {
+            assertReadAsWritten(tx, specification, "Stranger", "stranger", "{'name':'S','at':'/Address/a','more':{'list':[1,'two',{'three':3}]}}");
+            assertThat(idsFound(tx, "Stranger", "$.name", "S")).containsExactly("stranger");
+        }
+    }
+
+    /**
+     * Several versions of one document that are written together, not in the order of time: each is valid from
+     * its own time until the next one.
+     */
+    @Test
+    public void thatVersionsOfADocumentWrittenTogetherAreEachValidUntilTheNext() {
+        try (Transaction tx = persistence.createTransaction(false)) {
+            forget(tx, "Address", "together");
+            persistence.createOrOverwrite(tx, Flowable.just(Y1701, Y1703, Y1700)
+                    .map(version -> toDocument(namespace, "Address", "together", createAddress(String.valueOf(version.getYear()), "", ""), version)), specification).blockingAwait();
+
+            assertThat(versionsOf(tx, "together")).containsExactly("1700:1700", "1701:1701", "1703:1703");
+            assertThat(cityAt(tx, "together", Y1700.minusYears(1))).isNull();
+            assertThat(cityAt(tx, "together", Y1700.plusMonths(6))).isEqualTo("1700");
+            assertThat(cityAt(tx, "together", Y1702)).isEqualTo("1701");
+            assertThat(cityAt(tx, "together", Y1703.plusYears(5))).isEqualTo("1703");
+        }
+    }
+
     protected JsonDocument toDocument(String namespace, String entity, String id, JsonNode json, ZonedDateTime timestamp) {
         return new JsonDocument(new DocumentKey(namespace, entity, id, timestamp), json);
     }

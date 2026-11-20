@@ -123,4 +123,61 @@ public class PathComparatorTest {
                 "$.a[10].b[10]"
         );
     }
+
+    @Test
+    public void testSortArraysInArrays() {
+        map.put("$.a[1][0]", "");
+        map.put("$.a[0][10]", "");
+        map.put("$.a[0][9]", "");
+        map.put("$.a[10][0].b", "");
+        map.put("$.a[9][0].b", "");
+
+        assertThat(map.keySet()).containsExactly(
+                "$.a[0][9]",
+                "$.a[0][10]",
+                "$.a[1][0]",
+                "$.a[9][0].b",
+                "$.a[10][0].b"
+        );
+    }
+
+    @Test
+    public void testSortNamesOfDigits() {
+        map.put("$.12345678901234567890123", "");
+        map.put("$.9", "");
+        map.put("$.10", "");
+        map.put("$.007", "");
+        map.put("$.7", "");
+        map.put("$.", "");
+
+        // "$." is the field without a name: one part less than the others, so it is first
+        assertThat(map.keySet()).containsExactly(
+                "$.",
+                "$.7",
+                "$.007",
+                "$.9",
+                "$.10",
+                "$.12345678901234567890123"
+        );
+    }
+
+    @Test
+    public void testNamesOfDigitsComeBeforeOtherNames() {
+        map.put("$.1a", "");
+        map.put("$.10", "");
+        map.put("$.9", "");
+        map.put("$.a", "");
+        map.put("$.9a", "");
+
+        assertThat(map.keySet()).containsExactly("$.9", "$.10", "$.1a", "$.9a", "$.a");
+        assertThat(map).containsKeys("$.9", "$.10", "$.1a", "$.9a", "$.a");
+    }
+
+    @Test
+    public void testPathsOfTheSamePartsAreNotTheSamePath() {
+        map.put("$.a[0]", "a place");
+        map.put("$.a.0", "a name");
+
+        assertThat(map).hasSize(2).containsEntry("$.a[0]", "a place").containsEntry("$.a.0", "a name");
+    }
 }

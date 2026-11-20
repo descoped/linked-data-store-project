@@ -9,7 +9,6 @@ import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.api.specification.SpecificationElementType;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -176,22 +175,19 @@ class Neo4jRoundTripTest {
     }
 
     /**
-     * As the provider is today: the node of the array is written for a null as for an empty array, so the two
-     * read the same.
+     * A null where the specification says array is read as the null it is.
      */
     @Test
-    void anArrayWrittenAsNullIsReadAsAnEmptyArray() throws IOException {
-        assertThat(writeAndRead("ArrayOfObjects", "null-array.json")).isEqualTo(load("empty-array.json"));
+    void aNullInPlaceOfAnArrayIsReadAsNull() throws IOException {
+        assertThat(writeAndRead("ArrayOfObjects", "null-array.json")).isEqualTo(load("null-array.json"));
     }
 
     @Test
-    @Disabled("An array directly inside an array is written, and cannot be read: FlattenedDocumentToJson in the API module does not rebuild it, for any provider")
     void arraysInArrays() throws IOException {
         assertThat(writeAndRead("DeeplyNestedArray", "deeply-nested-array.json")).isEqualTo(load("deeply-nested-array.json"));
     }
 
     @Test
-    @Disabled("An array directly inside an array is written, and cannot be read: FlattenedDocumentToJson in the API module does not rebuild it, for any provider")
     void objectsInArraysInArrays() throws IOException {
         assertThat(writeAndRead("MissingAndNull", "missing-and-null.json")).isEqualTo(load("missing-and-null.json"));
     }
