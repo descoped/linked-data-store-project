@@ -122,9 +122,9 @@ as written; [The model](user/model.md#shapes-that-do-not-work-as-written) lists 
 
 ### Saga
 
-The unit of work of one write: an ordered set of steps that LDS records in the saga log as it runs them, so that
-a write that has started also completes, when a step failed or LDS stopped before the end (forward recovery). The first step writes the transaction
-log entry; the steps for persistence and for the search index follow it, in parallel. Code:
+The unit of work of one write: an ordered set of steps that LDS records in the saga log as it runs them, so that a write
+that has started also completes, when a step failed or LDS stopped before the end (forward recovery). The first step
+writes the transaction log entry; the steps for persistence and for the search index follow it, in parallel. Code:
 `SagaExecutionCoordinator`, on Cantara distributed saga.
 
 ### Saga log
@@ -159,10 +159,10 @@ An implementation of the persistence interface (`RxJsonPersistence`), found with
 
 ### Fragment
 
-One leaf value of one version of one document, with its JSON path, or one piece of it: the memory provider stores a
-text longer than `persistence.fragment.capacity` as several fragments. It is the unit of storage of
-the providers that implement `RxPersistence` (memory and PostgreSQL). A document is shredded into fragments when it is written, and
-rebuilt from an ordered stream of fragments when it is read.
+One leaf value of one version of one document, with its JSON path, or one piece of it: the memory provider stores a text
+longer than `persistence.fragment.capacity` as several fragments. It is the unit of storage of the providers that
+implement `RxPersistence` (memory and PostgreSQL). A document is shredded into fragments when it is written, and rebuilt
+from an ordered stream of fragments when it is read.
 
 ### Reactive stream
 
