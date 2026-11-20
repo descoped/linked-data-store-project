@@ -587,10 +587,9 @@ Not finished: a GraphQL schema with no type with `@domain` gives no specificatio
 A list of an entity without `@link` (`support: [Support]`) is held by value when that entity has a field whose type is
 an entity: `AddDefinitionVisitor.visitGraphQLList` then writes the field as `"type": "object"` and calls
 `visitEmbeddedType`, which writes each list field of the entity into it as a list of links. The specification makes it
-`EMBEDDED`, since it has no `_link_property_support`, so the REST API reaches it and the links in it by path. It came in
-November 2019 (`bdcc5b1`, `5b4a2ff`), with a test model that has `support: [support]` in `provisionagreement`; that
-model is no longer in the repository. A list of an entity that has no such field is a list of links
-(`visitListLinkProperty`), and a single field of an entity without `@link` is a link.
+`EMBEDDED`, since it has no `_link_property_support`, so the REST API reaches it and the links in it by path. A list of
+an entity that has no such field is a list of links (`visitListLinkProperty`), and a single field of an entity without
+`@link` is a link.
 
 Not finished: `visitEmbeddedType` writes every list field of the entity as a list of links, with
 `_link_property_<field>` naming the type of the items, also for `[String]`. The other fields are left out, so they

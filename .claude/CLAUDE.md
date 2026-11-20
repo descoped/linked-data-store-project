@@ -242,6 +242,10 @@ one document for each part of the code). `docs/README.md` is the index. Keep the
 - **Only what the code does.** A statement is one found in the code, in a test or by running LDS, and every
   request shown was run, with the answer that came. A change of behaviour changes the document in the same pull
   request.
+- **The code as it is, not its history.** LDS went through several designs. The documents describe the current
+  code only: no commit ids, no dates of changes, no code or test models that were removed. Earlier code and the
+  documents of earlier versions are read to understand the thinking behind the current code, and are not
+  described.
 - **What is unfinished is said where the reader meets it**, in a paragraph that starts with `Not finished:`. When
   the fault is corrected, the paragraph goes.
 - **Plain words, present tense, no history**: not how the code got this way, no earlier hosts or models.

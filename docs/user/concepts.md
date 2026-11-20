@@ -816,11 +816,10 @@ Schema validation error: [$: required property 'name' not found]
 The versions that are stored are not checked again when LDS is started with another model. They are given back
 as they were written.
 
-Not finished: the model is not kept on the timeline. A snapshot holds the documents of its time, not the model
-they were written under. Every write goes into the transaction log with a place for the model it was checked
-against, `schema`, which a test of LDS fills with the name of a model version, `testng-schema-v1.0`. LDS itself
-writes the text `TODO` there. When LDS is started with another model, every snapshot, T1 as well as Tn, is checked
-and served with that model.
+Not finished: the model is not kept on the timeline. A snapshot holds the documents of its time, not the model they were
+written under. Every write goes into the transaction log with a field `schema`, and LDS writes the text `TODO` in it, so
+nothing says which model a write was checked against. When LDS is started with another model, every snapshot, T1 as well
+as Tn, is checked and served with that model.
 
 ## Providers
 
