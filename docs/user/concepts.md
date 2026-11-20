@@ -1,10 +1,10 @@
 # Concepts
 
-This document explains what Linked Data Store (LDS) is and the ideas it is built on: document, entity, namespace,
-id, version, link, the three kinds of resource, model, provider, and what happens to a write. It is for people who
-use LDS, and it is the document to read before the references. A few requests are shown to make an idea concrete.
-The complete description of every request is in [the REST API](rest-api.md) and
-[the GraphQL API](graphql-api.md).
+This document explains what Linked Data Store (LDS) is and the ideas it is built on: document, entity type,
+namespace, id, version and valid time, link, the three kinds of resource, model, provider, and what happens to a
+write. It is for people who use LDS, and it is the document to read before the references. A few requests are shown
+to make an idea concrete. The complete description of every request is in [the REST API](rest-api.md) and
+[the GraphQL API](graphql-api.md). Each term has one meaning, given in [the glossary](../glossary.md).
 
 ## What LDS is
 
@@ -12,14 +12,17 @@ LDS is a server that keeps JSON documents and gives access to them over HTTP: a 
 and a GraphQL API that reads. It stands between the applications that work with the documents and the database
 that keeps them. Four ideas make it what it is:
 
-- **A model.** LDS reads a model when it starts. The model says which kinds of document there are and what a
-  document of each kind holds. The addresses of the REST API and the queries of the GraphQL API follow from the
-  model.
-- **Time.** LDS is a time machine. A write adds a version of a document that is valid from a time, and leaves the
-  other versions as they are. A read gives the document as it was at the time asked for.
-- **Links.** A document can point at other documents. A link can be followed from both ends.
-- **Providers.** LDS does not keep the documents itself. A persistence provider keeps them, and a search provider
-  finds them by text. Each is chosen by configuration, and the requests stay the same.
+- **A model.** LDS reads a [model](../glossary.md#model) when it starts. The model declares the entity types, the kinds
+  of document there are, and what a document of each entity type holds. The addresses of the REST API and the queries of
+  the GraphQL API follow from the model.
+- **Time.** LDS is a [time machine](../glossary.md#time-machine). A write adds a [version](../glossary.md#version) of a
+  document that holds from its [valid time](../glossary.md#valid-time), and leaves the other versions as they are. A
+  read is an [as-of read](../glossary.md#as-of-read): it gives the document as it was at the time asked for.
+- **Links.** A document can point at other documents: a [link](../glossary.md#link) is a typed reference. A link can be
+  followed from both ends.
+- **Providers.** LDS does not keep the documents itself. A [persistence provider](../glossary.md#persistence-provider)
+  keeps them, and a [search index provider](../glossary.md#search-index-provider) finds them by text. Each is chosen by
+  configuration, and the requests stay the same.
 
 Version `3.0.0` of LDS is in development and nothing is released. Where something does not work as a user would
 expect, this document says so in a paragraph that starts with "Not finished:".
@@ -27,7 +30,7 @@ expect, this document says so in a paragraph that starts with "Not finished:".
 ## About the examples
 
 The examples were run against LDS `3.0.0-SNAPSHOT` with nothing configured but its port. LDS then has the example
-model, with the entities `Person` and `Company`, and keeps everything in memory.
+model, with the entity types `Person` and `Company`, and keeps everything in memory.
 [Getting started](getting-started.md) tells how to start LDS that way.
 
 The examples start with an LDS that has no documents. LDS in memory has none when it starts, so start it anew if
@@ -47,22 +50,22 @@ formatted. A query with variables is sent as JSON.
 
 ## Document, entity, namespace and id
 
-A **document** is a JSON object: what LDS keeps and gives back.
+A [**document**](../glossary.md#document) is a JSON object: what LDS keeps and gives back.
 
-An **entity** is a kind of document, named in the model: `Person`, `Company`. Every document belongs to one entity.
-The name is written as the model writes it, and upper and lower case letters count: `Company` is an entity of the
-example model, `company` is not.
+An [**entity type**](../glossary.md#entity-type) is a kind of document, named in the model: `Person`, `Company`. Every
+document belongs to one entity type. The name is written as the model writes it, and upper and lower case letters count:
+`Company` is an entity type of the example model, `company` is not. In an address its place is `{Entity}`.
 
-A **namespace** is the first part of every address of a document. One LDS serves one namespace. Its name is the
-value of the configuration key `namespace.default`, which is `ns` when nothing else is set. An address with
-another namespace, such as `/other/Company/acme`, is answered `400` with `Unsupported namespace: "other"`. The
-namespace is kept with every document, and with PostgreSQL and Neo4j one database can hold the documents of
-several namespaces.
+A [**namespace**](../glossary.md#namespace) is the first part of every address of a document. One LDS serves one
+namespace. Its name is the value of the configuration key `namespace.default`, which is `ns` when nothing else is set.
+An address with another namespace, such as `/other/Company/acme`, is answered `400` with
+`Unsupported namespace: "other"`. The namespace is kept with every document, and with PostgreSQL and Neo4j one database
+can hold the documents of several namespaces.
 
-An **id** names one document among the documents of its entity. The one who writes the document chooses the id. LDS
-does not make ids.
+An [**id**](../glossary.md#id) names one document among the documents of its entity type. The one who writes the
+document chooses the id. LDS does not make ids.
 
-Together they are the address of a document:
+Together they are the [document key](../glossary.md#document-key), and the address of a document:
 
 ```
 /{namespace}/{Entity}/{id}
@@ -71,10 +74,10 @@ Together they are the address of a document:
 | Part | In `/ns/Company/acme` | What it is |
 |---|---|---|
 | namespace | `ns` | The namespace the running LDS serves. |
-| entity | `Company` | The kind of document, named as the model names it. |
+| entity | `Company` | The entity type, named as the model names it. |
 | id | `acme` | Chosen by the one who writes the document. |
 
-Write a document of the entity `Company` with the id `acme`, and read it:
+Write a document of the entity type `Company` with the id `acme`, and read it:
 
 ```sh
 curl -X PUT "$LDS/ns/Company/acme" -H 'Content-Type: application/json' -d '{"name": "Acme"}'
@@ -108,20 +111,19 @@ more digits than a 64-bit floating point number holds, come back changed: `12345
 
 LDS is a time machine. It does not keep one state of a document, it keeps the document through time:
 
-- A write does not change the document that is there. It adds a **version**: the whole document as it is from a
-  time on.
-- The time comes with the write, in the query parameter `timestamp`. A write without it gets the time at which
-  LDS receives the request.
-- The time can be in the past, the present or the future. A version for a time in the future is kept now, and
-  becomes the document that is read when that time has come.
-- A version is valid from its time until the time of the next version.
-- A read gives the version that is valid at the time asked for: the latest version whose time is not after it. A
-  read without a time asks for now. At a time before the first version there is no document.
-- Versions can be written in any order of time. A write at the exact time of a version that is there replaces
-  that version. No other version is changed.
+- A write does not change the document that is there. It adds a **version**: the whole document as it is from
+  its **valid time** on.
+- The valid time comes with the write, in the query parameter `timestamp`. A write without it gets the time at
+  which LDS receives the request.
+- The valid time can be in the past, the present or the future. A version for a time in the future is kept now,
+  and becomes the document that is read when that time has come.
+- A version holds from its valid time until the valid time of the next version.
+- An **as-of read** gives the version that is valid at the time asked for: the latest version whose valid time is
+  not after it. A read without a time is as of now. At a time before the first version there is no document.
+- Versions can be written in any order of valid time. A write at the exact valid time of a version that is there
+  replaces that version. No other version is changed.
 
-Three writes of the company `fjord`, each with the time from which it is valid. The last one written is the one
-in the middle:
+Three writes of the company `fjord`, each with its valid time. The last one written is the one in the middle:
 
 ```sh
 curl -X PUT "$LDS/ns/Company/fjord?timestamp=2020-01-01T00:00:00Z" -H 'Content-Type: application/json' \
@@ -132,7 +134,7 @@ curl -X PUT "$LDS/ns/Company/fjord?timestamp=2023-01-01T00:00:00Z" -H 'Content-T
      -d '{"name": "Fjord Seafood"}'
 ```
 
-Each was answered `201` with a `saga-execution-id`. What a read gives depends on the time it asks for:
+Each was answered `201` with a `saga-execution-id`. What an as-of read gives depends on the time it asks for:
 
 | Request | Answer |
 |---|---|
@@ -161,7 +163,7 @@ gantt
     2031-06 gives Fjord Group     : milestone, 2031-06-01, 0d
 ```
 
-Every version of a document, oldest first, is its timeline:
+Every version of a document, ordered by valid time, is its [timeline](../glossary.md#timeline):
 
 ```sh
 curl "$LDS/ns/Company/fjord?timeline"
@@ -185,12 +187,12 @@ curl "$LDS/ns/Company/fjord?timeline"
 ```
 
 A time is written with an offset or with `Z`, as in `2020-01-01T00:00:00Z`. A time without one is refused with
-`400`. LDS keeps the time of a version in UTC, so the same instant written with another offset is the same
+`400`. LDS keeps the valid time of a version in UTC, so the same instant written with another offset is the same
 version: a write to `fjord` with `timestamp=2020-01-01T01:00:00%2B01:00` replaced the first version, and the
 timeline still had three. (In an address the plus sign of an offset is written `%2B`.)
 
-The GraphQL API reads at a time too. There the time is given once for a whole query, in the query parameter
-`snapshot`, and every document the query reaches is read at that time.
+The GraphQL API makes as-of reads too. There the time is given once for a whole query, in the query parameter
+`snapshot`, and every document the query reaches is read as of that time.
 
 Not finished: the GraphQL API does not read a time as the REST API does. A `snapshot` that is not a time, or that
 has no offset, is not refused: the query is answered as of now. And with LDS in memory, a `snapshot` with another
@@ -199,10 +201,10 @@ same time. Write a `snapshot` with `Z`.
 
 ### A delete in time
 
-A delete does not take a document away. It adds a version that says: from this time the document is deleted. The
-versions before that time stay and are still read at their times, and so do the versions after it. From the time
-of the delete until the next version, the document is not there: a read of it is answered `404`, and it is not
-in the list of the documents of its entity.
+A delete does not take a document away. It adds a version, a [**tombstone**](../glossary.md#tombstone), that says: from
+this time the document is deleted. The versions before that time stay and an as-of read still finds them at their times,
+and so do the versions after it. From the time of the delete until the next version, the document is not there: a read
+of it is answered `404`, and it is not in the list of the documents of its entity type.
 
 Delete `fjord` from the start of 2025:
 
@@ -238,7 +240,7 @@ gantt
     2031-06 gives Fjord Group     : milestone, 2031-06-01, 0d
 ```
 
-In the timeline the delete is a version with an empty document:
+In the timeline the tombstone is a version with an empty document:
 
 ```json
 [
@@ -261,20 +263,21 @@ In the timeline the delete is a version with an empty document:
 ]
 ```
 
-A delete at the time of a version replaces that version, as a write does, and a write at the time of a delete
-replaces the delete. A delete is accepted for an id that was never written: the timeline of that id then has a
-deleted version and nothing else. No request of LDS takes a version away. A version changes only when a write or
-a delete at its exact time replaces it.
+A delete at the valid time of a version replaces that version, as a write does, and a write at the time of a
+delete replaces the tombstone. A delete is accepted for an id that was never written: the timeline of that id then
+has a tombstone and nothing else. No request of LDS takes a version away. A version changes only when a write or a
+delete at its exact valid time replaces it.
 
 ## Link
 
-A **link** is a field of a document that points at another document. The model says which fields are links, and
-which entities each of them may point at. In the document a link is a text of the form `/Entity/id`, for example
-`/Company/acme`. A field holds one link, or a list of links. A link has no namespace: it points at a document of
-the same namespace.
+A **link** is a typed reference from a field of a document to another document. The model says which fields are links,
+and which entity types each of them may point at. In the document a link is a text of the form `/Entity/id`, for example
+`/Company/acme`. A field holds one link, or a list of links. A link has no namespace: it points at a document of the
+same namespace.
 
-When a document is written, LDS checks that a link has this form and names an entity that the field may link to.
-LDS does not check that the document it points at exists. This is on purpose:
+When a document is written, LDS checks that a link has this form and names an entity type that the field may
+link to. LDS does not check that the document it points at exists, so a link may be a dangling reference. This is
+on purpose:
 
 - Documents can be written in any order. The one that points can come before the one it points at.
 - Documents live in time. The document a link points at may get its first version at a later time than the
@@ -284,8 +287,8 @@ Not finished: a link inside a part of a document is not always checked. With a m
 document was written whose link, in a part that is an element of a list, was the text `not a link`.
 [The model](model.md) says what is checked.
 
-A link is followed at the time of the read. It leads to the document it points at as that document was at that
-time, and it leads nowhere when there is no such document at that time.
+A link is resolved when it is read, at the time of the read. It leads to the document it points at as that
+document was at that time, and it leads nowhere when there is no such document at that time.
 
 Write a person whose `employer` is a company that does not exist:
 
@@ -297,8 +300,8 @@ curl -X PUT "$LDS/ns/Person/ola?timestamp=2020-01-01T00:00:00Z" -H 'Content-Type
      }'
 ```
 
-The write is answered `201`. The REST API gives the link as the text it is. The GraphQL API follows it, and here
-it leads nowhere:
+The write is answered `201`. The REST API gives the link as the text it is. The GraphQL API resolves it, and here it
+leads nowhere:
 
 ```sh
 curl "$LDS/graphql" -H 'Content-Type: application/graphql' \
@@ -362,8 +365,8 @@ curl "$LDS/graphql?snapshot=2020-06-01T00:00:00Z" -H 'Content-Type: application/
 }
 ```
 
-A link can be read from the other end too. The example model gives the other end of `employer` the name
-`employees`, so a company can be asked who links to it:
+A link can be read from the other end too, as a [reverse link](../glossary.md#reverse-link). The example model gives the
+other end of `employer` the name `employees`, so a company can be asked who links to it:
 
 ```sh
 curl "$LDS/graphql" -H 'Content-Type: application/graphql' \
@@ -424,17 +427,17 @@ gantt
 Asked from the other end, `nordlys` has `ola` among its `employees`: that is the reverse link.
 
 A delete does not look at links either. A document that other documents link to can be deleted. The links stay
-in those documents as they are, and lead nowhere from the time of the delete.
+in those documents as they are, and lead nowhere from the time of the delete: they are dangling references.
 
 ## The three kinds of resource
 
-The REST API has three kinds of resource. All three are read at a time and written at a time, as described
-above.
+The REST API has three kinds of resource. All three are read with an as-of read and written at a valid time, as
+described above.
 
 | Kind | Address | What it is |
 |---|---|---|
-| The whole document | `/{namespace}/{Entity}/{id}` | One document. Without the id, the address is the list of the documents of the entity. |
-| A part of a document | `/{namespace}/{Entity}/{id}/{field}` | One field of the document, or a field deeper in it, addressed by its path. It is a value, an object or a list. |
+| The whole document | `/{namespace}/{Entity}/{id}` | One document. Without the id, the address is the list of the documents of the entity type. |
+| A part of a document | `/{namespace}/{Entity}/{id}/{field}` | One field of the document, or a field deeper in it, addressed by its [path](../glossary.md#path). It is a value, an embedded object or a list. |
 | A link | `/{namespace}/{Entity}/{id}/{link field}/{TargetEntity}/{target id}` | One link from the document to another document. It is there or it is not. |
 
 In its own messages LDS calls them a managed resource, an embedded resource and a reference resource.
@@ -504,10 +507,10 @@ curl "$LDS/ns/Person/kari"
 }
 ```
 
-A write to a part or to a link is a write of the whole document. LDS reads the document as it is at the time of
-the write, changes it, and writes it as a new version. After the write of the document and the write of the link,
-the timeline of `kari` had two versions: one without the link and one with it. So a part or a link can be written
-only to a document that is there at that time; otherwise the answer is `404` with no body.
+A write to a part or to a link is a write of the whole document. LDS reads the document as it is at the valid time of
+the write, changes it, and writes it as a new version. After the write of the document and the write of the link, the
+timeline of `kari` had two versions: one without the link and one with it. So a part or a link can be written only to a
+document that is there at that time; otherwise the answer is `404` with no body.
 
 Not finished: writes to parts and links of one document are not kept apart. Two that run at the same time each
 read the document, and each writes it without the change of the other. With LDS in memory, 20 links added to one
@@ -521,17 +524,17 @@ Which paths a model gives, and every method and answer, is in [the REST API](res
 
 ## The model
 
-The **model** says what LDS keeps: the entities, the fields of the documents of each entity and the kind of value
-of each field, the fields a document must have, and which fields are links and to which entities. A model is
-written in one of two forms:
+The **model** says what LDS keeps: the entity types, the fields of the documents of each entity type and the kind
+of value of each field, the fields a document must have, and which fields are links and to which entity types. A
+model is written in one of two forms:
 
 - a GraphQL schema, in one file;
-- JSON Schema 2020-12 files, one file for each entity.
+- JSON Schema 2020-12 files, one file for each entity type.
 
-This is the entity `Person` of the example model, a GraphQL schema. `@domain` makes the type an entity. `!` marks
-a field that a document must have. `@link` makes a field a link: `employer` is one link to a `Company`, `friends`
-is a list of links to documents of `Person`. `Address` is a type without `@domain`, an embedded type: it is not
-an entity, and its values are parts of the documents it is used in.
+This is the entity type `Person` of the example model, a GraphQL schema. `@domain` makes the type an entity type.
+`!` marks a field that a document must have. `@link` makes a field a link: `employer` is one link to a `Company`,
+`friends` is a list of links to documents of `Person`. `Address` is a type without `@domain`, an embedded type: it
+is not an entity type, and its values are embedded objects, parts of the documents they are used in.
 
 ```graphql
 type Person @domain {
@@ -570,42 +573,44 @@ flowchart LR
 ```
 
 - **A value**: a text, a number, `true` or `false`, a date-time, the name of an enum, or a list of them.
-- **An embedded object**, when the type of the field is an embedded type, a type without `@domain`: `address` is
-  an `Address`. A list of them is written `[Chapter]`. The object is part of the document it is in. It has no id
-  and no versions of its own; it is written and read with its document, and it can be reached by its path, as
+- [**An embedded object**](../glossary.md#embedded-object), when the type of the field is an embedded type, a type
+  without `@domain`: `address` is an `Address`. A list of them is written `[Chapter]`. It is a value object, and the
+  document holds it by composition: the object is part of the document it is in. It has no id and no versions of its
+  own; it is written and read with its document, and it can be reached by its path, as
   [the three kinds of resource](#the-three-kinds-of-resource) shows. An embedded type has fields of the same three
   kinds in its turn.
-- **A link**, when the type of the field is an entity and the field has `@link`: the text `/Entity/id`, or a list
-  of them. The document it
-  points at is not copied into this one. It is a document of its own, with versions of its own, and a read
-  follows the link to that document as it is at the time the read asks for (see
-  [snapshots](#snapshots-the-time-machine)). A field may also link to a document of one of several entities: in a
-  GraphQL schema the type of the field is then a union of them, and in JSON Schema files the field names each.
+- **A link**, when the type of the field is an entity type and the field has `@link`: the text `/Entity/id`, or a list
+  of them. A link is a typed reference: the document it points at is not copied into this one. It is a document of its
+  own, with versions of its own, so between the two documents there is association, not composition. A read resolves the
+  link to that document as it is at the time the read asks for (see [snapshots](#snapshots-the-time-machine)). A field
+  may also link to a document of one of several entity types: in a GraphQL schema the type of the field is then a union
+  of them, and in JSON Schema files the field names each.
 
-A field whose type is an entity can also hold the values of that entity in the document itself, as an embedded
-object: a copy, not a link. That is a list of an entity without `@link`, such as `support: [Support]`, where the
-entity `Support` has a link of its own (`technical: [Contact] @link`). The values are then part of the document
-they are in, as an embedded object is, and are reached by their path: `/ns/Agreement/a1/support`, and the link
-inside it at `/ns/Agreement/a1/support/technical/Contact/c1`. They have no id and no versions of their own, and a
-later version of a `Support` document does not change them. Any other field whose type is an entity is read as a
-link when `@link` is left out: `owner: Support` holds the text `/Support/id`.
+A field whose type is an entity type can also hold the values of that entity type in the document itself, as an embedded
+object: a copy, not a link. That is a list of an entity type without `@link`, such as `support: [Support]`, where the
+entity type `Support` has a link of its own (`technical: [Contact] @link`). The values are then part of the document
+they are in, as an embedded object is, and are reached by their path: `/ns/Agreement/a1/support`, and the link inside it
+at `/ns/Agreement/a1/support/technical/Contact/c1`. They have no id and no versions of their own, and a later version of
+a `Support` document does not change them. Any other field whose type is an entity type is read as a link when `@link`
+is left out: `owner: Support` holds the text `/Support/id`.
 
 Not finished: the copy does not work as written. The field holds one object, not a list: a list is refused with
-`$.support: array found, object expected`. Of the fields of the entity each list is read as a list of links, also a list
-of texts, and the others are not checked: `level` is taken as it comes. The GraphQL API still reads the field as a list,
-and answers it with `null` and the error `Can't resolve value (/AgreementById/support) : type mismatch error, expected
-type LIST`. [The model](model.md#shapes-that-do-not-work-as-written) lists it with the other shapes.
+`$.support: array found, object expected`. Of the fields of the entity type each list is read as a list of links, also a
+list of texts, and the others are not checked: `level` is taken as it comes. The GraphQL API still reads the field as a
+list, and answers it with `null` and the error
+`Can't resolve value (/AgreementById/support) : type mismatch error, expected type LIST`.
+[The model](model.md#shapes-that-do-not-work-as-written) lists it with the other shapes.
 
-Not finished: a field whose type is an interface is none of the three. The fields of the interface become fields
-of the entity, and the field itself is not checked. [The model](model.md#shapes-that-do-not-work-as-written) lists
-this with other shapes LDS does not read as they are written.
+Not finished: a field whose type is an interface is none of the three. The fields of the interface become fields of the
+entity type, and the field itself is not checked. [The model](model.md#shapes-that-do-not-work-as-written) lists this
+with other shapes LDS does not read as they are written.
 
 ### Checked when a document is written
 
 LDS reads the model once, when it starts. To change the model, LDS is started again with the new one.
 
-Before a document is written, LDS checks it against the model. A document that does not fit is refused with
-`400` and a text that says what is wrong, and nothing is written:
+Before a document is written, LDS checks it against the model ([schema validation](../glossary.md#schema-validation)). A
+document that does not fit is refused with `400` and a text that says what is wrong, and nothing is written:
 
 ```sh
 curl -X PUT "$LDS/ns/Person/per" -H 'Content-Type: application/json' -d '{"name": 7}'
@@ -624,8 +629,8 @@ Schema validation error: Illegal linked-domain: "Person". Navigation: employer: 
 Not finished: the check does not cover everything a model says. With the example model the value of `address` is
 not checked: a person was written with `"address":7`, and another with an address that has no `city`.
 
-The addresses follow the model as well. A request for an entity the model does not have, such as
-`/ns/Robot/r2`, is answered `400` with `Not a managed resource name: "Robot"`.
+The addresses follow the model as well. A request for an entity type the model does not have, such as `/ns/Robot/r2`, is
+answered `400` with `Not a managed resource name: "Robot"`.
 
 The two forms are not equal in one thing: LDS makes its GraphQL API from a GraphQL schema, so a model given as
 JSON Schema files has the REST API only.
@@ -635,9 +640,10 @@ How to write a model, what exactly LDS checks in a document and what it does not
 
 ## Snapshots: the time machine
 
-A **snapshot** is what LDS keeps, as it was at one time: every document in the version that is valid at that time,
-and every link followed at that time. A read asks for a snapshot by its time: `timestamp` in the REST API,
-`snapshot` in the GraphQL API, and now when no time is given. T1, T2 and Tn are three snapshots of one history:
+A [**snapshot**](../glossary.md#snapshot) is what LDS keeps, the whole namespace, as of one time T: every document in
+the version that is valid at T, and every link resolved as of T. An as-of read asks for a snapshot by its time:
+`timestamp` in the REST API, `snapshot` in the GraphQL API, and now when no time is given. T1, T2 and Tn are three
+snapshots of one history:
 
 ```mermaid
 %%{init: {"gantt": {"leftPadding": 150, "fontSize": 15, "sectionFontSize": 15, "barHeight": 28, "barGap": 8}}}%%
@@ -660,7 +666,7 @@ gantt
     Tn = now (2026-11)            : milestone, 2026-11-20, 0d
 ```
 
-The snapshots of that history: every document as it was at T, and every link followed at T.
+The snapshots of that history: every document as it was at T, and every link resolved as of T.
 
 ```mermaid
 flowchart TB
@@ -796,12 +802,14 @@ The writes were answered `201`, and the delete `204`. The answers to the query, 
 }
 ```
 
-A snapshot is whole: a link is not followed to the document as it is now, but as it was at the time of the
-snapshot. At T2 `nordlys` was there and `ola` worked for it; at Tn `nordlys` is deleted (`GET
-/ns/Company/nordlys` is answered `404`) and the earlier link leads nowhere, while T2 still gives it.
+A snapshot is whole: a link is not resolved to the document as it is now, but as it was at the time of the
+snapshot. At T2 `nordlys` was there and `ola` worked for it; at Tn `nordlys` is deleted, its version is a
+tombstone (`GET /ns/Company/nordlys` is answered `404`), and the earlier link leads nowhere, while T2 still gives
+it.
 
-The model is the same for every snapshot. LDS reads one model when it starts, and uses it for every time: a write is
-checked against it whatever time the write is for, and the GraphQL API is made from it, the same for T1 as for Tn.
+The model is the same for every snapshot. LDS reads one model when it starts, and uses it for every time: a write
+is checked against it whatever valid time the write has, and the GraphQL API is made from it, the same for T1 as
+for Tn.
 A person written for 2019 without the `name` that the model asks for is refused as one written for now would be:
 
 ```sh
@@ -816,10 +824,10 @@ Schema validation error: [$: required property 'name' not found]
 The versions that are stored are not checked again when LDS is started with another model. They are given back
 as they were written.
 
-Not finished: the model is not kept on the timeline. A snapshot holds the documents of its time, not the model they were
-written under. Every write goes into the transaction log with a field `schema`, and LDS writes the text `TODO` in it, so
-nothing says which model a write was checked against. When LDS is started with another model, every snapshot, T1 as well
-as Tn, is checked and served with that model.
+Not finished: the model is not kept on the timeline. A snapshot holds the documents of its time, not the model
+they were written under. Every write goes into the transaction log with a field `schema`, and LDS writes the text
+`TODO` in it, so nothing says which model a write was checked against. When LDS is started with another model,
+every snapshot, T1 as well as Tn, is checked and served with that model.
 
 ## Providers
 
@@ -838,28 +846,30 @@ key `persistence.provider`:
 | `neo4j` | In a Neo4j database, as a graph: documents are nodes and links are relationships between them. |
 
 The addresses and the requests are the same with every provider, and so are the rules for versions, deletes and
-links that this document describes: every provider passes the same tests for them. The choice decides where the
-documents are, whether they are there after LDS has stopped, and what has to run beside LDS.
+links that this document describes: every provider passes the same tests for them, the
+[shared suite](../glossary.md#shared-suite). The choice decides where the documents are, whether they are there
+after LDS has stopped, and what has to run beside LDS.
 [Configuration](configuration.md) has the keys of each provider, and [operations](operations.md) says
 what each one stores and what to keep safe.
 
 ### Search
 
 Search is optional, and it is off when nothing else is configured (the key `graphql.search.enabled`). There is one
-search provider, `solr`, which uses Apache Solr. With search on, every write and every delete of a document also
-goes to the search index, and the GraphQL API gets a field `Search`. Search is reached through the GraphQL API
-only, so it needs a model that is a GraphQL schema.
+search index provider, `solr`, which uses Apache Solr. With search on, every write and every delete of a document also
+goes to the search index, and the GraphQL API gets a field `Search`. Search is reached through the GraphQL API only, so
+it needs a model that is a GraphQL schema.
 
 Search finds a document by the texts of its fields named `languageText`, and by nothing else in the document.
 What search covers is under review.
 
 ## What a write goes through
 
-Every write of the REST API is carried by a **saga**: a short list of steps that LDS records as it does them, so
-that a write that was begun is also completed. That holds for a write and a delete of a whole document, of a part
-and of a link. The steps are:
+Every write of the REST API is carried by a [**saga**](../glossary.md#saga): a short list of steps that LDS records as
+it does them, so that a write that was begun is also completed. That holds for a write and a delete of a whole document,
+of a part and of a link. The steps are:
 
-1. An entry for the write is put in the **transaction log**, a log with one entry for every write.
+1. An entry for the write is put in the [**transaction log**](../glossary.md#transaction-log), a log with one entry for
+   every write.
 2. The document is written to the persistence provider, or marked as deleted there.
 3. When search is on, the search index is updated.
 
@@ -879,10 +889,10 @@ flowchart TB
     linkStyle default stroke:#64748b,stroke-width:2px
 ```
 
-LDS records the start of a saga, with the whole request, and the start and the end of each step in a **saga log**.
-A saga that does not complete, because a step failed or because LDS stopped, stays in the saga log and is run
-again later, with the request as it was first sent: the same document and the same time. LDS goes forward only: a
-step that was done is not undone when a later step fails.
+LDS records the start of a saga, with the whole request, and the start and the end of each step in a
+[**saga log**](../glossary.md#saga-log). A saga that does not complete, because a step failed or because LDS
+stopped, stays in the saga log and is run again later, with the request as it was first sent: the same document and
+the same time. LDS goes forward only (forward recovery): a step that was done is not undone when a later step fails.
 
 Not finished: a saga is not run again without end. When it is run again because a later write needs its place in
 the saga log, and it fails once more, LDS moves it to a log that nothing reads, and its write is not done.
@@ -903,10 +913,11 @@ which of its writes was the last. Nothing in LDS builds the documents again from
 
 The query parameter `sync` of a write says whether the answer waits for the saga.
 
-- **The answer waits.** It is sent when every step has ended. A read sent after the answer gives what was written.
+- **The answer waits**, a [synchronous write](../glossary.md#synchronous-write). It is sent when every step has ended. A
+  read sent after the answer gives what was written (read-your-writes).
 - **The answer does not wait.** It is sent when the saga, with the request, is in the saga log. The steps are done
-  shortly after. A read sent right after the answer may not give what was written yet, and when a step fails,
-  the one who sent the write is not told.
+  shortly after. A read sent right after the answer may not give what was written yet (eventual consistency), and when a
+  step fails, the one who sent the write is not told.
 
 When `sync` is not given, a write or a delete of a whole document waits, and a write or a delete of a part or
 of a link does not wait. `sync=true` makes every write wait, and `sync=false` makes none wait.
@@ -926,7 +937,7 @@ looked up first to find out whether it was done.
   replaces a version at or before that time.
 - A write of a document with a `timestamp` writes the version of that time. Sent again, it replaces that version
   with the same document.
-- A delete with a `timestamp` writes the same deleted version again. A delete of a document that is not there is
+- A delete with a `timestamp` writes the same tombstone again. A delete of a document that is not there is
   answered `204`, as a delete of a document that is there.
 - A write of a link that the document has is answered `200` and writes nothing. A delete of a link that the
   document does not have is answered `200` and writes nothing.
@@ -954,10 +965,10 @@ curl "$LDS/ns/Company/hav?timeline"
 ]
 ```
 
-One thing follows from time. A write without a `timestamp` gets the time at which LDS receives it, so each time it
-is sent it adds a version. A read gives the same document after the second as after the first, and the timeline
-has one version more. A delete without a `timestamp` adds a deleted version each time in the same way. The same
-write sent twice without a `timestamp`:
+One thing follows from time. A write without a `timestamp` gets as valid time the time at which LDS receives it, so each
+time it is sent it adds a version. A read gives the same document after the second as after the first, and the timeline
+has one version more. A delete without a `timestamp` adds a tombstone each time in the same way. The same write sent
+twice without a `timestamp`:
 
 ```sh
 curl -X PUT "$LDS/ns/Company/vind" -H 'Content-Type: application/json' -d '{"name": "Vind"}'

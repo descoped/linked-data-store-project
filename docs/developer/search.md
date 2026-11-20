@@ -6,9 +6,11 @@ how it asks for it. It is for developers who change this code or write another s
 
 ## What this part is for
 
-Search finds documents by text. LDS keeps an index next to the persistence provider. A write puts the document
-in the index, a delete takes it out, and a search asks the index which documents match. The index answers with
-the keys of documents, never with the documents. Core reads the documents from the persistence provider.
+Search finds documents by text. LDS keeps an index next to the
+[persistence provider](../glossary.md#persistence-provider). A write puts the document in the index, a delete
+takes it out, and a search asks the index which documents match. The index answers with
+[document keys](../glossary.md#document-key), never with the documents. Core reads the documents from the
+persistence provider.
 
 Search is optional. It is off unless `graphql.search.enabled` is `true`.
 
@@ -48,7 +50,7 @@ GraphQL schema in [GraphQL](core-graphql.md), and the start and the stop of LDS 
 | `TestSearchIndex`, `SimpleSearchIndex` | A provider `testSearchIndex` that keeps documents in a map in memory, for the tests of core. |
 
 `SimpleSearchIndex` is not a small Solr. It keeps one entry for each document id, whatever the namespace, the
-entity and the version are. A search finds a document when any text in it contains the query, in upper or lower
+entity type and the version are. A search finds a document when any text in it contains the query, in upper or lower
 case; it does not look at `languageText`, and it does not use the filter, `from` or `size`. A test of core that
 searches therefore says nothing about what the Solr provider indexes or finds.
 
@@ -56,7 +58,8 @@ searches therefore says nothing about what the Solr provider indexes or finds.
 
 ### SearchIndexProvider
 
-A provider is a class that implements `SearchIndexProvider` and has a constructor without parameters.
+A [search index provider](../glossary.md#search-index-provider) is a class that implements `SearchIndexProvider`
+and has a constructor without parameters.
 
 | Method | What it promises |
 |---|---|
@@ -70,11 +73,11 @@ Every method returns a type of RxJava 3 (`Completable`, `Single`).
 
 | Method | What it promises |
 |---|---|
-| `Completable createOrOverwrite(JsonDocument document)` | Puts one version of a document in the index, or replaces it when it is there. The key of the document (`DocumentKey`: namespace, entity, id, the time of the version) says which. |
+| `Completable createOrOverwrite(JsonDocument document)` | Puts one version of a document in the index, or replaces it when it is there. The key of the document (`DocumentKey`: namespace, entity type, id, the valid time of the version) says which. |
 | `Completable createOrOverwrite(Collection<JsonDocument> documents)` | The same for several documents. |
 | `Completable delete(JsonDocument document)` | Takes a document out of the index. Only the key of the document is of use: core gives a document with no content here. |
 | `Completable deleteAll()` | Empties the index. |
-| `Single<SearchResponse> search(String query, Set<String> typeFilter, long from, long size)` | Searches. `query` is passed to the index as it is, in the query language of the index. `typeFilter` narrows the result to the entities it names. `from` is the number of results to skip, and `size` is the number of results to return. |
+| `Single<SearchResponse> search(String query, Set<String> typeFilter, long from, long size)` | Searches. `query` is passed to the index as it is, in the query language of the index. `typeFilter` narrows the result to the entity types it names. `from` is the number of results to skip, and `size` is the number of results to return. |
 
 A `SearchResponse` holds the total number of hits (`getTotalHits`), one page of results (`getResults`), and the
 `from` and `size` that were asked for. A `SearchResult` holds one `DocumentKey`.
@@ -125,26 +128,26 @@ is among the test resources of core. A running LDS does not find it: with
 
 This is core's code. It is told here in short, because it decides what a provider is given.
 
-- **A write.** The saga `Create or update managed resource` has the steps `txlog`, `persistence` and, when there is
-  an index, `search-index-update`. The last two both follow `txlog`. `UpdateIndexSagaAdapter` (adapter name
-  `Persistence-Index-Create-or-Overwrite`) makes a `JsonDocument` from the input of the saga (namespace, entity,
-  id, version, and the document as it was written) and calls `createOrOverwrite(document).blockingAwait()`.
+- **A write.** The [saga](../glossary.md#saga) `Create or update managed resource` has the steps `txlog`, `persistence`
+  and, when there is an index, `search-index-update`. The last two both follow `txlog`. `UpdateIndexSagaAdapter`
+  (adapter name `Persistence-Index-Create-or-Overwrite`) makes a `JsonDocument` from the input of the saga (namespace,
+  entity type, id, version, and the document as it was written) and calls `createOrOverwrite(document).blockingAwait()`.
 
 - **A delete.** The saga `Delete managed resource` has the step `search-index-delete` in the same place.
   `DeleteIndexSagaAdapter` (adapter name `Persistence-Index-Delete`) calls `delete(document).blockingAwait()`.
   The document it gives has a key and no content.
 
-- **The version.** In both sagas the version of the key is the time of the REST request: the time the request
-  arrives, or the time in its `timestamp` parameter, always in the zone `Etc/UTC` (`DataController`). So the key
-  of a delete has the time of the delete as its version, not the time of a version that was written.
+- **The version.** In both sagas the version of the key is the [valid time](../glossary.md#valid-time) of the REST
+  request: the time the request arrives, or the time in its `timestamp` parameter, always in the zone `Etc/UTC`
+  (`DataController`). So the key of a delete has the time of the delete as its version, not the time of a version that
+  was written.
 
-- **A search.** `QueryConnectionFetcher` turns the paging arguments of the GraphQL field `Search` into `from` and
-  `size` (`IndexBasedRange.fromRange`; 0 and 10 when none is given), calls
-  `search(query, filter, from, size).blockingGet()`, and reads every document that is named from the persistence
-  provider (`readDocument`). It reads the document as it is at the snapshot time of the GraphQL request: the time
-  of the request, or the time in its `snapshot` parameter. It uses the namespace, the entity and the id of a
-  result, and not its version. The filter is the list of the argument `filter` as a set, or `null` when the
-  argument is not given.
+- **A search.** `QueryConnectionFetcher` turns the paging arguments of the GraphQL field `Search` into `from` and `size`
+  (`IndexBasedRange.fromRange`; 0 and 10 when none is given), calls `search(query, filter, from, size).blockingGet()`,
+  and reads every document that is named from the persistence provider (`readDocument`). It reads the document with an
+  [as-of read](../glossary.md#as-of-read) at the snapshot time of the GraphQL request: the time of the request, or the
+  time in its `snapshot` parameter. It uses the namespace, the entity type and the id of a result, and not its version.
+  The filter is the list of the argument `filter` as a set, or `null` when the argument is not given.
 
   A result whose document is not found at that time is left out, and `Cound not find document for key ...` is
   written to the log at ERROR. The cursor of an edge is `from` plus its place among the edges that are returned,
@@ -168,7 +171,7 @@ This is core's code. It is told here in short, because it decides what a provide
 Both are made with the defaults of their builders. Nothing closes them.
 
 The address names one core, for example `http://localhost:8983/solr/lds-index`. Every namespace and every
-entity is in that one core. The provider sends its requests to `/update` (`POST`) and `/select` (`GET`) under
+entity type is in that one core. The provider sends its requests to `/update` (`POST`) and `/select` (`GET`) under
 the address, and asks for the answer in the binary format of Solr (`wt=javabin`). Before its first update the
 client sends one `HEAD` request to `/update`.
 
@@ -190,8 +193,8 @@ these fields:
 
 | Field | Value |
 |---|---|
-| `id` | `{namespace}/{entity}/{id}/{version}`. The version is the time of the version as `ZonedDateTime.toString()` writes it (`getIdString`). In a running LDS: `ns/Company/brew/2026-11-20T15:44:46.369361Z[Etc/UTC]`, and `ns/Company/old/2020-01-01T00:00Z[Etc/UTC]` for a write with `timestamp=2020-01-01T00:00:00Z`. |
-| `entity` | The name of the entity. |
+| `id` | `{namespace}/{entity}/{id}/{version}`. The version is the valid time of the version as `ZonedDateTime.toString()` writes it (`getIdString`). In a running LDS: `ns/Company/brew/2026-11-20T15:44:46.369361Z[Etc/UTC]`, and `ns/Company/old/2020-01-01T00:00Z[Etc/UTC]` for a write with `timestamp=2020-01-01T00:00:00Z`. |
+| `entity` | The name of the [entity type](../glossary.md#entity-type). |
 | one field for each text that is indexed, named by its path | The text. A path is written as `JsonToFlattenedDocument` writes it: `$.about[0].languageText`. |
 | `searchfield` | Every text that is indexed, as one value each. A search looks here unless the query names another field. |
 
@@ -208,8 +211,8 @@ indexed when it is a text (`FragmentType.STRING`) and its path contains `languag
 - A field `languageText` that holds an array of texts gives one field for each text
   (`$.title.languageText[0]`, `$.title.languageText[1]`).
 - A document with no such text still gets an entry, with `id` and `entity` only.
-- Every entity is indexed. The argument `searchable` of `@domain` is not read (see [What is unfinished or known to be
-  wrong](#what-is-unfinished-or-known-to-be-wrong)).
+- Every entity type is indexed. The argument `searchable` of `@domain` is not read (see
+  [What is unfinished or known to be wrong](#what-is-unfinished-or-known-to-be-wrong)).
 
 This document, with the key `ns`, `Company`, `brew` and the version `2026-11-20T15:29:31.800Z[Etc/UTC]`:
 
@@ -257,7 +260,7 @@ Solr to keep one entry for each `id`; no test checks it.
 
 `createOrOverwrite` calls `add(entries, 5000)` on the update client. The number is `commitWithin` in
 milliseconds: Solr is asked to commit the addition within five seconds. A search finds the document when Solr
-has committed, so up to five seconds after the write.
+has committed, so up to five seconds after the write: the index is eventually consistent.
 
 Nothing is done until the `Completable` is subscribed to. Then the update client puts the addition in its
 queue and returns, and the provider writes `Added 1 documents to index` to the log. `createOrOverwrite`
@@ -289,7 +292,7 @@ tests call it.
 | `hl` | `true` |
 | `hl.fl` | `*languageText` |
 
-The filter is added by `createFilters` when the set of entities is not `null` and not empty. It is the text
+The filter is added by `createFilters` when the set of entity types is not `null` and not empty. It is the text
 `AND (entity:A OR entity:B)`, with one `entity:` for each name, after a space. The names come in the order the
 set gives them.
 
@@ -321,7 +324,7 @@ The query is sent as `GET /solr/lds-index/select` with these parameters and `wt=
 ### What is returned
 
 From the answer of Solr, `search` reads the number of hits (`numFound`) and the field `id` of each result.
-`fromIdString` splits the `id` at every `/`: the first three parts are the namespace, the entity and the id of
+`fromIdString` splits the `id` at every `/`: the first three parts are the namespace, the entity type and the id of
 the document, and the fourth and fifth, joined with `/`, are the version, parsed with
 `DateTimeFormatter.ISO_ZONED_DATE_TIME`. The results are in the order Solr gives them.
 
@@ -354,7 +357,7 @@ A new provider that reads keys of its own needs them in a properties file before
 
 ## Rules to keep
 
-These are from `.claude/CLAUDE.md` and from the code.
+These are from the rules of the project (see [the invariants](architecture.md#the-invariants)) and from the code.
 
 - **Core does not know Solr.** Core depends on the interface module, and a provider is found by its name. Keep
   Solr types out of the interface.
@@ -396,12 +399,12 @@ Testcontainers starts, so it needs Docker.
 - `SolrSearchIndexTest`: Makes the index through `SolrProvider`, as LDS does, and empties it before each test
   with `deleteAll`. It has two tests:
 
-  - `aDocumentIsFoundByItsTextAndNotAfterItIsDeleted`: a document is found by a word of a `languageText`
-    (`Norway`) with a filter on its entity, the result has the namespace, entity, id and version of the document,
-    and after `delete` the word finds nothing.
-  - `aSearchIsNarrowedToTheEntitiesItNamesAndToItsPage`: with three documents of two entities, `*:*` finds
-    three, a filter on one entity finds two, a filter on both finds three, and `from` 2 with `size` 2 gives one
-    result and still three hits in total.
+  - `aDocumentIsFoundByItsTextAndNotAfterItIsDeleted`: a document is found by a word of a `languageText` (`Norway`) with
+    a filter on its entity type, the result has the namespace, entity type, id and version of the document, and after
+    `delete` the word finds nothing.
+  - `aSearchIsNarrowedToTheEntitiesItNamesAndToItsPage`: with three documents of two entity types, `*:*` finds three, a
+    filter on one entity type finds two, a filter on both finds three, and `from` 2 with `size` 2 gives one result and
+    still three hits in total.
 
 A write is in the index within the five seconds of `commitWithin`, so the tests search again every 100
 milliseconds until the number of hits is the one they expect, for at most 30 seconds (`await`).
@@ -442,8 +445,8 @@ core only after the first such text is written. On a new core, a search before t
 `undefined field searchfield`, and no test covers it.
 
 Not finished: the argument `searchable` of `@domain` is not read. `AddSearchTypesVisitor.isSearchable` and
-`DomainDirective.isSearchable` are called by nothing. An entity with `@domain(searchable: false)` is in
-`TypeFilters` and `SearchResult`, is indexed and is found, like every other entity.
+`DomainDirective.isSearchable` are called by nothing. An entity type with `@domain(searchable: false)` is
+in `TypeFilters` and `SearchResult`, is indexed and is found, like every other entity type.
 
 Not finished: with a model of JSON Schema files and no GraphQL schema, search can be on, and every write goes
 to the index, but LDS has no `Search` field and so nothing reads the index.
@@ -451,11 +454,12 @@ to the index, but LDS has no `Search` field and so nothing reads the index.
 Not finished: the search text is joined into the query (`text + createFilters(typeFilters)`), which the rule
 "No spliced identifiers" forbids. The text can name any field of the index. The filter is added without
 brackets around the text, so `brewery OR entity:Person` with the filter `Company` becomes
-`brewery OR entity:Person AND (entity:Company)`. The entity names of the filter are joined in as well, without
-a check; core gives the values of the GraphQL enum `TypeFilters` there.
+`brewery OR entity:Person AND (entity:Company)`. The names of the entity types of the filter are joined in as
+well, without a check; core gives the values of the GraphQL enum `TypeFilters` there.
 
-Not finished: a failed addition is not seen. With no Solr at the address, a `PUT` with `sync=true` is answered
-201, the log has the error of the update client, and the document is not in the index. Nothing sends it again.
+Not finished: a failed addition is not seen. With no Solr at the address, a `PUT` with `sync=true` (a
+[synchronous write](../glossary.md#synchronous-write)) is answered 201, the log has the error of the update
+client, and the document is not in the index. Nothing sends it again.
 
 Not finished: a delete fails when Solr cannot be reached. With no Solr at the address, a `DELETE` with
 `sync=true` is answered 500 with no text, the log says `Observed Saga failure during execution`, and the
@@ -479,7 +483,7 @@ Not finished: nothing in a query says which namespace is searched. An LDS serves
 
 Not finished: `fromIdString` reads only an `id` with exactly four `/`. A version without a zone name (`...Z`)
 or with a zone name that has no `/` (`...Z[UTC]`) gives `ArrayIndexOutOfBoundsException`. A zone name with two
-`/`, or a namespace, an entity or a document id with a `/` in it, gives `DateTimeParseException`. One such
+`/`, or a namespace, an entity type or a document id with a `/` in it, gives `DateTimeParseException`. One such
 entry among the results fails the whole search.
 
 Not finished: `SolrSearchIndexTest` passes only where the zone of the machine has exactly one `/` in its name

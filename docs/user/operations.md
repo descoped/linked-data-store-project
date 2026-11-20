@@ -29,14 +29,14 @@ it in a store, in the memory of the process or outside LDS:
 | What | As LDS comes | Can be kept in |
 |---|---|---|
 | The documents: every version of every document | in memory | PostgreSQL or Neo4j |
-| The saga log: the writes that are under way | in memory | PostgreSQL |
-| The transaction log: one entry for every write | not kept | memory or PostgreSQL |
+| The [saga log](../glossary.md#saga-log): the writes that are under way | in memory | PostgreSQL |
+| The [transaction log](../glossary.md#transaction-log): one entry for every write | not kept | memory or PostgreSQL |
 | The search index | search is off | Solr |
 
 As it comes, LDS keeps everything in memory and nothing is left when it stops. In a run a document was written,
 LDS was stopped and started again, and the document was answered `404 Not Found`. That is for trying LDS.
 
-[Concepts](concepts.md#what-a-write-goes-through) tells what a saga and the two logs are.
+[Concepts](concepts.md#what-a-write-goes-through) tells what a [saga](../glossary.md#saga) and the two logs are.
 [Configuration](configuration.md) has the keys that choose each store. In this document PostgreSQL, Neo4j
 and Solr are called the engines.
 
@@ -161,8 +161,8 @@ are from a start of LDS as it comes:
 18:08:00.292 INFO  Server started in 343ms..
 ```
 
-`Managed domains` names the entities of the model. With search on, the line about search is
-`Search index provider configured: solr`.
+`Managed domains` names the [entity types](../glossary.md#entity-type) of the model. With search on, the line about
+search is `Search index provider configured: solr`.
 
 ### How long LDS waits for an engine
 
@@ -376,23 +376,24 @@ others are said where a caller meets them, in [the REST API](rest-api.md) and
 - The database and the user must be there. LDS does not make them.
 - At start LDS makes one table, `fragment`, and one index besides its primary key, `fragment_value_idx`, when
   they are missing. In the runs they were made in the schema `public`. A table that is there is left as it is.
-- One row is one value of one version of one document. The table holds the documents of every namespace.
-- A delete of a document adds a row and removes none. A write at the time of a version that is there replaces
-  the rows of that version. No other request to LDS removes a row, so the table grows with every new version
-  and every delete.
+- One row is one [fragment](../glossary.md#fragment): one value of one version of one document. The table holds
+  the documents of every namespace.
+- A delete of a document writes a [tombstone](../glossary.md#tombstone): it adds a row and removes none. A write at the
+  [valid time](../glossary.md#valid-time) of a version that is there replaces the rows of that version. No other request
+  to LDS removes a row, so the table grows with every new version and every delete.
 - LDS opens 10 connections at start and keeps them.
 - LDS is tested with PostgreSQL 18 and with no other version.
 
 **In Neo4j** (`persistence.provider=neo4j`).
 
-- A document is a node that has its entity as label and `namespace` and `id` as properties. Its versions hang
+- A document is a node that has its entity type as label and `namespace` and `id` as properties. Its versions hang
   from it, and a link is a relationship to the node of the document it points at. One database holds the
   documents of every namespace. No key names the database.
-- At start LDS makes, for each entity of the model, a constraint that makes `namespace` and `id` unique together
+- At start LDS makes, for each entity type of the model, a constraint that makes `namespace` and `id` unique together
   and an index, when they are missing. Each one it makes is a line `Creating: ...` in the log.
 - LDS never drops an index or a constraint. For one that is there and that it does not use, it writes a line
   `Not using index: ...` to the log, with the statement that drops it.
-- A delete of a document adds a version that marks it as deleted. No request to LDS removes a document from
+- A delete of a document adds a tombstone, a version that marks it as deleted. No request to LDS removes a document from
   Neo4j.
 - LDS is tested with Neo4j 2026.10, community edition.
 
@@ -426,8 +427,8 @@ Set it; [Configuration](configuration.md) says more.
 - The database must be there. LDS does not make it.
 - At start LDS makes three tables when they are missing: `rawdata_message`, `rawdata_content` and
   `rawdata_metadata`.
-- Every write adds one entry. Its id is the `saga-execution-id` that the caller got. It holds the whole document
-  as it is after the write, and the method, the namespace, the entity, the id, the time of the version and the
+- Every write adds one entry. Its id is the `saga-execution-id` that the caller got. It holds the whole document as it
+  is after the write, and the method, the namespace, the entity type, the id, the valid time of the version and the
   `source` and `sourceId` of the request. The entry of a delete of a document has no document.
 - Nothing in LDS removes an entry, so the log grows with every write.
 - LDS opens 10 connections at start and keeps them.
@@ -438,14 +439,15 @@ Not finished: LDS reads the transaction log back for one thing only, `GET /sourc
 ### The search index
 
 - The index is one Solr core, named at the end of `search.index.url`. The core must be there; LDS does not make
-  it. The documents of every namespace and every entity go to that one core.
-- The index is behind the documents. LDS asks Solr to make a write searchable within five seconds, so a search
-  right after a write can miss the document, also when the write was sent with `sync=true`.
+  it. The documents of every namespace and every entity type go to that one core.
+- The index is behind the documents: it is [eventually consistent](../glossary.md#search-index-provider). LDS asks
+  Solr to make a write searchable within five seconds, so a search right after a write can miss the document, also
+  when the write was sent with `sync=true`.
 - The index can stay behind. A document that was written while search was off, or while Solr was away, is not in the
   index, and LDS does not send it again (see [When an engine is away while LDS
   runs](#when-an-engine-is-away-while-lds-runs)).
 - Every version of a document is an entry of its own in the index. A delete of a document takes out one entry
-  at most: the entry of a version that has exactly the time of the delete. The entries of the other versions
+  at most: the entry of a version that has exactly the valid time of the delete. The entries of the other versions
   stay. A search does not give a deleted document all the same, because LDS reads every document it finds at the
   time of the query. For each such entry a search finds, LDS writes a line `Cound not find document for key ...`
   to the log, at the level `ERROR`.
@@ -471,7 +473,8 @@ do not fit. In a run the second LDS opened its port, answered `/ping` with `200`
 
 Every write is carried by a saga, and each step of it is noted in the saga log.
 [Concepts](concepts.md#what-a-write-goes-through) tells how. A write that does not complete stays in the saga log, and
-LDS runs it again later, with the request as it was first sent. This is recovery. It happens at three times:
+LDS runs it again later, with the request as it was first sent. This is recovery (forward recovery). It happens at
+three times:
 
 - **When LDS starts**, for the writes in its own saga log. This needs a saga log that is kept, so PostgreSQL.
 - **At intervals**, for the writes in every saga log of the cluster: after a wait of 30 to 60 seconds, chosen
@@ -512,7 +515,7 @@ HTTP/1.1 200 OK
 {"name": "Written before the crash"}
 ```
 
-The version has the time of the first request, not the time of the recovery. The saga log was empty again.
+The version has the valid time of the first request, not the time of the recovery. The saga log was empty again.
 
 With the saga log in memory, the same crash loses the write: nothing is left to run again.
 
@@ -529,7 +532,8 @@ A `500`, or a connection that is lost, does not say whether the write will be do
 So a caller that gets no `2xx` sends the write again. Every call of the HTTP API is idempotent and safe to send
 again. [The REST API](rest-api.md#when-a-write-fails) says what a failed write can leave behind.
 
-A `2xx` to a write that LDS did not wait for says that the write is in the saga log, not that it is done.
+A `2xx` to a write that LDS did not wait for (not a [synchronous write](../glossary.md#synchronous-write)) says that
+the write is in the saga log, not that it is done.
 [The REST API](rest-api.md#when-lds-answers-a-write-sync) tells which writes LDS waits for.
 
 ### A write that keeps failing

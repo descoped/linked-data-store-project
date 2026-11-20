@@ -1,10 +1,10 @@
 # Core: the write path
 
-This document covers how `linked-data-store-core` carries a write: the saga of a write and of a delete, the saga
-log, the recovery of an unfinished saga, and the transaction log. It is for developers and maintainers who change
-this code. What a write may contain and how a request is addressed is in
-[the REST API of documents](core-rest.md). How the application is built, started and stopped as a whole is in
-[the application](core-application.md).
+This document covers how `linked-data-store-core` carries a write: the [saga](../glossary.md#saga) of a write and
+of a delete, the [saga log](../glossary.md#saga-log), the recovery of an unfinished saga, and the
+[transaction log](../glossary.md#transaction-log). It is for developers and maintainers who change this code.
+What a write may contain and how a request is addressed is in [the REST API of documents](core-rest.md). How the
+application is built, started and stopped as a whole is in [the application](core-application.md).
 
 ## What this part is for
 
@@ -91,7 +91,7 @@ of `S`, the name of the saga and the saga input.
 |---|---|---|
 | `txlog` | `AppendTxLogAdapter`, `TxLog-put-entry`; `DeleteTxLogAdapter`, `TxLog-delete-entry` | Both do the same: `TxlogRawdataPool.producer(source).publish(TxLogTools.sagaInputToTxEntry(input))`. |
 | `persistence` of a write | `PersistenceCreateOrOverwriteSagaAdapter`, `Persistence-Create-or-Overwrite` | `RxJsonPersistence.createOrOverwrite` with the document of the input, in a transaction of its own, and waits for it (`blockingAwait`). Any failure is thrown as `AbortSagaException`. |
-| `persistence` of a delete | `PersistenceDeleteSagaAdapter`, `Persistence-Delete` | `RxJsonPersistence.markDocumentDeleted` with `PersistenceDeletePolicy.FAIL_IF_INCOMING_LINKS`, in a transaction of its own, and waits for it. A failure is thrown as it is. No provider reads the policy: run with the memory provider, a document that another document links to was deleted and answered `204`. |
+| `persistence` of a delete | `PersistenceDeleteSagaAdapter`, `Persistence-Delete` | `RxJsonPersistence.markDocumentDeleted`, which writes a [tombstone](../glossary.md#tombstone), with `PersistenceDeletePolicy.FAIL_IF_INCOMING_LINKS`, in a transaction of its own, and waits for it. A failure is thrown as it is. No provider reads the policy: run with the memory provider, a document that another document links to was deleted and answered `204`. |
 | `search-index-update` | `UpdateIndexSagaAdapter`, `Persistence-Index-Create-or-Overwrite` | `SearchIndex.createOrOverwrite` with the document, and waits for it. |
 | `search-index-delete` | `DeleteIndexSagaAdapter`, `Persistence-Index-Delete` | `SearchIndex.delete`, and waits for it. The input of a delete has no `data`, so the document it is given has a key and no content. |
 
@@ -118,8 +118,8 @@ saga log does not say that it ended.
 | `txid` | The transaction id, from `SagaExecutionCoordinator.generateTxId`: a UUIDv7 (`RawdataIds.next`) that is greater than every id the coordinator of this server gave before. It is also the execution id of the saga and the id of the entry in the transaction log. |
 | `method` | `PUT` or `DELETE`. `DELETE` only for the delete of a whole document. A write of a part or of a link, and the removal of one, is `PUT` with the whole document. |
 | `schema` | The model the write was checked against. Always the text `TODO`; `SagaRecoveryTriggerTest` gives it `testng-schema-v1.0`, the name of a model version. Nothing reads it. |
-| `namespace`, `entity`, `id` | The address of the document. |
-| `version` | The time the version is valid from, formatted with `DateTimeFormatter.ISO_ZONED_DATE_TIME` in the zone `Etc/UTC`, for example `2020-01-01T00:00:00Z[Etc/UTC]`. It is the `timestamp` of the request, or the time the request was handled (`DataController`). |
+| `namespace`, `entity`, `id` | The address of the document: its [document key](../glossary.md#document-key). |
+| `version` | The [valid time](../glossary.md#valid-time) of the version, formatted with `DateTimeFormatter.ISO_ZONED_DATE_TIME` in the zone `Etc/UTC`, for example `2020-01-01T00:00:00Z[Etc/UTC]`. It is the `timestamp` of the request, or the time the request was handled (`DataController`). |
 | `source`, `sourceId` | The query parameters of the same names. Left out when the request has none. |
 | `data` | The whole document as it is to be stored. Left out for `DELETE`. |
 
@@ -150,7 +150,7 @@ A handler validates the request, then:
    saga thread pool and returns.
 5. **The saga is tracked**: its completion future is put in `runningSagas`, which `awaitRunningSagas` reads when
    the application stops, and it is registered with the `SagasObserver`.
-6. **The future is returned**: the completion future when `sync` is true, the handoff future when it is false.
+6. **The future is returned**: the completion future when `sync` is true, the hand-off future when it is false.
 
 The owner of a saga log is kept with the log (`OwnedSagaLog`), because the pool releases a log for its owner
 only and the release is done by another thread than the one that took it.
@@ -172,7 +172,11 @@ The log and the permit are released also when the truncate fails, and when the s
 | `sync` | The answer is sent when |
 |---|---|
 | true | The completion future completes: every step has ended, the End entry of `E` is in the saga log, and `onComplete` has returned, so the saga log is truncated and released. The document can be read. |
-| false | The handoff future completes: the Start entry of `S`, with the saga input, is in the saga log. The answer waits for no step: `txlog` and the steps after it run from this point on, and a failure of one of them is not told to the client. |
+| false | The hand-off future completes: the Start entry of `S`, with the saga input, is in the saga log. The answer waits for no step: `txlog` and the steps after it run from this point on, and a failure of one of them is not told to the client. |
+
+A write answered when its saga has completed is a [synchronous write](../glossary.md#synchronous-write): a read
+that follows it sees the write (read-your-writes). A write answered at the hand-off is eventually consistent: a
+read that follows at once may not see it yet.
 
 The handlers do not read `sync` the same way:
 
@@ -333,7 +337,7 @@ process holds is refused with `SagaLogBusyException`. `SagaLogPostgresTest` runs
 ## Recovery of an unfinished saga
 
 A saga log that holds entries holds a saga that did not complete: the server ended in the middle of it, or the
-saga failed. Recovery runs such a saga again from its entries. There are three occasions.
+saga failed. Recovery runs such a saga again from its entries (forward recovery). There are three occasions.
 
 | When | Which logs | Started by |
 |---|---|---|
@@ -439,8 +443,9 @@ available: [discard, memory, postgres]
 
 ### Topics and sources
 
-A client can say where a write comes from with the query parameters `source` and `sourceId`. `TxlogRawdataPool`
-decides the topic of an entry (`topicOf`):
+A client can say where a write comes from with the query parameters
+[`source` and `sourceId`](../glossary.md#source-and-source-id). `TxlogRawdataPool` decides the topic of an entry
+(`topicOf`):
 
 - `txlog.split.sources=false` (the default): one topic, `txlog.rawdata.topic-prefix` followed by
   `txlog.default-source`. With the defaults, `txlog-default`.
@@ -591,12 +596,13 @@ Keys that the two PostgreSQL providers read and no defaults file has, read in th
 - **The saga thread pool does not run a task on the thread that submits it.** Keep `AbortPolicy`, or another
   policy that rejects.
 - **The bytes of a transaction log entry stay.** `TxLogToolsTest` holds them.
-- **The version is a UTC instant.** `DataController` moves the `timestamp` of a request to `Etc/UTC` before the
-  saga input is made, so one instant is not written to the transaction log in two forms
-  (`ReplayTxLogTest.thatTheVersionOfAnEntryIsInUtc`).
-- **No spliced identifiers.** Entity, field, namespace and topic names are validated and never concatenated into
-  SQL, keys or file paths (`.claude/CLAUDE.md`, Invariants). The topic name is built from a query parameter
-  and checked by the rawdata library; the names of the saga log are checked by `sagalog-postgres`.
+- **The version is a UTC instant.** `DataController` moves the `timestamp` of a request, the valid time of the
+  write, to `Etc/UTC` before the saga input is made, so one instant is not written to the transaction log in two
+  forms (`ReplayTxLogTest.thatTheVersionOfAnEntryIsInUtc`).
+- **No spliced identifiers.** Entity type, field, namespace and topic names are validated and never concatenated
+  into SQL, keys or file paths (see [the invariants](architecture.md#the-invariants)). The topic name is built
+  from a query parameter and checked by the rawdata library; the names of the saga log are checked by
+  `sagalog-postgres`.
 - **No blocking call is added to a persistence or search interface.** The saga adapters are where LDS waits for a
   reactive call (`blockingAwait`), on a thread of the saga thread pool.
 - **Stop in order.** A new part of the write path is stopped in `UndertowApplication.stop` after the sagas that
@@ -620,7 +626,7 @@ All in `linked-data-store-core/src/test/java/io/descoped/lds/core`.
 | `saga/SagaExecutionCoordinatorWatchdogTest` (TestNG) | A deadlock of the thread pool is seen and resolved by the watchdog. |
 | `saga/SagaCommandTest` (TestNG) | The `saga` parameter fails a step only when `saga.commands.enabled` is `true`. |
 | `txlog/TxLogToolsTest` (JUnit) | The bytes of an entry. |
-| `txlog/ReplayTxLogTest` (TestNG) | Seven writes give seven entries in order, each with the right entity, id and method; the version of an entry is in UTC. |
+| `txlog/ReplayTxLogTest` (TestNG) | Seven writes give seven entries in order, each with the right entity type, id and method; the version of an entry is in UTC. |
 | `controller/SourceTest` (TestNG) | `GET /source/{source}` with and without split sources. |
 
 Helpers: `saga/SlowTruncateSagaLogInitializer` is the memory saga log with a `write` and a `truncate` that
@@ -634,10 +640,14 @@ free port, with `application-defaults.properties` and `application_test.properti
 `@ConfigurationOverride` on the test method. `ApplicationStopTest` and `SagaLogPostgresTest` start their own
 servers.
 
-How to run one test class with Maven is in the repository guidance (`.claude/CLAUDE.md`, Commands). The build
-needs JDK 27 and Docker. No test was run for this document.
+One test class is run with `./mvnw test -pl linked-data-store-core -Dtest=<Class>`. The build needs JDK 27 and
+Docker. No test was run for this document.
 
-A change that switches tests on is run about ten times before it is pushed (`.claude/CLAUDE.md`, Testing).
+A change that switches tests on is run about ten times before it is pushed:
+
+```sh
+for n in $(seq 1 10); do ./mvnw -B -q verify || break; done
+```
 
 To try the write path by hand, start LDS with the commands on. This was run from a folder with every jar in
 `lib` and the example model in `schemas`:
@@ -662,8 +672,8 @@ a link. The answers differ too (`201`, `204` or `202`, `200`).
 Not finished: a failed saga is answered `500` with an empty body. The client cannot tell a write that will be
 done by recovery from one that will not, or from a delete that was done before the failure.
 
-Not finished: the persistence adapters commit by closing the transaction. The rule of the repository is that a
-transaction commits only when asked.
+Not finished: the persistence adapters commit by closing the transaction. The rule of the project is that a
+transaction commits only when asked (see [the invariants](architecture.md#the-invariants)).
 
 Not finished: a `source` is not checked before the saga starts. With split sources a source that is not a
 valid topic name becomes a saga that cannot complete and ends in the `dead-saga` log.

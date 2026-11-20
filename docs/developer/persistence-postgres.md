@@ -6,16 +6,19 @@ provider or look for a fault in it.
 
 ## What the provider is for
 
-LDS keeps its documents in a persistence provider that is chosen in the configuration. This provider keeps them
-in PostgreSQL. It stores a document as rows, one row for each value of the document, and it reads them back as a
-stream of rows that PostgreSQL gives out as they are asked for.
+LDS keeps its documents in a [persistence provider](../glossary.md#persistence-provider) that is chosen in the
+configuration. This provider keeps them in PostgreSQL. It stores a document as rows, one row for each value of
+the document, and it reads them back as a [reactive stream](../glossary.md#reactive-stream) of rows that
+PostgreSQL gives out as they are asked for.
 
-The provider implements `RxPersistence`, the interface that carries fragments. A fragment is one leaf value of
-one version of one document. `RxJsonPersistenceBridge` in `linked-data-store-persistence-provider-api` turns
-documents into fragments and fragments into documents, so core sees `RxJsonPersistence`. The interface and the
-bridge are described in [the persistence interface](persistence-api.md).
+The provider implements `RxPersistence`, the interface that carries [fragments](../glossary.md#fragment). A
+fragment is one leaf value of one version of one document. `RxJsonPersistenceBridge` in
+`linked-data-store-persistence-provider-api` turns documents into fragments and fragments into documents, so core
+sees `RxJsonPersistence`. The interface and the bridge are described in
+[the persistence interface](persistence-api.md).
 
-One database holds any number of namespaces. The namespace is the first part of the key of every row.
+One database holds any number of [namespaces](../glossary.md#namespace). The namespace is the first part of the
+key of every row.
 
 ## The examples in this document
 
@@ -77,13 +80,13 @@ There is one table. One row is one leaf value of one version of one document.
 | Column | Type | What it holds |
 |---|---|---|
 | `namespace` | `varchar`, collation `POSIX`, not null | The namespace of the document. |
-| `entity` | `varchar`, collation `POSIX`, not null | The entity of the document, for example `Person`. |
+| `entity` | `varchar`, collation `POSIX`, not null | The [entity type](../glossary.md#entity-type) of the document, for example `Person`. |
 | `id` | `varchar`, collation `POSIX`, not null | The id of the document. |
-| `version` | `timestamp(3) with time zone`, not null | The time from which this version is valid. An instant with millisecond precision. |
-| `path` | `varchar`, collation `POSIX`, not null | The path of the value in the document, with the array positions taken out: the value at `$.friends[1]` has the path `$.friends[]`. Empty in a delete marker. |
+| `version` | `timestamp(3) with time zone`, not null | The [valid time](../glossary.md#valid-time) of this version. An instant with millisecond precision. |
+| `path` | `varchar`, collation `POSIX`, not null | The path of the value in the document, with the array positions taken out: the value at `$.friends[1]` has the path `$.friends[]`. Empty in a [tombstone](../glossary.md#tombstone). |
 | `indices` | `integer[]`, not null | The array positions that were taken out of the path, in order: `{1}` for `$.friends[1]`. `{}` when the path has no array. |
 | `type` | `smallint`, not null | The kind of value, a code of `FragmentType`: 0 `NULL`, 1 `DELETED`, 2 `EMPTY_OBJECT`, 3 `EMPTY_ARRAY`, 4 `STRING`, 5 `NUMERIC`, 6 `BOOLEAN`. |
-| `value` | `bytea`, null allowed | The bytes of the value, as the bridge gives them. Null in a delete marker. |
+| `value` | `bytea`, null allowed | The bytes of the value, as the bridge gives them. Null in a tombstone. |
 
 The primary key is `(namespace, entity, id, version, path, indices)`. Its order is the order LDS stores and reads
 in: document, then version, then path.
@@ -93,8 +96,8 @@ a value at a path. The comments in `init-db.sql` give the two reasons for its fo
 
 - It is on a hash of the value, because an index row has a size limit that a long value exceeds.
 - The hash comes first, so that only a search for a value can use the index. With the namespace and the entity
-  first, PostgreSQL may pick it in place of the primary key for a read or a delete of one document while the
-  table has no statistics yet, and then walks every row of the entity.
+  type first, PostgreSQL may pick it in place of the primary key for a read or a delete of one document while the
+  table has no statistics yet, and then walks every row of the entity type.
 
 The collation `POSIX` orders text by its bytes, which is the order of code points. Companies with the ids `Zeta`,
 `acme`, `alpha`, `big`, `kinds`, `~tilde` and `Ærlig` were listed in this order.
@@ -123,7 +126,8 @@ Indexes:
 ```
 
 A document as rows. A company `acme` with `{"name":"Acme"}` was written first. This request then writes a person
-with a part (`address`), a link (`employer`) and an array of links (`friends`):
+with an [embedded object](../glossary.md#embedded-object) (`address`), a [link](../glossary.md#link)
+(`employer`) and an array of links (`friends`):
 
 ```sh
 curl -s -i -X PUT 'http://127.0.0.1:19104/ns/Person/ola?sync=true&timestamp=2020-01-01T00:00:00Z' \
@@ -181,7 +185,7 @@ was stored as these rows (`value_as_text` is `convert_from(value, 'UTF8')`):
 A text is its UTF-8 bytes. A number is its text (`17`, `0.5`). `true` is one byte, 1, and `false` is one byte, 0.
 An empty array and an empty object are one row each with an empty value. A null is one row of type 0 with an
 empty value: `{"name":"N","listed":false,"extra":null}` was stored with `$.extra` as type 0 and `\x`, and
-`$.listed` as type 6 and `\x00`. Only a delete marker has no value (SQL null).
+`$.listed` as type 6 and `\x00`. Only a tombstone has no value (SQL null).
 
 A value is never split over several rows. `PostgresDbInitializer` gives the bridge a fragment capacity of
 `Integer.MAX_VALUE`, and `WriteBatch.add` refuses a fragment whose offset is not 0 with
@@ -199,7 +203,7 @@ A value is never split over several rows. `PostgresDbInitializer` gives the brid
 4. It creates `PostgresPersistence` and returns it inside `RxJsonPersistenceBridge`.
 
 If step 3 fails, the pool is closed and the exception goes to the caller. The arguments `defaultNamespace` and
-`managedDomains` are not used: the namespace comes with every call, and one table holds every entity.
+`managedDomains` are not used: the namespace comes with every call, and one table holds every entity type.
 
 `init-db.sql` has three statements:
 
@@ -251,9 +255,9 @@ INSERT INTO fragment(namespace, entity, id, version, path, indices, type, value)
 For each fragment, `WriteBatch.add` does this:
 
 1. It refuses a fragment whose offset is not 0.
-2. The first time it sees a document version (`DocumentKey`: namespace, entity, id and time), it adds one
-   `DELETE` for that version to the delete batch. So a version that is written again is replaced whole: a value
-   that the new document does not have is gone.
+2. The first time it sees a document version (`DocumentKey`: namespace, entity type, id and valid time), it adds
+   one `DELETE` for that version to the delete batch. So a version that is written again is replaced whole: a
+   value that the new document does not have is gone.
 3. It splits the path into the path without positions and the positions (`Fragment.computeIndexUnawarePath`).
 4. It adds one `INSERT` to the insert batch.
 5. After every 100 inserts (`WRITE_BATCH_SIZE`) it sends the batches: first the deletes that wait, then the
@@ -296,8 +300,8 @@ transaction in a try-with-resources block, and `Transaction.close` commits.
 Every read of `RxPersistence` is one `SELECT`. It returns the columns `id, version, path, indices, type, value`,
 ordered by document, then version, then path, then positions. `PostgresPersistence.toFragment` makes a fragment
 of each row: it puts the positions back into the path (`Fragment.computePathFromIndexUnawarePathAndIndices`) and
-reads the version as a time in `Etc/UTC`. The namespace and the entity of the fragment are those of the call; the
-statement does not select them. The offset is 0.
+reads the version as a time in `Etc/UTC`. The namespace and the entity type of the fragment are those of the
+call; the statement does not select them. The offset is 0.
 
 A range is backward when it has `last`, or when it has `before` and no `after` (`Range.isBackward`). So a range
 with only an upper bound is read from the end, also without a limit.
@@ -306,7 +310,7 @@ with only an upper bound is read from the end, also without a limit.
 |---|---|
 | `read` | The rows of one document at the greatest version that is not after the snapshot. Ordered by path and positions. |
 | `readVersions` | The rows of every version of one document, oldest first, or newest first for a backward range. `before` is exclusive. `after` is not a strict bound: the version that was valid at that time is the first one. The limit counts versions. |
-| `readAll` | For every id of the entity inside the range, the rows of the version valid at the snapshot. By ascending id, or descending for a backward range. Both bounds are exclusive. The limit counts documents. A document that is marked as deleted at the snapshot comes as its marker. |
+| `readAll` | For every id of the entity type inside the range, the rows of the version valid at the snapshot. By ascending id, or descending for a backward range. Both bounds are exclusive. The limit counts documents. A document that is marked as deleted at the snapshot comes as its tombstone. |
 | `find` | The rows of every document whose version valid at the snapshot holds the given value at the given path. Same order, bounds and limit as `readAll`. |
 | `hasNext`, `hasPrevious` | `readAll` with the range `Range.firstAfter(1, id)` or `Range.lastBefore(1, id)`; the answer is whether a row came. Nothing calls these two: the bridge has its own (see [Not finished](#not-finished)), and no test calls them. |
 
@@ -422,9 +426,10 @@ A document written with `timestamp=2020-01-01T00:00:00.123456Z` was stored with 
 `timestamp=2020-01-01T00:00:00.122Z` answered 404. A document written with
 `timestamp=2021-06-01T12:00:00+02:00` was stored with the version `2021-06-01 10:00:00` UTC.
 
-A read at a time gives the version with the greatest time that is not after it. So a version is valid until the
-next one, and a time before the first version gives nothing. The versions of a document are rows with the same
-namespace, entity and id and different `version`. Nothing marks a version as the current one.
+An [as-of read](../glossary.md#as-of-read) gives the version with the greatest valid time that is not after the
+time of the read. So a version is valid until the next one, and a time before the first version gives nothing.
+The versions of a document are rows with the same namespace, entity type and id and different `version`.
+Nothing marks a version as the current one.
 
 `readVersions` with a lower bound starts at the version that was valid at the bound, not at the first version
 after it. The statement does that with
@@ -436,16 +441,16 @@ then leaves out the versions that are not after the bound, so a caller of the br
 
 | Method | What it does |
 |---|---|
-| `markDeleted` | Deletes the rows of the document at the given time, then inserts one row at that time: the delete marker, with an empty path, the positions `{}`, the type 1 (`DELETED`) and no value. The marker is a version of its own. |
+| `markDeleted` | Deletes the rows of the document at the given time, then inserts one row at that time: the tombstone, with an empty path, the positions `{}`, the type 1 (`DELETED`) and no value. The tombstone is a version of its own. |
 | `delete` | Deletes the rows of one version. The version before it is then the one that is valid at that time. |
 | `deleteAllVersions` | Deletes every row of one document. |
-| `deleteAllEntities` | Deletes every row of one entity in one namespace. The argument `paths` is not used. |
+| `deleteAllEntities` | Deletes every row of one entity type in one namespace. The argument `paths` is not used. |
 
 No delete uses its argument `PersistenceDeletePolicy`. None looks for documents that link to the one that is
 deleted.
 
 Core calls only `markDocumentDeleted` (`PersistenceDeleteSagaAdapter`). So a delete through LDS removes no
-version: the earlier versions stay and are read at earlier times. After
+version: the earlier versions stay, and an as-of read at an earlier time finds them. After
 `DELETE /ns/Person/ola?sync=true&timestamp=2022-01-01T00:00:00Z` (answer 204) the table held this, next to the
 earlier versions:
 
@@ -457,15 +462,15 @@ earlier versions:
  ola | 2022-01-01 00:00:00 |                  | {}      |    1 |
 ```
 
-A marker and a version at the same time replace each other: `markDeleted` deletes the rows at that time first,
-and a write deletes the rows of the version it writes, the marker among them.
+A tombstone and a version at the same time replace each other: `markDeleted` deletes the rows at that time
+first, and a write deletes the rows of the version it writes, the tombstone among them.
 
 `markDeleted` does not look whether the document exists. `DELETE /ns/Person/neverwas?sync=true&timestamp=...`
-for an id that was never written answered 204 and left one marker row for that id.
+for an id that was never written answered 204 and left one tombstone row for that id.
 
-`read` returns the marker when it is the version valid at the snapshot. The bridge turns it into a deleted
-document and leaves it out. `find` does not return a document whose valid version is a marker: the marker has no
-row with the path that is searched for, and an earlier version is not the valid one.
+`read` returns the tombstone when it is the version valid at the snapshot. The bridge turns it into a deleted
+document and leaves it out. `find` does not return a document whose valid version is a tombstone: the tombstone
+has no row with the path that is searched for, and an earlier version is not the valid one.
 
 ### Links and `find`
 
@@ -473,8 +478,8 @@ A link is stored as the text `/Entity/id` in the row of its field. The provider 
 The bridge follows them with the reads above:
 
 - From a document to the documents it links to (`RxJsonPersistenceBridge.readTargetDocuments`): one `read` of the
-  document, then one `read` for each link that is followed. A link to a document that does not exist gives
-  nothing.
+  document, then one `read` for each link that is followed. A dangling link, to a document that does not exist,
+  gives nothing.
 - From a document to the documents that link to it (`readSourceDocuments`): one `find`, with the path of the link
   field and the bytes of `/Entity/id` as the value.
 
@@ -571,10 +576,11 @@ the name of the table. There is no key for TLS or for other options of the JDBC 
 
 ## Rules to keep
 
-Most of these are invariants of `.claude/CLAUDE.md`. The others are from the comments of the code.
+Most of these are rules of the project (see [the invariants](architecture.md#the-invariants)). The others are
+from the comments of the code.
 
-- **A read is a stream.** A read is one statement whose rows are fetched as they are asked for. Do not replace a
-  stream by a call that returns a complete list, and do not add a blocking call to an interface.
+- **A read is a reactive stream.** A read is one statement whose rows are fetched as they are asked for. Do not
+  replace a stream by a call that returns a complete list, and do not add a blocking call to an interface.
 - **Keep auto-commit off and the fetch size.** Together they make the JDBC driver fetch a result in parts. With
   auto-commit on, the driver opens no cursor.
 - **Close the statement of every read.** A statement that is read in parts holds a cursor on the server until it
@@ -582,7 +588,7 @@ Most of these are invariants of `.claude/CLAUDE.md`. The others are from the com
 - **Rows come in storage order:** id, version, path, positions. The bridge cuts the stream into documents where the
   key changes (`RxGroupByTools.groupByOrdered`), so the rows of one document version must come together.
 - **No spliced identifiers.** Only text that is written in `PostgresPersistence` becomes part of a statement.
-  Every value from outside (namespace, entity, id, path, value, time, limit) is a parameter (`Query.value`). The
+  Every value from outside (namespace, entity type, id, path, value, time, limit) is a parameter (`Query.value`). The
   names of the table and its columns are fixed text.
 - **Time.** A version is stored and compared as a UTC instant, cut to milliseconds. Every time that goes into a
   statement goes through `instantOf`.
@@ -605,7 +611,7 @@ Most of these are invariants of `.claude/CLAUDE.md`. The others are from the com
 
 ## PostgreSQL is held at 18
 
-`.claude/CLAUDE.md` says that every engine is at its latest stable version, with one exception: PostgreSQL stays
+A rule of the project is that every engine is at its latest stable version, with one exception: PostgreSQL stays
 at 18 by the owner's decision, and the owner says when it is raised. It is written in three places:
 
 - `Postgres18` in this module: the image `postgres:18-alpine` of the tests.
@@ -622,10 +628,10 @@ module.
 
 | Class | Framework | What it checks |
 |---|---|---|
-| `PostgresIntegrationTest` | TestNG | The shared suite: it extends `PersistenceIntegrationTest` and gives it the provider. 32 tests, in the namespace `lds-provider-postgres-integration-test`. See [the shared suite](persistence-tck.md). |
+| `PostgresIntegrationTest` | TestNG | The [shared suite](../glossary.md#shared-suite): it extends `PersistenceIntegrationTest` and gives it the provider. 32 tests, in the namespace `lds-provider-postgres-integration-test`. See [the shared suite](persistence-tck.md). |
 | `ResultSetPublisherIntegrationTest` | TestNG | The Reactive Streams TCK (`PublisherVerification`) for `ResultSetPublisher`, over `SELECT * FROM GENERATE_SERIES(1, n)` with at most 1000 rows. It says that a call of `request` inside `onNext` goes at most one level deep (`boundedDepthOfOnNextAndRequestRecursion`). |
 | `ResultSetPublisherSignalsTest` | JUnit | That nothing follows the error of a request for zero rows. It needs no database: the result set is a proxy. |
-| `PostgresProviderTest` | JUnit | What the provider must do beyond the suite. 20 tests, each with an entity of its own. |
+| `PostgresProviderTest` | JUnit | What the provider must do beyond the suite. 20 tests, each with an entity type of its own. |
 
 `PostgresProviderTest` covers:
 
@@ -659,8 +665,8 @@ services file is missing. The reason is in the Javadoc of the class and in [the 
 
 The module has no `logback.xml`. The one of the shared suite's jar is on its test class path.
 
-`.claude/CLAUDE.md` gives the command for one module and what it needs. For this module it is the one below. It
-was not run for this document.
+The command for one module and what it needs is `./mvnw verify -pl <module> -am`. For this module it is the one
+below. It was not run for this document.
 
 ```sh
 ./mvnw verify -pl linked-data-store-persistence-provider-postgres -am
@@ -707,9 +713,9 @@ UTF-8 bytes, the order of code points. The bridge sorts by UTF-16 code units, as
 For ids with both, `hasNext` and `hasPrevious` can disagree with the list.
 
 Not finished: a transaction that is closed commits. `Transaction.close` in the API commits, and
-`PostgresTransaction` does not override it. `.claude/CLAUDE.md` says that a transaction commits only when asked
-and rolls back otherwise, and names this as not true yet. Core closes its read transactions the same way, so a
-read ends with `COMMIT` too.
+`PostgresTransaction` does not override it. A rule of the project is that a transaction commits only when asked
+and rolls back otherwise, and [the invariants](architecture.md#the-invariants) name this as not true yet. Core
+closes its read transactions the same way, so a read ends with `COMMIT` too.
 
 Not finished: a commit does not tell that PostgreSQL rolled the transaction back. After a statement of the
 transaction has failed, `PostgresTransaction.commit` sends `COMMIT`, PostgreSQL rolls back, and the future

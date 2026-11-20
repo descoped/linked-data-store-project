@@ -2,19 +2,22 @@
 
 This document is the reference for the REST API of Linked Data Store (LDS): every address, method and query
 parameter, the body of each request, the status codes and what each answer holds. It is for people who read and
-write documents over HTTP. The ideas behind the API (document, version, link, saga) are explained in
+write documents over HTTP. The ideas behind the API ([document](../glossary.md#document),
+[version](../glossary.md#version), [link](../glossary.md#link), [saga](../glossary.md#saga)) are explained in
 [Concepts](concepts.md), and [Getting started](getting-started.md) shows how to start LDS.
 
 ## About the examples
 
 Every request in this document was run against LDS `3.0.0-SNAPSHOT`, started on the JDK with its defaults:
-everything in memory, and the example model. Where an example needs another start, the text says so.
+everything in memory, and the example [model](../glossary.md#model). Where an example needs another start, the
+text says so.
 
-The example model has two entities:
+The example model has two [entity types](../glossary.md#entity-type):
 
-- `Person` with `name` (a text, required), `born` (a date-time), `address` (an object with `street` and `city`),
-  `employer` (a link to a `Company`) and `friends` (a list of links to `Person`).
-- `Company` with `name` (a text, required), `founded` (a date-time) and `about` (a list of objects with
+- `Person` with `name` (a text, required), `born` (a date-time), `address` (an
+  [embedded object](../glossary.md#embedded-object) with `street` and `city`), `employer` (a link to a `Company`) and
+  `friends` (a list of links to `Person`).
+- `Company` with `name` (a text, required), `founded` (a date-time) and `about` (a list of embedded objects with
   `languageCode` and `languageText`).
 
 In the examples `$LDS` is the address of LDS and `$J` is the header that says the body is JSON. With the default
@@ -39,7 +42,7 @@ LDS has no authentication. It answers every caller that reaches it, over plain H
 | Address | What it is |
 |---|---|
 | `/{namespace}/{Entity}/{id}` | One document. See [Whole documents](#whole-documents). |
-| `/{namespace}/{Entity}` | All documents of an entity. See [Read all documents of an entity](#read-all-documents-of-an-entity). |
+| `/{namespace}/{Entity}` | All documents of an entity type. See [Read all documents of an entity](#read-all-documents-of-an-entity). |
 | `/{namespace}/{Entity}/{id}/{field}`, and deeper: `.../{field}/{field}` | A part of a document. See [Parts of a document](#parts-of-a-document). |
 | `/{namespace}/{Entity}/{id}/{link field}/{TargetEntity}/{target id}` | One link of a document. See [Links](#links). |
 | `/{namespace}?schema` and `/{namespace}/{Entity}?schema` | The model, as JSON Schema. See [The model over HTTP](#the-model-over-http). |
@@ -49,16 +52,16 @@ LDS has no authentication. It answers every caller that reaches it, over plain H
 
 The texts that LDS sends with a status 400 use other words for the three kinds of resource: a "managed resource"
 is a whole document, an "embedded resource" is a part of a document, a "reference resource" is a link, and a
-"managed-domain" is an entity.
+"managed-domain" is an entity type.
 
 The rules for an address:
 
-- `{namespace}` is the one namespace of this LDS. It is set with the key `namespace.default`, and is `ns`
-  unless the configuration says otherwise. An address with another first segment, that is not one of the other
-  addresses of the table above, is answered 400.
-- `{Entity}` is the name of an entity of the model, with the same upper and lower case letters.
-- `{id}` is the id of the document. The caller chooses it; LDS does not make ids. It is free text, and must
-  not be empty or only spaces. See [Ids and encoding](#ids-and-encoding).
+- `{namespace}` is the one [namespace](../glossary.md#namespace) of this LDS. It is set with the key
+  `namespace.default`, and is `ns` unless the configuration says otherwise. An address with another first
+  segment, that is not one of the other addresses of the table above, is answered 400.
+- `{Entity}` is the name of an entity type of the model, with the same upper and lower case letters.
+- `{id}` is the [id](../glossary.md#id) of the document. The caller chooses it; LDS does not make ids. It is
+  free text, and must not be empty or only spaces. See [Ids and encoding](#ids-and-encoding).
 - `{field}` is a field that the model has at that place, with the same upper and lower case letters. LDS checks
   the address against the model before it looks for the document.
 - A `/` at the end of an address is ignored: `/ns/Person/ola/` is `/ns/Person/ola`.
@@ -102,13 +105,13 @@ $ curl -i "$LDS/"
 HTTP/1.1 404 Not Found
 ```
 
-The text of the fifth answer names an id, but an address with a namespace and an entity is enough.
+The text of the fifth answer names an id, but an address with a namespace and an entity type is enough.
 
 Not finished: the REST API answers for one namespace only.
 
-Not finished: the name of an embedded type of the model, a type that is not an entity, is taken as an entity in
-an address. With the example model, where `Address` is the type of the field `address`, `GET /ns/Address` is
-answered 200 with `[]`. A `PUT` to `/ns/Address/a1` and `GET /ns/Address?schema` are answered 500 with no body.
+Not finished: the name of an embedded type of the model, a type that is not an entity type, is taken as an entity
+type in an address. With the example model, where `Address` is the type of the field `address`, `GET /ns/Address`
+is answered 200 with `[]`. A `PUT` to `/ns/Address/a1` and `GET /ns/Address?schema` are answered 500 with no body.
 
 ### Ids and encoding
 
@@ -180,8 +183,9 @@ HTTP/1.1 200 OK
 
 Not finished: two addresses do not follow the prefix. The addresses in the answer to `?schema` are written
 without it (`GET /api/data?schema` answers `["/data/Company?schema","/data/Person?schema"]`). And
-`/source/{source}` does not find the last write: in the same LDS, with the transaction log kept in memory,
-`GET /api/source/default` answered `{"lastSourceId":null}` after the write above.
+`/source/{source}` does not find the last write: in the same LDS, with the
+[transaction log](../glossary.md#transaction-log) kept in memory, `GET /api/source/default` answered
+`{"lastSourceId":null}` after the write above.
 
 ## Whole documents
 
@@ -192,16 +196,18 @@ JSON object.
 
 | Query parameter | Meaning |
 |---|---|
-| `timestamp` | The time the new version is valid from. Without it: the time LDS receives the request. See [Versions and time](#versions-and-time). |
+| `timestamp` | The valid time of the new version. Without it: the time LDS receives the request. See [Versions and time](#versions-and-time). |
 | `sync` | `sync=false`: LDS answers before the write is done. See [When LDS answers a write: sync](#when-lds-answers-a-write-sync). |
 | `source`, `sourceId` | Where the write comes from. See [Sources and the transaction log](#sources-and-the-transaction-log). |
 
-The write makes one version of the document, valid from the time of the request. It does not change the other
-versions of the document. A version that exists at exactly that time is replaced.
+The write makes one version of the document, with the time of the request as its
+[valid time](../glossary.md#valid-time). It does not change the other versions of the document. A version that
+exists at exactly that time is replaced.
 
-Before it writes, LDS checks the document against the model (see [What LDS checks before it
-writes](#what-lds-checks-before-it-writes)). It does not look for the documents that the links point at: a document may
-link to a document that does not exist.
+Before it writes, LDS checks the document against the model
+([schema validation](../glossary.md#schema-validation), see
+[What LDS checks before it writes](#what-lds-checks-before-it-writes)). It does not look for the documents that
+the links point at: a document may link to a document that does not exist.
 
 The answer is `201 Created` with `Content-Type: application/json` and the body `{"saga-execution-id":"<id>"}`.
 The status is 201 also when the document existed before, and also with `sync=false`. `saga-execution-id` is the
@@ -265,8 +271,8 @@ Schema validation error: [$.name: integer found, string expected]
 
 ### Read a document
 
-`GET` of `/{namespace}/{Entity}/{id}` gives the document as it is at the time of the request: now, or the time
-in `timestamp` (see [Versions and time](#versions-and-time)).
+`GET` of `/{namespace}/{Entity}/{id}` gives the document as of the time of the request (an
+[as-of read](../glossary.md#as-of-read)): now, or the time in `timestamp` (see [Versions and time](#versions-and-time)).
 
 - 200, `Content-Type: application/json; charset=utf-8`, the document.
 - 404 with no body, when the document has no version at that time, or is deleted at that time.
@@ -305,9 +311,9 @@ memory provider: a `Person` written as `{"name":"Dot","a.b":1,"x[3]":2}` came ba
 
 ### Read all documents of an entity
 
-`GET` of `/{namespace}/{Entity}` gives 200 and an array of the documents of the entity as they are at the time
-of the request, in the order of their ids. The ids are compared as text, and upper case letters come before
-lower case letters. A document that is deleted at that time is left out. The array is `[]` when there is none.
+`GET` of `/{namespace}/{Entity}` gives 200 and an array of the documents of the entity type as of the time of
+the request, in the order of their ids. The ids are compared as text, and upper case letters come before lower
+case letters. A document that is deleted at that time is left out. The array is `[]` when there is none.
 
 ```console
 $ curl -i "$LDS/ns/Person"
@@ -342,8 +348,9 @@ The REST API has no search and cannot find a document by the value of a field.
 `DELETE` of `/{namespace}/{Entity}/{id}`. No body. The query parameters are those of a write: `timestamp`,
 `sync`, `source` and `sourceId`.
 
-A delete does not remove the document. It makes a version, valid from the time of the request, in which the
-document is deleted. The versions before it and after it stay as they are. See
+A delete does not remove the document. It writes a [tombstone](../glossary.md#tombstone): a version, valid from
+the time of the request, in which the document is deleted. The versions before it and after it stay as they are.
+See
 [What a delete means for earlier and later versions](#what-a-delete-means-for-earlier-and-later-versions).
 
 - 204 with no body, when LDS waited for the write (the default).
@@ -351,7 +358,7 @@ document is deleted. The versions before it and after it stay as they are. See
 - 400 `Id was empty!`, when the address has no id.
 - 500 with no body, when the saga of the write fails.
 
-A delete of a document that does not exist is answered in the same way, and makes a deleted version too.
+A delete of a document that does not exist is answered in the same way, and writes a tombstone too.
 
 LDS does not look for links when it deletes. A document that other documents link to can be deleted, and the
 links to it stay in those documents.
@@ -371,12 +378,12 @@ Unsupported managed resource method: PATCH
 
 ## Versions and time
 
-Every version of a document has a time from which it is valid. A request to a document, to a part of a document
-or to a link has a time too:
+Every version of a document has a valid time, from which it holds. A request to a document, to a part of a
+document or to a link has a time too:
 
-- For a read it is the time the document is read at. The answer is made from the newest version whose time is
+- For a read it is the time of the as-of read. The answer is made from the newest version whose valid time is
   that time or earlier.
-- For a write (`PUT`, `POST`, `DELETE`) it is the time the new version is valid from.
+- For a write (`PUT`, `POST`, `DELETE`) it is the valid time of the new version.
 
 The time may be in the past or in the future.
 
@@ -417,7 +424,7 @@ The example in that text has a `+`, which must be sent as `%2B` too.
 When `timestamp` is given more than once, the last one is used. The name is in lower case: `TIMESTAMP` is a
 parameter LDS does not know, and is ignored.
 
-With the memory provider the time of a version is kept to the millisecond: a version written at
+With the memory provider the valid time of a version is kept to the millisecond: a version written at
 `2020-01-01T00:00:00.123456789Z` is the version `2020-01-01T00:00:00.123Z`.
 
 ### Write a version at a time
@@ -474,11 +481,11 @@ Content-Type: application/json; charset=utf-8
 {"name": "Globex 2030"}
 ```
 
-The first read names no time, so the document is read at the time of the request (2026). The version of 2030 is
-in the future, and a read without a time does not give it until its time has come. Before the first version the
-answer is 404.
+The first read names no time, so the document is read as of the time of the request (2026). The version of 2030
+is in the future, and a read without a time does not give it until its time has come. Before the first version
+the answer is 404.
 
-The list of an entity is read at a time in the same way:
+The list of an entity type is read as of a time in the same way:
 
 ```console
 $ curl -i "$LDS/ns/Company?timestamp=2021-06-01T00:00:00Z"
@@ -500,13 +507,14 @@ Content-Type: application/json; charset=utf-8
 
 ### Read every version: timeline
 
-`GET` of `/{namespace}/{Entity}/{id}?timeline` gives every version of the document, the oldest first.
+`GET` of `/{namespace}/{Entity}/{id}?timeline` gives the [timeline](../glossary.md#timeline) of the document: every
+version, the oldest first.
 
 - 200, an array. Each element is `{"version":"<time>","document":<the document>}`.
 - 404 with no body, when the document has no version.
 
 `timeline` is switched on by being there. Its value is not read: `?timeline=false` gives the timeline too.
-`timestamp` has no effect on it. On the list of an entity (`/ns/Company?timeline`) it has no effect.
+`timestamp` has no effect on it. On the list of an entity type (`/ns/Company?timeline`) it has no effect.
 
 ```console
 $ curl -i "$LDS/ns/Company/globex?timeline"
@@ -529,7 +537,7 @@ Content-Type: application/json; charset=utf-8
 ]
 ```
 
-`version` is the time in UTC, ending in `[Etc/UTC]`. The seconds are left out when they are zero
+`version` is the valid time in UTC, ending in `[Etc/UTC]`. The seconds are left out when they are zero
 (`2020-01-01T00:00Z[Etc/UTC]`, `2026-11-20T16:40:45.499Z[Etc/UTC]`). The text can be given back as `timestamp`
 when `[` and `]` are written `%5B` and `%5D`: `?timestamp=2020-01-01T00:00Z%5BEtc/UTC%5D`.
 
@@ -537,10 +545,10 @@ Not finished: the answer is always the whole list. There are no parameters for a
 
 ### Write between versions, and replace a version
 
-A write at a time before versions that exist makes a version at that time and leaves the later versions as they
-are. A write at exactly the time of a version that exists replaces that version; the same moment written with
-another offset is the same time. The first write below replaces the version of 2020, the second adds a version
-between 2020 and 2022.
+A write at a valid time before versions that exist makes a version at that time and leaves the later versions
+as they are. A write at exactly the valid time of a version that exists replaces that version; the same moment
+written with another offset is the same time. The first write below replaces the version of 2020, the second
+adds a version between 2020 and 2022.
 
 ```console
 $ curl -i -X PUT "$LDS/ns/Company/globex?timestamp=2020-01-01T01:00:00%2B01:00" -H "$J" \
@@ -582,9 +590,9 @@ Content-Type: application/json; charset=utf-8
 
 ### What a delete means for earlier and later versions
 
-A delete makes a version in which the document is deleted. From that time until the next version the document
-is not there: a read is answered 404, and the document is not in the list of its entity. Before that time, and
-from the next version on, the document is read as before.
+A delete writes a tombstone, a version in which the document is deleted. From that time until the next version
+the document is not there: a read is answered 404, and the document is not in the list of its entity type. Before
+that time, and from the next version on, the document is read as before.
 
 ```console
 $ curl -i -X DELETE "$LDS/ns/Company/globex?timestamp=2025-01-01T00:00:00Z"
@@ -615,7 +623,7 @@ Content-Type: application/json; charset=utf-8
 ]
 ```
 
-In the timeline the deleted version is there, with an empty document (seen with the memory provider):
+In the timeline the tombstone is there, with an empty document (seen with the memory provider):
 
 ```console
 $ curl -i "$LDS/ns/Company/globex?timeline"
@@ -646,7 +654,7 @@ Content-Type: application/json; charset=utf-8
 ]
 ```
 
-A write at the time of a deleted version replaces it, and a delete at the time of a version replaces that
+A write at the valid time of a tombstone replaces it, and a delete at the valid time of a version replaces that
 version.
 
 A delete of a document that was never written, here with `sync=false`:
@@ -674,11 +682,12 @@ Over HTTP a version cannot be removed for good.
 
 ## Parts of a document
 
-A part of a document is a field of it, addressed by its path: `/{namespace}/{Entity}/{id}/{field}`. A path that
-ends at a link field (`/ns/Person/ola/employer`) is a part too: its value is the link, or the list of links.
+A part of a document is a field of it, addressed by its [path](../glossary.md#path):
+`/{namespace}/{Entity}/{id}/{field}`. A path that ends at a link field (`/ns/Person/ola/employer`) is a part too:
+its value is the link, or the list of links.
 
-Every method first reads the document at the time of the request. When there is no document at that time, or it
-is deleted, the answer is 404 with no body, whatever the method and the body.
+Every method first reads the document as of the time of the request. When there is no document at that time, or
+it is deleted, the answer is 404 with no body, whatever the method and the body.
 
 ### Read a part
 
@@ -728,7 +737,7 @@ that is `null` give the same answer, `[null]`.
 `PUT` or `POST`; the two do the same. The body is the new value of the part, as JSON: an object, an array, or a
 single value such as `"Oslo"` or `null`. The query parameters are those of a write of a whole document.
 
-LDS reads the document at the time of the request, puts the new value in place of the part, checks the whole
+LDS reads the document as of the time of the request, puts the new value in place of the part, checks the whole
 document against the model, and writes the whole document as a new version, valid from the time of the request.
 
 - The part is replaced as a whole. It is not merged with what was there.
@@ -896,11 +905,11 @@ address of its own:
 
 `/{namespace}/{Entity}/{id}/{link field}/{TargetEntity}/{target id}`
 
-`{TargetEntity}` must be an entity that the field may link to. The link field may be deeper in the document:
+`{TargetEntity}` must be an entity type that the field may link to. The link field may be deeper in the document:
 `.../{field}/{link field}/{TargetEntity}/{target id}`. Nothing may follow the target id.
 
-LDS never looks for the target. A link may point at a document that does not exist, and the address of a link
-says only whether the link is in the document.
+LDS never looks for the target. A link may point at a document that does not exist (a dangling reference), and
+the address of a link says only whether the link is in the document.
 
 ### Ask for a link
 
@@ -1040,7 +1049,7 @@ Content-Type: text/plain
 Unsupported reference resource method: PATCH
 ```
 
-An address that ends at the target entity (`/ns/Person/kari/employer/Company`) is answered 400 with
+An address that ends at the target entity type (`/ns/Person/kari/employer/Company`) is answered 400 with
 `Reference resource path-element: "employer" must be part of pattern ending like: "/employer/<managed-domain>/<id>"`.
 
 ### The target of a link is deleted
@@ -1064,8 +1073,8 @@ Content-Type: application/json; charset=utf-8
 
 ### A part or a link at a time
 
-A write to a part or to a link with a `timestamp` reads the document as it is at that time, changes it, and
-writes it as the version of that time. Later versions are not changed: the change is in the new version only.
+A write to a part or to a link with a `timestamp` reads the document as of that time, changes it, and writes it
+as the version of that time. Later versions are not changed: the change is in the new version only.
 
 `Person/tm` is written at 2020, and its `address` is written at 2022. A link written at 2021 is in the version
 of 2021 and not in the version of 2022. A write at 2019 is answered 404, because there is no document then.
@@ -1143,18 +1152,20 @@ HTTP/1.1 404 Not Found
 ## When LDS answers a write: sync
 
 Every write (`PUT`, `POST` and `DELETE` of a document, of a part or of a link) is carried out by a saga: LDS
-records the write in the transaction log, then writes the document with the persistence provider and, when
-search is on, updates the search index. [Concepts](concepts.md) says more about sagas.
+records the write in the transaction log, then writes the document with the
+[persistence provider](../glossary.md#persistence-provider) and, when search is on, updates the search index.
+[Concepts](concepts.md) says more about sagas.
 
 A write to a part or to a link is a write of the whole document: LDS reads the document, changes it, and writes
 it as a new version.
 
 The query parameter `sync` says whether LDS waits for the saga before it answers:
 
-- LDS waits: the answer comes when the saga is done. A read that follows sees the write.
-- LDS does not wait: the answer comes when LDS has noted the write in its saga log, the list of the writes it
-  has to carry out. The document is written shortly after. A read that follows may not see the write yet. If
-  the saga fails after the answer, the caller is not told.
+- LDS waits: the answer comes when the saga is done. A read that follows sees the write
+  ([read-your-writes](../glossary.md#synchronous-write)).
+- LDS does not wait: the answer comes when LDS has noted the write in its [saga log](../glossary.md#saga-log),
+  the list of the writes it has to carry out. The document is written shortly after. A read that follows may not
+  see the write yet (eventual consistency). If the saga fails after the answer, the caller is not told.
 
 The default is not the same for the three kinds of resource:
 
@@ -1377,15 +1388,15 @@ Content-Type: application/json; charset=utf-8
 
 ## The model over HTTP
 
-LDS gives the model as JSON Schema (2020-12), one schema for each entity. It is the schema that documents are
+LDS gives the model as JSON Schema (2020-12), one schema for each entity type. It is the schema that documents are
 checked with.
 
 | Request | Answer |
 |---|---|
-| `GET /{namespace}?schema` | 200, an array of the addresses of the schemas, in the order of the names of the entities |
+| `GET /{namespace}?schema` | 200, an array of the addresses of the schemas, in the order of the names of the entity types |
 | `GET /{namespace}?schema=embed` | 200, an array of the schemas themselves, in the same order |
 | `GET /{namespace}?schema=<another value>` | 400 `Not a valid resource. ...` |
-| `GET /{namespace}/{Entity}?schema` | 200, the schema of the entity. The value of `schema` is not read |
+| `GET /{namespace}/{Entity}?schema` | 200, the schema of the entity type. The value of `schema` is not read |
 | `GET /{namespace}/{Entity}/{id}?schema` | the document: with an id, `schema` has no effect |
 
 All are answered with `Content-Type: application/json; charset=utf-8`. The two requests on the namespace do not
@@ -1677,7 +1688,7 @@ its connection without an answer. [Operations](operations.md) describes the whol
 
 | Parameter | On | Meaning | Default |
 |---|---|---|---|
-| `timestamp` | every request to a document, a part or a link | The time read at, or the time the new version is valid from. See [The time of a request: timestamp](#the-time-of-a-request-timestamp). | the time of the request |
+| `timestamp` | every request to a document, a part or a link | The time of an as-of read, or the valid time of the new version. See [The time of a request: timestamp](#the-time-of-a-request-timestamp). | the time of the request |
 | `t` | the same | Another name for `timestamp`, used when `timestamp` is not given. |  |
 | `timeline` | `GET` of one document | Every version of the document. A value is not needed. | not given |
 | `sync` | `PUT`, `POST`, `DELETE` | Whether LDS waits for the write before it answers. See [When LDS answers a write: sync](#when-lds-answers-a-write-sync). | a whole document: waits. A part or a link: does not wait |
@@ -1694,9 +1705,9 @@ its connection without an answer. [Operations](operations.md) describes the whol
 | 201 | A write of a whole document, also when the document existed, and also when LDS did not wait. |
 | 202 | A delete of a whole document with `sync=false`. |
 | 204 | A delete of a whole document that LDS waited for. A CORS preflight request. |
-| 400 | The address is not valid: the namespace, the entity, a field, an empty id, the form of a link address. The `timestamp` cannot be read. The body of a whole document is empty, or the address of a write has no id. The document is not valid. The method is not one the address has. |
+| 400 | The address is not valid: the namespace, the entity type, a field, an empty id, the form of a link address. The `timestamp` cannot be read. The body of a whole document is empty, or the address of a write has no id. The document is not valid. The method is not one the address has. |
 | 404 | There is no document at the time of the request, or it is deleted then: for a read of a document, for a timeline (no version at all), for every method on a part, and for `GET`, `PUT` and `POST` of a link. A link that the document does not have (`GET`). The address `/`, and an address outside `http.prefix`. |
-| 500 | The body cannot be read as JSON, or the content type is not JSON. The saga of a write failed while LDS waited, or the write waited 10 seconds for its turn. Also the cases marked "Not finished" in this document: an id with a `%`, a `source` that cannot be the name of a log, an empty body to a part, the name of a type that is not an entity. |
+| 500 | The body cannot be read as JSON, or the content type is not JSON. The saga of a write failed while LDS waited, or the write waited 10 seconds for its turn. Also the cases marked "Not finished" in this document: an id with a `%`, a `source` that cannot be the name of a log, an empty body to a part, the name of a type that is not an entity type. |
 | 503 | LDS is stopping. `/health/alive`: the persistence provider does not answer. |
 
 A 400 has `Content-Type: text/plain` and a text that says what is wrong; the one 400 without a text is in

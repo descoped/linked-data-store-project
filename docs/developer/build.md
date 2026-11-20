@@ -48,15 +48,16 @@ order is the order of `<modules>` and of this table.
 
 Of the LDS modules, core depends on the two interfaces only. It does not depend on a provider, except on the
 memory provider for its tests. The server module is the one place where core and every provider meet: its POM
-names the providers with scope `runtime`, and also the saga log in PostgreSQL
-(`no.cantara.saga:sagalog-postgres`) and the transaction log in PostgreSQL
+names the providers with scope `runtime`, and also the [saga log](../glossary.md#saga-log) in PostgreSQL
+(`no.cantara.saga:sagalog-postgres`) and the [transaction log](../glossary.md#transaction-log) in PostgreSQL
 (`io.descoped.rawdata:rawdata-client-provider-postgres`).
 
-The TCK holds its test classes in `src/main/java`, because the tests are what the module is made for. A provider
-depends on it with scope `test` and extends `PersistenceIntegrationTest`. The TCK names TestNG, AssertJ,
-JSONassert, `slf4j-api` and `logback-classic` without a scope, so a provider gets them for its tests through the
-TCK. The TCK POM tells SonarCloud to read `src/main/java` as tests (`sonar.tests`) and only `pom.xml` as sources
-(`sonar.sources`).
+The TCK, the [shared suite](../glossary.md#shared-suite) of the
+[persistence providers](../glossary.md#persistence-provider), holds its test classes in `src/main/java`, because the
+tests are what the module is made for. A provider depends on it with scope `test` and extends
+`PersistenceIntegrationTest`. The TCK names TestNG, AssertJ, JSONassert, `slf4j-api` and `logback-classic` without
+a scope, so a provider gets them for its tests through the TCK. The TCK POM tells SonarCloud to read
+`src/main/java` as tests (`sonar.tests`) and only `pom.xml` as sources (`sonar.sources`).
 
 ### The module descriptors
 
@@ -133,8 +134,8 @@ Content-Length: 0
 Date: Fri, 20 Nov 2026 15:31:41 GMT
 ```
 
-The commands of the build are quoted from `ci.yml`, `.claude/CLAUDE.md` and `README.md`. They were not run for
-this document, and their output is not shown.
+These are the commands of the build. `./mvnw verify javadoc:javadoc` is what CI runs, and it needs Docker and
+JDK 27. The commands were not run for this document, and their output is not shown.
 
 ```sh
 ./mvnw verify javadoc:javadoc                  # what CI runs: build, tests, Javadoc
@@ -148,8 +149,8 @@ this document, and their output is not shown.
 
 ## The rules of the build
 
-The rules come from `.claude/CLAUDE.md` (Invariants) and from the comments in the POMs. Keep them when changing
-the build.
+The rules are those of the project (see [the invariants](architecture.md#the-invariants)) and those of the comments
+in the POMs. Keep them when changing the build.
 
 ### One reactor, one version
 
@@ -267,8 +268,8 @@ anywhere, and `javadoc` warns when a module on the class path (the TCK) links to
   `META-INF/services` is read. The `provides` line is checked by the compiler.
 - `uses` is declared by core, which is the module that calls `ServiceLoader` (`PersistenceConfigurator`,
   `SearchIndexConfigurator`, `UndertowApplication`). The two modules that define the interfaces declare no `uses`.
-  `.claude/CLAUDE.md` words the rule the other way ("the module that defines a service interface declares `uses`
-  for it"). The code and that sentence do not agree.
+  The rule of the project is worded the other way: the module that defines a service interface declares `uses`
+  for it. The code and the rule do not agree.
 - The module descriptors are checked when the modules are compiled, and nowhere else: nothing in the build runs
   LDS on the module path.
 
@@ -295,8 +296,7 @@ POM.
 
 - Always the latest stable version of every library, plugin, action, image and engine. Renovate moves them, and
   CI is the gate (see [Renovate](#renovate)).
-- No configuration of earlier hosts and pipelines, and no secret but the development defaults of the tests and
-  the compose file.
+- No secret but the documented development defaults of the tests and the compose file.
 - CI publishes nothing, and a release is made by hand (see [How a release would be made](#how-a-release-would-be-made)).
 
 ## The profiles
@@ -427,8 +427,7 @@ The two test classes of the Reactive Streams TCK (`AsyncIterablePublisherTest` i
 `ResultSetPublisherIntegrationTest` in the PostgreSQL provider) each report 11 of their 38 tests as skipped. Those
 are not disabled in the source of LDS.
 
-A change that switches tests on is run about ten times before it is pushed. `.claude/CLAUDE.md` gives the
-command:
+A change that switches tests on is run about ten times before it is pushed:
 
 ```sh
 for n in $(seq 1 10); do ./mvnw -B -q verify || break; done
@@ -494,9 +493,8 @@ The rule for `postgres` is about the image. The JDBC driver of PostgreSQL (`post
 dependency and moves like the others.
 
 The images of the tests are also written as text in Java classes (`Postgres18`, `Neo4j2026`, `Solr10`,
-`SagaLogPostgresTest`). `renovate.json` sets up no manager that reads Java sources. `.claude/CLAUDE.md` says that
-the compose file uses the images the tests of the providers use, so compare the two by hand when one of them
-moves.
+`SagaLogPostgresTest`). `renovate.json` sets up no manager that reads Java sources. The rule is that the compose
+file uses the images the tests of the providers use, so compare the two by hand when one of them moves.
 
 ## How a release would be made
 
@@ -534,8 +532,8 @@ Nothing in the repository publishes the image of the server.
   switched off give no warning any more (see [Every compiler warning is an error](#every-compiler-warning-is-an-error)).
 - The descriptor of core provides a class that is for tests, exports a package that is for tests, and requires
   `java.xml`, which no class of core uses (see JPMS above).
-- `.claude/CLAUDE.md` says that the module that defines a service interface declares `uses` for it. In the code
-  core declares `uses`, and the two modules that define the interfaces do not.
+- The JPMS rule of the project says that the module that defines a service interface declares `uses` for it. In
+  the code core declares `uses`, and the two modules that define the interfaces do not.
 - Core and the Solr provider require automatic modules whose names are made from the names of jar files, and Maven warns
   against publishing such a project (see [Every compiler warning is an error](#every-compiler-warning-is-an-error)).
 - 13 tests in core are disabled.

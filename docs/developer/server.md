@@ -13,10 +13,12 @@ module adds five things:
 - the main class, `io.descoped.lds.server.Server`, which reads the configuration, starts the application of core
   (`UndertowApplication`) and stops it when the process is asked to end;
 - the defaults of the configuration, with which LDS starts in memory with nothing else running;
-- the dependencies that put every provider on the class path: the three persistence providers, the Solr search
-  provider, the saga log in PostgreSQL and the transaction log in PostgreSQL;
+- the dependencies that put every provider on the class path: the three
+  [persistence providers](../glossary.md#persistence-provider), the Solr
+  [search index provider](../glossary.md#search-index-provider), the [saga log](../glossary.md#saga-log) in PostgreSQL
+  and the [transaction log](../glossary.md#transaction-log) in PostgreSQL;
 - the container image (`Dockerfile`) and a whole LDS for development (`compose.yaml`);
-- an example model (`schemas/schema.graphql`).
+- an example [model](../glossary.md#model) (`schemas/schema.graphql`).
 
 The module has no code that handles a request or a document.
 
@@ -36,7 +38,7 @@ All paths are under `linked-data-store-server`.
 | `compose.yaml`, `postgres-init.sql` | LDS with Neo4j, PostgreSQL and Solr, for development. |
 | `src/test/java/io/descoped/lds/server/ServerImageIT.java` | The test of the image as it is. |
 | `src/test/java/io/descoped/lds/server/ServerStackIT.java` | The test of the compose file. |
-| `src/test/java/io/descoped/lds/server/Lds.java` | The HTTP client the two tests share: `get`, `put` (with `sync=true`) and `graphql`. |
+| `src/test/java/io/descoped/lds/server/Lds.java` | The HTTP client the two tests share: `get`, `put` (a [synchronous write](../glossary.md#synchronous-write), with `sync=true`) and `graphql`. |
 | `src/test/java/io/descoped/lds/server/LoopbackPorts.java` | Publishes the ports of the test containers on 127.0.0.1 only. Testcontainers finds it through `src/test/resources/META-INF/services/org.testcontainers.core.CreateContainerCmdModifier`. |
 
 `conf/` and `conf_dev/` in the module directory are not in the repository. `.gitignore` names both, so that a
@@ -52,7 +54,7 @@ developer can keep a local `conf/application.properties` there.
    log, makes the thread pools of the sagas and builds the HTTP handlers. It does not open the port.
 3. It adds a shutdown hook that logs `ShutdownHook triggered..` and calls `application.stop()`.
 4. It calls `application.start()`, which opens the port and, when `saga.recovery.enabled` is `true`, starts the
-   recovery of unfinished sagas. Then `main` logs `Server started in ...ms..`.
+   recovery of unfinished [sagas](../glossary.md#saga). Then `main` logs `Server started in ...ms..`.
 5. It calls `application.enableSagaExecutionAutomaticDeadlockDetectionAndResolution()`, which starts the watchdog
    of the saga thread pool.
 6. The main thread waits for ever (`Thread.currentThread().join()`).
@@ -281,8 +283,9 @@ LDS_HTTP_PORT=19212 java -Dlogback.configurationFile=/path/to/logback-debug.xml 
 
 ## The example model
 
-`schemas/schema.graphql` has two entities, `Person` and `Company` (types with `@domain`), and two types that
-are parts of documents, `Address` and `Text`. `Person.employer` and `Person.friends` are links (`@link`).
+`schemas/schema.graphql` has two [entity types](../glossary.md#entity-type), `Person` and `Company` (types with
+`@domain`), and two types of [embedded objects](../glossary.md#embedded-object), `Address` and `Text`.
+`Person.employer` and `Person.friends` are [links](../glossary.md#link) (`@link`).
 `Company.about` is a list of `Text`, and `Text` has a field named `languageText`. That field is there so that
 search can be tried: the Solr provider indexes the texts of the fields named `languageText` and nothing else.
 What search covers is under review.
@@ -367,10 +370,9 @@ LDS runs on the class path in the image (`-cp /lds/lib/*`), as it does in every 
 named modules and have descriptors, and those are checked when the modules are compiled. They are not used at
 run time.
 
-`.claude/CLAUDE.md` gives the reason. On the module path the libraries that Undertow is made of (Undertow,
-XNIO, WildFly client config, SmallRye common) cannot make their message loggers. jboss-logging has to read each
-of their modules, which takes an `--add-reads` or `--add-opens` for every one. A missing one shows only when
-that message is first written.
+The reason: on the module path the libraries that Undertow is made of (Undertow, XNIO, WildFly client config,
+SmallRye common) cannot make their message loggers. jboss-logging has to read each of their modules, which takes an
+`--add-reads` or `--add-opens` for every one. A missing one shows only when that message is first written.
 
 ## The compose file
 
@@ -414,15 +416,19 @@ comes with. The data is in the volume `solr` (`/var/solr`). The health check ask
 
 Each of the three health checks has a start period of 60 seconds in which it asks every 2 seconds.
 
-The images are the ones the tests of the providers use. PostgreSQL stays at 18 by a decision that
-`.claude/CLAUDE.md` records.
+The images are the ones the tests of the providers use. PostgreSQL stays at 18 by a decision that is one of
+[the invariants](architecture.md#the-invariants) of the project.
 
 ## The tests
 
 The module has no unit test. Its tests are the two tests of the image, JUnit 6 with AssertJ, run by Failsafe
 because they need what the `package` phase makes. So `verify` runs them and `test` does not. How the tests of
-every module run is in [the build](build.md). `.claude/CLAUDE.md` has, under Commands, the command that
-runs only these two: `verify` for this module and what it needs, with a `-Dtest` that matches no unit test.
+every module run is in [the build](build.md). The command that runs only these two is `verify` for this module
+and what it needs, with a `-Dtest` that matches no unit test:
+
+```sh
+./mvnw verify -pl linked-data-store-server -am -Dtest=None -Dsurefire.failIfNoSpecifiedTests=false
+```
 
 Both need the `docker` command on the path, not only the Docker engine: `ServerImageIT` calls `docker build`
 and `docker image rm`, and `ServerStackIT` lets Testcontainers call `docker compose`. Both name their file
@@ -501,7 +507,7 @@ In some runs, after a number of requests, the JVM printed four lines on standard
 
 ## Rules to keep
 
-These are from `.claude/CLAUDE.md` and from the comments in the files of the module.
+These come from the rules of the project and from the comments in the files of the module.
 
 - **LDS runs on the class path.** Do not move the image to the module path (see above). Keep the module
   descriptor correct all the same: it is compiled.

@@ -1,27 +1,28 @@
 # The GraphQL API
 
 This document describes the GraphQL API of Linked Data Store (LDS): its address, how a query is sent, the queries
-LDS makes from a model, lists and their pages, links, reading at a time, the scalars, search, and the errors.
-It is for people who read documents from LDS with GraphQL. It is a reference: every query and every argument is
-here, each with a request that was run and the answer that came.
+LDS makes from a [model](../glossary.md#model), lists and their pages, [links](../glossary.md#link),
+[as-of reads](../glossary.md#as-of-read), the scalars, search, and the errors. It is for people who read documents
+from LDS with GraphQL. It is a reference: every query and every argument is here, each with a request that was run
+and the answer that came.
 
 ## What the GraphQL API is
 
 - It reads documents. It has queries only. There are no mutations and no subscriptions: documents are written
   and deleted with [the REST API](rest-api.md). A query changes nothing in LDS.
-- LDS makes the GraphQL schema from the model when it starts. For every entity of the model there is a query
-  for one document and a query for the documents of the entity, and a link of the model is a field that gives
-  the documents the link points at.
+- LDS makes the GraphQL schema from the model when it starts. For every [entity type](../glossary.md#entity-type)
+  of the model there is a query for one document and a query for the documents of the entity type, and a link
+  of the model is a field that gives the documents the link points at.
 - Its address is `/graphql`. `/graphql/` is the same address.
-- It reads one namespace: the one named by the configuration key `namespace.default`, which is `ns` as LDS
-  comes. A query cannot name another namespace.
+- It reads one [namespace](../glossary.md#namespace): the one named by the configuration key
+  `namespace.default`, which is `ns` as LDS comes. A query cannot name another namespace.
 - It is there when the model is a GraphQL schema and the key `graphql.enabled` is `true`. That is how LDS
   comes. A model given as JSON Schema files has no GraphQL API. Where there is no GraphQL API, `/graphql` is
   answered `400 Bad Request` with the text `Unsupported namespace: "graphql"`.
 - When the key `http.prefix` is set, the address is under it: with `/api` it is `/api/graphql`.
 
 [Configuration](configuration.md) has the keys. [The concepts](concepts.md) explains document,
-entity, namespace, version and link.
+entity type, namespace, version and link.
 
 ## The examples of this document
 
@@ -79,12 +80,13 @@ scalar DateTime
 scalar Time
 ```
 
-`Person` and `Company` are the entities. `Address` and `Text` are embedded types: their values are parts of
-documents.
+`Person` and `Company` are the entity types. `Address` and `Text` are embedded types: their values are
+[embedded objects](../glossary.md#embedded-object), parts of documents.
 
 The documents of the examples are written with the REST API. This shell function writes one version of a
-document and prints the status code of the answer. `sync=true` makes LDS answer when the document is stored,
-and `timestamp` is the time from which the version is valid.
+document and prints the status code of the answer. `sync=true` makes LDS answer when the document is stored (a
+[synchronous write](../glossary.md#synchronous-write)), and `timestamp` is the
+[valid time](../glossary.md#valid-time) of the version.
 
 ```sh
 put() {
@@ -326,13 +328,13 @@ LDS serves a schema that it makes from the model. This is what becomes of each t
 
 | In the model | In the GraphQL API |
 |---|---|
-| an entity `X` (a type with `@domain`) | The type `X`, and two fields of `Query`: `XById(id: ID!): X!` for one document, and `X(after: String, before: String, first: Int, last: Int): XConnection` for the documents of the entity. |
-| an embedded type (a type without `@domain`) | The same type. Its values are parts of documents, and are read inside the documents they are parts of. |
+| an entity type `X` (a type with `@domain`) | The type `X`, and two fields of `Query`: `XById(id: ID!): X!` for one document, and `X(after: String, before: String, first: Int, last: Int): XConnection` for the documents of the entity type. |
+| an embedded type (a type without `@domain`) | The same type. Its values are embedded objects, parts of documents, and are read inside the documents they are parts of. |
 | a field that is not a link | The same field with the same type. |
 | a field with `@link` that holds one link | The same field with the same type. It gives the document the link points at. |
 | a field with `@link` that holds a list of links | The field keeps its name and becomes `field(after: String, before: String, first: Int, last: Int): TargetConnection`, a list that is read in pages. |
 | a list of links with `@link(pagination: false)` | The same field with the same type: a plain list, without arguments. |
-| every field with `@link` | One more field, on the entity the link points at, for the reverse link: the documents that link to this one. Its name is the `reverseName` of the `@link`. Without a `reverseName` it is `reverse`, the name of the entity and the name of the field, each with a capital first letter: `Person.friends` gives `reversePersonFriends`. Its type is the connection of the entity that has the link. |
+| every field with `@link` | One more field, on the entity type the link points at, for the [reverse link](../glossary.md#reverse-link): the documents that link to this one. Its name is the `reverseName` of the `@link`. Without a `reverseName` it is `reverse`, the name of the entity type and the name of the field, each with a capital first letter: `Person.friends` gives `reversePersonFriends`. Its type is the connection of the entity type that has the link. |
 | the type `Query` of the model | Not served. The model must have a `Query` type, and LDS puts its own fields in its place. |
 | a description of a type or a field | The description of the same type or field. |
 
@@ -402,8 +404,8 @@ type PageInfo {
 Not finished: LDS does not keep the names it makes free. Do not give a type of the model a name that ends in
 `Connection` or `Edge`, or the name `PageInfo`, or, with search on, `SearchResult` or `TypeFilters`. With most
 of these names LDS does not start; [The model](model.md) has the cases. One case shows in the GraphQL API
-only: with an entity `PageInfo` that no list of links points at, LDS starts, and the field `pageInfo` of every
-list has that entity as its type. A query for `pageInfo { hasNextPage }` is then refused.
+only: with an entity type `PageInfo` that no list of links points at, LDS starts, and the field `pageInfo` of
+every list has that entity type as its type. A query for `pageInfo { hasNextPage }` is then refused.
 
 ### See the schema of your own model
 
@@ -439,7 +441,7 @@ queries shows the whole schema; see [The page for trying queries](#the-page-for-
 
 ## Read one document
 
-`XById` gives the document of the entity `X` with the given id. Its one argument, `id`, is the id of the
+`XById` gives the document of the entity type `X` with the given id. Its one argument, `id`, is the id of the
 document, a text. It must be there. A whole number is read as its text: `id: 42` is the id `42`.
 
 ```graphql
@@ -464,11 +466,11 @@ document, a text. It must be there. A whole number is read as its text: `id: 42`
 }
 ```
 
-- The answer is the document as it is at the time of the query. That time is now, unless the request names
-  another; see [Read at a time](#read-at-a-time).
+- The answer is the document as it is at the time of the query: an as-of read. That time is now, unless the
+  request names another; see [Read at a time](#read-at-a-time).
 - A field that the document does not have is `null`. Ola has no address.
-- A part of a document is read as an object inside it, and a list of parts as a list. One request can ask for
-  several fields of `Query`:
+- An embedded object is read as an object inside the document, and a list of embedded objects as a list. One
+  request can ask for several fields of `Query`:
 
 ```graphql
 {
@@ -526,7 +528,7 @@ document, a text. It must be there. A whole number is read as its text: `id: 42`
 ```
 
 `XById` is declared as never `null` (`X!`). When there is no document with the id at the time of the query,
-because it was never written, is written with a later time, or is deleted, the answer has this error and `data`
+because it was never written, is written with a later valid time, or is deleted, the answer has this error and `data`
 is `null` for the whole request. The other fields of the same request are lost too, as `CompanyById` is here.
 The message in full is:
 
@@ -539,7 +541,7 @@ parent type 'Query'
 
 ## Read the documents of an entity
 
-The field `X` of `Query` gives the documents of the entity `X` as a connection.
+The field `X` of `Query` gives the documents of the entity type `X` as a connection.
 
 ```graphql
 {
@@ -583,7 +585,8 @@ The field `X` of `Query` gives the documents of the entity `X` as a connection.
 
 ### Connections, edges, cursors and page info
 
-A connection is a list that can be read in pages. A connection of the entity `X` has the type `XConnection`:
+A connection is a list that can be read in pages. A connection of the entity type `X` has the type
+`XConnection`:
 
 | Type | Field | Type of the field | Meaning |
 |---|---|---|---|
@@ -703,8 +706,8 @@ with the last id first, and `hasNextPage` and `hasPreviousPage` are wrong: `Pers
 persons and says `true` for both. Read forwards, with `first` and `after`.
 
 Not finished: a page does not make a list of documents less work for LDS. With the documents in memory or in
-PostgreSQL, LDS reads every document of the entity before it gives the page. The time a list takes grows with
-the number of documents of the entity, not with `first`.
+PostgreSQL, LDS reads every document of the entity type before it gives the page. The time a list takes grows
+with the number of documents of the entity type, not with `first`.
 
 ## Follow links
 
@@ -882,7 +885,7 @@ A reverse link is a connection. Reading it forwards with `first` and `after` wor
 has; see [Pages](#pages).
 
 Not finished: with the memory provider a reverse link has two faults. Both come from a write or a delete at the
-exact time of a version that is there, which replaces that version.
+exact valid time of a version that is there, which replaces that version.
 
 - A link that was replaced in that way is still followed backward. A person was written with the `employer`
   `/Company/c1` and written again, with the same `timestamp`, with the `employer` `/Company/c2`. The person was
@@ -894,8 +897,8 @@ exact time of a version that is there, which replaces that version.
 
 ### A link to a document that is not there
 
-LDS does not check that the target of a link exists when a document is written, so a link can point at nothing.
-This person links to a company and to a person that were never written:
+LDS does not check that the target of a link exists when a document is written, so a link can point at nothing:
+a dangling reference. This person links to a company and to a person that were never written:
 
 ```sh
 put Person/nils 2020-01-01T00:00:00Z \
@@ -943,18 +946,18 @@ put Person/nils 2020-01-01T00:00:00Z \
 - In a list of links without pages, the link gives a `null` in the list; see the next section.
 - A link to one document whose field has `!` in the model, such as `car: Car! @link`, cannot give `null`. The answer has
   the error of [Read one document](#read-one-document) for the field, and the document that holds the link is lost from
-  the answer: `XById` gives `"data": null`, and a list of the entity is `null` as a whole when one of its documents has
-  such a link.
+  the answer: `XById` gives `"data": null`, and a list of the entity type is `null` as a whole when one of its
+  documents has such a link.
 
-The target is looked for at the time of the query. When the company is written later, the same query gives it
-from the time its first version is valid.
+The link is resolved at the time of the query. When the company is written later, the same query gives it from
+the valid time of its first version.
 
 ### A list of links without pages, and a link to a union
 
-In a model a list of links can be declared with `@link(pagination: false)`, and a link can point at a union of entities
-(`union Pet = Cat | Dog`): a document of any of them. The example model has neither. The examples of this section, and
-of [Scalars and how values come out](#scalars-and-how-values-come-out), were run on LDS started with this model (the key
-`graphql.schema` names the file):
+In a model a list of links can be declared with `@link(pagination: false)`, and a link can point at a union of entity
+types (`union Pet = Cat | Dog`): a document of any of them. The example model has neither. The examples of this section,
+and of [Scalars and how values come out](#scalars-and-how-values-come-out), were run on LDS started with this model (the
+key `graphql.schema` names the file):
 
 ```graphql
 directive @domain(searchable: Boolean) on OBJECT
@@ -1069,8 +1072,8 @@ Not finished: a document that comes from a list without pages cannot be asked fo
 `cars { plate reverseOwnerCars { edges { cursor } } }` the field `reverseOwnerCars` is `null` for every car, and
 the answer has an error for each.
 
-A link to a union gives a document of any entity of the union. Ask for `__typename` to learn the entity of a
-document, and for the fields of each entity with `... on`:
+A link to a union gives a document of any entity type of the union. Ask for `__typename` to learn the entity
+type of a document, and for the fields of each entity type with `... on`:
 
 ```graphql
 {
@@ -1120,7 +1123,7 @@ document, and for the fields of each entity with `... on`:
 }
 ```
 
-For a link to a union LDS adds the field of the reverse link to every entity of the union. `Cat` and `Dog` both
+For a link to a union LDS adds the field of the reverse link to every entity type of the union. `Cat` and `Dog` both
 have `reverseOwnerFavourite` and `reverseOwnerPets`:
 
 ```graphql
@@ -1163,15 +1166,16 @@ Not finished: links to a union have two faults.
 
 ### Links in a part of a document
 
-Not finished: a link in a part of a document (a field with `@link` in an embedded type) works only in
-part. A link to one document is read as described above. A list of links gives `null` and an error. The field
-LDS adds for the reverse link of such a link never gives a document.
+Not finished: a link in an embedded object (a field with `@link` in an embedded type) works only in part. A link to one
+document is read as described above. A list of links gives `null` and an error. The field LDS adds for the reverse link
+of such a link never gives a document.
 
 ## Read at a time
 
-Every query is answered as of one time. `XById` gives the version of the document that is valid at that time,
-a list holds the documents that exist at that time, and every link, reverse link and search hit is followed at
-that time. Without a time in the request the time is now.
+Every query is an as-of read: it is answered as of one time, and reads the
+[snapshot](../glossary.md#snapshot) of that time. `XById` gives the version of the document that is valid at
+that time, a list holds the documents that exist at that time, and every link, reverse link and search hit is
+followed at that time. Without a time in the request the time is now.
 
 The time is the query parameter `snapshot` of the address. It works for GET and for POST.
 
@@ -1240,10 +1244,10 @@ In 2021 Ola worked at Acme. Now the employees of Acme are `kari` and `per`, as i
 - When both are given, the parameter `snapshot` is used. When the parameter is not a time, the variable is used.
 - The value is a date and a time with `Z` or an offset: `2021-06-01T00:00:00Z`, `2021-06-01T02:00:00+02:00`.
   A date alone, or a date and a time without `Z` or an offset, is not a time for LDS.
-- A version is read from its own time on. The second version of `ola` is valid from `2022-01-01T00:00:00Z`:
+- A version is read from its valid time on. The second version of `ola` is valid from `2022-01-01T00:00:00Z`:
   `snapshot=2022-01-01T00:00:00Z` gives it, and `snapshot=2021-12-31T23:59:59Z` gives the first version.
-- The time can be in the future. A version whose time has not come is not read now. It is read with a
-  `snapshot` at or after its time.
+- The time can be in the future. A version whose valid time has not come is not read now. It is read with a
+  `snapshot` at or after its valid time.
 - In an address a `+` is written `%2B`: `snapshot=2021-06-01T02:00:00%2B02:00`. A `+` as it is
   becomes a space, and the value is then not a time.
 - At a time before the first version of a document, and at a time after the document is deleted, `XById` gives the error
@@ -1346,7 +1350,8 @@ index, which is Solr. The compose stack of [Getting started](getting-started.md)
 run. With search off there is no field `Search`, and a query for it is answered
 `Field 'Search' in type 'Query' is undefined`.
 
-With search on, LDS adds this to the schema. `TypeFilters` and `SearchResult` hold every entity of the model.
+With search on, LDS adds this to the schema. `TypeFilters` and `SearchResult` hold every entity type of the
+model.
 This is what LDS serves for the example model:
 
 ```graphql
@@ -1388,7 +1393,7 @@ enum TypeFilters {
 | Argument of `Search` | Type | Meaning |
 |---|---|---|
 | `query` | `String!` | The text to search for. It must be there. |
-| `filter` | `[TypeFilters]` | Only documents of these entities. The values are names of entities, without quotes: `filter: [Company]`. Without it, or with an empty list, documents of every entity are found. |
+| `filter` | `[TypeFilters]` | Only documents of these entity types. The values are names of entity types, without quotes: `filter: [Company]`. Without it, or with an empty list, documents of every entity type are found. |
 | `first`, `after`, `last`, `before` | as in [Pages](#pages) | The page of the result. The cursors are those of a search; see below. |
 
 The search examples were not run on Solr. They were run on LDS with the example model and search on, with a
@@ -1448,8 +1453,8 @@ put Person/kari 2020-01-01T00:00:00Z '
 201
 ```
 
-A node of the result is a document of any entity, so the query says which fields it wants for which entity, with
-`... on`:
+A node of the result is a document of any entity type, so the query says which fields it wants for which entity
+type, with `... on`:
 
 ```graphql
 {
@@ -1530,11 +1535,13 @@ A search with a filter and a page size:
 - `query` is given to Solr as it is. It is a query in the language of Solr, and a word in it is looked for in
   the texts of the `languageText` fields. How Solr compares words (capital letters, forms of a word) is decided
   by Solr, not by LDS.
-- A value of `filter` that is not an entity of the model is refused, and so is a value in quotes.
+- A value of `filter` that is not an entity type of the model is refused, and so is a value in quotes.
 - The result comes in the order Solr gives it. The number of documents found is not in the answer.
 - Every document of the result is read at the time of the query; see [Read at a time](#read-at-a-time). A document that
   does not exist at that time is left out of the result.
-- LDS gives Solr five seconds to take a write in. A search right after a write may not find the document yet.
+- LDS gives Solr five seconds to take a write in: the index is
+  [eventually consistent](../glossary.md#search-index-provider). A search right after a write may not find the
+  document yet.
   Documents written while search was off are not found.
 - When LDS cannot reach Solr, the answer has an error for `Search`, such as
   `Exception while fetching data (/Search) : java.net.ConnectException: Connection refused (connect failed)`,
@@ -1594,7 +1601,7 @@ Not finished: these are the other faults of search a caller can meet.
   the text comes twice.
 - When a document of the result is left out because it does not exist at the time of the query, the cursors of
   the edges after it are no longer the places Solr gave them.
-- Every entity can be searched. `@domain(searchable: false)` in the model changes nothing.
+- Every entity type can be searched. `@domain(searchable: false)` in the model changes nothing.
 
 ## Errors and status codes
 
@@ -1666,7 +1673,7 @@ sent (line and column) where there is one, the `path` to the field in the answer
 | The field of a link to one document is not in the document | `Exception while fetching data (/PersonById/employer) : Cannot invoke "java.lang.CharSequence.length()" because "this.text" is null`, or the same with `null` after the colon | `DataFetchingException` |
 | A value in a document that the scalar of its field cannot give | `Can't serialize value (/OwnerById/age) : Expected a value that can be converted to type 'Int' but it was a 'String'` | `DataFetchingException` |
 | A query over a limit | see [Limits](#limits) | `InvalidSyntax`, `ValidationError` or `BadFaithIntrospection` |
-| Search: a `filter` value that is not an entity | `Validation error (WrongType@[Search]) : argument 'filter[0]' with value 'EnumValue{name='Address'}' is not a valid 'TypeFilters' - Literal value not in allowable values for enum 'TypeFilters' - 'EnumValue{name='Address'}'` | `ValidationError` |
+| Search: a `filter` value that is not an entity type | `Validation error (WrongType@[Search]) : argument 'filter[0]' with value 'EnumValue{name='Address'}' is not a valid 'TypeFilters' - Literal value not in allowable values for enum 'TypeFilters' - 'EnumValue{name='Address'}'` | `ValidationError` |
 | Search: a cursor that is not one of a search | `Exception while fetching data (/Search) : expecting a valid cursor value, got acme` | `DataFetchingException` |
 
 ### Limits
@@ -1705,7 +1712,7 @@ the GraphQL API is there. With LDS as it comes, open `http://localhost:9090/grap
 - `/graphiql` answers with a redirect to `/graphiql/`, which is the page.
 - The page shows the schema LDS serves, with every query, type and field, under `Docs`.
 - The page sends its queries to `/graphql` with POST, as JSON.
-- What is written in the variables pane of the page is sent as `variables`. To read at a time, write
+- What is written in the variables pane of the page is sent as `variables`. For an as-of read, write
   `{"__snapshot": "2021-06-01T00:00:00Z"}` there; see [Read at a time](#read-at-a-time).
 - The page keeps the query, the variables and the operation name in its own address, so the address can be
   kept or given to someone else. A page opened with such an address shows the query and the variables, and

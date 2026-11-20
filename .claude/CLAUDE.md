@@ -248,8 +248,11 @@ one document for each part of the code). `docs/README.md` is the index. Keep the
   described.
 - **What is unfinished is said where the reader meets it**, in a paragraph that starts with `Not finished:`. When
   the fault is corrected, the paragraph goes.
-- **Plain words, present tense, no history**: not how the code got this way, no earlier hosts or models.
-- **One word for one thing**: document, entity, namespace, id, version, link, model, provider, saga.
+- **Established technical terms, each defined once** in `docs/glossary.md` (entity type, document key, embedded
+  object, link, valid time, as-of read, snapshot, tombstone, saga, transaction log, fragment, ...), and one term
+  for one thing. A new term goes into the glossary first, defined from the code. Present tense, no history.
+- **The documents stand alone.** They never cite this file; a rule of the project is stated in
+  `docs/developer/architecture.md`, a command is given as the command.
 - **Figures are Mermaid** (` ```mermaid `, which GitHub draws in light and dark), and show what the code does,
   as everything else does: a model as a class diagram (a filled diamond for an embedded type, an arrow for a
   link), a timeline as a Gantt chart without the marker of today, a path as a flowchart. What is a table is a

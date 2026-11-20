@@ -1,9 +1,9 @@
 # Core: the GraphQL API and how its schema is built
 
-This document covers the part of `linked-data-store-core` that serves GraphQL: how LDS builds the schema it serves
-from the schema file of the model, how a request is read and answered, and how a field reads documents from
-persistence. It is for developers and maintainers who change this code. How the same schema file becomes JSON
-Schema and the specification is in [the model](core-model.md). How the handlers are put on their paths is in
+This document covers the part of `linked-data-store-core` that serves GraphQL: how LDS builds the schema it serves from
+the schema file of the [model](../glossary.md#model), how a request is read and answered, and how a field reads
+documents from persistence. It is for developers and maintainers who change this code. How the same schema file becomes
+JSON Schema and the specification is in [the model](core-model.md). How the handlers are put on their paths is in
 [the application](core-application.md).
 
 ## What this part is for
@@ -11,11 +11,12 @@ Schema and the specification is in [the model](core-model.md). How the handlers 
 The GraphQL API reads documents. It has a query type and nothing else: no mutation and no subscription. Documents
 are written through REST ([the REST handlers](core-rest.md), [the write path](core-write-path.md)).
 
-The schema that LDS serves is not the schema file. The file names the entities (the types with `@domain`), their
-fields and their links (the fields with `@link`). LDS builds the rest from it when it starts:
+The schema that LDS serves is not the schema file. The file names the [entity types](../glossary.md#entity-type)
+(the types with `@domain`), their fields and their [links](../glossary.md#link) (the fields with `@link`). LDS
+builds the rest from it when it starts:
 
-- a `Query` type with two fields for every entity, `<Entity>ById` and `<Entity>`;
-- a field on the target of every link that goes the other way (a reverse link);
+- a `Query` type with two fields for every entity type, `<Entity>ById` and `<Entity>`;
+- a field on the target of every link that goes the other way (a [reverse link](../glossary.md#reverse-link));
 - relay connections (`<Type>Connection`, `<Type>Edge`, `PageInfo`) for lists of links, with the arguments
   `first`, `after`, `last` and `before`;
 - when search is on, a `Search` field with its types;
@@ -63,7 +64,7 @@ graphql-java-extended-scalars (`graphql-java.version` and `graphql-java-extended
 | `PersistenceLinkFetcher` | A single link: reads the document the link points at. |
 | `PersistenceLinksFetcher` | A list of links that is not paged: reads the document of every link. |
 | `ConnectionFetcher` | The base of the connection fetchers. Reads `first`, `after`, `last`, `before` and the time of the query, and makes a `Range` of them (`ConnectionParameters.getRange`). `toEdge` makes an edge of a document. |
-| `PersistenceRootConnectionFetcher` | `<Entity>`: the documents of an entity. |
+| `PersistenceRootConnectionFetcher` | `<Entity>`: the documents of an entity type. |
 | `PersistenceLinksConnectionFetcher` | A paged list of links: the documents the links of one document point at. |
 | `PersistenceReverseLinksConnectionFetcher` | A reverse link: the documents that link to one document. |
 | `QueryConnectionFetcher`, `QueryConnectionCursor` | `Search`: asks the search index, then reads every hit from persistence. The cursor is a position in the result. |
@@ -111,7 +112,7 @@ scalar Time
 ```
 
 The descriptions and the comment of the file are left out here. These documents were written through REST, all
-with `timestamp=2020-01-01T00:00:00Z` unless another time is given:
+with the [valid time](../glossary.md#valid-time) `timestamp=2020-01-01T00:00:00Z` unless another time is given:
 
 | Entity | Id | Document |
 |---|---|---|
@@ -196,7 +197,7 @@ pass reads what the earlier ones wrote.
 | 1 | none | Takes the types of the parsed schema, sorted by name. Removes `Query`, the types whose name starts with `__` and the scalars that no type and no directive uses (`typesInUse`). |
 | 2 | `TypeCollectingVisitor` | Collects every named type that can be reached into the type map, in the order met. |
 | 3 | `TypeReferencerVisitor`, then `GraphQLTypeResolvingVisitor` of graphql-java | Replaces types inside types by references by name, then resolves the references against the type map. |
-| 4 | `ReverseLinkNameVisitor` | A `@link` field without `reverseName` gets one: `reverse`, then the name of the entity, then the names of the fields on the way from the entity to the link, each with a capital first letter. `Person.friends` gets `reversePersonFriends`. The way is the one the walk took to the field (`computeName` reads the parents of the field in the walk), so for a link in a type without `@domain` the name follows from where the walk met that type first. See [Not finished and known to be wrong](#not-finished-and-known-to-be-wrong). |
+| 4 | `ReverseLinkNameVisitor` | A `@link` field without `reverseName` gets one: `reverse`, then the name of the entity type, then the names of the fields on the way from the entity type to the link, each with a capital first letter. `Person.friends` gets `reversePersonFriends`. The way is the one the walk took to the field (`computeName` reads the parents of the field in the walk), so for a link in a type without `@domain` (an embedded type) the name follows from where the walk met that type first. See [Not finished and known to be wrong](#not-finished-and-known-to-be-wrong). |
 | 5 | `ReverseLinkBuildingVisitor` | For every `@link` field, adds a field to the target type (to every member, when the target is a union). Its name is the `reverseName`, its type is `[<Source>!]!`, and it has `@reverseLink(mappedBy: <path>, pagination: true)`. The path is that of the link field in its document: `$.friends[]`, `$.employer`. |
 | 6 | `QueryBuildingVisitor` | For every object type with `@domain`, adds `<Name>ById(id: ID!): <Name>!` with `@link(pagination: false)` and `<Name>: [<Name>!]!` with `@link(pagination: true)` to the `Query` builder. |
 | 7 | `AddSearchTypesVisitor` | Only when there is a search index. Adds the enum `TypeFilters` and the union `SearchResult`, both of every type with `@domain`, and the field `Search(query: String!, filter: [TypeFilters]): [SearchResult!]!` with the applied directive `search`. |
@@ -258,7 +259,7 @@ connections are made. A type whose name ends in `Connection` is taken for a conn
 |---|---|
 | has the `search` directive | `QueryConnectionFetcher` |
 | a connection, on `Query` | `PersistenceRootConnectionFetcher(entity)` |
-| a connection with `@reverseLink` | `PersistenceReverseLinksConnectionFetcher` with the entity of the nodes, the `mappedBy` path and the name of the type that holds the field |
+| a connection with `@reverseLink` | `PersistenceReverseLinksConnectionFetcher` with the entity type of the nodes, the `mappedBy` path and the name of the type that holds the field |
 | another connection | `PersistenceLinksConnectionFetcher` with the name of the type that holds the field, the path from `computePath` and the name of the node type |
 | a list that is not a connection, with `@reverseLink` | none. The visitor logs `ManyToOne: is not supported for reverse links` at WARN. |
 | another list that is not a connection | `PersistenceLinksFetcher(field, target)` |
@@ -266,14 +267,14 @@ connections are made. A type whose name ends in `Connection` is taken for a conn
 | not a list, elsewhere | `PersistenceLinkFetcher(field, target)`. When the target is a union the target is the pattern of its members, `(Cat\|Dog)`. |
 
 For a list that is not a connection on `Query` the visitor has a branch that sets `PersistenceLinkFetcher`. LDS
-makes no such field: the list of an entity on `Query` is always paged.
+makes no such field: the list of an entity type on `Query` is always paged.
 
 Every other field has the default fetcher of graphql-java, which reads the field from the map of its parent. So
-the scalar fields and the parts of a document without `@domain` (`address`, `about`) come from the document that
-a fetcher above them read.
+the scalar fields and the [embedded objects](../glossary.md#embedded-object) (`address`, `about`) come from the
+document that a fetcher above them read.
 
 Every interface and every union gets a type resolver. It reads the entry `__graphql_internal_document_key` of the
-map (a `DocumentKey`) and answers the object type with the name of the entity of that key.
+map (a `DocumentKey`) and answers the object type with the name of the entity type of that key.
 
 ### What is served for the example model
 
@@ -575,8 +576,9 @@ Date: Fri, 20 Nov 2026 15:39:03 GMT
 
 ### The time of the query
 
-Every read is as of one time, the snapshot. `GraphQLUndertowContext.getSnapshot(queryParameters, variables,
-clock)` takes the first of these that gives a time:
+Every read is an [as-of read](../glossary.md#as-of-read) at one instant, which this part calls the snapshot.
+`GraphQLUndertowContext.getSnapshot(queryParameters, variables, clock)` takes the first of these that gives a
+time:
 
 1. the query parameter `snapshot` of the request (`SNAPSHOT_QUERY_NAME`), for GET and for POST;
 2. the variable `__snapshot` (`SNAPSHOT_VARIABLE_NAME`);
@@ -640,8 +642,8 @@ curl -s http://localhost:19111/graphql -H 'Content-Type: application/json' \
 }
 ```
 
-A link is followed at the same time. A link to a document that does not exist at the snapshot gives `null`, and
-the same link gives the document at a time when it exists:
+A link is resolved as of the same instant. A link to a document that does not exist at the snapshot (a dangling
+link) gives `null`, and the same link gives the document at a time when it exists:
 
 ```sh
 curl -s http://localhost:19111/graphql -H 'Content-Type: application/graphql' \
@@ -805,24 +807,24 @@ is not served: the path is an exact one, and the request is answered `400 Unsupp
 ### The pattern
 
 A fetcher gets the snapshot from the `GraphQLContext` of LDS and reads through `RxJsonPersistence`
-([the persistence interface](persistence-api.md)). Every read opens a read-only transaction
-(`createTransaction(true)`) and closes it when the read is done. The methods of persistence return a `Maybe` or a
-`Flowable`. A data fetcher of this part returns a value, so the fetcher waits for the stream on the worker thread
-of the request: `blockingGet()` on a `Maybe`, `toList().blockingGet()` on a `Flowable`. The range of a
-connection goes to the provider with the call.
+([the persistence interface](persistence-api.md)). Every read opens a read-only transaction (`createTransaction(true)`)
+and closes it when the read is done. The methods of persistence return a `Maybe` or a `Flowable`, a
+[reactive stream](../glossary.md#reactive-stream). A data fetcher of this part returns a value, so the fetcher waits for
+the stream on the worker thread of the request: `blockingGet()` on a `Maybe`, `toList().blockingGet()` on a `Flowable`.
+The range of a connection goes to the provider with the call.
 
 A document becomes a `Map` (`JsonDocument.toMap`). The fetchers that feed other fetchers add the entry
 `__graphql_internal_document_key` with the `DocumentKey` of the document. The fetchers below need it to know which
-document they are in, and the type resolvers need it to name the entity.
+document they are in, and the type resolvers need it to name the entity type.
 
 | Fetcher | Reads with | Adds the document key |
 |---|---|---|
 | `PersistenceFetcher` | `readDocument(tx, snapshot, namespace, entity, id)` | yes |
-| `PersistenceLinkFetcher` | `readDocument`, with the entity and the id taken from the link by the pattern `/(?<type>TARGET)/(?<id>.*)` | yes |
+| `PersistenceLinkFetcher` | `readDocument`, with the entity type and the id taken from the link by the pattern `/(?<type>TARGET)/(?<id>.*)` | yes |
 | `PersistenceLinksFetcher` | `readDocument` for each link that matches `/TARGET/(?<id>.*)` | no |
 | `PersistenceRootConnectionFetcher` | `readDocuments(tx, snapshot, namespace, entity, range)`, then `hasPrevious` and `hasNext` with the ids of the first and the last edge | yes |
 | `PersistenceLinksConnectionFetcher` | `readTargetDocuments` once for every concrete type of the target (the members of a union, the implementations of an interface), merged with `Flowable.merge` | yes |
-| `PersistenceReverseLinksConnectionFetcher` | `readSourceDocuments` with the id of the document, the `mappedBy` path and the entity of the nodes | yes |
+| `PersistenceReverseLinksConnectionFetcher` | `readSourceDocuments` with the id of the document, the `mappedBy` path and the entity type of the nodes | yes |
 | `QueryConnectionFetcher` | `SearchIndex.search(query, filter, from, size)`, then `readDocument` for every hit | yes |
 
 The namespace is the one the builder was made with, `namespace.default`. `QueryConnectionFetcher` reads a hit
@@ -931,12 +933,12 @@ curl -s http://localhost:19111/graphql -H 'Content-Type: application/graphql' \
 - `last` given: up to the position of `before`, or 10; size `last`.
 - neither: from the position of `after`, or 0, up to the position of `before`, or 10.
 
-It calls `SearchIndex.search(query, filter, from, size)` and waits for the answer. `filter` is the set of entity
-names of the argument, or `null`. Every hit is a `DocumentKey`; the fetcher reads the document of the key at the
-snapshot and leaves out a hit that has no document at that time, with the line `Cound not find document for key
-...` at ERROR in the log. The cursor of an edge is `from` plus the number of edges before it, written as
-`qc:<position>` in base64url without padding (`QueryConnectionCursor`). `hasPreviousPage` is `from > 0`, and
-`hasNextPage` is `from + size < total hits`. With no edges both are `false`.
+It calls `SearchIndex.search(query, filter, from, size)` and waits for the answer. `filter` is the set of names of
+entity types of the argument, or `null`. Every hit is a `DocumentKey`; the fetcher reads the document of the key at the
+snapshot and leaves out a hit that has no document at that time, with the line `Cound not find document for key ...` at
+ERROR in the log. The cursor of an edge is `from` plus the number of edges before it, written as `qc:<position>` in
+base64url without padding (`QueryConnectionCursor`). `hasPreviousPage` is `from > 0`, and `hasNextPage` is
+`from + size < total hits`. With no edges both are `false`.
 
 What a search finds is decided by the provider ([search](search.md)). The Solr provider finds a document by
 the texts of its fields named `languageText`. What search covers is under review.
@@ -945,7 +947,7 @@ The requests below were sent to LDS with search on and the index of the tests of
 `io.descoped.lds.core.search.TestSearchIndex` (provider id `testSearchIndex`). It finds a document by any text in
 it and applies neither the filter nor the page. LDS does not find that provider on the class path by itself; it
 was registered with a file `META-INF/services/io.descoped.lds.api.search.SearchIndexProvider` in a folder added to
-the class path. The model had the entities `Cat`, `Dog`, `Owner` and `Car`. Solr was not run for this document.
+the class path. The model had the entity types `Cat`, `Dog`, `Owner` and `Car`. Solr was not run for this document.
 
 ```sh
 curl -s http://localhost:19111/graphql -H 'Content-Type: application/graphql' \
@@ -1023,9 +1025,10 @@ variables are in [the application](core-application.md).
 
 ## Rules to keep
 
+These rules hold for this part, beside [the invariants](architecture.md#the-invariants) of the project.
+
 - **Keep `TypeTraverser`, `TypeCollectingVisitor` and `SchemaElements`.** What the passes write follows from the
-  order of the walk and from how a type is built. The `SchemaTraverser` of graphql-java walks differently
-  (`.claude/CLAUDE.md`, The GraphQL schema).
+  order of the walk and from how a type is built. The `SchemaTraverser` of graphql-java walks differently.
 - **Keep the order of the passes.** See [The passes of `getGraphQL`](#the-passes-of-getgraphql). A pass reads what the
   earlier passes wrote into the type map.
 - **What LDS makes of a schema file is pinned.** `GraphQLSchemaGoldenTest` compares the served schema, the JSON
@@ -1035,13 +1038,13 @@ variables are in [the application](core-application.md).
   graphql-java-extended-scalars.
 - **Streams stay streams.** A read of persistence is a `Flowable` or a `Maybe` that the provider fills on demand.
   A fetcher may wait for it. Do not add a blocking call to the persistence interface and do not replace a stream
-  by a call that returns a whole list (`.claude/CLAUDE.md`, The persistence interface).
+  by a call that returns a whole list (see [Streaming on RxJava 3](architecture.md#streaming-on-rxjava-3)).
 - **No spliced identifiers.** An id, a cursor and a search text come from the request. They go to persistence and
-  to the search index as arguments (`.claude/CLAUDE.md`, Invariants).
-- **Time.** Versions are compared as UTC instants (`.claude/CLAUDE.md`, Invariants). This part does not meet the
-  rule yet; see [Not finished and known to be wrong](#not-finished-and-known-to-be-wrong).
+  to the search index as arguments.
+- **Time.** Versions are compared as UTC instants. This part does not meet the rule yet; see
+  [Not finished and known to be wrong](#not-finished-and-known-to-be-wrong).
 - **Tests.** A new test class is JUnit 6 with AssertJ. A class that takes its server from `TestServerListener` is
-  TestNG (`.claude/CLAUDE.md`, Testing).
+  TestNG.
 
 ## Tests
 
@@ -1068,9 +1071,10 @@ Not finished: the paging of the fetchers that read persistence has no test that 
 `testBackwardPagination`, the only tests of `fetcher/PersistenceLinksConnectionFetcherTest`, are disabled, all
 with `@Ignore` and a note that they hang. `schemas/GraphQLSchemaBuilderTest` has a `main` method and no test.
 
-The Maven commands are in `.claude/CLAUDE.md` under Commands. The one for a single test class has the form
-`./mvnw test -pl linked-data-store-core -Dtest=GraphQLSchemaGoldenTest`. The build needs JDK 27 and Docker. The
-commands were not run when this document was written.
+The command for a single test class has the form
+`./mvnw test -pl linked-data-store-core -Dtest=GraphQLSchemaGoldenTest`. `./mvnw verify -pl linked-data-store-core -am`
+builds and tests core and what it needs, and `./mvnw verify javadoc:javadoc` is what CI runs. The build needs JDK 27 and
+Docker. The commands were not run when this document was written.
 
 ## Not finished and known to be wrong
 
@@ -1102,7 +1106,8 @@ Not finished: a `snapshot` that cannot be parsed is not refused. The query is an
 (`2021-06-01T00:00:00`) and a date alone (`2021-06-01`) are not parsed. A `+` written as it is in the address is
 read as a space, so `?snapshot=2021-06-01T02:00:00+02:00` is answered as of now, and `%2B` is needed.
 
-Not finished: `GraphQLUndertowContext` does not turn the snapshot into UTC, and the REST handler does. With the
+Not finished: `GraphQLUndertowContext` does not turn the instant of the snapshot into UTC, and the REST handler
+does. With the
 memory provider a snapshot with an offset is compared by its local date and time.
 `snapshot=2022-01-01T00:30:00%2B01:00` is 2021-12-31T23:30Z; GraphQL answered with the version of 2022-01-01 and
 REST, with the same value as `timestamp`, with the version of 2020-01-01.
@@ -1114,21 +1119,20 @@ Not finished: a link to an interface stops the start, for a single link and for 
 `ClassCastException`. A link to a union works.
 
 Not finished: a type is taken for a connection when its name ends in `Connection` (`RegistrySetupVisitor`,
-`ReverseLinkBuildingVisitor.computePath`). An entity named `InternetConnection` stops the start with a
+`ReverseLinkBuildingVisitor.computePath`). An entity type named `InternetConnection` stops the start with a
 `NullPointerException` in `RegistrySetupVisitor.visitConnectionLink`, with links that point at it and without. A
-type without `@domain` and without links may have such a name: a model with the part `WifiConnection` started and
-was read.
+type without `@domain` and without links may have such a name: a model with the embedded type `WifiConnection`
+started and was read.
 
-Not finished: the names of the types LDS makes are not kept free. `AddConnectionVisitor` does not make a type
-whose name is in the type map already, and uses the one that is there. Beside an entity `B`, a type
-`BConnection` or `BEdge` of the schema file stops the start with the same `NullPointerException` in
-`visitConnectionLink`, with a list of links to `B` and without, because `B` has its list on `Query`. An entity
-named `PageInfo` that a list of links points at stops it with an `AssertException` ("All types within a GraphQL
-schema must have unique names...") when the schema is built. With an entity named `PageInfo` and no links LDS
-starts, and the field `pageInfo` of every connection has that entity as its type: `hasNextPage` is refused as an
-undefined field. With search on, a type named `TypeFilters` or `SearchResult` stops the start with
-`IllegalArgumentException` ("type map already contains TypeFilters", or "... SearchResult") in
-`AddSearchTypesVisitor.getQuery`.
+Not finished: the names of the types LDS makes are not kept free. `AddConnectionVisitor` does not make a type whose name
+is in the type map already, and uses the one that is there. Beside an entity type `B`, a type `BConnection` or `BEdge`
+of the schema file stops the start with the same `NullPointerException` in `visitConnectionLink`, with a list of links
+to `B` and without, because `B` has its list on `Query`. An entity type named `PageInfo` that a list of links points at
+stops it with an `AssertException` ("All types within a GraphQL schema must have unique names...") when the schema is
+built. With an entity type named `PageInfo` and no links LDS starts, and the field `pageInfo` of every connection has
+that entity type as its type: `hasNextPage` is refused as an undefined field. With search on, a type named `TypeFilters`
+or `SearchResult` stops the start with `IllegalArgumentException` ("type map already contains TypeFilters", or "...
+SearchResult") in `AddSearchTypesVisitor.getQuery`.
 
 Not finished: the name of a reverse link is not checked against the fields the target has.
 `ReverseLinkBuildingVisitor` puts the reverse field on the target with `field`, which replaces a field of the same
@@ -1144,19 +1148,19 @@ Not finished: the argument `searchable` of `@domain` has no effect. `AddSearchTy
 deprecated and not called. A type with `@domain(searchable: false)` is in `TypeFilters` and in `SearchResult`.
 
 Not finished: a field with `@reverseLink(pagination: false)` gets no fetcher and is always `null`. A
-`@reverseLink` field written in the schema file is also a property of the JSON Schema of its entity
+`@reverseLink` field written in the schema file is also a property of the JSON Schema of its entity type
 ([the model](core-model.md)).
 
-Not finished: links in a type without `@domain` (a part of a document) work for a single link only. A list of
-links there fails with `Cannot invoke "io.descoped.lds.api.persistence.DocumentKey.id()" because "key" is null`,
-because the map of the part has no document key. The reverse fields LDS adds for such links are connections of
-the part type (`HomeConnection`) and find nothing: the source of a reverse link is the type that holds the link
-field, and `mappedBy` is the path inside that type.
+Not finished: links in a type without `@domain` (an embedded type) work for a single link only. A list of links there
+fails with `Cannot invoke "io.descoped.lds.api.persistence.DocumentKey.id()" because "key" is null`, because the map of
+the embedded object has no document key. The reverse fields LDS adds for such links are connections of the embedded type
+(`HomeConnection`) and find nothing: the source of a reverse link is the type that holds the link field, and `mappedBy`
+is the path inside that type.
 
 Not finished: what LDS makes of a link in a type without `@domain` follows from the order of the walk, which is
 the order of the names of the types. In a model with `Address { city: City @link }`,
-`Zone { city: City @link }` and the entity `Person { home: Address zone: Zone }`, `City` got the fields
-`reverseCity` (`Address` is walked before `Person`, so no entity is among the parents of the field) and
+`Zone { city: City @link }` and the entity type `Person { home: Address zone: Zone }`, `City` got the fields
+`reverseCity` (`Address` is walked before `Person`, so no entity type is among the parents of the field) and
 `reversePersonZoneCity` (`Zone` is met first below `Person`). The path that `PersistenceLinksConnectionFetcher`
 gets for a list of links in such a type is computed in the same way; the expected file
 `syn-embedded.plain.schema.txt` of `GraphQLSchemaGoldenTest` has `$.reverseZipArea[].edges[][].node.area[]` for
@@ -1273,14 +1277,14 @@ The memory and PostgreSQL providers answer `readTargetDocuments` through
 Not finished: a connection of links to a union gives wrong pages. `PersistenceLinksConnectionFetcher` gives every
 member type the whole limit, merges, takes the limit again and sorts after that. With the links `fido`, `rex`
 (two `Dog`) and `tom` (a `Cat`), `pets(first: 2)` gave `fido`, `tom` and `pets(last: 2)` gave `rex`, `fido`. The
-two reads for `pageInfo` are made with the name of the union as the entity, and no link holds that name: with the
+two reads for `pageInfo` are made with the name of the union as the entity type, and no link holds that name: with the
 memory provider `hasNextPage` and `hasPreviousPage` were `false` for every page, also for `pets(first: 1)` of
 three.
 
 Not finished: `PersistenceLinksFetcher` gives documents without the document key. A connection below a document
 from a list that is not paged fails with the same `"key" is null` error. A link in the list whose document does
 not exist gives a `null` element. A list that is not paged and points at a union finds nothing: the pattern is
-made of the name of the union, and a link holds the name of an entity. `pets: [Pet] @link(pagination: false)`
+made of the name of the union, and a link holds the name of an entity type. `pets: [Pet] @link(pagination: false)`
 with two links in the document gave `"pets":[]`.
 
 Not finished: in `QueryConnectionFetcher` the edge at the `after` cursor is given again (the position of the

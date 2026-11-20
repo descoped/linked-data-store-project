@@ -17,10 +17,10 @@ It is for tests and for trying LDS. It is not for production:
 - One lock guards the whole store. One write runs at a time, and no read runs while a write does.
 - It has known faults. They are listed under [Not finished](#not-finished).
 
-The provider keeps *fragments*, not documents. A fragment is one leaf value of one version of one document, or
-one piece of it when the value is a text longer than the fragment capacity. The
-bridge of `linked-data-store-persistence-provider-api` (`RxJsonPersistenceBridge`) cuts a document into fragments
-before a write and puts fragments together into documents after a read. The fragments, the bridge and the
+The provider keeps [fragments](../glossary.md#fragment), not documents. A fragment is one leaf value of one version
+of one document, or one piece of it when the value is a text longer than the fragment capacity. The bridge of
+`linked-data-store-persistence-provider-api` (`RxJsonPersistenceBridge`) cuts a document into fragments before a
+write and puts fragments together into documents after a read. The fragments, the bridge and the
 interface the provider implements are described in [the persistence interface](persistence-api.md).
 
 ## Layout
@@ -36,7 +36,7 @@ through the interface of the API module.
 | `OrderedKeyValueTransaction` | The interface `MemoryRxPersistence` is written against: `set`, `clear`, `clearRange` and two forms of `getRange` on a named index of keys ordered as unsigned bytes. |
 | `MemoryTransaction` | The only implementation of that interface. One sorted map for each index, the lock, the undo log, and how a `KeySelector` is resolved to a key. |
 | `MemoryTransactionFactory` | Owns the maps, the lock and a pool of 8 threads (`Memory-Pool-Thread-N`). Makes transactions. |
-| `MemoryDirectory`, `Subspace` | The directory gives each namespace, entity and path a short prefix. A `Subspace` is the part of the key space that starts with one prefix; it packs a tuple into a key and unpacks a key into a tuple. |
+| `MemoryDirectory`, `Subspace` | The directory gives each namespace, entity type and path a short prefix. A `Subspace` is the part of the key space that starts with one prefix; it packs a tuple into a key and unpacks a key into a tuple. |
 | `KeySelector`, `KeyValue` | Records. A `KeySelector` points at a key relative to a given key. A `KeyValue` is one entry of the store. |
 | `AsyncIterable`, `AsyncIterator`, `MemoryAsyncIterable`, `MemoryAsyncIterator` | A range of entries that is read one entry at a time. `MemoryAsyncIterator` answers "is there a next entry" on a thread of the pool. |
 | `AsyncIterablePublisher` | A Reactive Streams `Publisher` over an `AsyncIterable`. It delivers one entry for each one that is asked for. |
@@ -61,9 +61,10 @@ with `Arrays.compareUnsigned`. `MemoryRxPersistence` uses two index names:
 | Index | What it holds |
 |---|---|
 | `Primary` | Every fragment of every document: the key says which fragment, the value is the bytes of the fragment. |
-| `PathValueIndex` | One entry for each first piece of a value (offset 0), with an empty value. It answers "which documents have this value at this path", which is how a link is followed backward. |
+| `PathValueIndex` | One entry for each first piece of a value (offset 0), with an empty value. It answers "which documents have this value at this path", which is how a [link](../glossary.md#link) is followed backward. |
 
-Both maps hold every namespace and every entity. What keeps them apart is the prefix of the key.
+Both maps hold every namespace and every [entity type](../glossary.md#entity-type). What keeps them apart is the
+prefix of the key.
 
 ### The directory and the prefixes
 
@@ -79,14 +80,15 @@ A subspace is made the first time it is asked for, also by a read. The directory
 
 ### The key of a fragment
 
-In the subspace of its entity, a fragment has the key
+In the subspace of its entity type, a fragment has the key
 
 ```
 (id, version, path, [type code], offset)  =  the bytes of the fragment
 ```
 
-- `version` is a nested tuple of seven numbers, each negated: year, month, day, hour, minute, second,
-  millisecond (`MemoryRxPersistence.toTuple`). Negated numbers make a newer version sort before an older one.
+- `version` is the [valid time](../glossary.md#valid-time) of the version, a nested tuple of seven numbers, each
+  negated: year, month, day, hour, minute, second, millisecond (`MemoryRxPersistence.toTuple`). Negated numbers
+  make a newer version sort before an older one.
 - `path` is the path of the leaf, with array indices: `$.name`, `$.friends[0]`.
 - `[type code]` is one byte, the code of `FragmentType`: 0 null, 1 deleted, 2 empty object, 3 empty array,
   4 text, 5 number, 6 boolean.
@@ -96,12 +98,12 @@ In the subspace of its entity, a fragment has the key
 So the entries of one document lie together, ordered by id, then by version with the newest first, then by path.
 That order is what every read relies on.
 
-A deletion marker is the key `(id, version, "", [1], 0)` with an empty value. It is the only entry of its
-version.
+A deletion marker, the [tombstone](../glossary.md#tombstone) that a delete writes, is the key
+`(id, version, "", [1], 0)` with an empty value. It is the only entry of its version.
 
 ### The key of an index entry
 
-In the subspace of its entity and path, the first piece of a value has the key
+In the subspace of its entity type and path, the first piece of a value has the key
 
 ```
 (SHA-1 of the bytes of the piece, id, version, ((array indices of the path)))  =  empty
@@ -113,9 +115,9 @@ be at most 256 bytes (`MAX_DESIRED_KEY_LENGTH`); a longer key fails the write wi
 
 ### One document in the maps
 
-This is what the maps hold after one write and one deletion marker, with a fragment capacity of 8 bytes so that a
-text is cut. It was printed from `MemoryTransactionFactory.indexByIndex` by a program in the package of the
-provider. The document, of the entity `Person` with the id `ola` in the namespace `ns`, version
+This is what the maps hold after one write and one tombstone, with a fragment capacity of 8 bytes so that a text
+is cut. It was printed from `MemoryTransactionFactory.indexByIndex` by a program in the package of the provider.
+The document, of the entity type `Person` with the id `ola` in the namespace `ns`, valid time
 `2020-01-02T03:04:05.006Z`:
 
 ```json
@@ -128,7 +130,7 @@ provider. The document, of the entity `Person` with the id `ola` in the namespac
 }
 ```
 
-The deletion marker is at `2021-01-01T00:00:00Z`.
+The tombstone is at `2021-01-01T00:00:00Z`.
 
 ```
 directory
@@ -170,7 +172,7 @@ with `12f81b` for -2020 and `13fe` for -1. `01 05 00` is the byte of the type co
 
 1. Core calls `createOrOverwrite` on the bridge with a document. The bridge flattens it into fragments and calls
    `MemoryRxPersistence.createOrOverwrite(tx, fragments)`.
-2. For each fragment, the provider gets the subspace of the namespace and entity.
+2. For each fragment, the provider gets the subspace of the namespace and entity type.
 3. It clears the range `(id, version)` in `Primary`, once for each such range in one call (`clearedRanges`). So a
    version that is written again replaces the earlier one, and the fragments of one call do not clear each other.
 4. It sets the key of the fragment in `Primary`.
@@ -216,9 +218,10 @@ with the limit 1 still copies every entry between its two keys.
 ### One document at a time: `read`
 
 1. `findAnyOneMatchingFragmentInPrimary` takes one entry: the first key at or after `(id, snapshot)` and before
-   `(id + " ")`. Because versions are negated, that is an entry of the newest version that is not after the
-   snapshot. An entry of another id or another subspace means there is no such version.
-2. If the entry is a deletion marker, the stream is one fragment of type `DELETED`.
+   `(id + " ")`. Because versions are negated, that is an entry of the newest version that is not after
+   `snapshot`, the version an [as-of read](../glossary.md#as-of-read) gives. An entry of another id or another
+   subspace means there is no such version.
+2. If the entry is a tombstone, the stream is one fragment of type `DELETED`.
 3. Otherwise the stream is the range `(id, version)`: every fragment of that version.
 
 ### The versions of a document: `readVersions`
@@ -233,22 +236,21 @@ a missing `before` the year 9999. So the stream holds the version valid at `afte
 
 One range over the ids, from the first key at or after `(after + " ")` to the first key at or after the id made
 by `lexicoPrev(before)`. Without bounds, `after` is `" "` and `before` is `"~"`. A filter then keeps, for each
-id, the fragments of the first version that is not after the snapshot. Deletion markers pass; the bridge drops
-them.
+id, the fragments of the first version that is not after `snapshot`. Tombstones pass; the bridge drops them.
 
 Of the range it is given, `readAll` uses `after` and `before` only. It does not use the limit (`first`, `last`):
 the bridge takes the limit away before it calls (`Range.unlimited`) and counts documents itself. So a list of
-two documents still copies and reads every version of every document of the entity between the bounds.
+two documents still copies and reads every version of every document of the entity type between the bounds.
 
 ### The documents with a value at a path: `find`
 
 1. The range in `PathValueIndex` of every key that starts with the SHA-1 of the value, in the subspace of the path
    without array indices. The entries are ordered by id, then by version with the newest first.
-2. An entry is dropped when its version is after the snapshot, or when its id is the id of the entry that was
-   kept last (an older version of the same document).
-3. For each entry left, `findAnyOneMatchingFragmentInPrimary` finds the version of that document at the snapshot.
+2. An entry is dropped when its version is after `snapshot`, or when its id is the id of the entry that was kept
+   last (an older version of the same document).
+3. For each entry left, `findAnyOneMatchingFragmentInPrimary` finds the version of that document at `snapshot`.
    If it is another version than the index entry says, the entry is dropped: the value was in an older version.
-   If it is a deletion marker, the entry is dropped and a clean-up is started (see [Not finished](#not-finished)).
+   If it is a tombstone, the entry is dropped and a clean-up is started (see [Not finished](#not-finished)).
 4. Otherwise the stream goes on with every fragment of that version from `Primary`.
 
 `find` does not use the range it is given. The bridge applies it to the documents.
@@ -264,7 +266,8 @@ is in the API module, and described in [the persistence interface](persistence-a
 
 ## AsyncIterablePublisher and demand
 
-`AsyncIterablePublisher` is what makes a range a stream. It is checked with the Reactive Streams TCK. How it
+`AsyncIterablePublisher` is what makes a range a [reactive stream](../glossary.md#reactive-stream). It is checked
+with the Reactive Streams TCK. How it
 works:
 
 - The publisher takes the iterator from the `AsyncIterable` in its constructor. A publisher is for one
@@ -290,8 +293,8 @@ works:
 
 What follows from this:
 
-- Nothing is taken from the iterator without demand. The end of the range is also found only when an entry is
-  asked for: an empty range completes after the first `request`, not before.
+- Nothing is taken from the iterator without demand (backpressure). The end of the range is also found only when
+  an entry is asked for: an empty range completes after the first `request`, not before.
 - Every entry costs one task on the pool of 8 threads.
 - A range that is being read needs a free thread in the pool for each entry.
 
@@ -313,9 +316,10 @@ were observed by calling the classes.
 | `cancel()` | Puts back what the undo log holds, last change first, empties the log, and releases the lock. |
 | `close()` | With `cancelTxOnClose` false: the same as `commit()`. With `cancelTxOnClose` true: the same as `cancel()`. |
 
-`cancelTxOnClose` is false in a running LDS (see [Configuration](#configuration)). So in LDS, **closing a transaction
-commits it**, also when the work in it failed. This is the opposite of the rule "transactions commit only when asked and
-roll back otherwise" in `.claude/CLAUDE.md`, which says of itself that the memory provider does not meet it yet.
+`cancelTxOnClose` is false in a running LDS (see [Configuration](#configuration)). So in LDS, **closing a
+transaction commits it**, also when the work in it failed. This is the opposite of the rule of the project that
+transactions commit only when asked and roll back otherwise (see [the invariants](architecture.md#the-invariants)),
+which the memory provider does not meet yet.
 
 After `commit` or `cancel`, a call that touches the map throws `IllegalStateException` (`Attempting to access
 database from within a closed transaction.`). That holds for `cancel()` itself: after `commit()`, a `cancel()` of
@@ -334,13 +338,13 @@ why this does not show.
 
 | Call | What it does |
 |---|---|
-| `markDeleted` | Clears the range `(id, version)` in `Primary` and sets a deletion marker there. This is what a `DELETE` request of LDS does (`PersistenceDeleteSagaAdapter` in core). The index is not touched. |
-| `delete` | Clears the range `(id, version)` in `Primary`: the version, or the marker, is gone. |
+| `markDeleted` | Clears the range `(id, version)` in `Primary` and sets a tombstone there. This is what a `DELETE` request of LDS does (`PersistenceDeleteSagaAdapter` in core). The index is not touched. |
+| `delete` | Clears the range `(id, version)` in `Primary`: the version, or the tombstone, is gone. |
 | `deleteAllVersions` | Reads every fragment of the id, clears the index entry of each one at offset 0, then clears the range `(id)` in `Primary`. |
-| `deleteAllEntities` | Clears the whole subspace of the entity in `Primary`, and the subspace of each path it is given in `PathValueIndex`. The bridge gives it the paths it makes from the specification (`RxJsonPersistenceBridge.deleteAllEntities`). The index subspace of any other path is not cleared. |
+| `deleteAllEntities` | Clears the whole subspace of the entity type in `Primary`, and the subspace of each path it is given in `PathValueIndex`. The bridge gives it the paths it makes from the specification (`RxJsonPersistenceBridge.deleteAllEntities`). The index subspace of any other path is not cleared. |
 
-Core calls only `markDeleted`. The other three are called by the shared suite. None of them uses the
-`PersistenceDeletePolicy` it is given.
+Core calls only `markDeleted`. The other three are called by the [shared suite](../glossary.md#shared-suite).
+None of them uses the `PersistenceDeletePolicy` it is given.
 
 ## Configuration
 
@@ -374,16 +378,17 @@ LDS started with the defaults of the server logs:
 |---|---|
 | The engine | None. The store is two maps in the process. No container, no schema, no connection. |
 | The interface it implements | `RxPersistence` (fragments), behind `RxJsonPersistenceBridge`, as the PostgreSQL provider does. The Neo4j provider implements `RxJsonPersistence` (documents) itself. |
-| Links | As with PostgreSQL, a text of the form `/Entity/id` is followed also in a field that the model does not call a link, when that path is asked for. That is the bridge. Neo4j does not (`.claude/CLAUDE.md`). |
+| Links | As with PostgreSQL, a text of the form `/Entity/id` is followed also in a field that the model does not call a link, when that path is asked for. That is the bridge. Neo4j does not (see [the Neo4j provider](persistence-neo4j.md)). |
 | Transactions | One lock for the whole store. `close()` commits. |
 | Fragment capacity | `persistence.fragment.capacity` is read by this provider only, and only here is a long text kept in several pieces. The PostgreSQL provider gives the bridge `Integer.MAX_VALUE` (`PostgresDbInitializer`). |
 | Tests | The shared suite runs on the provider itself. There is no engine to start, so the tests of this module need no Docker. |
 
 ## Rules to keep
 
-They are from `.claude/CLAUDE.md` and from the code.
+They are rules of the project (see [the invariants](architecture.md#the-invariants)) and rules that follow from
+the code.
 
-- **It streams.** A read is a `Flowable` that gives entries as they are asked for. Do not replace
+- **It streams.** A read is a `Flowable`, a reactive stream that gives entries as they are asked for. Do not replace
   `AsyncIterablePublisher` with a call that gives a complete list, and do not add a blocking call to an
   interface. `AsyncIterablePublisher` must keep passing the Reactive Streams TCK.
 - **One contract for every provider.** The shared suite (`PersistenceIntegrationTest`) must pass unchanged. A
@@ -392,8 +397,8 @@ They are from `.claude/CLAUDE.md` and from the code.
 - **The order of the keys is the logic.** Every read depends on keys ordered by id, then version with the newest
   first, then path, compared as unsigned bytes. A change to the key of a fragment, to `toTuple`, or to the
   comparator of the maps changes every read.
-- **Names are never spliced into keys.** A namespace, an entity, a path and an id go into a key as elements of a
-  tuple, which `java-tuple` packs with its own end marks. Keep it so. The two places that do make a new text
+- **Names are never spliced into keys.** A namespace, an entity type, a path and an id go into a key as elements
+  of a tuple, which `java-tuple` packs with its own end marks. Keep it so. The two places that do make a new text
   from an id, `lexicoNext` and `lexicoPrev`, are the cause of a fault listed below.
 - **Time.** Versions are to be stored and compared as UTC instants. The provider does not meet this yet; a
   revision must.
@@ -435,7 +440,7 @@ The module has not been revised for 3.0. Each paragraph below is something that 
 where it says "observed", seen in a running LDS or by calling the classes of the built module.
 
 Not finished: **a read that follows links backward can stop the whole store.** When `find` meets a document whose
-version at the snapshot is a deletion marker with the same time as the index entry, it starts a clean-up with
+version at `snapshot` is a tombstone with the same valid time as the index entry, it starts a clean-up with
 `runAsyncInIsolatedTransaction(..., false)`. That task runs on the pool and waits for the write lock, which it
 cannot get while the read that started it holds the read lock. Each such document takes one of the 8 threads.
 When all 8 wait, the read gets no thread to deliver its entries, never ends, and never releases its lock. Every
@@ -455,14 +460,14 @@ Not finished: **a write that fails is kept in part.** The fragments set before t
 characters is answered `500`, and a `GET` of that id then answers `200` with `{"born":"2000-01-01T00:00:00Z"}`.
 
 Not finished: **an id can be too long.** The index key holds the id and may be 256 bytes. In what was tried, the
-longest id that could be written was between 204 and 212 bytes. It depends on the time of the version and on the
+longest id that could be written was between 204 and 212 bytes. It depends on the valid time of the version and on the
 arrays in the document: each array around a value puts one more number into the index key. The key in `Primary`
 is set before the index key is checked, which is how the failed write above is kept in part.
 
 Not finished: **some ids are left out of a list.** `readAll` reads from the id `"  "` (two spaces) to the id
 `"}~"`. A document whose id sorts outside that, for example one that starts with `~` or with a letter outside
-ASCII, is read by its id but is not in the list of its entity. Observed with the ids `~tilde` and `øl`, over
-REST and over GraphQL.
+ASCII, is read by its id but is not in the list of its entity type. Observed with the ids `~tilde` and `øl`,
+over REST and over GraphQL.
 
 Not finished: **ids next to a cursor are left out of a page.** With `before`, `readAll` stops at the id made by
 `lexicoPrev`: the cursor with its last character one lower, and `~` after it. With `after`, it starts at the
@@ -495,8 +500,8 @@ Not finished: **a read-only transaction can write.** `readOnly` only chooses the
 refused.
 
 Not finished: **the directory runs out without saying so.** After 65536 subspaces the counter of prefixes starts
-again at `0000`, and two subspaces then share a prefix. A subspace is one namespace and entity, or one
-namespace, entity and path. Observed by calling `MemoryDirectory`.
+again at `0000`, and two subspaces then share a prefix. A subspace is one namespace and entity type, or one
+namespace, entity type and path. Observed by calling `MemoryDirectory`.
 
 Not finished: **one publisher, one subscriber.** A second subscriber to an `AsyncIterablePublisher` shares the
 iterator of the first and gets the entries the first did not take. And when the pool is shut down, `subscribe`

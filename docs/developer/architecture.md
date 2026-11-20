@@ -7,29 +7,33 @@ has a document of its own, listed at the end.
 
 ## What LDS is
 
-LDS is a server that gives REST and GraphQL access to versioned, linked JSON documents. A document belongs to an
-entity (a type of the model, such as `Person`) in a namespace and has an id. Its address is
-`/{namespace}/{Entity}/{id}`. Every version of a document has a time from which it is valid, and a read gives the
-document as it was at the time asked for. A link is a field that points at a document of another entity. The model
-is read when LDS starts. These words are explained for a user in [the concepts](../user/concepts.md).
+LDS is a server that gives REST and GraphQL access to versioned, linked JSON documents. A
+[document](../glossary.md#document) belongs to an [entity type](../glossary.md#entity-type) of the model, such as
+`Person`, in a [namespace](../glossary.md#namespace), and has an id. Its address is `/{namespace}/{Entity}/{id}`.
+Every [version](../glossary.md#version) of a document has a [valid time](../glossary.md#valid-time), and an
+[as-of read](../glossary.md#as-of-read) gives the document as it was at the instant asked for. A
+[link](../glossary.md#link) is a field that holds a typed reference to a document of another entity type. The
+[model](../glossary.md#model) is read when LDS starts. These words are explained for a user in
+[the concepts](../user/concepts.md).
 
 The code has some words of its own:
 
 | In the code | Means |
 |---|---|
-| managed domain, `managedDomain` | An entity (`Specification.getManagedDomains`). |
+| managed domain, `managedDomain` | An entity type (`Specification.getManagedDomains`). |
 | `MANAGED`, `EMBEDDED`, `REFERENCE` | The three kinds of resource (`ResourceType`): the whole document, a part of a document addressed by its path, and one link of a document. |
-| `timestamp` (REST), `snapshot` (GraphQL and persistence) | The time a request asks for. |
+| `timestamp` (REST), `snapshot` (GraphQL and persistence) | The time a request asks for: the valid time of a write, or the instant of an as-of read. |
 | specification | The model as a tree (`Specification`, `SpecificationElement`). It says which fields a document has and which of them are links. |
-| fragment | One leaf value (a value with nothing below it) of one version of one document. A text that is longer than the fragment capacity of the provider is several fragments. The memory and PostgreSQL providers store fragments. |
+| [fragment](../glossary.md#fragment) | One leaf value (a value with nothing below it) of one version of one document. A text that is longer than the fragment capacity of the provider is several fragments. The memory and PostgreSQL providers store fragments. |
 | bridge | `RxJsonPersistenceBridge`: turns a document into fragments for a write, and a stream of fragments into documents for a read. |
-| saga log | Where a saga writes each of its steps, so that a saga that did not complete can be run again. |
-| transaction log, `txlog` | A log that gets one entry for every write, before the write reaches the store. |
+| [saga log](../glossary.md#saga-log) | Where a [saga](../glossary.md#saga) writes each of its steps, so that a saga that did not complete can be run again. |
+| [transaction log](../glossary.md#transaction-log), `txlog` | A log that gets one entry for every write, before the write reaches the store. |
 
 ## The modules
 
 LDS is one Maven reactor with the group `io.descoped.lds` and one version, `3.0.0-SNAPSHOT`. Every module with
-code is a JPMS module, except the shared suite of tests for persistence providers (the TCK).
+code is a JPMS module, except the [shared suite](../glossary.md#shared-suite) of tests for
+[persistence providers](../glossary.md#persistence-provider) (the TCK).
 
 | Maven module | JPMS module | What it is for |
 |---|---|---|
@@ -138,10 +142,10 @@ Content-Type: application/json; charset=utf-8
 ```
 
 A read through GraphQL takes another way to step 5. `GraphqlHttpHandler` moves the request to a worker thread and
-reads the query. `GraphQLUndertowContext` works out the time, here called the snapshot: the parameter `snapshot`,
-the variable `__snapshot`, or now. graphql-java executes the query against the schema that
-`GraphQLSchemaBuilder` built at start. A field that needs documents has a fetcher (package
-`io.descoped.lds.graphql.fetcher`), which calls the same `RxJsonPersistence` as REST, with the snapshot, and waits
+reads the query. `GraphQLUndertowContext` works out the instant of the as-of read, which the code calls the
+snapshot: the parameter `snapshot`, the variable `__snapshot`, or now. graphql-java executes the query against the
+schema that `GraphQLSchemaBuilder` built at start. A field that needs documents has a fetcher (package
+`io.descoped.lds.graphql.fetcher`), which calls the same `RxJsonPersistence` as REST, with that instant, and waits
 for the answer. GraphQL only reads: there is no mutation. No handler, REST or GraphQL, asks who the caller is,
 and the listener is plain HTTP.
 
@@ -151,12 +155,13 @@ This is `PUT /ns/Person/ola?timestamp=...` with the document as the body. The re
 of a read. The steps below follow them.
 
 1. **`ManagedResourceHandler.putManaged`** reads the body with `BodyParser` into a Jackson tree.
-2. **`LinkedDocumentValidator`** validates the document: first with the JSON Schema of the entity, then every link.
-   A link must name an entity its field may link to. Whether the target exists is not checked. A document that is
-   not valid is answered 400, and no saga is started. The body `{"name":7}` was answered
+2. **`LinkedDocumentValidator`** validates the document: first with the JSON Schema of the entity type, then every
+   link. A link must name an entity type its field may link to. Whether the target exists is not checked. A
+   document that is not valid is answered 400, and no saga is started. The body `{"name":7}` was answered
    `Schema validation error: [$.name: integer found, string expected]`.
-3. The handler makes a **`SagaInput`**: a new transaction id, the method, the namespace, the entity, the id, the time
-   as the version, and the document. It takes the saga `Create or update managed resource` from `SagaRepository`.
+3. The handler makes a **`SagaInput`**: a new transaction id, the method, the namespace, the entity type, the id, the
+   valid time as the version, and the document. It takes the saga `Create or update managed resource` from
+   `SagaRepository`.
 4. **`SagaExecutionCoordinator.handoff`** takes a saga log from the pool and starts the saga on the saga thread pool.
    The saga library writes the saga input to the saga log before the first step runs.
 5. Step `txlog`: **`AppendTxLogAdapter`** writes the entry (`TxLogTools`, MessagePack) to the transaction log through
@@ -189,17 +194,18 @@ Content-Type: application/json
 ```
 
 Every write ends in this saga, also a write of a part of a document or of a link: the handler reads the document
-as it is at the time of the request, makes the change in it, and writes the whole document as a new version. The
+as of the valid time of the request, makes the change in it, and writes the whole document as a new version. The
 delete of a whole document has a saga of its own, `Delete managed resource`. Its `persistence` step removes
-nothing: it writes a deletion marker (`RxJsonPersistence.markDocumentDeleted`), a version that says the document
-is not there from that time on.
+nothing: it writes a [tombstone](../glossary.md#tombstone) (`RxJsonPersistence.markDocumentDeleted`), a version that
+says the document is not there from that time on.
 
 ## The ideas that hold the code together
 
 ### Streaming on RxJava 3
 
 The persistence interface is reactive. A read of one document gives a `Maybe`, a read of many a `Flowable`, a
-write a `Completable`, and a provider reads its store only as far as the reader asks.
+write a `Completable`. A read is a [reactive stream](../glossary.md#reactive-stream): a provider reads its store
+only as far as the reader asks (backpressure).
 
 - PostgreSQL: a read is one statement, and its rows are fetched as they are asked for (`ResultSetPublisher`).
 - Memory: the entries of the sorted map are given on demand (`AsyncIterablePublisher`).
@@ -219,17 +225,19 @@ every fragment before it gives the first document. See [the persistence interfac
 
 ### The time machine
 
-One version of one document is one `DocumentKey`: namespace, entity, id and the time the version is valid from.
-The time comes in at the edge (`DataController` for REST, `GraphQLUndertowContext` for GraphQL) and goes with every
-call to the provider. There is no "current" document in a store:
+LDS calls valid-time versioning with as-of reads the [time machine](../glossary.md#time-machine). One version of
+one document is one `DocumentKey`: namespace, entity type, id and valid time. The time comes in at the edge
+(`DataController` for REST, `GraphQLUndertowContext` for GraphQL) and goes with every call to the provider. There
+is no "current" document in a store:
 
-- A read at a time gives the latest version whose time is not after it. Without a time, the time is now.
-- A write makes the version that is valid from the time of the request. The time may be in the past or in the
-  future. A write at the time of a version that exists replaces that version, which makes a write with a
+- An as-of read at an instant gives the latest version whose valid time is not after that instant. Without an
+  instant, the read is as of now.
+- A write makes the version whose valid time is the time of the request. The valid time may be in the past or in
+  the future. A write at the valid time of a version that exists replaces that version, which makes a write with a
   `timestamp` safe to send again.
-- A delete writes a deletion marker. Earlier versions stay and can be read at their times.
+- A delete writes a tombstone. Earlier versions stay, and an as-of read at their valid times still finds them.
 - A link is the text `/Entity/id` in a field. No write checks that the target exists, so a link may point at a
-  document that is written later. A link is followed at the time of the read.
+  document that is written later (a dangling reference). A link is resolved at the time of the read.
 
 ```mermaid
 flowchart TB
@@ -254,12 +262,13 @@ flowchart TB
 The model is not on the timeline. `SagaInput` has a field `schema`, which goes into the transaction log with every
 write. Every handler gives it the text `TODO` (`SagaRecoveryTriggerTest` gives it `testng-schema-v1.0`), nothing
 reads it, and nothing else records which model a version was written under.
-[Concepts](../user/concepts.md#snapshots-the-time-machine) draws snapshots as a user sees them.
+[Concepts](../user/concepts.md#snapshots-the-time-machine) draws [snapshots](../glossary.md#snapshot) as a user
+sees them.
 
 The example below follows the write of [The path of a write](#the-path-of-a-write) with two more: the company `acme`,
-and a second version of `ola` with a link to `/Company/later`, which does not exist. Each is answered as the write of
-[The path of a write](#the-path-of-a-write). Then the same GraphQL query is asked twice, as of a time in 2021 and as of
-now. The second block has the answers of the queries.
+and a second version of `ola` with a link to `/Company/later`, which does not exist (a dangling reference). Each is
+answered as the write of [The path of a write](#the-path-of-a-write). Then the same GraphQL query is asked twice, as
+of a time in 2021 and as of now. The second block has the answers of the queries.
 
 ```sh
 curl -X PUT 'http://localhost:19308/ns/Company/acme?timestamp=2020-01-01T00:00:00Z' \
@@ -313,8 +322,8 @@ Core finds its stores as services (`java.util.ServiceLoader`), each by a name in
 
 - the persistence provider: `PersistenceConfigurator`, service `PersistenceInitializer`, key `persistence.provider`
   (`mem`, `postgres`, `neo4j`);
-- the search provider: `SearchIndexConfigurator`, service `SearchIndexProvider`, key `search.index.provider`
-  (`solr`), only when `graphql.search.enabled` is true;
+- the [search index provider](../glossary.md#search-index-provider): `SearchIndexConfigurator`, service
+  `SearchIndexProvider`, key `search.index.provider` (`solr`), only when `graphql.search.enabled` is true;
 - the saga log: `UndertowApplication.configureSagaLogProvider`, service `SagaLogInitializer` of the saga library,
   key `sagalog.provider`, which holds the name of the class;
 - the transaction log: `UndertowApplication.configureTxLogRawdataClient`, found by `RawdataClient.create` of the
@@ -333,15 +342,17 @@ because an environment variable sets only a key that a file has.
 
 A write changes more than one store: the transaction log, the persistence provider and, when search is on, the
 index. There is no transaction over all of them. A saga runs the steps in order and writes each step to a saga
-log. When a saga does not complete, its saga log keeps what it did, and recovery runs it again from there: by the
-next write that is handed that log and, when `saga.recovery.enabled` is true, at start and by a timer
-(`SagaRecoveryTrigger`). So every step must be safe to run more than once with the same input. No step has an
-action that undoes it.
+log. When a saga does not complete, its saga log keeps what it did, and recovery runs it again from there (forward
+recovery): by the next write that is handed that log and, when `saga.recovery.enabled` is true, at start and by a
+timer (`SagaRecoveryTrigger`). So every step must be safe to run more than once with the same input. No step has
+an action that undoes it.
 
 `SagaRepository` is the only place that says which steps a write has. `SagaExecutionCoordinator` starts, tracks
 and recovers sagas. The parameter `sync` of a request says whether the answer waits for the saga to complete or
-only for the saga to be in its log. `UndertowApplication.stop` lets the running sagas complete before their
-thread pool, the saga log pool and the stores are closed.
+only for the saga to be in its log. An answer that waits for the saga gives read-your-writes
+([synchronous write](../glossary.md#synchronous-write)); one that waits only for the log is eventually consistent,
+and a read that follows at once may not see the write yet. `UndertowApplication.stop` lets the running sagas
+complete before their thread pool, the saga log pool and the stores are closed.
 
 Several LDS can share one saga log in PostgreSQL. They are a cluster: the same `sagalog.config.cluster.owner` and
 `sagalog.config.cluster.name`, and an own `sagalog.config.cluster.instance-id` for each. The timer of each then
@@ -364,54 +375,68 @@ LDS knows nothing about its documents until it has read the model: the GraphQL s
 or, when that key is empty, the JSON Schema 2020-12 files named in `specification.schema`.
 `initializeUndertowApplication` reads it first, before anything else is built. Three things are made from it:
 
-- a JSON Schema for every entity (`GraphQLToJsonConverter` writes it from a GraphQL schema, `JsonSchemaBuilder`
-  reads it), with which `LinkedDocumentValidator` validates a document before a write;
-- the specification (`JsonSchemaBasedSpecification`), which the REST paths, the link check and the providers
-  read. A provider is given the names of the entities at start. With a write it is given the specification, and
-  the one thing it takes from it is which fields are links;
+- a JSON Schema for every entity type (`GraphQLToJsonConverter` writes it from a GraphQL schema,
+  `JsonSchemaBuilder` reads it), with which `LinkedDocumentValidator` validates a document before a write;
+- the [specification](../glossary.md#specification) (`JsonSchemaBasedSpecification`), which the REST paths, the link
+  check and the providers read. A provider is given the names of the entity types at start. With a write it is
+  given the specification, and the one thing it takes from it is which fields are links;
 - the GraphQL schema that is served (`GraphQLSchemaBuilder`), only when the model is a GraphQL schema and
-  `graphql.enabled` is true: two queries for every entity (one document by its id, and a page of documents), a
+  `graphql.enabled` is true: two queries for every entity type (one document by its id, and a page of documents), a
   field for every link in both directions, and the fetchers. The constructor of `UndertowApplication` builds it,
   from the same file.
 
 A provider stores a document as it is given and gives it back the same. Whether a document may be written is
-decided by the validation before the saga, not by the store.
+decided by the [schema validation](../glossary.md#schema-validation) before the saga, not by the store.
 
 ## The invariants
 
-These rules are the invariants of `.claude/CLAUDE.md`, which has the full text. A change keeps them.
+These are the rules of LDS. A change keeps them: new and revised code meets them, and a pull request that revises
+a module makes that module meet them.
 
-- **JDK 27.** LDS is built, tested and run on one JDK (`java.version` in the root POM, the workflows, the image).
-- **No compatibility code.** Nothing is released, so there are no shims, deprecated aliases or migrations.
-- **One reactor, one version.** Modules depend on each other with `${project.version}`. Versions of libraries are
-  properties in the root POM, so the BOM manages the LDS modules only.
+- **JDK 27.** LDS is a product: it is built, tested and run on one JDK, and CI uses JDK 27 only
+  (`maven.compiler.release` 27). Raising it is a deliberate change of `java.version` in the root POM, the
+  workflows and the image together.
+- **3.0.0 is a clean break.** It is the first release of LDS, so there are no backward-compatibility shims,
+  deprecated aliases, data-migration code or migration guides.
+- **One reactor, one version.** Every module inherits the root POM and is released with it. Modules depend on each
+  other with `${project.version}`. Dependency versions are properties in the root POM, not `dependencyManagement`,
+  so the BOM manages the LDS modules only.
 - **JPMS.** LDS modules are named modules. A module whose exported API exposes the types of another module
-  `requires transitive` it. A provider is registered with `provides` and in `META-INF/services`.
-- **Lint and Javadoc.** `-Xlint:all -Werror` and doclint `all`. A module that is not clean overrides them with the
-  exact categories, and the override is removed, not widened.
-- **One persistence contract for every provider**: the reactive interface, checked by the shared suite against the
-  real engine in a container.
-- **No spliced identifiers.** Names of entities, fields, namespaces and topics, and search text, are validated and
-  never joined into SQL, Cypher, a Solr query, a key or a file path.
+  `requires transitive` it. The module that defines a service interface declares `uses` for it. A provider is
+  registered both with `provides` in `module-info.java` and in `META-INF/services`.
+- **Lint and Javadoc.** The root POM sets `-Xlint:all -Werror`, and doclint `all` with warnings as errors. A module
+  that is not clean of them overrides them with the exact categories it is not clean of. When the module is
+  revised, the override is removed, not widened.
+- **One persistence contract for every provider**: the reactive interface, checked by the
+  [shared suite](../glossary.md#shared-suite) (`PersistenceIntegrationTest`) against the real engine in a container,
+  not a substitute.
+- **No spliced identifiers.** Names of entity types, fields, namespaces and topics, and the search text of a user,
+  are validated and never joined into SQL, Cypher, a Solr query, a key or a file path. The Neo4j provider meets this
+  in another way: it writes the name of an entity type into Cypher as a quoted label (`Cypher.label`) and does not
+  validate it, because a label as a parameter costs Neo4j its indexes for lists, and a constraint cannot be created
+  with one. Everything else it is given is a parameter.
 - **Time.** Versions are stored and compared as UTC instants.
 - **Transactions** commit only when asked and roll back otherwise.
-- **The latest stable version** of every library, plugin, action, image and engine. One version is held:
-  PostgreSQL stays at 18.
-- **No leftovers**: no configuration for Azure Pipelines, Travis, Drone or OSSRH, which LDS does not use.
-- **Secrets.** Nothing but the documented development defaults of the tests and the compose file.
-- **CI publishes nothing**: no SNAPSHOTs, no releases, no images. A release is made by hand, when the owner says so.
+- **Streams stay streams.** A stream is not replaced by a call that returns a complete list, and no blocking call is
+  added to an interface (see [Streaming on RxJava 3](#streaming-on-rxjava-3)).
+- **The latest stable version** of every library, plugin, action, image and engine (Neo4j 2026, Solr 10).
+  Pre-releases only on request. Outdated code and configuration are removed, not carried along. Renovate moves
+  every dependency, and CI on JDK 27 is the gate. One version is held, by the owner's decision: PostgreSQL stays
+  at 18. The owner says when it is raised, and Renovate is told to stay below 19 (`.github/renovate.json`).
+- **Secrets.** Nothing but the documented development defaults: the database user `lds` of the tests and the
+  compose files.
+- **Releases by hand.** A release is made by hand, with the owner's go-ahead, to Maven Central through the Central
+  Portal (profiles `central` and `sign`). CI publishes nothing: no SNAPSHOTs, no releases, no images.
 - **SonarCloud**: one project, `descoped_linked-data-store-project`, for the whole reactor.
 
-`.claude/CLAUDE.md` has more rules of the same weight outside that list. Three of them touch every part. A stream stays
-a stream (see [Streaming on RxJava 3](#streaming-on-rxjava-3)). The GraphQL schema is built with the walk of LDS
-(`TypeTraverser`, `TypeCollectingVisitor`, `SchemaElements`), not with the `SchemaTraverser` of graphql-java, which
-walks in another order. LDS runs on the class path, with `java` as the process of the container.
+Two more rules touch every part. The GraphQL schema is built with the walk of LDS (`TypeTraverser`,
+`TypeCollectingVisitor`, `SchemaElements`), not with the `SchemaTraverser` of graphql-java, which walks in another
+order. LDS runs on the class path, with `java` as the process of the container.
 
-Not finished: some invariants are not met everywhere. `Transaction.close()` commits. The memory provider does not
-store a time as an instant, and GraphQL does not turn the snapshot into UTC. The Solr provider joins the search
-text into its query. The Neo4j provider writes the name of an entity into Cypher as a quoted label and does not
-validate it. The shared suite is not a named module. `.claude/CLAUDE.md` also says that the module that defines a
-service interface declares `uses` for it; in the code core declares `uses`, and the two API modules do not.
+Not finished: some rules are not met everywhere. `Transaction.close()` commits. The memory provider does not
+store a time as an instant, and GraphQL does not turn the instant of an as-of read into UTC. The Solr provider
+joins the search text into its query. The shared suite is not a named module. In the code core declares `uses`,
+and the two API modules, which define the service interfaces, do not.
 
 ## Not finished
 
@@ -442,7 +467,7 @@ has its own list.
 
 - [The persistence interface](persistence-api.md):
   Read this first. The two interfaces, fragments, how the bridge cuts a stream into documents, versions and time,
-  deletion markers, transactions, and how a provider is found.
+  tombstones, transactions, and how a provider is found.
 - [The shared suite](persistence-tck.md):
   The 32 tests of `PersistenceIntegrationTest`, written as the contract a provider meets, and how a provider module
   extends the suite. Read it before a provider is changed or added.
@@ -454,7 +479,7 @@ has its own list.
   pool, and why PostgreSQL is held at 18.
 - [The Neo4j provider](persistence-neo4j.md):
   How a document is laid out as a graph, the constraints and indexes, the statements that write and read, records
-  on demand, and how the name of an entity gets into Cypher.
+  on demand, and how the name of an entity type gets into Cypher.
 - [Search](search.md):
   The search interface, how core calls the index from a saga and from the GraphQL field `Search`, and what the Solr
   provider puts in the index and asks of it.

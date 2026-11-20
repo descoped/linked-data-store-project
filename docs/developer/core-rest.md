@@ -1,16 +1,16 @@
 # Core: the REST API of documents
 
 This document describes the code in `linked-data-store-core` that answers REST requests for documents: how a
-request path becomes a resource, the three handlers, validation and the reading of a request body. It is for
-developers and maintainers who change that code. What a user of the API needs is in
-[the REST API](../user/rest-api.md).
+request path becomes a resource, the three handlers, [schema validation](../glossary.md#schema-validation) and the
+reading of a request body. It is for developers and maintainers who change that code. What a user of the API needs
+is in [the REST API](../user/rest-api.md).
 
 ## What this part is for
 
-A REST request names a document, a part of a document, or a link from a document. This part finds out which of
-the three it is, reads what is stored, and for a write builds the whole new document, validates it and hands it
-to a saga. It does not store anything itself. Storing is done by the saga
-([the write path](core-write-path.md)).
+A REST request names a [document](../glossary.md#document), a part of a document, or a
+[link](../glossary.md#link) from a document. This part finds out which of the three it is, reads what is stored,
+and for a write builds the whole new document, validates it and hands it to a [saga](../glossary.md#saga). It does
+not store anything itself. Storing is done by the saga ([the write path](core-write-path.md)).
 
 The packages are `io.descoped.lds.core.domain` and `io.descoped.lds.core.validation`. The module does not export
 them (`module-info.java` exports `io.descoped.lds.core` and `io.descoped.lds.test.server` only).
@@ -23,13 +23,13 @@ them (`module-info.java` exports `io.descoped.lds.core` and `io.descoped.lds.tes
 | `ResourceContext` (`domain.resource`) | The request path, checked against the model: the namespace, a chain of `ResourceElement` and the time. Says which kind of resource the path is. Also walks a document along the chain (`subTree`, `referenceToExists`, `navigateAndCreateJson`). |
 | `ResourceElement` (`domain.resource`) | One step of the path: the name, the element of the specification it is, an id (of the document for the first step, the link `/Entity/id` for the last step of a reference) and the next step. |
 | `ResourceException` (`domain.resource`) | A path that the model does not have. Its message is the body of the 400 answer. |
-| `ManagedResourceHandler` (`domain.managed`) | The whole document: read one, read all of an entity, read the versions, write, delete, and give out the JSON Schema of the entity. |
+| `ManagedResourceHandler` (`domain.managed`) | The whole document: read one, read all of an entity type, read the versions, write, delete, and give out the JSON Schema of the entity type. |
 | `EmbeddedResourceHandler` (`domain.embedded`) | A part of a document: read it, replace it, remove it. |
 | `ReferenceResourceHandler` (`domain.reference`) | One link of a document: ask whether it is there, add it, remove it. |
 | `ReferenceJsonHelper` (`domain.reference`) | Puts a link into a document and takes it out, for a single link and for an array of links. |
 | `BodyParser` (`domain`) | Reads the body of a request into a Jackson tree, by the content type. |
 | `ResourceJsonTraversalTuple` (`domain.resource`) | The last step of a path and the object of the document that holds it, as `navigateAndCreateJson` gives them to its caller. |
-| `LinkedDocumentValidator` (`validation`) | Says whether a document may be written: the JSON Schema of the entity, then the links. It throws `LinkedDocumentValidationException`. |
+| `LinkedDocumentValidator` (`validation`) | Says whether a document may be written: the JSON Schema of the entity type, then the links. It throws `LinkedDocumentValidationException`. |
 
 A new handler and a new `ResourceContext` are made for every request. They hold no state between requests.
 
@@ -48,7 +48,8 @@ answered as a namespace that is not served. `NamespaceController` looks at the p
 - The path is exactly the namespace and one value of `schema` is `embed`: the schemas themselves are answered
   there. Both are answered for every method, and not for `/<namespace>/?schema`.
 - A path that is the namespace, or starts with it and a `/`, goes to a new `DataController`.
-- A path that starts with `/source/` goes to `SourceHandler` (the transaction log, not this part).
+- A path that starts with `/source/` goes to `SourceHandler` (the [transaction log](../glossary.md#transaction-log),
+  not this part).
 - Anything else is answered 400 with `Unsupported namespace: "<first segment>"`.
 
 `CORSHandler` is in front of all of this ([the application](core-application.md)). An OPTIONS request with
@@ -78,9 +79,10 @@ the reads, `join` on the saga.
    from](#where-an-error-answer-comes-from)). A parameter with no value (`?timestamp=`, `?timestamp`) fails too.
 5. The time is moved to UTC with `withZoneSameInstant(ZoneId.of("Etc/UTC"))`.
 
-This one time is used for the whole request. A read gives the document as it is at that time. A write makes the
-version that is valid from that time. So a write without `timestamp` makes a version from the moment the request
-arrived, and a write with a `timestamp` in the past or the future makes a version there.
+This one time is used for the whole request. A read is an [as-of read](../glossary.md#as-of-read): it gives the
+document as it is at that time. A write makes the [version](../glossary.md#version) whose
+[valid time](../glossary.md#valid-time) is that time. So a write without `timestamp` makes a version valid from
+the moment the request arrived, and a write with a `timestamp` in the past or the future makes a version there.
 
 ### The path
 
@@ -89,22 +91,23 @@ arrived, and a write with a `timestamp` in the past or the future makes a versio
 is decoded as a URL (`urlDecode`). The path is `/{namespace}/{Entity}/{id}/{field}/.../{Entity}/{id}`:
 
 1. Fewer than two segments: `ResourceException`.
-2. The second segment must be an entity of the model (a property of the root element of the `Specification`).
+2. The second segment must be an [entity type](../glossary.md#entity-type) of the model (a property of the root
+   element of the [specification](../glossary.md#specification), `Specification`).
 3. The third segment, when there is one, is the id. An id that is empty or only spaces is refused.
 4. Every segment after the id must be a property of the element before it in the specification
    (`navigateSpecAndCreateResourceContext`).
 5. When a segment is a link field (`SpecificationElementType.REF`):
    - nothing after it: the path ends at the field, which is an embedded resource whose value is the link or links;
    - one segment after it: refused, an id is missing;
-   - two segments after it: the entity and the id of the target. The entity must be one the field may link to
-     (`getRefTypes`). The last `ResourceElement` gets the id `/Entity/id`;
+   - two segments after it: the entity type and the id of the target. The entity type must be one the field may
+     link to (`getRefTypes`). The last `ResourceElement` gets the id `/Entity/id`;
    - more than two: refused, a path does not go through a link.
 
 The result is a chain of `ResourceElement`. `getResourceType` reads the kind from it:
 
 | Kind | The chain | Example |
 |---|---|---|
-| `MANAGED` | Only the first element. The id may be missing (all documents of the entity). | `/ns/Person/ola`, `/ns/Person` |
+| `MANAGED` | Only the first element. The id may be missing (all documents of the entity type). | `/ns/Person/ola`, `/ns/Person` |
 | `EMBEDDED` | More elements, and the last has no id. | `/ns/Person/ola/address` |
 | `REFERENCE` | More elements, and the last has an id. | `/ns/Person/ola/employer/Company/acme` |
 
@@ -142,9 +145,9 @@ they matter.
 | PUT or POST | See [A write becomes a saga](#a-write-becomes-a-saga). The body is the whole document. | 201 `{"saga-execution-id":"..."}` |
 | DELETE | The saga `Delete managed resource`. The store marks the document deleted from the time. | 204 when the saga was awaited, else 202 `{"saga-execution-id":"..."}` |
 
-`version` in the timeline is `ZonedDateTime.toString()` of the UTC time: `2020-01-01T00:00Z[Etc/UTC]`.
-`timeline` and `schema` are looked for as names only (`containsKey`); `?timeline=false` gives the timeline too.
-`schema` is looked at only when the path has no id.
+`version` in the [timeline](../glossary.md#timeline) is `ZonedDateTime.toString()` of the UTC time:
+`2020-01-01T00:00Z[Etc/UTC]`. `timeline` and `schema` are looked for as names only (`containsKey`);
+`?timeline=false` gives the timeline too. `schema` is looked at only when the path has no id.
 
 `putManaged` checks in this order: an empty body (400 `Payload was empty!`), a missing id (400 `Id was empty!`),
 then `BodyParser`, then the validator. Only a body of no characters is empty. For a body of spaces Jackson gives a
@@ -181,8 +184,8 @@ Content-Type: application/json; charset=utf-8
 ```
 
 A DELETE does not look for the document first. A DELETE of a document that does not exist is answered 204 as
-well, and the store gets a deleted version at that time. With the memory provider the timeline shows a deleted
-version as `{"version":"2020-01-01T00:00Z[Etc/UTC]","document":{}}`.
+well, and the store gets a deleted version, a [tombstone](../glossary.md#tombstone), at that time. With the memory
+provider the timeline shows a tombstone as `{"version":"2020-01-01T00:00Z[Etc/UTC]","document":{}}`.
 
 ### Embedded: a part of a document
 
@@ -222,8 +225,8 @@ Content-Type: application/json
 {"saga-execution-id": "01a1f996-a32c-7800-b3c6-e4fc44007c40"}
 ```
 
-A write to a part makes a new version of the whole document at the time of the request. It is built from the
-document as it is at that time, not from the newest version.
+A write to a part makes a new version of the whole document, valid from the time of the request. It is built
+from the document as it is at that time (an as-of read), not from the newest version.
 
 ### Reference: one link
 
@@ -234,7 +237,7 @@ document as it is at that time, not from the newest version.
 | DELETE | When there is no document, or the link is not there, nothing is written. Else `ReferenceJsonHelper.deleteReferenceJson`: the first equal element is taken out of the array, or the single field is removed. Then the same saga. | 200 always. No body when nothing was written or the saga was awaited, else `{"saga-execution-id":"..."}`. |
 
 The document is not validated after a link is added or removed. The path was checked against the model, so the
-link is to an entity the field may link to. `navigateAndCreateJson` makes the objects on the way to the field
+link is to an entity type the field may link to. `navigateAndCreateJson` makes the objects on the way to the field
 that the document does not have. An array that becomes empty stays in the document as `[]`.
 
 ```sh
@@ -279,7 +282,7 @@ curl -i 'http://localhost:19108/ns/Person/ola?timeline'
 ```
 
 The answer is one line; it is broken here to be read. There is no document `Person/kari` in this LDS. A link may
-point at a document that does not exist, and no handler looks for the target.
+point at a document that does not exist (a dangling reference), and no handler looks for the target.
 
 ## A write becomes a saga
 
@@ -291,15 +294,18 @@ Every write ends the same way, in all three handlers:
 3. The saga is taken from `SagaRepository` by name: `SAGA_CREATE_OR_UPDATE_MANAGED_RESOURCE`, or
    `SAGA_DELETE_MANAGED_RESOURCE` for the DELETE of a whole document.
 4. A `SagaInput` is made: a new transaction id (`SagaExecutionCoordinator.generateTxId`, a UUIDv7), the method
-   (`PUT` or `DELETE`), the namespace, the entity, the id, the time as the version, `source` and `sourceId` from
-   the query when given, and the document. A DELETE has no document.
+   (`PUT` or `DELETE`), the namespace, the entity type, the id, the time as the version (its valid time),
+   `source` and `sourceId` from the query when given, and the document. A DELETE has no document.
 5. `SagaExecutionCoordinator.handoff(sync, ...)` starts the saga and gives a future. The handler calls `join` on
    it and then answers. `saga-execution-id` in the answer is the transaction id.
 
 When the handler passes `true` as `sync`, the future is the completion of the saga: the answer comes when the
-transaction log, the store and, when there is one, the search index have been written. With `false` the future
-is the handoff: the answer comes when the saga is written to its saga log, and the saga goes on after the
-answer. A saga that fails after that is not seen by the client; it is logged by `SagasObserver`.
+transaction log, the store and, when there is one, the search index have been written. This is a
+[synchronous write](../glossary.md#synchronous-write): a read that follows it sees the write (read-your-writes).
+With `false` the future is the hand-off: the answer comes when the saga is written to its
+[saga log](../glossary.md#saga-log), and the saga goes on after the answer, so a read that follows at once may not
+see the write yet (eventual consistency). A saga that fails after that is not seen by the client; it is logged by
+`SagasObserver`.
 
 `sync` is not read the same way everywhere:
 
@@ -319,7 +325,7 @@ No handler holds a lock between its read and its write. A write to a part or to 
 changes it and writes the whole document as a new version, so two such writes to one document at the same time
 each start from the document without the change of the other (see [Not finished](#not-finished)).
 
-A write with the same id and the same time as a version that exists replaces that version. That is what makes a
+A write with the same id and the same valid time as a version that exists replaces that version. That is what makes a
 repeated PUT with a `timestamp` safe.
 
 ## Validation
@@ -330,22 +336,22 @@ whole document. It throws `LinkedDocumentValidationException`, and the handler a
 
 It checks two things, in this order:
 
-1. **The JSON Schema of the entity** (`JsonSchema.validate`, on `com.networknt:json-schema-validator`). `format` is
+1. **The JSON Schema of the entity type** (`JsonSchema.validate`, on `com.networknt:json-schema-validator`). `format` is
    checked, so a text in a `date-time` field must be a date-time of RFC 3339. Everything that is wrong is
    collected. The message is the list as Java prints it: `[$.name: integer found, string expected]`.
-2. **The links.** The specification of the entity is walked (`SpecificationTraversal`). For every link field the
-   value is looked up in the document. A field that is missing or null is not checked, and neither is a null in
-   an array of links, nor a field whose parent in the document is missing or is not an object. The schema is
-   checked first, so a null gets this far only where the schema allows it. The schema LDS writes from a GraphQL
+2. **The links.** The specification of the entity type is walked (`SpecificationTraversal`). For every link
+   field the value is looked up in the document. A field that is missing or null is not checked, and neither is a
+   null in an array of links, nor a field whose parent in the document is missing or is not an object. The schema
+   is checked first, so a null gets this far only where the schema allows it. The schema LDS writes from a GraphQL
    schema says `"type":"string"` for a link, and a null there is answered
    `[$.employer: null found, string expected]`. A value that is not a text is checked as its JSON text. A value
-   must be a `/`, an entity, a `/` and an id, with no other `/` in it (`linkPattern`), or the message is
-   `Not a valid link. Navigation: <path>: "<value>"`. The entity in it must be one the field may link to, or the
-   message is `Illegal linked-domain: "<entity>". Navigation: <path>: "<value>"`. The first link that is wrong
+   must be a `/`, an entity type, a `/` and an id, with no other `/` in it (`linkPattern`), or the message is
+   `Not a valid link. Navigation: <path>: "<value>"`. The entity type in it must be one the field may link to, or
+   the message is `Illegal linked-domain: "<entity>". Navigation: <path>: "<value>"`. The first link that is wrong
    ends the check.
 
-The validator does not look for the document a link points at. That is on purpose: LDS keeps versions in the
-past and the future, and a link may point at a document that is written later.
+The validator does not look for the document a link points at. That is on purpose: LDS keeps versions with a
+valid time in the past and the future, and a link may point at a document that is written later.
 
 ```sh
 curl -i -X PUT 'http://localhost:19108/ns/Person/per?sync=true' \
@@ -413,28 +419,29 @@ before it reads, so its 404 has that header and no body.
 ## Rules to keep
 
 - **Time is UTC.** `DataController` moves the time of the request to UTC before anything uses it. Versions are
-  stored and compared as UTC instants (`.claude/CLAUDE.md`, Invariants).
-- **Names come from the model.** The entity, every field of the path and the entity of a link are looked up in
-  the `Specification`. Keep it so: no name from a request reaches a store without that check.
+  stored and compared as UTC instants (see [the invariants](architecture.md#the-invariants)).
+- **Names come from the model.** The entity type, every field of the path and the entity type of a link are
+  looked up in the `Specification`. Keep it so: no name from a request reaches a store without that check.
 - **A handler does not write to the store.** It reads with `persistence.createTransaction(true)` in a
   try-with-resources block, and writes through a saga. A write that skips the saga skips the transaction log and
   the search index.
 - **A handler blocks on a worker thread only.** Keep the `dispatch` in `DataController`. The handlers wait for
-  the reactive persistence interface where they use it; no blocking method and no method that returns a complete
-  list is added to that interface to make a handler shorter (`.claude/CLAUDE.md`, The persistence interface).
+  the reactive persistence interface ([reactive streams](../glossary.md#reactive-stream)) where they use it; no
+  blocking method and no method that returns a complete list is added to that interface to make a handler
+  shorter.
 - **No check that a link target exists.** Do not add one to the validator or to a handler.
 - **Every call can be sent again.** A PUT of a link that is there writes nothing. A DELETE of a link or of a
   document that is not there is answered as a success. A PUT with a `timestamp` replaces the version at that
   time. A write without `timestamp` that is sent again makes one more version, at the time of the second
   request.
 - **A text is taken out of a node with `JsonTools.text`** unless the node is known to be a text. It gives null
-  for a node of another kind, where Jackson 3 itself throws (`.claude/CLAUDE.md`, JSON).
+  for a node of another kind, where Jackson 3 itself throws.
 - **The error texts are part of the API.** Tests compare them letter by letter: `DataControllerTest`,
   `NamespaceControllerTest`, `ManagedResourceHandlerTest`, `DocumentValidationTest`.
 - **The answer of the validator keeps its form**: the place in the document as LDS writes a path, then the message
   of the validator (`$.tags[1]: integer found, string expected`).
 - **Lint.** Core overrides `-Xlint:all` and doclint in its `pom.xml` with the categories its older code is not
-  clean of. The override is removed, not widened (`.claude/CLAUDE.md`, Invariants).
+  clean of. The override is removed, not widened (see [the invariants](architecture.md#the-invariants)).
 
 ## Configuration
 
@@ -443,7 +450,7 @@ The handlers read no configuration themselves. These keys decide what they are g
 | Key | Default | Meaning for this part |
 |---|---|---|
 | `namespace.default` | `ns` | The namespace REST serves. A leading `/` is added when it is missing (`NamespaceController`). |
-| `graphql.schema`, `specification.schema` | see [the model](core-model.md) | The model. It decides which entities, fields and links a path may name, and what a document is validated with. |
+| `graphql.schema`, `specification.schema` | see [the model](core-model.md) | The model. It decides which entity types, fields and links a path may name, and what a document is validated with. |
 | `http.prefix` | `/` | A prefix in front of every path. The handlers do not see it. |
 | `saga.commands.enabled` | `false` | Whether the query parameter `saga` is used. |
 
@@ -461,26 +468,27 @@ The tests are in `linked-data-store-core/src/test/java/io/descoped/lds/core`.
 | `domain/managed/ManagedResourceHandlerTest` | PUT and GET, DELETE (204, and 400 without an id), 404, `?schema`, the answer to a document that is not valid, `?timeline`. |
 | `domain/managed/ManagedTimeBasedVersioningTest` | Three versions read at five times; a `timestamp` that cannot be read is 400. |
 | `domain/embedded/EmbeddedResourceHandlerTest` | GET of an array and of a missing part (`[null]`), PUT and DELETE of an object and an array, also two levels down. |
-| `domain/reference/ReferenceResourceHandlerTest` | GET, PUT and DELETE of single links and links in arrays, PUT on a missing and on a deleted document (404), DELETE sent twice, a link to an entity the field may not link to (400). |
+| `domain/reference/ReferenceResourceHandlerTest` | GET, PUT and DELETE of single links and links in arrays, PUT on a missing and on a deleted document (404), DELETE sent twice, a link to an entity type the field may not link to (400). |
 | `domain/reference/ReferenceJsonHelperTest` | Adding, changing and removing a link in a document, without a server. |
 | `domain/BodyParserTest` | JSON, JSON that is refused, another content type, and that a MessagePack body is refused. |
 | `validation/DocumentValidationTest` | The messages of the validator, date-times that are valid and not, links, nulls where a link could be. |
-| `validation/LinkedDocumentValidatorTest` | Links to another entity and links of another form are refused. |
+| `validation/LinkedDocumentValidatorTest` | Links to another entity type and links of another form are refused. |
 | `controller/DataControllerTest`, `controller/NamespaceControllerTest`, `controller/NamespaceSchemaTest` | The way in: a path the model does not have, another namespace, `?schema` on the namespace. |
 
 `BodyParserTest` and `DocumentValidationTest` are JUnit 6 with AssertJ. The others are TestNG. Those that send
 requests take a server from `TestServerListener`: LDS in the JVM on a free port, in memory, with the namespace
 `data` (`src/test/resources/application_test.properties`). The model of that server is the GraphQL schema
-`src/test/resources/gqlschema/schema.graphql`, which has the entities `contact` and `provisionagreement` among
+`src/test/resources/gqlschema/schema.graphql`, which has the entity types `contact` and `provisionagreement` among
 others. The file also sets `specification.schema` to the JSON Schema files `spec/schemas/contact.json` and
 `spec/schemas/provisionagreement.json`, but `UndertowApplication.initializeUndertowApplication` does not read
 that key while `graphql.schema` is set. `ResourceGraphqlContextTest` reads the two JSON Schema files itself.
 `TestClient.put` sends the header `Origin: localhost` and no `Content-Type` header, so those tests use the
 default of the handlers. A new test class that takes its server from `TestServerListener` is TestNG and asserts
-with AssertJ; a test added to an existing class follows that class (`.claude/CLAUDE.md`, Testing).
+with AssertJ; a test added to an existing class follows that class.
 
-The Maven commands for one module and for one test class are in `.claude/CLAUDE.md` under Commands. The build
-needs JDK 27 and Docker.
+Core is built and tested with the modules it needs by `./mvnw verify -pl linked-data-store-core -am`, and one
+test class is run with `./mvnw test -pl linked-data-store-core -Dtest=<Class>`. The build needs JDK 27 and
+Docker.
 
 ## Not finished
 
@@ -546,8 +554,8 @@ becomes an id with a space, and `%2541` becomes `A`. `%2F` reached `ResourceCont
 `/ns/Person/a%2Fb` is the id `a/b`. `ResourceContextIntegrationTest`, the only test of encoded names, is
 switched off with `@Ignore`.
 
-Not finished: the read of all documents of an entity and the read of the versions are not paged. The read of
-the versions has `TODO Support pagination or time-range based query parameters`. Both ask the store for
+Not finished: the read of all documents of an entity type and the read of the versions are not paged. The read
+of the versions has `TODO Support pagination or time-range based query parameters`. Both ask the store for
 everything (`Range.unbounded()`) and build the answer in memory before it is sent.
 
 Not finished: the form of the answer of an embedded GET depends on the value: an object or an array as it is, a

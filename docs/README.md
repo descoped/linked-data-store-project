@@ -1,13 +1,15 @@
 # Linked Data Store: documentation
 
 Linked Data Store (LDS) is a server that gives REST and GraphQL access to versioned, linked JSON documents. The
-model of the documents is read when LDS starts. LDS is a time machine: every version of a document is valid from
-a time, and a read gives the document as it was at the time asked for.
+[model](glossary.md#model) of the documents is read when LDS starts. LDS is a
+[time machine](glossary.md#time-machine): every version of a document holds from its
+[valid time](glossary.md#valid-time), and an [as-of read](glossary.md#as-of-read) gives the document as it was at the
+instant asked for.
 
-This documentation is in two parts, for two kinds of reader. Every document is written from the code as it is,
-and every request shown in it was run. LDS 3.0 is in development and nothing is released: the version is
-`3.0.0-SNAPSHOT`, built from the repository. What is unfinished is said where a reader meets it, in a paragraph
-that starts with "Not finished:".
+This documentation is in two parts, for two kinds of reader, and a [glossary](glossary.md) of the terms both use.
+Every document is written from the code as it is, and every request shown in it was run. LDS 3.0 is in
+development and nothing is released: the version is `3.0.0-SNAPSHOT`, built from the repository. What is
+unfinished is said where a reader meets it, in a paragraph that starts with "Not finished:".
 
 ## For those who use LDS
 
@@ -16,12 +18,13 @@ You run LDS, give it a model, and read and write documents. You do not need to r
 | Document | What it is |
 |---|---|
 | [Getting started](user/getting-started.md) | From nothing to a first document: start LDS, write a document, read it, read it as it was, link two documents, ask with GraphQL. |
-| [Concepts](user/concepts.md) | The ideas: document, entity, namespace, version and time, link, model, provider, what a write goes through. |
+| [Concepts](user/concepts.md) | The ideas: document, entity type, namespace, version and valid time, link, model, provider, what a write goes through. |
 | [The model](user/model.md) | How to write a model, as a GraphQL schema or as JSON Schema files, and what LDS checks against it. |
 | [The REST API](user/rest-api.md) | Every address, method, parameter and answer. |
-| [The GraphQL API](user/graphql-api.md) | The queries LDS makes from a model, paging, links, reading at a time, search. |
+| [The GraphQL API](user/graphql-api.md) | The queries LDS makes from a model, paging, links, as-of reads, search. |
 | [Configuration](user/configuration.md) | Every key, its default and its meaning, and how keys are set. |
 | [Running LDS](user/operations.md) | The image and the compose file, starting and stopping, health, logs, what is stored where. |
+| [Glossary](glossary.md) | The terms of this documentation, each with one meaning. |
 
 ## For those who develop and maintain LDS
 
@@ -33,7 +36,7 @@ the ideas that hold the code together and the rules a change must keep. Then one
 | Document | The part of the code |
 |---|---|
 | [The build](developer/build.md) | The reactor, the BOM, the rules of the build, the tests, CI. |
-| [The persistence interface](developer/persistence-api.md) | What a persistence provider implements: fragments, documents, streams, transactions. |
+| [The persistence interface](developer/persistence-api.md) | What a persistence provider implements: fragments, documents, reactive streams, transactions. |
 | [The shared suite](developer/persistence-tck.md) | The tests every persistence provider passes. |
 | [The memory provider](developer/persistence-memory.md) | Persistence in memory, for tests and for trying LDS. |
 | [The PostgreSQL provider](developer/persistence-postgres.md) | Persistence in one table of PostgreSQL. |

@@ -4,9 +4,9 @@ This guide takes you from nothing to a first document in Linked Data Store (LDS)
 documents, read them, read one as it was at an earlier time, link them, and ask for them with GraphQL. It is for
 people who want to use LDS and have not used it before.
 
-LDS is a server that keeps JSON documents. A document has versions, and a document can link to other documents.
-You read and write documents over HTTP. The guide shows this at work; [Concepts](concepts.md) explains the
-ideas.
+LDS is a server that keeps JSON [documents](../glossary.md#document). A document has [versions](../glossary.md#version),
+and a document can [link](../glossary.md#link) to other documents. You read and write documents over HTTP. The guide
+shows this at work; [Concepts](concepts.md) explains the ideas.
 
 ## What is needed
 
@@ -29,7 +29,7 @@ In the root of the repository:
 ## Start LDS
 
 There are three ways. Choose one. As it comes, that is with no configuration of your own, LDS keeps everything in
-memory, has an example model and answers on port 9090.
+memory, has an example [model](../glossary.md#model) and answers on port 9090.
 
 ### In a container
 
@@ -46,9 +46,10 @@ This is LDS as it comes, in an image that is built on your machine.
 docker compose -f linked-data-store-server/compose.yaml up --build
 ```
 
-This starts LDS together with three other programs: Neo4j, which keeps the documents; PostgreSQL, which keeps
-the two logs LDS writes for every write (the saga log and the transaction log); and Solr, which is the search
-index. It is for development only: the passwords are written in the file.
+This starts LDS together with three other programs: Neo4j, which keeps the documents; PostgreSQL, which keeps the two
+logs LDS writes for every write (the [saga log](../glossary.md#saga-log) and the [transaction
+log](../glossary.md#transaction-log)); and Solr, which is the search index. It is for development only: the passwords
+are written in the file.
 
 Two things differ from the other ways:
 
@@ -125,11 +126,12 @@ type Company @domain {
 }
 ```
 
-- A type with `@domain` is an *entity*: LDS keeps documents of it. The entities here are `Person` and `Company`.
-- A type without `@domain` is an embedded type: its values are parts of the documents it is used in. An
-  `Address` is a part of a `Person`.
-- A field with `@link` holds a *link* to another document. `employer` links a person to a company, and `friends`
-  links a person to other persons.
+- A type with `@domain` is an *[entity type](../glossary.md#entity-type)*: LDS keeps documents of it. The entity types
+  here are `Person` and `Company`.
+- A type without `@domain` is an embedded type: its values are *[embedded objects](../glossary.md#embedded-object)*,
+  parts of the documents they are in. An `Address` is a part of a `Person`.
+- A field with `@link` holds a *link*, a typed reference to another document. `employer` links a person to a
+  company, and `friends` links a person to other persons.
 - The `!` in `name: String!` says that every person must have a `name`.
 
 The whole model, drawn:
@@ -164,11 +166,11 @@ classDiagram
     Company ..> "0..*" Person : employees (reverse link)
 ```
 
-A filled diamond is an embedded type: its values are part of the document they are in. An arrow is a link: the
-document holds the text `/Entity/id`, and what it points at is a document of its own. A dotted arrow back is the
-reverse link, which only the GraphQL API has.
+A filled diamond is an embedded type: its values are embedded objects, part of the document they are in (composition).
+An arrow is a link: the document holds the text `/Entity/id`, and what it points at is a document of its own
+(association). A dotted arrow back is the [reverse link](../glossary.md#reverse-link), which only the GraphQL API has.
 
-Ask LDS which entities it has:
+Ask LDS which entity types it has:
 
 ```sh
 curl -i 'http://localhost:9090/ns?schema'
@@ -180,19 +182,18 @@ HTTP/1.1 200 OK
 ["/ns/Company?schema", "/ns/Person?schema"]
 ```
 
-Each of the two addresses gives the JSON Schema that LDS checks a document of that entity against.
+Each of the two addresses gives the JSON Schema that LDS checks a document of that entity type against.
 [The model](model.md) tells how to write a model of your own.
 
 ## Write two documents
 
 The address of a document is `/{namespace}/{Entity}/{id}`.
 
-- The *namespace* is the first part of the address. It is `ns`, as LDS comes.
-- The entity is `Person` or `Company`, written as in the model.
+- The *[namespace](../glossary.md#namespace)* is the first part of the address. It is `ns`, as LDS comes.
+- The entity type is `Person` or `Company`, written as in the model.
 - The *id* is yours to choose. LDS does not make ids.
 
-An address with another namespace, or with an entity that the model does not have, is answered
-`400 Bad Request`.
+An address with another namespace, or with an entity type that the model does not have, is answered `400 Bad Request`.
 
 Write a company with the id `acme`. The body is the document, and the header `Content-Type: application/json`
 says that it is JSON:
@@ -211,9 +212,10 @@ HTTP/1.1 201 Created
 {"saga-execution-id": "01a1f9d3-cc1f-70f5-aade-e0b3674393c3"}
 ```
 
-LDS carries out every write as a *saga*, and the answer gives the id of that saga. The id is new for every
-write. With `sync=true` LDS answers when the write is done, so a read that follows sees the document.
-[Concepts](concepts.md) tells what a write goes through.
+LDS carries out every write as a *[saga](../glossary.md#saga)*, and the answer gives the id of that saga. The id is new
+for every write. With `sync=true` LDS answers when the write is done, its saga completed, so a read that follows sees
+the document: a [synchronous write](../glossary.md#synchronous-write) gives read-your-writes. [Concepts](concepts.md)
+tells what a write goes through.
 
 Now a person with the id `ola`:
 
@@ -231,8 +233,9 @@ HTTP/1.1 201 Created
 {"saga-execution-id": "01a1f9d3-cc42-7abc-916b-4f732f1d54f1"}
 ```
 
-LDS checks a document against the model before it writes it. A document that fails the check is refused with a
-text that says what is wrong, and nothing is written. Here the name is a number:
+LDS checks a document against the model before it writes it ([schema validation](../glossary.md#schema-validation)). A
+document that fails the check is refused with a text that says what is wrong, and nothing is written. Here the name is a
+number:
 
 ```sh
 curl -i -X PUT 'http://localhost:9090/ns/Person/kari?sync=true' -H 'Content-Type: application/json' \
@@ -248,9 +251,9 @@ Schema validation error: [$.name: integer found, string expected]
 A field that the model does not have is not refused: LDS writes it with the document.
 [The model](model.md) tells what LDS checks.
 
-Not finished: with a model that is a GraphQL schema, as the example model is, LDS does not check a part of a
-document that is a single object, such as `address`. The example model says that an address must have a `city`,
-and a person whose address has no `city` is written all the same.
+Not finished: with a model that is a GraphQL schema, as the example model is, LDS does not check a single embedded
+object, such as `address`. The example model says that an address must have a `city`, and a person whose address has no
+`city` is written all the same.
 
 Not finished: a write with a body that LDS cannot read is answered `500 Internal Server Error` with no body, and
 the reason is only in the log of LDS. This happens when the body is not JSON. It also happens when the header
@@ -274,7 +277,7 @@ HTTP/1.1 200 OK
 
 The fields can come in another order than you sent them.
 
-The address of the entity gives all its documents. The answer has the documents and not their ids:
+The address of the entity type gives all its documents. The answer has the documents and not their ids:
 
 ```sh
 curl -i 'http://localhost:9090/ns/Person'
@@ -293,11 +296,12 @@ HTTP/1.1 200 OK
 
 ## Write a second version and read the document as it was
 
-LDS is a time machine. A write does not replace the document: it makes a new *version* of it, and the versions
-that are there are kept. A version has a time from which it is valid. The writes above gave no time, so their
-versions are valid from the time LDS received the request.
+LDS is a [time machine](../glossary.md#time-machine). A write does not replace the document: it makes a new *version* of
+it, and the versions that are there are kept. A version has a *[valid time](../glossary.md#valid-time)*, the instant
+from which it holds. The writes above gave no valid time, so the valid time of their versions is the time LDS received
+the request.
 
-The query parameter `timestamp` gives the time. It can be in the past, the present or the future. Say that Ola
+The query parameter `timestamp` gives the valid time. It can be in the past, the present or the future. Say that Ola
 lived in Bergen from 2020. Write that as a version that is valid from 1 January 2020:
 
 ```sh
@@ -331,7 +335,8 @@ HTTP/1.1 200 OK
 }
 ```
 
-A read with `timestamp` gives the document as it was at that time. On 1 June 2021 Ola lived in Bergen:
+A read with `timestamp` is an [as-of read](../glossary.md#as-of-read): it gives the document as it was at that time. On
+1 June 2021 Ola lived in Bergen:
 
 ```sh
 curl -i 'http://localhost:9090/ns/Person/ola?timestamp=2021-06-01T00:00:00Z'
@@ -358,8 +363,8 @@ HTTP/1.1 404 Not Found
 
 LDS answers the same for an id that was never written.
 
-`?timeline` gives every version of the document with its time, the oldest first. The time of the second version
-is the time of your own write:
+`?timeline` gives the [timeline](../glossary.md#timeline) of the document: every version with its valid time, the oldest
+first. The valid time of the second version is the time of your own write:
 
 ```sh
 curl -i 'http://localhost:9090/ns/Person/ola?timeline'
@@ -391,8 +396,8 @@ in an address. A date alone is refused with `400 Bad Request`.
 
 Two more things about time:
 
-- A write with the time of a version that is there replaces that version.
-- A version with a time in the future is not in a read without `timestamp` until that time has come. A document
+- A write at the valid time of a version that is there replaces that version.
+- A version whose valid time is in the future is not in a read without `timestamp` until that time has come. A document
   whose only version is in the future is answered `404 Not Found` until then.
 
 [The REST API](rest-api.md) has the rules.
@@ -402,7 +407,7 @@ Two more things about time:
 A link is a field of a document. Its value is the text `/{Entity}/{id}` of the document it points at. In the
 example model the field `employer` of a person links to a company.
 
-A link has an address of its own: the address of the document, then the field, then the entity and the id of the
+A link has an address of its own: the address of the document, then the field, then the entity type and the id of the
 document it points at. A `PUT` to that address adds the link. It needs no body:
 
 ```sh
@@ -465,8 +470,8 @@ HTTP/1.1 200 OK
 }
 ```
 
-LDS does not check that the document a link points at exists. A link can point at a document that is written
-later. Per works for a company that LDS does not have:
+LDS does not check that the document a link points at exists. A link can point at a document that is written later;
+until then it is a dangling reference. Per works for a company that LDS does not have:
 
 ```sh
 curl -i -X PUT 'http://localhost:9090/ns/Person/per?sync=true' -H 'Content-Type: application/json' \
@@ -484,8 +489,8 @@ HTTP/1.1 201 Created
 
 ## Ask with GraphQL
 
-LDS makes a GraphQL API from the model, at `/graphql`. GraphQL reads documents; they are written with REST. For
-every entity LDS makes a query that gives one document by its id: `PersonById` and `CompanyById` here.
+LDS makes a GraphQL API from the model, at `/graphql`. GraphQL reads documents; they are written with REST. For every
+entity type LDS makes a query that gives one document by its id: `PersonById` and `CompanyById` here.
 
 The examples send a query with `POST`, as JSON. The header `Content-Type: application/json` must be there:
 without it LDS answers `415 Unsupported Media Type`.
@@ -566,7 +571,7 @@ HTTP/1.1 200 OK
 A list comes as `edges`, and the `node` of each edge is a document. Per is not in the list: his link points at
 another company.
 
-A link that points at a document that does not exist gives `null`:
+A link that points at a document that does not exist, a dangling reference, gives `null`:
 
 ```sh
 curl -i 'http://localhost:9090/graphql' -H 'Content-Type: application/graphql' \
@@ -609,8 +614,8 @@ HTTP/1.1 200 OK
  "data":null}
 ```
 
-GraphQL reads at a time too. The time is the query parameter `snapshot` in the address, and the whole query,
-with the links it follows, is answered as of that time:
+GraphQL makes as-of reads too. The time is the query parameter `snapshot` in the address, and the whole query, with the
+links it follows, is answered as of that time:
 
 ```sh
 curl -i 'http://localhost:9090/graphql?snapshot=2021-06-01T00:00:00Z' -H 'Content-Type: application/graphql' \

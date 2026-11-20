@@ -9,8 +9,9 @@ maintainers who change this code. What the handlers do with a document is in
 
 ## What this part is for
 
-`UndertowApplication` is the whole of LDS as one object. Given a configuration it reads the model, finds the
-providers, builds the sagas and the HTTP handlers, and holds them until it is stopped. It has no `main` method:
+`UndertowApplication` is the whole of LDS as one object. Given a configuration it reads the
+[model](../glossary.md#model), finds the providers, builds the [sagas](../glossary.md#saga) and the HTTP handlers,
+and holds them until it is stopped. It has no `main` method:
 `io.descoped.lds.server.Server` in `linked-data-store-server` builds the configuration and calls it, and the tests
 of core call it in the same way.
 
@@ -42,16 +43,18 @@ The resources are `application-defaults.properties`, the defaults of every key c
 The parts are built in this order, on the calling thread. Each later part is given the earlier ones.
 
 1. **The model.** When `graphql.schema` is not empty, the GraphQL schema file is parsed (`parseSchemaFile`),
-   `GraphQLToJsonConverter` writes a JSON Schema for every entity, and `createJsonSpecification` builds the
-   `JsonSchemaBasedSpecification` from them. When it is empty, the specification is built from the JSON Schema
-   files and folders named in `specification.schema`, separated by commas
-   (`JsonSchemaBasedSpecification.create`). `parseSchemaFile` looks for the path on the class path first and then
+   `GraphQLToJsonConverter` writes a JSON Schema for every [entity type](../glossary.md#entity-type), and
+   `createJsonSpecification` builds the `JsonSchemaBasedSpecification` from them. When it is empty, the
+   [specification](../glossary.md#specification) is built from the JSON Schema files and folders named in
+   `specification.schema`, separated by commas (`JsonSchemaBasedSpecification.create`). `parseSchemaFile` looks
+   for the path on the class path first and then
    as a file. What it finds on the class path it opens as a file, so a schema inside a jar is not read: see
    [Not finished](#not-finished). See [the model](core-model.md).
 2. **The persistence provider.** `PersistenceConfigurator.configurePersistence` gives an `RxJsonPersistence`.
-3. **The saga log pool.** `configureSagaLogProvider` gives a `SagaLogPool`.
+3. **The [saga log](../glossary.md#saga-log) pool.** `configureSagaLogProvider` gives a `SagaLogPool`.
 4. **The search index.** `SearchIndexConfigurator.configureSearchIndex` gives a `SearchIndex` or null.
-5. **The transaction log.** `configureTxLogRawdataClient` gives a `RawdataClient`. It is wrapped in a
+5. **The [transaction log](../glossary.md#transaction-log).** `configureTxLogRawdataClient` gives a
+   `RawdataClient`. It is wrapped in a
    `TxlogRawdataPool` with `txlog.split.sources`, `txlog.default-source` and `txlog.rawdata.topic-prefix`.
 6. **The saga repository.** `SagaRepository.Builder.build` registers the adapters and the two sagas, one for a write
    and one for a delete. Each saga has a step for the search index only when there is a search index.
@@ -133,7 +136,7 @@ through its file in `META-INF/services`. The `provides` clause of its module des
 
 | Part | Service interface | Chosen by | Configuration it is given |
 |---|---|---|---|
-| Persistence | `io.descoped.lds.api.persistence.PersistenceInitializer` | `persistence.provider` equals the value of the `@ProviderName` annotation on the class. The instance must give the same id from `persistenceProviderId()`. | The keys the provider names in `configurationKeys()`. Each must be configured, or the start fails with `Configuration missing for: [...]`. It is also given `namespace.default` and the names of the entities. |
+| Persistence | `io.descoped.lds.api.persistence.PersistenceInitializer` | `persistence.provider` equals the value of the `@ProviderName` annotation on the class. The instance must give the same id from `persistenceProviderId()`. | The keys the provider names in `configurationKeys()`. Each must be configured, or the start fails with `Configuration missing for: [...]`. It is also given `namespace.default` and the names of the entity types. |
 | Saga log | `no.cantara.sagalog.SagaLogInitializer` | `sagalog.provider` equals the name of the class. | Every key that starts with `sagalog.config.`, without that prefix. |
 | Search | `io.descoped.lds.api.search.SearchIndexProvider` | `search.index.provider` equals `getProviderId()`. Only when `graphql.search.enabled` is true. | The whole configuration as a map. `SearchIndexProvider.configurationKeys()` is not read, so core does not check that the keys of the search provider are configured. |
 | Transaction log | Found by `RawdataClient.create` of `io.descoped.rawdata:rawdata-client-api`. | `txlog.rawdata.provider` is the name of the provider. | Every key that starts with `txlog.config.`, without that prefix. |
@@ -263,9 +266,9 @@ in this order. The namespace is `namespace.default`. LDS answers for this one na
 
 1. The path is `/` or empty: 404 with no body.
 2. The path is the namespace and the query has `schema` with no value: 200 with a JSON array of the addresses of
-   the schemas of every entity, sorted by name.
+   the schemas of every entity type, sorted by name.
 3. The path is the namespace and the query has `schema=embed`: 200 with a JSON array of the JSON Schemas of every
-   entity, sorted by name.
+   entity type, sorted by name.
 4. The path is the namespace or begins with the namespace and `/`: a new `DataController` handles it.
 5. The path begins with `/source/`: a new `SourceHandler` handles it.
 6. Anything else: 400 with the text `Unsupported namespace: "<first part of the path>"`.
@@ -298,22 +301,24 @@ Date: Fri, 20 Nov 2026 15:29:14 GMT
 Unsupported namespace: "bad"
 ```
 
-`DataController.handleRequest` moves to a worker thread, then reads the time the request asks for from the query
-parameter `timestamp`, or `t` when there is no `timestamp`. It takes the last value given. Without the parameter
-the time is now. The value is parsed with `ZonedDateTime.parse`, a second time after URL decoding when the first
-parse fails, and is moved to UTC. A value that cannot be parsed is answered 400 with a text that names
-`timestamp`, also when the parameter was `t`. Undertow has decoded the query before the controller reads it, and
-it reads a `` ` as a space. So the ` `` of an offset is sent as `%2B`: `timestamp=2026-11-20T10:00:00+01:00` is
-answered 400, and `timestamp=2026-11-20T10%3A00%3A00%2B01%3A00` is read.
+`DataController.handleRequest` moves to a worker thread, then reads the time the request asks for (the
+[valid time](../glossary.md#valid-time) of a write, the instant of an [as-of read](../glossary.md#as-of-read))
+from the query parameter `timestamp`, or `t` when there is no `timestamp`. It takes the last value given. Without
+the parameter the time is now. The value is parsed with `ZonedDateTime.parse`, a second time after URL decoding
+when the first parse fails, and is moved to UTC. A value that cannot be parsed is answered 400 with a text that
+names `timestamp`, also when the parameter was `t`. Undertow has decoded the query before the controller reads
+it, and it reads a `+` as a space. So the `+` of an offset is sent as `%2B`: `timestamp=2026-11-20T10:00:00+01:00`
+is answered 400, and `timestamp=2026-11-20T10%3A00%3A00%2B01%3A00` is read.
 
 Then `ResourceContext.createResourceContext` reads the path, and a `ResourceException` from it is answered 400
 with its message. The request goes to `ReferenceResourceHandler`, `ManagedResourceHandler` or
 `EmbeddedResourceHandler`, tested in that order because a link is also a part of a document. These handlers are
 in [the REST handlers](core-rest.md).
 
-`SourceHandler` answers `GET /source/{source}` with `{"lastSourceId":...}`: the `sourceId` in the last entry of
-the transaction log of that source, or null when there is none. Any other method is answered 400 with
-`Unsupported managed resource method: <method>`, `HEAD` included. When `txlog.split.sources` is false there is
+`SourceHandler` answers `GET /source/{source}` with `{"lastSourceId":...}`: the
+[`sourceId`](../glossary.md#source-and-source-id) in the last entry of the transaction log of that source, or
+null when there is none. Any other method is answered 400 with `Unsupported managed resource method: <method>`,
+`HEAD` included. When `txlog.split.sources` is false there is
 one transaction log, and only the source named in `txlog.default-source` has an answer other than null
 (`TxlogRawdataPool.getLastMessage`). That answer is the `sourceId` of the last write, whatever source the write
 named. For every other source the transaction log is not asked. The entry and its `sourceId` are in
@@ -595,14 +600,14 @@ configuration, makes a `TestServer` on a free port between 9500 and 9999 and cal
 | `CORSHandlerTest` (TestNG) | The CORS headers of a request and of a preflight request, on an Undertow server of its own. |
 | `NamespaceControllerTest` (TestNG) | 404 for `/`, and 400 `Unsupported namespace` for another namespace, also one that only begins with the name of the namespace. |
 | `NamespaceSchemaTest` (TestNG) | `?schema` and `?schema=embed` on the namespace give a JSON array with more than one element. |
-| `DataControllerTest` (TestNG) | 400 `Not a managed resource name: "bull"` for a path with an entity the model does not have. Its other five tests are disabled. |
+| `DataControllerTest` (TestNG) | 400 `Not a managed resource name: "bull"` for a path with an entity type the model does not have. Its other five tests are disabled. |
 | `SourceTest` (TestNG) | `/source/{source}` with the transaction log in memory, split by source and not split. |
 | `PersistenceConfiguratorTest`, `SearchIndexConfiguratorTest` (TestNG) | A provider is found by its id. A key that is missing and a provider that is not there fail. |
 | `ServerTest` (TestNG) | The test server has a running HTTP listener. |
 
-The command that runs one test class of core is in the section Commands of `.claude/CLAUDE.md`; give it the name
-of a class above. A new test class that starts a server of its own is JUnit 6 with AssertJ. A test that takes
-its server from `TestServerListener` is TestNG until core is revised.
+One test class of core is run with `./mvnw test -pl linked-data-store-core -Dtest=<Class>`, with the name of a
+class above. A new test class that starts a server of its own is JUnit 6 with AssertJ. A test that takes its
+server from `TestServerListener` is TestNG until core is revised.
 
 `DevServer` (`src/test/java/io/descoped/lds/server`) is a main class for starting core from an IDE with the
 memory provider. It does not start as it stands: see [Not finished](#not-finished).

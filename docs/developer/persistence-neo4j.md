@@ -1,21 +1,22 @@
 # The Neo4j persistence provider
 
-This document describes the persistence provider `neo4j` of Linked Data Store (LDS), the module
-`linked-data-store-persistence-provider-neo4j`: how a document is laid out as a graph, how it is written, read
-and deleted, and what must be kept when the code is changed. It is for developers who change this module.
+This document describes the [persistence provider](../glossary.md#persistence-provider) `neo4j` of Linked Data Store
+(LDS), the module `linked-data-store-persistence-provider-neo4j`: how a document is laid out as a graph, how it is
+written, read and deleted, and what must be kept when the code is changed. It is for developers who change this module.
 
 ## What this part is for
 
 The provider keeps the documents of LDS in a Neo4j database. LDS uses it when `persistence.provider` is `neo4j`.
-Core finds it through the service loader and gives it the entities of the model (`PersistenceConfigurator` in
+Core finds it through the service loader and gives it the entity types of the model (`PersistenceConfigurator` in
 `linked-data-store-core`).
 
-The provider implements `RxJsonPersistence` of [the persistence interface](persistence-api.md) directly. It
-does not store fragments and does not use `RxJsonPersistenceBridge`, as the memory and PostgreSQL providers do. A
-document is a tree of nodes in the graph, and a read is one statement that returns one record for each document.
+The provider implements `RxJsonPersistence` of [the persistence interface](persistence-api.md) directly. It does not
+store [fragments](../glossary.md#fragment) and does not use `RxJsonPersistenceBridge`, as the memory and PostgreSQL
+providers do. A document is a tree of nodes in the graph, and a read is one statement that returns one record for each
+document.
 
-One database holds every namespace. The tests run on Neo4j 2026, community edition (the image
-`neo4j:2026.10-community`). The driver is `org.neo4j.driver:neo4j-java-driver`; its version is the property
+One database holds every [namespace](../glossary.md#namespace). The tests run on Neo4j 2026, community edition (the
+image `neo4j:2026.10-community`). The driver is `org.neo4j.driver:neo4j-java-driver`; its version is the property
 `neo4j-java-driver.version` in the root POM.
 
 ## Layout
@@ -31,9 +32,9 @@ checks that `persistenceProviderId()` returns the same value. Both are `neo4j` i
 | Class | Responsible for |
 |---|---|
 | `Neo4jInitializer` | The start of the provider: the configuration keys, the driver, the constraints and indexes. It returns the `Neo4jPersistence` that LDS uses. |
-| `Neo4jIndexManagement` | The constraints and indexes the provider needs for each entity. It creates what is missing. |
+| `Neo4jIndexManagement` | The constraints and indexes the provider needs for each [entity type](../glossary.md#entity-type). It creates what is missing. |
 | `Neo4jPersistence` | The implementation of `RxJsonPersistence`. It makes the statement of every read and every delete, and makes a document of a record (`toDocument`). |
-| `Neo4jDocumentWriter` | Writes. It makes the statement that writes the documents of one entity, and lays a document out as the parameters of that statement. |
+| `Neo4jDocumentWriter` | Writes. It makes the statement that writes the documents of one entity type, and lays a document out as the parameters of that statement. |
 | `Neo4jTransactionFactory`, `Neo4jTransaction` | A transaction of the driver in a session of its own. `Neo4jTransaction.executeCypherAsync` gives the records of a statement as a stream. |
 | `Cypher` | Writes a name into Cypher as a quoted label (`Cypher.label`). |
 | `Neo4jQueryAndParams` | A record: a statement and its parameters. |
@@ -43,12 +44,12 @@ checks that `persistenceProviderId()` returns the same value. Both are `neo4j` i
 
 | Part | Label or type | Properties | What it is |
 |---|---|---|---|
-| Document node | The name of the entity, for example `Person` | `namespace`, `id` | One node for each document. `namespace` and `id` are unique together. The node is also made for a document that is only linked to, or only marked as deleted. |
-| `VERSION` relationship | From the document node to a root | `from`, `to` | One version of the document. It is valid from `from` until `to`; `to` is not part of it. Both are date-times in the zone `Etc/UTC`. |
-| Root | `<entity>_E`, for example `Person_E` | `type: 'map'`, `path: '$'`, and `deleted: true` on a version that marks the document as deleted | The object that the document of one version is. |
+| Document node | The name of the entity type, for example `Person` | `namespace`, `id` | One node for each document. `namespace` and `id` are unique together. The node is also made for a document that is only linked to, or only marked as deleted. |
+| `VERSION` relationship | From the document node to a root | `from`, `to` | One version of the document. It is valid from `from`, its [valid time](../glossary.md#valid-time), until `to`; `to` is not part of it. Both are date-times in the zone `Etc/UTC`. |
+| Root | `<entity>_E`, for example `Person_E` | `type: 'map'`, `path: '$'`, and `deleted: true` on a version that marks the document as deleted (a [tombstone](../glossary.md#tombstone)) | The object that the document of one version is. |
 | Node below the root | `<entity>_E` | `type`, `path`. A node that holds a value also has `value`, `hashOrValue` and `namespace`. | One node for every object, array, value and null of the document. |
 | `EMBED` relationship | From a node to a node below it | `path`, and `index` for an item of an array | `path` is the name of the field, or `[]` for an item of an array. `index` is the place of the item in the array. |
-| `REF` relationship | From the root or a node to a document node | `path`, and `index` for an item of an array | A link. It starts at the object that has the link field, or at the array that holds the link, and points at the document node of the target, in the same namespace. |
+| `REF` relationship | From the root or a node to a document node | `path`, and `index` for an item of an array | A [link](../glossary.md#link). It starts at the object that has the link field, or at the array that holds the link, and points at the document node of the target, in the same namespace. |
 
 ### Node types and values
 
@@ -68,14 +69,14 @@ text. `namespace` is on the nodes that have a value and on no other node below t
 
 ### Links
 
-The model tells the writer one thing: which fields are links, and to which entities. A link is the text
-`/Entity/id` in such a field, where `Entity` is one of the entities the field may link to. The whole text must
+The model tells the writer one thing: which fields are links, and to which entity types. A link is the text
+`/Entity/id` in such a field, where `Entity` is one of the entity types the field may link to. The whole text must
 be of that form, and neither the entity nor the id holds a slash (the pattern `LINK` of `Neo4jDocumentWriter`).
 It is written as a `REF` relationship and not as a node. The document node it points at is created with the link
-when it is not there, so a link may point at a document that is not written yet.
+when it is not there, so a link may point at a document that is not written yet (a dangling reference).
 
 Any other value in a link field is a node of the type it has: a text that is not `/Entity/id`, a text that names
-an entity the field may not link to, `/Entity/` without an id, `Entity/id` without the first slash, a number, a
+an entity type the field may not link to, `/Entity/` without an id, `Entity/id` without the first slash, a number, a
 null. A text `/Entity/id` in a field that the model does not call a link is a node of type `string`.
 
 A request to LDS does not bring such a value to the provider. Core validates a document before the write, and
@@ -93,8 +94,9 @@ and the version before it is valid until the new one. The last version is valid 
 `9999-01-01T00:00:00Z[Etc/UTC]`. A version written with the `from` of a version that is there replaces it: the
 old root and everything below it are deleted first.
 
-A version that marks the document as deleted is a root with `deleted: true` and nothing below it. A read at a
-time leaves it out. A read of the versions of a document gives it as an empty document.
+A tombstone is a version whose root has `deleted: true` and nothing below it. An
+[as-of read](../glossary.md#as-of-read) leaves it out. A read of the versions of a document gives it as an empty
+document.
 
 Every date-time that goes to Neo4j is first moved to the zone `Etc/UTC` (`Neo4jPersistence.inUtc`). Neo4j tells
 two values of the same instant apart when their zones differ, also `Z` and `Etc/UTC`, and a version is matched by
@@ -102,7 +104,7 @@ two values of the same instant apart when their zones differ, also `Z` and `Etc/
 
 ### An example
 
-The document `ola` of the entity `Person` of the example model (`linked-data-store-server/schemas/schema.graphql`),
+The document `ola` of the entity type `Person` of the example model (`linked-data-store-server/schemas/schema.graphql`),
 in the namespace `ns`, written with the version `2026-11-20T10:15:30+01:00[Europe/Oslo]`:
 
 ```json
@@ -145,7 +147,7 @@ links:
 ```
 
 `nodes` is in the order of the document, parents before their children. `parent` is the place of the parent in
-the list: 0 is the root of the version, 1 the first node of the list. `links` has one list for each entity the
+the list: 0 is the root of the version, 1 the first node of the list. `links` has one list for each entity type the
 document may link to, here `Company` and `Person`, in that order. The write statement makes this graph of the
 parameters (the properties of most value nodes are left out here):
 
@@ -171,15 +173,15 @@ parameters (the properties of most value nodes are left out here):
 
 ## Constraints and indexes
 
-`Neo4jIndexManagement` wants two things for each entity of the model (`Specification.getManagedDomains`):
+`Neo4jIndexManagement` wants two things for each entity type of the model (`Specification.getManagedDomains`):
 
-- a constraint that makes `namespace` and `id` unique together on the label of the entity. A document node is
+- a constraint that makes `namespace` and `id` unique together on the label of the entity type. A document node is
   matched by these two properties, and a list of documents is ordered by `id`.
 - an index on `namespace`, `path` and `hashOrValue` of the label `<entity>_E`. `findDocument` looks a value up
   in it.
 
-For the example model these are the statements of the first start. The constraint of an entity comes before its
-index. The order of the entities is not fixed: they come as a set.
+For the example model these are the statements of the first start. The constraint of an entity type comes before its
+index. The order of the entity types is not fixed: they come as a set.
 
 ```cypher
 CREATE CONSTRAINT IF NOT EXISTS FOR (n:`Company`) REQUIRE (n.`namespace`, n.`id`) IS UNIQUE
@@ -203,12 +205,12 @@ then does two things:
 Two indexes are the same when the label, the properties in their order, and being a constraint or not are the
 same (`Index.equals`). So a plain index on `namespace` and `id` does not stand in for the constraint: the
 provider asks for the constraint, Neo4j refuses it while the index is there, and the start fails with an error
-that names the entity (`Neo4jProviderTest.aPlainIndexDoesNotStandInForTheConstraint`).
+that names the entity type (`Neo4jProviderTest.aPlainIndexDoesNotStandInForTheConstraint`).
 
 ## Start
 
 `Neo4jInitializer.initialize` is given the default namespace (which it does not use), the configuration and the
-entities of the model. It does this, in order:
+entity types of the model. It does this, in order:
 
 1. It sends `java.util.logging` to SLF4J, once for the JVM (`JavaUtilLoggerBridge`). This resets the configuration
    of `java.util.logging` for the whole process, puts the bridge to SLF4J in place of the handlers of its root
@@ -229,11 +231,11 @@ entities of the model. It does this, in order:
 What comes in: `createOrOverwrite(transaction, documents, specification)`, with the documents as a `Flowable` of
 `JsonDocument`. Core calls it with one document for each write (`PersistenceCreateOrOverwriteSagaAdapter`).
 
-1. `Neo4jPersistence.createOrOverwrite` collects the documents into a list and groups them by entity, in the
-   order in which the entities first come. So the documents of one call are all in memory at once, and the
-   documents of one entity are written before those of the next, whatever order they came in.
-2. For each entity, `Neo4jDocumentWriter.write` gives the statement of that entity and one parameter, `batch`: a
-   list with one entry for each document.
+1. `Neo4jPersistence.createOrOverwrite` collects the documents into a list and groups them by entity type, in the
+   order in which the entity types first come. So the documents of one call are all in memory at once, and the
+   documents of one entity type are written before those of the next, whatever order they came in.
+2. For each entity type, `Neo4jDocumentWriter.write` gives the statement of that entity type and one parameter, `batch`:
+   a list with one entry for each document.
 3. The statements are run one after the other in the transaction. Nothing is run before the returned
    `Completable` is subscribed to.
 
@@ -250,10 +252,10 @@ for a long text.
 
 ### The statement of an entity
 
-`Neo4jDocumentWriter.statement` makes the statement from two things: the name of the entity, and the entities a
-document of it may link to (`linkTargets`: the `getRefTypes` of every element of type `REF` below the entity,
-sorted). The statement is the same for every document of the entity, so that Neo4j plans it once. It is kept in
-a map (`statements`) by entity and link targets. No name of a field is part of the Cypher.
+`Neo4jDocumentWriter.statement` makes the statement from two things: the name of the entity type, and the entity types a
+document of it may link to (`linkTargets`: the `getRefTypes` of every element of type `REF` below the entity type,
+sorted). The statement is the same for every document of the entity type, so that Neo4j plans it once. It is kept in
+a map (`statements`) by entity type and link targets. No name of a field is part of the Cypher.
 
 This is the statement of `Person` of the example model. The two long lines are broken here.
 
@@ -317,15 +319,15 @@ What it does for each document of the batch, in order:
    `CREATE`, because the places of the list are what joins a node to its parent. A property that is null is not
    written.
 5. It joins each node to its parent with `EMBED`. Place 0 is the root.
-6. For each entity that may be linked to, it finds or creates the target document node and creates the `REF`.
+6. For each entity type that may be linked to, it finds or creates the target document node and creates the `REF`.
    `record.links[n]` holds the links to `linkTargets.get(n)`.
 
 Each document is written by itself (`CALL (record) { ... }`), one after the other, so that several versions of
 one document in a batch see each other.
 
-An entity that the specification does not have is written all the same, with a statement without links. That
-statement is not kept, so that names from outside do not fill the memory. Such an entity has no constraint and no
-index. Core refuses a write to an entity that the specification does not have.
+An entity type that the specification does not have is written all the same, with a statement without links. That
+statement is not kept, so that names from outside do not fill the memory. Such an entity type has no constraint and no
+index. Core refuses a write to an entity type that the specification does not have.
 
 ## A read
 
@@ -343,7 +345,7 @@ is one document.
 
 `Neo4jPersistence.toDocument` makes the document of a record:
 
-1. The key is the namespace and the entity that were asked for, the `id` of `r` and the `from` of `v`.
+1. The key is the namespace and the entity type that were asked for, the `id` of `r` and the `from` of `v`.
 2. For each leaf, `computePath` makes the path from the relationships: `.name` for a field, `[index]` for an item
    of an array.
 3. `toLeaf` makes a `FlattenedDocumentLeafNode`. A node with the property `id` is the document node that a link
@@ -362,15 +364,15 @@ orders them, capital letters before small ones. The items of an array keep their
 
 | Method | The statement |
 |---|---|
-| `readDocument` | Matches the document node by label, `namespace` and `id`, and the version that is valid at the time and is not a mark of deletion. The first record is the answer. |
-| `readDocuments` | Matches the document nodes of the label in the namespace, with the version that is valid at the time and is not a mark of deletion. The range is on `r.id`. |
-| `readDocumentVersions` | Matches every version of one document, also a mark of deletion. The bounds of the range are on `v.from`, and the order is `v.from`. |
-| `readTargetDocuments` | Goes from the source document and its version at the time, down `EMBED` to the node whose `path` is the path of the link without its last part, along the `REF` whose `path` is the last part, to the target document node. The bounds of the range are on the id of the target. Each target is taken once. Then it matches the version of the target that is valid at the time and is not a mark of deletion. The order and the limit come after that, so a limit counts the targets that are written. |
+| `readDocument` | Matches the document node by label, `namespace` and `id`, and the version that is valid at the time and is not a tombstone. The first record is the answer. |
+| `readDocuments` | Matches the document nodes of the label in the namespace, with the version that is valid at the time and is not a tombstone. The range is on `r.id`. |
+| `readDocumentVersions` | Matches every version of one document, also a tombstone. The bounds of the range are on `v.from`, and the order is `v.from`. |
+| `readTargetDocuments` | Goes from the source document and its version at the time, down `EMBED` to the node whose `path` is the path of the link without its last part, along the `REF` whose `path` is the last part, to the target document node. The bounds of the range are on the id of the target. Each target is taken once. Then it matches the version of the target that is valid at the time and is not a tombstone. The order and the limit come after that, so a limit counts the targets that are written. |
 | `readSourceDocuments` | The same path from the other end: from the target document node, back along `REF` and `EMBED` to the root and the document node of the source, with the version of the source that is valid at the time. Each source is taken once. The range is on the id of the source. The versions of the target are not looked at: a document is a source also when the target is not written, or is marked as deleted at the time. |
 | `findDocument` | Matches a value node of `<entity>_E` by `namespace`, `path` and `hashOrValue` (the index), goes up `EMBED` to the root and the document node, and takes the version that is valid at the time. A value of more than 40 characters is looked up by its hash. A document is taken once, also when an array holds the value twice. The range is on `r.id`. |
 | `hasPrevious`, `hasNext` | `readDocuments` with `Range.lastBefore(1, id)` or `Range.firstAfter(1, id)`: true when a document comes back. |
 
-"Valid at the time" is `v.from <= $snapshot AND $snapshot < v.to`. "Not a mark of deletion" is
+"Valid at the time" is `v.from <= $snapshot AND $snapshot < v.to`. "Not a tombstone" is
 `m.deleted IS NULL`.
 
 A range becomes conditions and an order (`idConditions`, `orderAndLimit`). `after` and `before` are both
@@ -408,7 +410,7 @@ document.
 ### Records on demand
 
 `Neo4jTransaction.executeCypherAsync` gives the records of a statement as a `Flowable`
-(`Flowable.generate`):
+(`Flowable.generate`), a [reactive stream](../glossary.md#reactive-stream):
 
 - The statement is run when the stream is subscribed to, not when the method is called.
 - One record is taken from the driver for each one that is asked for. The driver fetches the records from the
@@ -428,10 +430,10 @@ that asks for a record waits for it.
 
 | Method | What it does |
 |---|---|
-| `markDocumentDeleted` | Writes a version that marks the document as deleted: a root with `deleted: true`. It finds or creates the document node, replaces a version of the same time, and keeps the versions without a gap as a write does. Core calls it for a delete (`PersistenceDeleteSagaAdapter`). |
+| `markDocumentDeleted` | Writes a tombstone: a version whose root has `deleted: true`. It finds or creates the document node, replaces a version of the same time, and keeps the versions without a gap as a write does. Core calls it for a delete (`PersistenceDeleteSagaAdapter`). |
 | `deleteDocument` | Removes one version, with everything below its root. The version before it becomes valid until the end of the removed one, as if the removed version was never written. The document node is removed when no relationship is left on it. |
 | `deleteAllDocumentVersions` | Removes every version of one document. The document node is removed unless a relationship points at it (a link from another document). |
-| `deleteAllEntities` | The same for every document of an entity in one namespace. |
+| `deleteAllEntities` | The same for every document of an entity type in one namespace. |
 
 None of them uses the `PersistenceDeletePolicy` it is given, and `deleteAllEntities` does not use its
 `Specification`.
@@ -470,12 +472,12 @@ RETURN r, v, m, [p = (m)-[:EMBED|REF*]->(e) | [relationships(p), e]] AS leaves
 ## The name of an entity in Cypher
 
 A statement is given everything as a parameter: namespaces, ids, values, paths, names of fields, bounds and
-limits. The one exception is the name of an entity, which is a label: of the document node, of the `<entity>_E`
+limits. The one exception is the name of an entity type, which is a label: of the document node, of the `<entity>_E`
 nodes, and of the document nodes that are linked to.
 
 `Cypher.label` writes the label in backticks and doubles a backtick in the name. Whatever the name holds, it
 stays a name. The provider does not validate the name. `Neo4jProviderTest.aNameOfAnyCharactersStaysAName` writes,
-reads, follows and deletes with an entity and a field of these names:
+reads, follows and deletes with an entity type and a field of these names:
 
 ```
 Odd `entity`) DETACH DELETE (r
@@ -553,15 +555,17 @@ seconds or more, there is no second.
 
 ## Rules to keep
 
-These come from `.claude/CLAUDE.md` of the repository and from the comments of the code.
+These come from the rules of the project (see [the invariants](architecture.md#the-invariants)) and from the
+comments of the code.
 
 - **A read stays a stream.** A read is one statement that returns one record for each document, and a record is
   taken from the driver when a document is asked for. Do not replace a stream by a call that returns a complete
   list, and do not add a blocking call to an interface.
 - **A document is stored as it is given and read back the same**: also a field the model does not have, a value of
-  another kind than the model says, a null, an array inside an array. Whether a document may be like that is for
-  the validation before a write to say. The model tells the provider one thing: which fields are links. The
-  shared suite holds every provider to this ([the shared suite](persistence-tck.md)).
+  another kind than the model says, a null, an array inside an array. Whether a document may be like that is for the
+  [schema validation](../glossary.md#schema-validation) before a write to say. The model tells the provider one thing:
+  which fields are links. The [shared suite](../glossary.md#shared-suite) holds every provider to this
+  ([the shared suite](persistence-tck.md)).
 - **A link is the text `/Entity/id`**, as it is for the providers that keep it as text, so that every provider
   follows the same texts and reads back the text that was written.
 - **Only labels are written into Cypher**, and only through `Cypher.label`. Namespaces, ids, values, paths and
@@ -570,7 +574,7 @@ These come from `.claude/CLAUDE.md` of the repository and from the comments of t
   into its text. Do not keep a statement for a name that comes from outside the specification.
 - **Every date-time is moved to `Etc/UTC` before it goes to Neo4j** (`inUtc`), also the bounds of a range. The end
   of time in the statements is written with the same zone.
-- **The versions of a document have no gap.** A write, a mark of deletion and the deletion of a version each set
+- **The versions of a document have no gap.** A write, a tombstone and the deletion of a version each set
   `to` of the versions around them. A change of one of them is a change of all three.
 - **The nodes of a document are joined by their places in the list.** The order of the created nodes must be the
   order of `record.nodes`.
@@ -591,7 +595,7 @@ These come from `.claude/CLAUDE.md` of the repository and from the comments of t
 The tests need Docker, except `Neo4jDocumentWriterTest`. `Neo4j2026` starts one container of
 `neo4j:2026.10-community` on first use, with the password `lds-development`, and every test class of the module
 uses that one. Testcontainers stops it when the JVM ends. The test classes share the database, so each test uses
-namespaces, entities or ids of its own.
+namespaces, entity types or ids of its own.
 
 | Class | Runs on | What it holds |
 |---|---|---|
@@ -606,8 +610,9 @@ publishes every port of a container on 127.0.0.1 only; Testcontainers finds it t
 `src/test/resources/META-INF/services/org.testcontainers.core.CreateContainerCmdModifier`, and `Neo4j2026` checks
 it (`LoopbackPorts.check`). The module needs its own copy of that class.
 
-The tests run with the build ([the build](build.md)). The commands of `.claude/CLAUDE.md`, with the name
-of this module: the module and what it needs, and one test class of it. Their output is not shown here.
+The tests run with the build ([the build](build.md)). The command for one module and what it needs is
+`./mvnw verify -pl <module> -am`, and the command for one test class is `./mvnw test -pl <module> -Dtest=<Class>`.
+With the name of this module they are the two below. Their output is not shown here.
 
 ```sh
 ./mvnw verify -pl linked-data-store-persistence-provider-neo4j -am
@@ -619,7 +624,7 @@ of this module: the module and what it needs, and one test class of it. Their ou
 Not finished: no delete uses its `PersistenceDeletePolicy`. Core passes `FAIL_IF_INCOMING_LINKS` to
 `markDocumentDeleted`, and a document that others link to is marked as deleted all the same. The shared suite
 expects that: `thatDeleteAllWithIncomingRefWorks` passes `FAIL_IF_INCOMING_LINKS` to `deleteAllDocumentVersions`,
-then deletes an entity whose documents another document still links to, and asserts that they are gone.
+then deletes an entity type whose documents another document still links to, and asserts that they are gone.
 
 Not finished: `Transaction.close` commits. The rule is that a transaction commits only when asked.
 `Neo4jTransaction` inherits `close` from the persistence interface, so a `try` block that is left by an exception
@@ -633,10 +638,10 @@ Not finished: `TransactionStatistics` are never filled.
 
 Not finished: nothing removes a document node that was created for a link, when the link is gone and the
 document was never written. `deleteAllDocumentVersions` and `deleteAllEntities` remove it when they are called for
-that document or its entity; core calls neither. Core calls `createOrOverwrite`, `markDocumentDeleted` and the
+that document or its entity type; core calls neither. Core calls `createOrOverwrite`, `markDocumentDeleted` and the
 reads, and does not call `deleteDocument`, `deleteAllDocumentVersions`, `deleteAllEntities` or `findDocument`.
 
-Not finished: an entity that the specification does not have gets no constraint and no index. Its documents are
+Not finished: an entity type that the specification does not have gets no constraint and no index. Its documents are
 found by a scan of the label, and two writers at once can make two document nodes for one id.
 
 Not finished: the driver can only be given an address, a user and a password. There is no key for the database,
@@ -670,5 +675,5 @@ Other things to know:
 - A whole number that a `long` does not hold is written as the nearest `double`, and is read back as that.
 - Memory and PostgreSQL also follow a text `/Entity/id` in a field that the model does not call a link, when
   asked for that path. Neo4j does not. LDS does not ask for it.
-- The label of the nodes of a document is the name of the entity with `_E` after it. Nothing checks that the
-  model has no entity of that name.
+- The label of the nodes of a document is the name of the entity type with `_E` after it. Nothing checks that the
+  model has no entity type of that name.

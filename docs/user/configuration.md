@@ -65,7 +65,7 @@ and LDS started with no variable:
 java -cp "target/*:target/lib/*" io.descoped.lds.server.Server
 ```
 
-LDS listens on port 19306 and its namespace is `data`:
+LDS listens on port 19306 and its [namespace](../glossary.md#namespace) is `data`:
 
 ```sh
 curl -s 'http://localhost:19306/data?schema'
@@ -132,9 +132,10 @@ LDS takes a variable or a system property only for a key that is in one of the f
 `conf/application.properties` or `conf_dev/application.properties`. A variable for any other key is passed over
 without a message.
 
-The built-in defaults have the 60 keys of [The keys](#the-keys), so each of them can be set by a variable. The saga log
-and the transaction log read some more keys, listed in [Keys that no file has](#keys-that-no-file-has). Such a key is
-first written in `conf/application.properties`. After that a variable can set it too.
+The built-in defaults have the 60 keys of [The keys](#the-keys), so each of them can be set by a variable. The
+[saga log](../glossary.md#saga-log) and the [transaction log](../glossary.md#transaction-log) read some more keys,
+listed in [Keys that no file has](#keys-that-no-file-has). Such a key is first written in
+`conf/application.properties`. After that a variable can set it too.
 
 An example, with the transaction log in PostgreSQL. It opens 10 connections unless
 `txlog.config.postgres.driver.max-pool-size` says another number, and no built-in file has that key.
@@ -212,8 +213,8 @@ Three more rules:
 
 ## Choosing where LDS keeps its data
 
-LDS keeps four things, and a provider is chosen for each. [The concepts](concepts.md) tells what a saga
-and the transaction log are.
+LDS keeps four things, and a provider is chosen for each. [The concepts](concepts.md) tells what a
+[saga](../glossary.md#saga) and the transaction log are.
 
 | What | Key that chooses | Values | Default |
 |---|---|---|---|
@@ -288,9 +289,9 @@ for that:
 ```
 
 The keys are `persistence.provider`, `neo4j.driver.url`, `neo4j.driver.username` and `neo4j.driver.password`.
-At start LDS makes a constraint and an index in Neo4j for each entity of the model when they are missing, so
-the user needs the right to make them. LDS is tested with Neo4j 2026.10, community edition, and with addresses
-that start with `bolt://`.
+At start LDS makes a constraint and an index in Neo4j for each [entity type](../glossary.md#entity-type) of the
+[model](../glossary.md#model) when they are missing, so the user needs the right to make them. LDS is tested with
+Neo4j 2026.10, community edition, and with addresses that start with `bolt://`.
 
 ### The saga log in PostgreSQL
 
@@ -354,7 +355,8 @@ txlog.config.postgres.driver.database=txlog
 The database (`txlog` here) must be there before LDS starts. LDS makes its tables in it when they are missing.
 
 The value `memory` keeps the transaction log in memory until LDS stops, and needs no other key. With a
-transaction log, LDS can tell the `sourceId` of the last write (see [the REST API](rest-api.md)):
+transaction log, LDS can tell the [`sourceId`](../glossary.md#source-and-source-id) of the last write (see
+[the REST API](rest-api.md)):
 
 ```sh
 LDS_TXLOG_RAWDATA_PROVIDER=memory LDS_HTTP_PORT=19306 \
@@ -470,10 +472,10 @@ keeps the answer from the page. [The REST API](rest-api.md) has the rules of COR
 | Key | Default | Meaning | Example |
 |---|---|---|---|
 | `graphql.schema` | `schemas/schema.graphql` | The file with the GraphQL schema that is the model. The path is relative to the working directory, or absolute. When the value is empty, the model is read from `specification.schema`. | `models/library.graphql` |
-| `specification.schema` | `schemas` | Read only when `graphql.schema` is empty. Files and folders, separated by commas. A file is the JSON Schema of one entity, and the name of the file without `.json` is the name of the entity. In a folder, every file whose name ends with `.json` is read. | `models/jsonschema` |
+| `specification.schema` | `schemas` | Read only when `graphql.schema` is empty. Files and folders, separated by commas. A file is the JSON Schema of one entity type, and the name of the file without `.json` is the name of the entity type. In a folder, every file whose name ends with `.json` is read. | `models/jsonschema` |
 | `namespace.default` | `ns` | The namespace of this LDS: the first part of the address of every document, and the namespace GraphQL reads from. An LDS answers for one namespace. An address with another first part is answered `400` with `Unsupported namespace: "data"`. | `data` |
 
-The default model is the example of the repository, with the entities `Person` and `Company`.
+The default model is the example of the repository, with the entity types `Person` and `Company`.
 [The model](model.md) tells how to write one.
 
 A model in JSON Schema files, in the folder `models/jsonschema` with the files `Company.json` and
@@ -498,7 +500,7 @@ With such a model LDS has no GraphQL API: a request to `/graphql` is answered `4
 `Unsupported namespace: "graphql"`.
 
 As it comes, the folder `schemas` has no `.json` file. So with `LDS_GRAPHQL_SCHEMA=` and nothing else, LDS
-starts with no entity: the log says `No schemas configured!` and `/ns?schema` answers `[]`.
+starts with no entity type: the log says `No schemas configured!` and `/ns?schema` answers `[]`.
 
 ### GraphQL
 
@@ -512,7 +514,7 @@ The key that adds search to GraphQL, `graphql.search.enabled`, is under [Search]
 
 | Key | Default | Meaning | Example |
 |---|---|---|---|
-| `persistence.provider` | `mem` | Where the documents are kept: `mem` (in memory), `postgres` or `neo4j`. | `postgres` |
+| `persistence.provider` | `mem` | The [persistence provider](../glossary.md#persistence-provider), which keeps the documents: `mem` (in memory), `postgres` or `neo4j`. | `postgres` |
 | `persistence.initialization.max-wait-seconds` | `60` | How long LDS keeps trying to start the persistence provider. After a try that fails, LDS waits one second and tries again, until this many seconds have passed since the first try. `0` is one try. See [An engine that is away](#an-engine-that-is-away). | `120` |
 | `persistence.fragment.capacity` | `8192` | Provider `mem` only: the size in bytes of the pieces a long text is stored in. The text is read back whole. Leave it as it is. | `8192` |
 
@@ -614,7 +616,7 @@ starts and then answers every write `500`. That holds with `txlog.split.sources=
 | Key | Default | Meaning | Example |
 |---|---|---|---|
 | `graphql.search.enabled` | `false` | `true` turns search on: every write and every delete of a document also goes to the search index, and GraphQL gets the query `Search`. | `true` |
-| `search.index.provider` | `solr` | The search provider. `solr` is the only one. Read only when search is on. | `solr` |
+| `search.index.provider` | `solr` | The [search index provider](../glossary.md#search-index-provider). `solr` is the only one. Read only when search is on. | `solr` |
 | `search.index.url` | `http://localhost:8983/solr/lds-index` | The address of the Solr core, with the name of the core at its end. LDS does not check it at start. | `http://solr:8983/solr/lds-index` |
 
 Not finished: search needs a model that is a GraphQL schema, because `Search` is a GraphQL query. With a model

@@ -6,9 +6,9 @@ run the load test or change it. How to start a run is in the `README.md` of the 
 
 ## What this part is for
 
-The load test starts one LDS with one persistence provider, fills it, and sends reads and writes at it from 1 to
-50 threads. It then draws throughput and latency by the number of threads. It answers two questions: does LDS
-stay correct under load, and where does its throughput stop growing.
+The load test starts one LDS with one [persistence provider](../glossary.md#persistence-provider), fills it, and sends
+reads and writes at it from 1 to 50 threads. It then draws throughput and latency by the number of threads. It answers
+two questions: does LDS stay correct under load, and where does its throughput stop growing.
 
 It is run by hand on a developer's machine. The build and CI do not start it. Maven compiles and tests the
 statistics program with the reactor, and that is all the build knows of it.
@@ -29,8 +29,8 @@ Everything is in the module `linked-data-store-loadtest`.
 | `Dockerfile`, `.dockerignore` | The image of the controller: `eclipse-temurin:27-jre-alpine` with `bash`, `curl`, `gnuplot`, `jq`, `perl` and `zip`, the jars of the statistics program, and `prepopulate.sh`. |
 | `prepopulate.sh` | Fills LDS. It runs inside the controller. |
 | `httploadtest/service_override.properties` | The start options of the load tester, mounted over the file its image comes with. |
-| `setup/gsim/schemas` | The model: 20 JSON Schema 2020-12 files, one for each entity. |
-| `setup/gsim/templates` | One document for each entity. `#mrid` becomes the id and `#now` the time. |
+| `setup/gsim/schemas` | The [model](../glossary.md#model): 20 JSON Schema 2020-12 files, one for each [entity type](../glossary.md#entity-type). |
+| `setup/gsim/templates` | One document for each entity type. `#mrid` becomes the id and `#now` the time. |
 | `setup/gsim/read.json`, `write.json`, `benchmark.json`, `config.json` | What the load tester is given: what a read and a write is, the limits it reports against, and the load of a run. |
 | `src/main/java` | The statistics program: `HTTPLoadTestBaselineStatistics`, `Statistics`, `GnuplotFileGenerator`. |
 | `doc` | The plots the README shows. |
@@ -45,7 +45,7 @@ Everything is in the module `linked-data-store-loadtest`.
    earlier run left (`docker compose down --volumes`), and starts the containers with `--build --wait`. It
    returns when every container is healthy.
 2. `check_health_of_lds` asks `/ping` from inside the controller.
-3. `prepopulate_data` runs `prepopulate.sh` in the controller: for each of the 20 entities it writes 256
+3. `prepopulate_data` runs `prepopulate.sh` in the controller: for each of the 20 entity types it writes 256
    documents with `PUT /ns/<Entity>/<id>`, the ids `00C8D2B7-...` to `FFC8D2B7-...`. It fails the run when LDS
    does not accept a document.
 4. `configure_loadtest` gives the load tester a zip file of `setup/gsim` and the three JSON files.
@@ -58,17 +58,19 @@ Everything is in the module `linked-data-store-loadtest`.
 8. `stop_test_containers` runs when the script ends, also after a failure (`trap ... EXIT`). It copies the log of
    LDS and the log of the load tester to the results folder and removes the containers and their data.
 
-A read is `GET http://lds:9090/ns/<Entity>/<id>` and a write is `POST` of the template of the entity to the
-same address with `?sync=true`. The load tester picks the entity and one of the 256 ids at random for every
-request (`#fizzle(option:...)` and `#fizzle(HEX:12)` in `read.json` and `write.json`).
+A read is `GET http://lds:9090/ns/<Entity>/<id>` and a write is `POST` of the template of the entity type to the same
+address with `?sync=true`, a [synchronous write](../glossary.md#synchronous-write). The load tester picks the entity
+type and one of the 256 ids at random for every request (`#fizzle(option:...)` and `#fizzle(HEX:12)` in `read.json` and
+`write.json`).
 
 ## The containers
 
 - `lds`:
   Built from `../linked-data-store-server`, so it is the image a user runs. It is configured by environment
   variables only: an empty `LDS_GRAPHQL_SCHEMA` and `LDS_SPECIFICATION_SCHEMA=schemas` make it read the JSON
-  Schema files, which are mounted at `/lds/schemas`. The saga log is in memory, the transaction log is
-  `discard`, and search is off. So a run measures LDS and the persistence provider.
+  Schema files, which are mounted at `/lds/schemas`. The [saga log](../glossary.md#saga-log) is in memory, the
+  [transaction log](../glossary.md#transaction-log) is `discard`, and search is off. So a run measures LDS and
+  the persistence provider.
 
 - `neo4j`, `postgres`:
   The images the tests of the providers use, with the development passwords of the server's compose file.
@@ -115,8 +117,7 @@ the number of threads of the run.
 `GnuplotFileGenerator` writes one data file, `<name>.dat`, with a block for each statistic, and five gnuplot
 scripts that draw it. Each script writes an SVG file of its own name.
 
-The program gives the same files as the program LDS had before for the same results. Keep that when changing
-it: a plot of today can then be compared with a plot of later.
+Keep the files it writes the same when changing it: a plot of today can then be compared with a plot of later.
 
 ## Rules to keep
 
