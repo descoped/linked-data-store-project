@@ -444,8 +444,10 @@ It runs on:
 - a pull request to `master`;
 - a start by hand (`workflow_dispatch`), on any branch.
 
-A push or a pull request that changes nothing but Markdown files, `LICENSE`, `.claude/`, `claude.yml`,
-`renovate.json` or `.gitignore` does not start it. A change of an AsciiDoc file under `docs/` does start it.
+A push or a pull request starts it only when it changes what can change the products: the root `pom.xml`,
+`mvnw`, `.mvn/`, a file in a module folder (`linked-data-store-*/`) that is not a Markdown file, or `ci.yml`
+itself. A change of the documentation (`docs/`, `README.md`, any Markdown file), `LICENSE`, `.claude/`,
+`claude.yml`, `renovate.json` or `.gitignore` alone does not start it. A tag starts it whatever it changes.
 A newer push to the same pull request or branch ends the run that is in progress.
 
 The job checks out the code, sets up JDK 27 (Temurin) with the Maven cache, and runs one of two commands:
