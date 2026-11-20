@@ -575,15 +575,26 @@ flowchart LR
   and no versions of its own; it is written and read with its document, and it can be reached by its path, as
   [the three kinds of resource](#the-three-kinds-of-resource) shows. An embedded type has fields of the same three
   kinds in its turn.
-- **A link**, when the type of the field is an entity: the text `/Entity/id`, or a list of them. The document it
+- **A link**, when the type of the field is an entity and the field has `@link`: the text `/Entity/id`, or a list
+  of them. The document it
   points at is not copied into this one. It is a document of its own, with versions of its own, and a read
   follows the link to that document as it is at the time the read asks for (see
   [snapshots](#snapshots-the-time-machine)). A field may also link to a document of one of several entities: in a
   GraphQL schema the type of the field is then a union of them, and in JSON Schema files the field names each.
 
-A document of an entity is never held inside another document. Between two entities there is only the link. A
-field whose type is an entity is read as a link also when `@link` is left out of the model, and an object in that
-field is refused.
+A field whose type is an entity can also hold the values of that entity in the document itself, as an embedded
+object: a copy, not a link. That is a list of an entity without `@link`, such as `support: [Support]`, where the
+entity `Support` has a link of its own (`technical: [Contact] @link`). The values are then part of the document
+they are in, as an embedded object is, and are reached by their path: `/ns/Agreement/a1/support`, and the link
+inside it at `/ns/Agreement/a1/support/technical/Contact/c1`. They have no id and no versions of their own, and a
+later version of a `Support` document does not change them. Any other field whose type is an entity is read as a
+link when `@link` is left out: `owner: Support` holds the text `/Support/id`.
+
+Not finished: the copy does not work as written. The field holds one object, not a list: a list is refused with
+`$.support: array found, object expected`. Of the fields of the entity each list is read as a list of links,
+also a list of texts, and the others are not checked: `level` is taken as it comes. The GraphQL API still reads the field as a list, and answers it with `null` and the error
+`Can't resolve value (/AgreementById/support) : type mismatch error, expected type LIST`.
+[The model](model.md#shapes-that-do-not-work-as-written) lists it with the other shapes.
 
 Not finished: a field whose type is an interface is none of the three. The fields of the interface become fields
 of the entity, and the field itself is not checked. [The model](model.md#shapes-that-do-not-work-as-written) lists
@@ -806,8 +817,10 @@ The versions that are stored are not checked again when LDS is started with anot
 as they were written.
 
 Not finished: the model is not kept on the timeline. A snapshot holds the documents of its time, not the model
-they were written under, and a write does not record which model it was checked against. When LDS is started with
-another model, every snapshot, T1 as well as Tn, is checked and served with that model.
+they were written under. Every write goes into the transaction log with a place for the model it was checked
+against, `schema`, which a test of LDS fills with the name of a model version, `testng-schema-v1.0`. LDS itself
+writes the text `TODO` there. When LDS is started with another model, every snapshot, T1 as well as Tn, is checked
+and served with that model.
 
 ## Providers
 

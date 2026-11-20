@@ -117,7 +117,7 @@ saga log does not say that it ended.
 |---|---|
 | `txid` | The transaction id, from `SagaExecutionCoordinator.generateTxId`: a UUIDv7 (`RawdataIds.next`) that is greater than every id the coordinator of this server gave before. It is also the execution id of the saga and the id of the entry in the transaction log. |
 | `method` | `PUT` or `DELETE`. `DELETE` only for the delete of a whole document. A write of a part or of a link, and the removal of one, is `PUT` with the whole document. |
-| `schema` | Always the text `TODO`. |
+| `schema` | The model the write was checked against. Always the text `TODO`; `SagaRecoveryTriggerTest` gives it `testng-schema-v1.0`, the name of a model version. Nothing reads it. |
 | `namespace`, `entity`, `id` | The address of the document. |
 | `version` | The time the version is valid from, formatted with `DateTimeFormatter.ISO_ZONED_DATE_TIME` in the zone `Etc/UTC`, for example `2020-01-01T00:00:00Z[Etc/UTC]`. It is the `timestamp` of the request, or the time the request was handled (`DataController`). |
 | `source`, `sourceId` | The query parameters of the same names. Left out when the request has none. |

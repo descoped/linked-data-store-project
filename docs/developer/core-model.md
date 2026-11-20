@@ -584,9 +584,20 @@ Not finished: a GraphQL schema with no type with `@domain` gives no specificatio
 (`createJsonSpecification` returns null). The start then fails with a `NullPointerException` in
 `PersistenceConfigurator`, after it has tried for `persistence.initialization.max-wait-seconds`.
 
-Not finished: `AddDefinitionVisitor.visitEmbeddedType` ends the start with a `NullPointerException` when it
-meets a list of a list. It is called for a list of an entity without `@link`, when that entity has a field whose
-type is an entity, and looks at every list field of that entity.
+A list of an entity without `@link` (`support: [Support]`) is held by value when that entity has a field whose
+type is an entity: `AddDefinitionVisitor.visitGraphQLList` then writes the field as `"type": "object"` and calls
+`visitEmbeddedType`, which writes each list field of the entity into it as a list of links. The specification makes it `EMBEDDED`,
+since it has no `_link_property_support`, so the REST API reaches it and the links in it by path. It came in
+November 2019 (`bdcc5b1`, `5b4a2ff`), with a test model that has `support: [support]` in `provisionagreement`;
+that model is no longer in the repository. A list of an entity that has no such field is a list of links
+(`visitListLinkProperty`), and a single field of an entity without `@link` is a link.
+
+Not finished: `visitEmbeddedType` writes every list field of the entity as a list of links, with
+`_link_property_<field>` naming the type of the items, also for `[String]`. The other fields are left out, so they
+are not checked. It makes the field one object, so a list is refused, and it writes each field definition and the
+result to standard output with `System.out.println`. The GraphQL schema keeps the field as a list
+of the entity, and a query of it is answered with `type mismatch error, expected type LIST`. It ends the start
+with a `NullPointerException` when it meets a list of a list.
 
 Not finished: a list of links to an interface gets a JSON Schema and a specification, and the GraphQL schema is
 then refused with a `ClassCastException` (`GraphQLSchemaGoldenTest.aListOfLinksToAnInterfaceIsRefusedAsItWas`).

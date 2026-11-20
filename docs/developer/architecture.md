@@ -252,7 +252,9 @@ flowchart TB
 ```
 
 The model is not on the timeline. `SagaInput` has a field `schema`, which goes into the transaction log with every
-write, and every handler gives it the text `TODO`; nothing else records which model a version was written under.
+write. It came with the transaction log in 2019 (`082eecc`), for the model a write was checked against, and
+`SagaRecoveryTriggerTest` gives it `testng-schema-v1.0`. Every handler gives it the text `TODO`, nothing reads it,
+and nothing else records which model a version was written under.
 [Concepts](../user/concepts.md#snapshots-the-time-machine) draws snapshots as a user sees them.
 
 The example below follows the write of [The path of a write](#the-path-of-a-write) with two more: the company `acme`,
