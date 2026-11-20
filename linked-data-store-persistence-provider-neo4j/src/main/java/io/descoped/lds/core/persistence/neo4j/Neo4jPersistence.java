@@ -45,6 +45,10 @@ import static io.descoped.lds.core.persistence.neo4j.Neo4jCreationalPatternFacto
  * namespace, for the index that a search for a value looks up.</li>
  * <li>A link is a {@code REF} relationship to the document node it points at, in the same namespace. That node is
  * created with the link when the document is not written yet.</li>
+ * <li>A version that marks the document as deleted is a root with {@code deleted: true} and nothing below it. A
+ * read at a time leaves it out; with the versions of a document it is read as an empty document.</li>
+ * <li>The versions of a document follow each other without a gap: a version is valid until the next one, and a
+ * version that is deleted gives its time to the version before it.</li>
  * </ul>
  * A read is one statement that returns one record for each document, and a record is taken from the driver when
  * a document is asked for.
@@ -52,6 +56,12 @@ import static io.descoped.lds.core.persistence.neo4j.Neo4jCreationalPatternFacto
 final class Neo4jPersistence implements RxJsonPersistence {
 
     static final ZoneId UTC = ZoneId.of("Etc/UTC");
+
+    /*
+     * The version that is valid at a time, unless it marks the document as deleted: then there is no document at
+     * that time. For a statement that names the version v and its root m.
+     */
+    private static final String VALID_AT_SNAPSHOT = "v.from <= $snapshot AND $snapshot < v.to AND m.deleted IS NULL";
 
     /*
      * The end of every read. r is the document node, v the version and m its root; "leaves" holds every node
@@ -83,19 +93,13 @@ final class Neo4jPersistence implements RxJsonPersistence {
         ZonedDateTime version = row.get("v").get("from").asZonedDateTime();
         DocumentKey key = new DocumentKey(namespace, entityName, id, version);
 
+        // A version that marks the document as deleted has no leaves, so it is an empty document. It is read with
+        // the versions of a document only: the reads at a time leave it out (VALID_AT_SNAPSHOT).
         Map<String, FlattenedDocumentLeafNode> leaves = new TreeMap<>();
-        Node root = row.get("m").asNode();
-        if (root.containsKey("deleted") && root.get("deleted").asBoolean(false)) {
-            // a version that marks the document as deleted
-            leaves.put("$", new FlattenedDocumentLeafNode(key, null, FragmentType.DELETED, null, Integer.MAX_VALUE));
-        } else {
-            for (Value leaf : row.get("leaves").values()) {
-                String path = computePath(leaf.get(0).asList(Value::asRelationship));
-                leaves.put(path, toLeaf(key, path, leaf.get(1).asNode()));
-            }
+        for (Value leaf : row.get("leaves").values()) {
+            String path = computePath(leaf.get(0).asList(Value::asRelationship));
+            leaves.put(path, toLeaf(key, path, leaf.get(1).asNode()));
         }
-
-        // The document is never marked as deleted here: a version that marks it holds the one leaf above.
         FlattenedDocument flattenedDocument = new FlattenedDocument(key, leaves, false);
         JsonNode jsonObject = new FlattenedDocumentToJson(flattenedDocument).toJsonNode();
         return new JsonDocument(key, jsonObject);
@@ -220,7 +224,7 @@ final class Neo4jPersistence implements RxJsonPersistence {
         params.put("namespace", ns);
         params.put("rid", id);
         params.put("snapshot", inUtc(snapshot));
-        String cypher = "MATCH (r:" + Cypher.label(entityName) + " {namespace: $namespace, id: $rid})-[v:VERSION]->(m) WHERE v.from <= $snapshot AND $snapshot < v.to\n" +
+        String cypher = "MATCH (r:" + Cypher.label(entityName) + " {namespace: $namespace, id: $rid})-[v:VERSION]->(m) WHERE " + VALID_AT_SNAPSHOT + "\n" +
                 RETURN_DOCUMENT;
         return documents(tx, cypher, params, ns, entityName).firstElement();
     }
@@ -231,7 +235,7 @@ final class Neo4jPersistence implements RxJsonPersistence {
         params.put("namespace", ns);
         params.put("snapshot", inUtc(snapshot));
         String cypher = "MATCH (r:" + Cypher.label(entityName) + " {namespace: $namespace})-[v:VERSION]->(m)\n" +
-                "WHERE v.from <= $snapshot AND $snapshot < v.to" + idConditions(range, params) + "\n" +
+                "WHERE " + VALID_AT_SNAPSHOT + idConditions(range, params) + "\n" +
                 "WITH r, v, m" + orderAndLimit(range, "r.id", params) + "\n" +
                 RETURN_DOCUMENT;
         return documents(tx, cypher, params, ns, entityName);
@@ -283,7 +287,7 @@ final class Neo4jPersistence implements RxJsonPersistence {
                     // DISTINCT: an array that links to a document more than once reads it once
                     "WITH DISTINCT r\n" +
                     // a link may point at a document that is not written (yet): the limit counts those that are
-                    "MATCH (r)-[v:VERSION]->(m) WHERE v.from <= $snapshot AND $snapshot < v.to\n" +
+                    "MATCH (r)-[v:VERSION]->(m) WHERE " + VALID_AT_SNAPSHOT + "\n" +
                     "WITH r, v, m" + orderAndLimit(range, "r.id", params) + "\n" +
                     RETURN_DOCUMENT;
             return documents(tx, cypher, params, ns, targetEntityName);
@@ -317,7 +321,11 @@ final class Neo4jPersistence implements RxJsonPersistence {
 
     @Override
     public Completable deleteDocument(Transaction tx, String ns, String entityName, String id, ZonedDateTime version, PersistenceDeletePolicy policy) {
-        String cypher = "MATCH (r:" + Cypher.label(entityName) + " {namespace: $namespace, id: $rid})-[:VERSION {from: $version}]->(m) OPTIONAL MATCH (m)-[:EMBED*]->(e) DETACH DELETE m, e " +
+        String cypher = "MATCH (r:" + Cypher.label(entityName) + " {namespace: $namespace, id: $rid})-[v:VERSION {from: $version}]->(m)\n" +
+                // the version before the deleted one is valid until the one after it, as if the deleted one was never written
+                "OPTIONAL MATCH (r)-[p:VERSION]->() WHERE p.from < $version WITH r, v, m, p ORDER BY p.from DESC LIMIT 1\n" +
+                "SET p.to = v.to\n" +
+                "WITH r, m OPTIONAL MATCH (m)-[:EMBED*]->(e) DETACH DELETE m, e " +
                 "WITH r MATCH (r) WHERE NOT (r)--() DELETE r";
         return run(tx, cypher, Map.of("namespace", ns, "rid", id, "version", inUtc(version)));
     }
@@ -341,11 +349,12 @@ final class Neo4jPersistence implements RxJsonPersistence {
     public Completable markDocumentDeleted(Transaction transaction, String ns, String entityName, String id, ZonedDateTime version, PersistenceDeletePolicy policy) {
         String label = Cypher.label(entityName);
         String cypher = "MERGE (r:" + label + " {namespace: $namespace, id: $rid}) WITH r\n" +
-                "OPTIONAL MATCH (r:" + label + ")-[v:VERSION]->() WHERE v.from <= $version AND $version < v.to WITH r, v AS prevVersion\n" +
-                "OPTIONAL MATCH (r:" + label + ")-[v:VERSION]->() WHERE v.from > $version WITH r, prevVersion, v AS nextVersion ORDER BY v.from LIMIT 1\n" +
-                "MERGE (r)-[v:VERSION {from: $version, to: coalesce(prevVersion.to, nextVersion.from, datetime('9999-01-01T00:00:00.0Z[Etc/UTC]'))}]->(m:" + Cypher.label(entityName + "_E") + " {type:'map', path:'$'})\n" +
-                "SET prevVersion.to = $version, m.deleted = true\n" +
-                "WITH m OPTIONAL MATCH (m)-[:EMBED*]->(e) DETACH DELETE e";
+                // a version written at this time is replaced, as a write of a document replaces it
+                "OPTIONAL MATCH (r)-[:VERSION {from: $version}]->(old) OPTIONAL MATCH (old)-[:EMBED*]->(e) DETACH DELETE old, e WITH DISTINCT r\n" +
+                "OPTIONAL MATCH (r)-[v:VERSION]->() WHERE v.from <= $version AND $version < v.to WITH r, v AS prevVersion\n" +
+                "OPTIONAL MATCH (r)-[v:VERSION]->() WHERE v.from > $version WITH r, prevVersion, min(v.from) AS nextVersionFrom\n" +
+                "CREATE (r)-[:VERSION {from: $version, to: coalesce(prevVersion.to, nextVersionFrom, datetime('9999-01-01T00:00:00.0Z[Etc/UTC]'))}]->(:" + Cypher.label(entityName + "_E") + " {type:'map', path:'$', deleted: true})\n" +
+                "SET prevVersion.to = $version";
         return run(transaction, cypher, Map.of("namespace", ns, "rid", id, "version", inUtc(version)));
     }
 
