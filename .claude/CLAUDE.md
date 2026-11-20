@@ -137,9 +137,9 @@ which validates the Jackson tree of the document). A schema that at its root say
 Several of these describe where 3.0.0 is going and are not true of the pre-3.0 code yet (UTC instants in the
 memory provider, `Transaction.close()` committing, the bridge sorting a list before it gives the first
 document, the search text going into the Solr query as it is). One is met in another way than it is worded: the
-Neo4j provider writes the name of an entity into Cypher as a quoted label (`Cypher.label`), and does not validate it; a label as a
-parameter costs Neo4j its indexes for lists, and a constraint cannot be created with one. Everything else it is
-given is a parameter. New and revised code must meet them; a pull request that revises a
+Neo4j provider writes the name of an entity into Cypher as a quoted label (`Cypher.label`), and does not validate
+it; a label as a parameter costs Neo4j its indexes for lists, and a constraint cannot be created with one.
+Everything else it is given is a parameter. New and revised code must meet them; a pull request that revises a
 module makes that module meet them.
 
 ## Testing
