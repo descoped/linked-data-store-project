@@ -2,7 +2,7 @@ name: Documentation site
 
 # Builds the site (site/, a krantho static site: a landing page, and the markdown files in docs/ as the documentation)
 # and publishes it to GitHub Pages when either changes on master. Nothing of the Maven build runs here, and CI does not
-# run for these paths. Pages is set to publish from GitHub Actions.
+# run for these paths. Pages is set to publish from GitHub Actions, on the custom domain lds.descoped.io.
 on:
   push:
     branches: [master]
@@ -43,8 +43,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - id: pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d  # v6.0.0
-      # Where Pages serves the site (https://descoped.github.io/linked-data-store-project), which every page's
-      # canonical link, the sitemap and robots.txt name; its path is the path every page is served under
+      # Where Pages serves the site (https://lds.descoped.io, the custom domain), which every page's canonical link,
+      # the sitemap and robots.txt name; on the domain's root, so the pages have no path before them
       - run: KRANTHO_SITE_BASE_URL="https://${BASE_URL#*://}" pnpm run build
         env:
           BASE_URL: ${{ steps.pages.outputs.base_url }}

@@ -271,9 +271,8 @@ one document for each part of the code). `docs/README.md` is the index. Keep the
   it, and a row in `docs/README.md`.
 - **The documentation site** (`site/`, `site/README.md`) is a krantho static site (Next.js) that makes pages of
   `docs/` and adds a landing page (`site/content/landing/home.md`, held to the same rules: only what the code does,
-  the status said plainly). `.github/workflows/pages.yml` publishes it to GitHub Pages
-  (https://descoped.github.io/linked-data-store-project/) when `docs/`, `site/` or the workflow changes on `master`, or
-  when started by hand; CI does not
+  the status said plainly). `.github/workflows/pages.yml` publishes it to GitHub Pages (https://lds.descoped.io/,
+  its custom domain) when `docs/`, `site/` or the workflow changes on `master`, or when started by hand; CI does not
   build it. Its mark is Descoped's (`|>o|`). Check a change with `cd site && pnpm build`, and look at it in light
   and dark at phone and desktop widths.
 - Lines of at most 120 characters, except a row of a table. A link to another document is a relative path, and
