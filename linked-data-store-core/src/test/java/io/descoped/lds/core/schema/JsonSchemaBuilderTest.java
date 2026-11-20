@@ -25,6 +25,7 @@ class JsonSchemaBuilderTest {
                     "name": {"type": "string"},
                     "born": {"type": "string", "format": "date-time"},
                     "nick": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                    "alias": {"type": ["string", "null"]},
                     "tags": {"type": "array", "items": {"type": "string"}},
                     "home": {"$ref": "#/$defs/Address"},
                     "more": {}
@@ -64,11 +65,13 @@ class JsonSchemaBuilderTest {
         assertThat(person.title).isEqualTo("A person");
         assertThat(person.description).isEqualTo("Someone");
         assertThat(person.required).containsExactly("name", "born");
-        assertThat(person.properties).containsOnlyKeys("name", "born", "nick", "tags", "home", "more");
+        assertThat(person.properties).containsOnlyKeys("name", "born", "nick", "alias", "tags", "home", "more");
         assertThat(person.properties.get("name").types).containsExactly("string");
         assertThat(person.properties.get("name").description).isEmpty();
         assertThat(person.properties.get("born").format).isEqualTo("date-time");
         assertThat(person.properties.get("nick").types).containsExactly("string", "null");
+        // a list of types is read as anyOf is
+        assertThat(person.properties.get("alias").types).containsExactly("string", "null");
         assertThat(person.properties.get("tags").types).containsExactly("array");
         assertThat(person.properties.get("tags").items.types).containsExactly("string");
         // a $ref is the definition it names
@@ -102,6 +105,14 @@ class JsonSchemaBuilderTest {
 
         assertThat(schema.validate("T", json("{\"n\":1.5}"))).isEmpty();
         assertThat(schema.validate("T", json("{\"n\":\"1.5\"}"))).containsExactly("$.n: string found, number expected");
+    }
+
+    @Test
+    void anEntityTheModelDoesNotHaveCannotBeValidated() {
+        JsonSchema schema = read("Person", PERSON);
+
+        assertThatThrownBy(() -> schema.validate("House", json("{}")))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("House");
     }
 
     @Test

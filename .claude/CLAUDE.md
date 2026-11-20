@@ -82,8 +82,8 @@ the definition that is the entity (`{"$ref": "#/$defs/Person", "$defs": {"Person
 file (`specification.schema`), or written from the GraphQL schema (`GraphQLToJsonConverter`), and is what `?schema`
 gives out. `JsonSchemaBuilder` reads it: the definitions the specification is built from, and the schema a
 document is validated with before a write (`LinkedDocumentValidator`, on `com.networknt:json-schema-validator`,
-which validates the Jackson tree of the document). A schema that says it is another draft, or has `definitions`, is
-refused at start, and so is a `$ref` that leads nowhere. Three things are LDS's own and are kept:
+which validates the Jackson tree of the document). A schema that at its root says it is another draft, or has
+`definitions`, is refused at start, and so is a `$ref` that leads nowhere. Three things are LDS's own and are kept:
 
 - A link is a text field with a sibling `_link_property_<field>`, an object whose properties are the entities the
   field may link to. The validator of JSON Schema sees two ordinary properties; LDS checks the link itself.

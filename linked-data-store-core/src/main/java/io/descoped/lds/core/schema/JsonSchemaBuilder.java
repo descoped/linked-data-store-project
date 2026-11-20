@@ -112,8 +112,16 @@ public class JsonSchemaBuilder {
             return jsonSchema.getDefinitions().get(definitionRef);
         }
         String[] types = new String[]{"object"};
-        String type = text(jsonElement.get("type"));
-        if (type != null) {
+        JsonNode typeNode = jsonElement.get("type");
+        String type = text(typeNode);
+        if (typeNode != null && typeNode.isArray()) {
+            // a list of types is what anyOf with one type in each is
+            Set<String> set = new LinkedHashSet<>();
+            for (JsonNode typeName : typeNode) {
+                set.add(string(typeName, "a type of " + name));
+            }
+            types = set.toArray(new String[0]);
+        } else if (type != null) {
             types = new String[]{type};
         } else {
             JsonNode anyOf = jsonElement.get("anyOf");

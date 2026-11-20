@@ -44,9 +44,14 @@ public class JsonSchema {
      * @param document the document
      * @return what is wrong with the document, each as the place in the document and what is wrong there
      * ({@code $.name: integer found, string expected}); empty when the document is valid
+     * @throws IllegalArgumentException when the model has no entity of that name
      */
     public List<String> validate(String name, JsonNode document) {
-        return schemas.get(name)
+        Schema schema = schemas.get(name);
+        if (schema == null) {
+            throw new IllegalArgumentException("No JSON Schema for the entity " + name);
+        }
+        return schema
                 .validate(document, context -> context.executionConfig(config -> config.formatAssertionsEnabled(true)))
                 .stream()
                 .map(Error::toString)
