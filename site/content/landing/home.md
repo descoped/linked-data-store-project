@@ -2,8 +2,8 @@
 title: "Linked Data Store"
 description: >-
   A time machine for JSON documents and the links between them: Linked Data Store keeps every version of every
-  document and reads any instant, over REST and GraphQL. In active development toward 3.0.
-eyebrow: "Work in progress · in active development toward LDS 3.0"
+  document and reads any instant, over REST and GraphQL. LDS 3.0 is in development.
+eyebrow: "LDS 3.0 is in development"
 headline: "A time machine for your documents and the links between them"
 subline: >-
   Linked Data Store (LDS) keeps every version of every document, each valid from its own time. Read any instant, past,
@@ -86,6 +86,5 @@ It does not fit, as it is today, when:
 
 ## Status
 
-LDS is a work in progress, in active development toward 3.0. Nothing is released yet: it is built from the repository
-on JDK 27. What is unfinished is said in the documentation where a reader meets it, in a paragraph that starts with
-"Not finished:".
+LDS 3.0 is in development. Nothing is released yet: it is built from the repository on JDK 27. What is unfinished is
+said in the documentation where a reader meets it, in a paragraph that starts with "Not finished:".
