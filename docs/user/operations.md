@@ -130,7 +130,8 @@ things follow, and a fourth for the distroless image:
 and the container ends with exit code 143. A stop takes 30 seconds or more when a write is held up. A container that is
 ended by force before LDS has stopped has crashed, as far as its writes go; see [Writes that fail, crashes and
 recovery](#writes-that-fail-crashes-and-recovery). Docker ends a container by force 10 seconds after `docker stop`
-unless it is given longer, so give LDS a minute: `docker stop -t 60 <container>`, and `docker compose stop -t 60`.
+unless it is given longer, so give LDS a minute: `docker stop -t 60 <container>`, and in a compose file of your own
+`stop_grace_period: 60s`, as the compose file of the repository has.
 
 ### Diagnostics with the debug image
 
