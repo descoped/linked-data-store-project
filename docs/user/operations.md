@@ -24,7 +24,8 @@ Everything here is about LDS 3.0.0, as the images on Docker Hub and as it is bui
   is read from the two files and from the tests that build and start them, and the debug image was run for its
   section.
 - No Neo4j and no Solr were at hand. What is said about Neo4j, and about a Solr that answers, is read from the
-  code and its tests. What LDS does when Solr does not answer was run.
+  code and its tests. What LDS does when Solr does not answer was run, and so was what it does when Neo4j goes
+  away while it runs, with the image `descoped/lds:3.0.0` and the compose file.
 - A line of the log is shown with its time, its level and its message. A long line is broken here.
 
 ## The parts of a running LDS
@@ -128,7 +129,8 @@ things follow, and a fourth for the distroless image:
 `docker stop` sends the signal TERM to the Java program. LDS then stops in order, as [Stopping](#stopping) describes,
 and the container ends with exit code 143. A stop takes 30 seconds or more when a write is held up. A container that is
 ended by force before LDS has stopped has crashed, as far as its writes go; see [Writes that fail, crashes and
-recovery](#writes-that-fail-crashes-and-recovery).
+recovery](#writes-that-fail-crashes-and-recovery). Docker ends a container by force 10 seconds after `docker stop`
+unless it is given longer, so give LDS a minute: `docker stop -t 60 <container>`, and `docker compose stop -t 60`.
 
 ### Diagnostics with the debug image
 
@@ -627,6 +629,7 @@ needed: in a run `/health/alive` answered `200` within three seconds after Postg
 |---|---|
 | The store of the documents (run with PostgreSQL) | A read is answered `500`, at once in the runs. A write is answered `500` after 30 seconds, and is done later if the saga log could note it (see [Writes that fail, crashes and recovery](#writes-that-fail-crashes-and-recovery)). `/health/alive` answers `503`. `/ping` answers `200`. |
 | The saga log (run with PostgreSQL) | A read works. Every write is answered `500` after 30 seconds, also one sent with `sync=false`, and is not done later. `/health/alive` and `/ping` answer `200`. A write sent after PostgreSQL was started again was done. |
+| The store of the documents (run with Neo4j) | A read is answered `500` after about 22 seconds. A write is answered `500` at once, and is done later: the saga log had noted it, and the next round of recovery completed it about 25 seconds after Neo4j was back. `/health/alive` answers `503`. `/ping` answers `200`. In the run `/health/alive` answered `200` again four seconds after Neo4j was started. The log has `unexpected exception during health check ...` at the level `WARN`. |
 | Solr | A write of a document is answered `201` and the document is stored, but it is not in the index, and LDS does not send it to Solr again. A search is answered `200` with an error in its body. A delete of a document is answered `500`, and the document is deleted all the same. `/health/alive` and `/ping` answer `200`. |
 
 A `500` has no body. The cause is in the log, after the line `UT005071: Undertow request failed ...`. The log
@@ -659,7 +662,6 @@ connection to Solr. The delete stays in the saga log as a write that keeps faili
 recovery](#writes-that-fail-crashes-and-recovery) describes: in the run it failed again at the next round, and was moved
 to `dead-saga` when 31 more writes had been sent.
 
-What LDS does when Neo4j goes away while LDS runs was not tried.
 
 ## Several LDS on one saga log
 

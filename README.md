@@ -119,6 +119,17 @@ published on Docker Hub as `descoped/lds` in three variants: the regular image w
 
 Search finds a document by the texts of its fields named `languageText`, which is what the Solr provider indexes.
 
+## With Claude Code
+
+The repository is also a marketplace of plugins for Claude Code. Its plugin `lds` starts LDS, makes a model of a
+domain with you, and writes, reads and queries documents when you ask in plain words:
+
+```text
+/plugin install lds --marketplace descoped/linked-data-store-project
+```
+
+[With Claude Code](docs/user/claude-code.md) tells what it can do. The plugin is in `plugins/lds`.
+
 ## History
 
 LDS was first written at Statistics Norway for GSIM-based systems and has been maintained by Descoped since 2024.

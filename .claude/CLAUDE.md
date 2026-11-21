@@ -305,6 +305,25 @@ one document for each part of the code). `docs/README.md` is the index. Keep the
 - Lines of at most 120 characters, except a row of a table. A link to another document is a relative path, and
   a link to a section names the id GitHub gives its heading, so a heading that is renamed has its links renamed.
 
+## The Claude Code plugin
+
+The repository is a marketplace of plugins for Claude Code (`.claude-plugin/marketplace.json`, marketplace `lds`),
+with one plugin, `lds` (`plugins/lds/`): five skills (`start`, `model`, `data`, `query`, `operate`) that let someone
+who has never used LDS start it, make a model of a domain, and write, read, query and operate it, by asking. Claude
+acts with `curl` in its shell; there is no MCP server. `docs/user/claude-code.md` is its page. Keep these when
+changing it:
+
+- **No version.** `plugin.json` has no `version`, so the plugin is what `master` holds and every commit reaches its
+  users when they update the marketplace. A change of the plugin is never a reason for a release.
+- **Only what LDS does**, as the documentation: every command a skill shows was run against the released image, and
+  a skill links the documentation of the site for depth instead of copying it. A change of behaviour that a skill
+  shows changes the skill in the same pull request.
+- **Honest about the limits** where the user meets them: no authentication, a JSON Schema model gives no GraphQL
+  API, one namespace, the model is read at start, search only of `languageText` fields, links not checked.
+- **A GraphQL schema is the model it makes first**, JSON Schema on request.
+- `claude plugin validate .` passes (its warning that there is no version is meant). The plugin starts no CI: CI
+  runs only for the Maven paths.
+
 ## The load test
 
 `linked-data-store-loadtest` is the load test LDS had before 3.0, brought up to date and kept as it was: the same
