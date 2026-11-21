@@ -19,37 +19,49 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * The image of the server, built from the Dockerfile with what Maven has just packaged, and started as it is:
- * no configuration, so everything in memory, with the example model. The test needs Docker and its command line.
+ * The images of the server, built from the Dockerfile with what Maven has just packaged, and started as they are:
+ * no configuration, so everything in memory, with the example model. The regular image (the default target) is
+ * tried in full; the distroless and the debug image, which hold the same LDS on another base or runtime, are tried
+ * for what makes them differ. The test needs Docker and its command line.
  */
 class ServerImageIT {
 
     private static final String IMAGE = "lds-server-it:" + UUID.randomUUID();
+    private static final String DISTROLESS = IMAGE + "-distroless";
+    private static final String DEBUG = IMAGE + "-debug";
     private static final int PORT = 9090;
 
     private static GenericContainer<?> container;
+    private static GenericContainer<?> distroless;
+    private static GenericContainer<?> debug;
     private static Lds lds;
 
     @BeforeAll
     static void buildAndStart() throws Exception {
         docker("build", "--quiet", "--tag", IMAGE, ".");
-        container = start();
+        docker("build", "--quiet", "--target", "distroless", "--tag", DISTROLESS, ".");
+        docker("build", "--quiet", "--target", "debug", "--tag", DEBUG, ".");
+        container = start(IMAGE);
+        distroless = start(DISTROLESS);
+        debug = start(DEBUG);
         lds = new Lds(container.getMappedPort(PORT));
     }
 
     @AfterAll
     static void stopAndRemove() throws Exception {
-        if (container != null) {
-            container.stop();
+        for (GenericContainer<?> started : new GenericContainer<?>[]{container, distroless, debug}) {
+            if (started != null) {
+                started.stop();
+            }
         }
-        docker("image", "rm", "--force", IMAGE);
+        docker("image", "rm", "--force", IMAGE, DISTROLESS, DEBUG);
     }
 
     /*
      * Started when the health check of the image says that LDS answers.
      */
-    private static GenericContainer<?> start() {
-        GenericContainer<?> started = new GenericContainer<>(IMAGE)
+    private static GenericContainer<?> start(String image) {
+        GenericContainer<?> started = new GenericContainer<>(image)
                 .withExposedPorts(PORT)
                 .waitingFor(Wait.forHealthcheck().withStartupTimeout(Duration.ofMinutes(2)));
         started.start();
@@ -106,27 +118,58 @@ class ServerImageIT {
     }
 
     /**
-     * The image has no program but {@code java} to ask, so the user is read from what the image says it runs as and
-     * from its {@code /etc/passwd}.
+     * The distroless image has no program but {@code java} to ask, so the user of each image is read from what the
+     * image says it runs as and from its {@code /etc/passwd}.
      */
     @Test
-    void ldsDoesNotRunAsRoot() {
-        String user = container.getDockerClient().inspectContainerCmd(container.getContainerId()).exec().getConfig().getUser();
-        String passwd = container.copyFileFromContainer("/etc/passwd", in -> new String(in.readAllBytes(), StandardCharsets.UTF_8));
+    void ldsDoesNotRunAsRootInAnyImage() {
+        for (GenericContainer<?> started : List.of(container, distroless, debug)) {
+            String user = started.getDockerClient().inspectContainerCmd(started.getContainerId()).exec().getConfig().getUser();
+            String passwd = started.copyFileFromContainer("/etc/passwd", in -> new String(in.readAllBytes(), StandardCharsets.UTF_8));
 
-        assertThat(user).isEqualTo("lds");
-        assertThat(passwd.lines()).contains("lds:x:1000:1000:lds:/lds:/sbin/nologin");
+            assertThat(user).as(started.getDockerImageName()).isEqualTo("lds");
+            assertThat(passwd.lines()).as(started.getDockerImageName()).contains("lds:x:1000:1000:lds:/lds:/sbin/nologin");
+        }
     }
 
     /**
-     * The image is distroless: there is no shell to run.
+     * The regular image has a shell: the one of busybox, with its small tools.
      */
     @Test
-    void theImageHasNoShell() throws Exception {
-        ExecResult result = container.execInContainer("sh", "-c", "true");
+    void theRegularImageHasAShell() throws Exception {
+        ExecResult result = container.execInContainer("sh", "-c", "id -un");
+
+        assertThat(result.getExitCode()).isZero();
+        assertThat(result.getStdout().strip()).isEqualTo("lds");
+    }
+
+    /**
+     * The distroless image answers as the regular one does, became healthy by its health check in Java, and has no
+     * shell to run.
+     */
+    @Test
+    void theDistrolessImageAnswersAndHasNoShell() throws Exception {
+        Lds other = new Lds(distroless.getMappedPort(PORT));
+        assertThat(other.put("/ns/Company/void", "{\"name\":\"Void\"}").statusCode()).isEqualTo(201);
+        assertThat(other.get("/ns/Company/void").body()).contains("\"name\":\"Void\"");
+
+        ExecResult result = distroless.execInContainer("sh", "-c", "true");
 
         assertThat(result.getExitCode()).isNotZero();
         assertThat(result.getStdout() + result.getStderr()).contains("executable file not found");
+    }
+
+    /**
+     * The debug image has the tools of the JDK, which attach to the JVM of LDS.
+     */
+    @Test
+    void theDebugImageHasTheToolsOfTheJdk() throws Exception {
+        ExecResult version = debug.execInContainer("jcmd", "1", "VM.version");
+        ExecResult threads = debug.execInContainer("jstack", "1");
+
+        assertThat(version.getExitCode()).as(version.getStderr()).isZero();
+        assertThat(version.getStdout()).contains("JDK 27");
+        assertThat(threads.getStdout()).contains("Full thread dump");
     }
 
     /**
@@ -135,7 +178,7 @@ class ServerImageIT {
      */
     @Test
     void theContainerStopsWhenItIsAskedTo() {
-        GenericContainer<?> another = start();
+        GenericContainer<?> another = start(IMAGE);
         try {
             another.getDockerClient().stopContainerCmd(another.getContainerId()).withTimeout(60).exec();
 

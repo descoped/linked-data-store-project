@@ -34,7 +34,7 @@ export default defineKranthoConfig({
             description:
               'A server that keeps versioned, linked JSON documents, checks them against a model, and reads them as they were at any instant, over REST and GraphQL.',
             applicationCategory: 'DeveloperApplication',
-            softwareVersion: '3.0.0-SNAPSHOT',
+            softwareVersion: '3.0.0',
             license: 'https://www.apache.org/licenses/LICENSE-2.0',
             author: { '@type': 'Organization', name: 'Descoped', url: 'https://github.com/descoped' },
           },
