@@ -57,10 +57,14 @@ class FlattenedDocumentDecodeTest {
         FlattenedDocument document = FlattenedDocument.decodeDocument(KEY, fragments, 8);
         FlattenedDocument same = FlattenedDocument.decodeDocument(KEY, fragments, 8);
 
-        assertThat(document).isEqualTo(document).isEqualTo(same).hasSameHashCodeAs(same);
-        assertThat(document).isNotEqualTo(null).isNotEqualTo("a document");
-        assertThat(document).isNotEqualTo(new FlattenedDocument(KEY, document.leafNodesByPath(), true));
-        assertThat(document).isNotEqualTo(new FlattenedDocument(KEY, Map.of(), false));
+        assertThat(document)
+                .isEqualTo(document)
+                .isEqualTo(same)
+                .hasSameHashCodeAs(same)
+                .isNotEqualTo(null)
+                .isNotEqualTo("a document")
+                .isNotEqualTo(new FlattenedDocument(KEY, document.leafNodesByPath(), true))
+                .isNotEqualTo(new FlattenedDocument(KEY, Map.of(), false));
     }
 
     @Test

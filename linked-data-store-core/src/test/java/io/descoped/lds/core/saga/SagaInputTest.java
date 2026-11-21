@@ -36,7 +36,7 @@ class SagaInputTest {
         assertThat(input.source()).isEqualTo("import");
         assertThat(input.sourceId()).isEqualTo("row-7");
         assertThat(input.data().get("name").stringValue()).isEqualTo("Ann");
-        assertThat(input.toString()).isEqualTo("SagaInput{txId='00000000-0000-0000-0000-000000000001',"
+        assertThat(input).hasToString("SagaInput{txId='00000000-0000-0000-0000-000000000001',"
                 + " method='PUT', schema='schema-1', namespace='ns', entity='Person', id='p1',"
                 + " version='2026-11-21T12:00:00Z', source='import', sourceId='row-7', data={\"name\":\"Ann\"}}");
     }
@@ -61,6 +61,6 @@ class SagaInputTest {
 
         SagaInput readBack = new SagaInput(input.asJsonNode());
 
-        assertThat(readBack.toString()).isEqualTo(input.toString());
+        assertThat(readBack).hasToString(input.toString());
     }
 }
