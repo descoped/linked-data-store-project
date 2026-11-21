@@ -4,7 +4,8 @@
 if ! command -v http >/dev/null 2>&1; then
   echo "The demo needs HTTPie (the command http), which is not installed. Install it with:" >&2
   echo >&2
-  echo "  brew install httpie" >&2
+  echo "  brew install httpie      (macOS)" >&2
+  echo "  pipx install httpie      (Linux, or see https://httpie.io/cli)" >&2
   exit 1
 fi
 
