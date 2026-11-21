@@ -621,8 +621,9 @@ with two pull requests and a start of the release workflow by hand:
    gh workflow run release.yml -f version=3.0.0
    ```
 
-   `.github/workflows/release.yml` runs in the environment `release`, which can be set to wait for the owner's
-   approval and holds the secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`. It checks first, and publishes
+   `.github/workflows/release.yml` runs in the environment `release`, which waits for the owner's approval and
+   allows `master` only. It logs in to Docker Hub with the secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` of the
+   organisation `descoped`, given to this repository. It checks first, and publishes
    nothing when a check fails: the version has the form `1.2.3`, the POMs on `master` have it, its tag does not
    exist, `RELEASE-NOTES.md` has its section, and CI (`Build (JDK 27)`) passed on the commit. It then packages the
    jars without testing them again, builds the three images of the Dockerfile for both platforms with an SBOM and

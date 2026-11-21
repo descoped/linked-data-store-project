@@ -19,8 +19,9 @@ name: Release
 #   descoped/lds:3.0.0-distroless, ..., distroless        no shell, no program but java
 #   descoped/lds:3.0.0-debug, ..., debug                  with the tools of the JDK for diagnostics
 #
-# The job runs in the environment `release`, which may be set to wait for the owner's approval, and which holds the
-# secrets DOCKERHUB_USERNAME and DOCKERHUB_TOKEN (a token that may push to descoped/lds).
+# The job runs in the environment `release`, which waits for the owner's approval and allows master only. It logs in
+# to Docker Hub with the secrets DOCKERHUB_USERNAME and DOCKERHUB_TOKEN (a token that may push to descoped/lds), which
+# are secrets of the organisation descoped, given to this repository.
 on:
   workflow_dispatch:
     inputs:
