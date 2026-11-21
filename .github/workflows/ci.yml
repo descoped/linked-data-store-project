@@ -1,8 +1,9 @@
 name: CI
 
 # One job on JDK 27, the baseline: Linked Data Store is a product and is built, tested and run on one JDK. Every
-# run: build, tests and Javadoc of every module, the modules that do not depend on each other at the same time
-# (-T 1C); the tests start PostgreSQL 18, Neo4j and Solr in Docker through
+# run: build, tests and Javadoc, the modules that do not depend on each other at the same time (-T 1C); a push,
+# a tag and a start by hand build every module, a pull request takes the modules whose inputs have not changed
+# from the build cache; the tests start PostgreSQL 18, Neo4j and Solr in Docker through
 # Testcontainers, build the image of the server and start its compose file with the docker command. Pushes to
 # master and release tags, and pull requests from this repository, add coverage and the SonarCloud analysis (not
 # gating; pull requests from forks get no token). CI publishes nothing, neither to Maven Central nor to an image
@@ -63,17 +64,21 @@ jobs:
           persist-credentials: false
 
       - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880  # v6.3.0
+        id: java
         with:
           java-version: '27'
           distribution: temurin
           cache: maven
 
-      # One entry for every run. A pull request starts from the newest entry of its own branch, else of master.
+      # One entry for every run. A pull request starts from the newest entry of its own branch, else of master, made
+      # with the same build: the JDK, the Maven wrapper, .mvn (the extension and its settings) and this file. The
+      # cache does not count these as inputs of a module, so a change of one of them starts from an empty cache and
+      # tests every module.
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ~/.m2/build-cache
-          key: build-cache-${{ github.sha }}
-          restore-keys: build-cache-
+          key: build-cache-${{ steps.java.outputs.version }}-${{ hashFiles('mvnw', '.mvn/**', '.github/workflows/ci.yml') }}-${{ github.sha }}
+          restore-keys: build-cache-${{ steps.java.outputs.version }}-${{ hashFiles('mvnw', '.mvn/**', '.github/workflows/ci.yml') }}-
 
       - name: Build, test and Javadoc
         if: env.ANALYSE != 'true'

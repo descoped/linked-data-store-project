@@ -502,8 +502,10 @@ of two commands:
 | a push, or a pull request from this repository | the same with `-P coverage`, then the SonarCloud scanner with `-P sonar` and the build cache off |
 
 The build cache (see [The build cache](#the-build-cache)) is kept between runs with `actions/cache`, one entry for
-each run (`build-cache-<commit>`). A pull request starts from the newest entry of its own branch, else of `master`,
-and takes the modules that have not changed from it. A push to `master` or of a tag, and a start by hand, give
+each run. A pull request starts from the newest entry of its own branch, else of `master`, and takes the modules
+that have not changed from it. The name of an entry holds the version of the JDK and a hash of `mvnw`, `.mvn/` and
+`ci.yml`, which the cache does not count as inputs of a module: a pull request that changes one of them, as
+Renovate does when it moves an action, the wrapper or the extension, finds no entry and tests every module. A push to `master` or of a tag, and a start by hand, give
 `-Dmaven.build.cache.skipCache=true`: they build and test every module, so every engine is tested at every merge,
 and their entry is the one the pull requests start from.
 
