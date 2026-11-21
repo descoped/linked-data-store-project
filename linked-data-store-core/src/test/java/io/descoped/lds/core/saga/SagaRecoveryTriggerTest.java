@@ -19,12 +19,15 @@ import org.testng.annotations.Listeners;
 import org.testng.annotations.Test;
 
 import javax.inject.Inject;
+import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import static org.awaitility.Awaitility.await;
 
 @Listeners(TestServerListener.class)
 public class SagaRecoveryTriggerTest {
@@ -37,7 +40,7 @@ public class SagaRecoveryTriggerTest {
             "saga.recovery.enabled", "false",
             "sagalog.provider", "no.cantara.sagalog.memory.MemorySagaLogInitializer"
     })
-    public void thatSagaRecoveryIsTriggeredWhenThereIsAnIncompleteSagaInLog() throws InterruptedException {
+    public void thatSagaRecoveryIsTriggeredWhenThereIsAnIncompleteSagaInLog() {
         SagaExecutionCoordinator sec = server.getApplication().getSec();
         sec.sagaRepository.getAdapterLoader().register(new FailingTheFirstTimeSagaAdapter());
         Saga saga = Saga.start("ZigZagSaga").linkTo("zigzag").id("zigzag").adapter("zigzag").linkToEnd().end();
@@ -61,20 +64,17 @@ public class SagaRecoveryTriggerTest {
         try {
             System.out.printf("Waiting for saga-recovery%n");
 
-            for (int i = 0; ; i++) {
-                Thread.sleep(1000);
-                int incompleteEntryCount = 0;
-                for (SagaLogId logId : sec.getSagaLogPool().instanceLocalLogIds()) {
-                    SagaLog sagaLog = sagaLogPool.connect(logId);
-                    incompleteEntryCount += sagaLog.readIncompleteSagas().count();
-                }
-                if (incompleteEntryCount == 0) {
-                    break; // successfully recovered saga
-                }
-                if (i >= 5) {
-                    Assert.fail("Timeout, saga was not recovered in time");
-                }
-            }
+            // six looks at most, a second apart; the half second over six lets the sixth be made before the wait gives up
+            await("Timeout, saga was not recovered in time").atMost(Duration.ofMillis(6_500))
+                    .pollDelay(Duration.ofSeconds(1)).pollInterval(Duration.ofSeconds(1))
+                    .until(() -> {
+                        int incompleteEntryCount = 0;
+                        for (SagaLogId logId : sec.getSagaLogPool().instanceLocalLogIds()) {
+                            SagaLog sagaLog = sagaLogPool.connect(logId);
+                            incompleteEntryCount += sagaLog.readIncompleteSagas().count();
+                        }
+                        return incompleteEntryCount == 0; // successfully recovered saga
+                    });
 
         } finally {
             sagaRecoveryTrigger.stop();

@@ -44,6 +44,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.awaitility.Awaitility.await;
 
 /**
  * The order in which the application stops. A saga hands each of its steps to the thread pool of the sagas, writes
@@ -106,7 +107,8 @@ class ApplicationStopTest {
         assertThat(held.entered.await(10, TimeUnit.SECONDS)).isTrue();
 
         CompletableFuture<Void> stop = CompletableFuture.runAsync(() -> server.getApplication().stop());
-        Thread.sleep(300);
+        await("the stop waiting for the saga").during(Duration.ofMillis(300)).atMost(Duration.ofSeconds(5))
+                .until(() -> !stop.isDone());
         assertThat(stop).isNotDone(); // waiting for the saga
         assertThat(sec.getThreadPool().isShutdown()).isFalse();
         held.release.countDown();
@@ -135,11 +137,9 @@ class ApplicationStopTest {
         SagaLog sagaLog = sec.getSagaLogPool().connect(sec.executionIdBySagaLogId.keySet().iterator().next());
 
         CompletableFuture<Void> stop = CompletableFuture.runAsync(() -> server.getApplication().stop(200, TimeUnit.MILLISECONDS));
-        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
-        while (!sec.getThreadPool().isShutdown()) {
-            assertThat(System.nanoTime()).as("waited for the thread pool to be shut down").isLessThan(deadline);
-            Thread.sleep(10);
-        }
+        await("the thread pool to be shut down").atMost(Duration.ofSeconds(10))
+                .pollDelay(Duration.ZERO).pollInterval(Duration.ofMillis(10))
+                .until(sec.getThreadPool()::isShutdown);
         // read when the saga has failed, on its own thread: the saga log pool is shut down after that thread ends
         List<SagaLogEntry> entries = new CopyOnWriteArrayList<>();
         completion.whenComplete((result, failure) -> sagaLog.readIncompleteSagas().forEach(entries::add));
@@ -322,12 +322,12 @@ class ApplicationStopTest {
         SagaRecoveryTrigger trigger = new SagaRecoveryTrigger(sec, 1, 1, recoveryThreadPool);
         trigger.start();
         try {
-            long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
-            while (recoveries.get() == 0) {
-                assertThat(System.nanoTime()).as("waited for the first pass").isLessThan(deadline);
-                Thread.sleep(50);
-            }
-            Thread.sleep(2500); // two more passes, if there were any
+            await("the first pass").atMost(Duration.ofSeconds(10))
+                    .pollDelay(Duration.ZERO).pollInterval(Duration.ofMillis(50))
+                    .until(() -> recoveries.get() != 0);
+            // no pass after it, for the time of two more passes, if there were any
+            await("no pass after the first").during(Duration.ofMillis(2500)).atMost(Duration.ofSeconds(5))
+                    .until(() -> recoveries.get() == 1);
             assertThat(recoveries).hasValue(1);
         } finally {
             trigger.stop();
@@ -421,7 +421,8 @@ class ApplicationStopTest {
                 + "\r\nContent-Type: application/json\r\nContent-Length: " + BODY_BYTES.length + "\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
         out.write(BODY_BYTES, 0, HALF);
         out.flush();
-        Thread.sleep(300); // the request has reached its handler
+        // the request has reached its handler: no part of the server tells it, so the test gives it the time
+        await().pollDelay(Duration.ofMillis(300)).until(() -> true);
         return socket;
     }
 

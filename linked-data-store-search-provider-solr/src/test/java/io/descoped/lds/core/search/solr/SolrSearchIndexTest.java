@@ -17,9 +17,11 @@ import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 
 /**
  * The Solr provider on a real Solr 10, reached over HTTP as LDS reaches it. A write is in the index within the
@@ -47,7 +49,7 @@ class SolrSearchIndexTest {
 
         searchIndex.createOrOverwrite(person).blockingAwait();
 
-        SearchResponse found = await(() -> searchIndex.search("Norway", Set.of("UnitDataSet"), 0, 10).blockingGet(), 1);
+        SearchResponse found = awaitHits(() -> searchIndex.search("Norway", Set.of("UnitDataSet"), 0, 10).blockingGet(), 1);
         assertThat(found.getTotalHits()).isEqualTo(1);
         DocumentKey key = found.getResults().iterator().next().getDocumentKey();
         assertThat(key.entity()).isEqualTo("UnitDataSet");
@@ -57,7 +59,7 @@ class SolrSearchIndexTest {
 
         searchIndex.delete(person).blockingAwait();
 
-        assertThat(await(() -> searchIndex.search("Norway", null, 0, 10).blockingGet(), 0).getTotalHits()).isZero();
+        assertThat(awaitHits(() -> searchIndex.search("Norway", null, 0, 10).blockingGet(), 0).getTotalHits()).isZero();
     }
 
     @Test
@@ -68,7 +70,7 @@ class SolrSearchIndexTest {
                 document("LogicalRecord", "LogicalRecord_Person_1.json")
         )).blockingAwait();
 
-        SearchResponse all = await(() -> searchIndex.search("*:*", null, 0, 10).blockingGet(), 3);
+        SearchResponse all = awaitHits(() -> searchIndex.search("*:*", null, 0, 10).blockingGet(), 3);
         assertThat(all.getResults()).extracting(result -> result.getDocumentKey().entity())
                 .containsExactlyInAnyOrder("UnitDataSet", "UnitDataSet", "LogicalRecord");
 
@@ -85,21 +87,16 @@ class SolrSearchIndexTest {
     }
 
     /**
-     * Searches until the index has the number of hits the test expects, or the time a commit may take is over.
+     * Searches until the index has the number of hits the test expects, and fails when the time a commit may take is
+     * over first.
      */
-    private static SearchResponse await(Supplier<SearchResponse> search, long hits) {
-        long deadline = System.nanoTime() + COMMIT_WAIT.toNanos();
-        SearchResponse response = search.get();
-        while (response.getTotalHits() != hits && System.nanoTime() < deadline) {
-            try {
-                Thread.sleep(100);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new IllegalStateException(e);
-            }
-            response = search.get();
-        }
-        return response;
+    private static SearchResponse awaitHits(Supplier<SearchResponse> search, long hits) {
+        AtomicReference<SearchResponse> response = new AtomicReference<>();
+        await().atMost(COMMIT_WAIT).pollDelay(Duration.ZERO).pollInterval(Duration.ofMillis(100)).untilAsserted(() -> {
+            response.set(search.get());
+            assertThat(response.get().getTotalHits()).as("hits").isEqualTo(hits);
+        });
+        return response.get();
     }
 
     private static JsonDocument document(String entity, String resource) throws IOException {
