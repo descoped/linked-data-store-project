@@ -268,8 +268,7 @@ A [link](../glossary.md#link) is the text `/Entity/id` in a field that the speci
 
 - `readTargetDocuments` gives the documents that a document links to, at a path and of one entity type. A link
   field that may link to two entity types is asked once for each. A path through an array is written with `[]`:
-  `$.history.previousAddresses[]`. Most tests call it through `readLinkedDocuments`, which is the same call
-  under a deprecated name: `thatReadLinkedDocumentsWork`.
+  `$.history.previousAddresses[]`: `thatReadLinkedDocumentsWork`.
 - `readSourceDocuments` goes the other way: the documents of one entity type that link to a document at a path.
   `thatReadLinkedDocumentsWork` compares them with the links that were written.
 - A link is resolved when it is read: it is followed to its target as the target is at the time asked for. A
@@ -407,7 +406,7 @@ The `pom.xml` of the module differs from the rule of the root POM in three place
 
 | Setting | Value and reason |
 |---|---|
-| `compilerArgs` | `-Xlint:all,-deprecation,-this-escape` and `-Werror`. The suite calls the deprecated `readLinkedDocuments`, and its constructor calls `buildSpecification()`, which a subclass can override. Every other warning fails the build. |
+| `compilerArgs` | `-Xlint:all,-this-escape` and `-Werror`. The constructor of the suite calls `buildSpecification()`, which a subclass can override. Every other warning fails the build. |
 | `doclint` | `all,-missing`. Javadoc that is there is checked; missing Javadoc is not an error. |
 | `sonar.sources`, `sonar.tests` | `pom.xml` and `src/main/java`. SonarCloud analyses the classes as tests. |
 

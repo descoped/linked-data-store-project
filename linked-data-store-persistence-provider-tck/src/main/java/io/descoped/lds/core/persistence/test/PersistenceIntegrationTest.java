@@ -21,7 +21,6 @@ import tools.jackson.databind.node.ObjectNode;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -29,7 +28,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 import static io.descoped.lds.api.persistence.json.JsonTools.mapper;
 import static io.descoped.lds.core.persistence.test.SpecificationBuilder.arrayNode;
@@ -121,10 +119,6 @@ public abstract class PersistenceIntegrationTest {
 
     private JsonDocument createPerson(String id, ZonedDateTime timestamp) {
         return toDocument(namespace, "Person", id, createPerson("John (" + id + ")", "Smith (" + timestamp + ")"), timestamp);
-    }
-
-    private JsonDocument createPerson(String id) {
-        return createPerson(id, parse("2000-01-01T00:00:00.000Z"));
     }
 
     private JsonDocument createPersonVersion(ZonedDateTime timestamp) {
@@ -403,8 +397,8 @@ public abstract class PersistenceIntegrationTest {
         // Create 12 version of the same person.
         ZonedDateTime timestamp = parse("2000-01-01T00:00:00.000Z");
         Flowable<JsonDocument> persons = Flowable.range(1, 12)
-                .map(month -> timestamp.withMonth(month))
-                .map(datetime -> createPersonVersion(datetime));
+                .map(timestamp::withMonth)
+                .map(this::createPersonVersion);
 
 
         try (Transaction tx = persistence.createTransaction(false)) {
@@ -897,8 +891,7 @@ public abstract class PersistenceIntegrationTest {
             persistence.createOrOverwrite(transaction, toDocument(namespace, "Person", "john", createPerson("James", "Smith"), nov13), specification).blockingAwait();
             persistence.createOrOverwrite(transaction, toDocument(namespace, "Person", "john", createPerson("John", "Smith"), oct18), specification).blockingAwait();
 
-            // TODO: @kimcs my implementation fails here. The assertion wants two, but only nov13 is between feb10 and sep18
-            // assertEquals(size(persistence.readDocumentVersions(transaction, namespace, "Person", "john", Range.between(feb10, sep18)).blockingIterable().iterator()), 2);
+            // only the version of nov13 is between feb10 and sep18
             assertEquals(size(persistence.readDocumentVersions(transaction, namespace, "Person", "john", Range.between(feb10, sep18)).blockingIterable().iterator()), 1);
         }
     }
@@ -971,7 +964,6 @@ public abstract class PersistenceIntegrationTest {
     @Test
     public void thatFindAllWorks() {
         try (Transaction transaction = persistence.createTransaction(false)) {
-            // TODO Consider support for deleting entire entity in one operation...?
             persistence.deleteAllDocumentVersions(transaction, namespace, "Person", "john", PersistenceDeletePolicy.FAIL_IF_INCOMING_LINKS).blockingAwait();
             persistence.deleteAllDocumentVersions(transaction, namespace, "Person", "jane", PersistenceDeletePolicy.FAIL_IF_INCOMING_LINKS).blockingAwait();
 
@@ -1013,10 +1005,12 @@ public abstract class PersistenceIntegrationTest {
             ZonedDateTime oct18 = of(2018, 10, 7, 19, 49, 26, (int) TimeUnit.MILLISECONDS.toNanos(307), ZoneId.of("Etc/UTC"));
             ZonedDateTime now = now(ZoneId.of("Etc/UTC"));
 
-            String bigString = "12345678901234567890";
+            StringBuilder doubled = new StringBuilder("12345678901234567890");
             for (int i = 0; i < 12; i++) {
-                bigString = bigString + "_" + bigString;
+                String half = doubled.toString();
+                doubled.append('_').append(half);
             }
+            String bigString = doubled.toString();
 
             // Creating funky long address
             persistence.createOrOverwrite(transaction, toDocument(namespace, "FunkyLongAddress", "newyork", createAddress(bigString, "NY", "USA"), oct18), specification).blockingAwait();
@@ -1041,7 +1035,7 @@ public abstract class PersistenceIntegrationTest {
 
     @Test
     public void thatSimpleArrayValuesAreIntact() {
-        Specification specification = SpecificationBuilder.createSpecificationAndRoot(Set.of(
+        Specification arraySpecification = SpecificationBuilder.createSpecificationAndRoot(Set.of(
                 objectNode(SpecificationElementType.MANAGED, "People", Set.of(
                         arrayNode("name", stringNode("[]"))
                 ))
@@ -1051,7 +1045,7 @@ public abstract class PersistenceIntegrationTest {
             ObjectNode doc = mapper.createObjectNode();
             doc.putArray("name").add("John Smith").add("Jane Doe");
             JsonDocument input = toDocument(namespace, "People", "1", doc, oct18);
-            persistence.createOrOverwrite(transaction, input, specification).blockingAwait();
+            persistence.createOrOverwrite(transaction, input, arraySpecification).blockingAwait();
             JsonDocument jsonDocument = persistence.readDocument(transaction, oct18, namespace, "People", "1").blockingGet();
             assertEquals(jsonDocument.jackson().toString(), doc.toString());
         }
@@ -1059,7 +1053,7 @@ public abstract class PersistenceIntegrationTest {
 
     @Test
     public void thatComplexArrayValuesAreIntact() {
-        Specification specification = SpecificationBuilder.createSpecificationAndRoot(Set.of(
+        Specification arraySpecification = SpecificationBuilder.createSpecificationAndRoot(Set.of(
                 objectNode(SpecificationElementType.MANAGED, "People", Set.of(
                         arrayNode("name",
                                 objectNode(SpecificationElementType.EMBEDDED, "[]", Set.of(
@@ -1076,7 +1070,7 @@ public abstract class PersistenceIntegrationTest {
             name.addObject().put("first", "John").put("last", "Smith");
             name.addObject().put("first", "Jane").put("last", "Doe");
             JsonDocument input = toDocument(namespace, "People", "1", doc, oct18);
-            persistence.createOrOverwrite(transaction, input, specification).blockingAwait();
+            persistence.createOrOverwrite(transaction, input, arraySpecification).blockingAwait();
             JsonDocument jsonDocument = persistence.readDocument(transaction, oct18, namespace, "People", "1").blockingGet();
             assertNotNull(jsonDocument);
             assertEquals(jsonDocument.jackson().toString(), doc.toString());
@@ -1109,8 +1103,8 @@ public abstract class PersistenceIntegrationTest {
             }
 
             List<String> links = new ArrayList<>();
-            links.addAll(addressIds.stream().map(l -> "/Address/" + l).collect(Collectors.toList()));
-            links.addAll(funkyIds.stream().map(l -> "/FunkyLongAddress/" + l).collect(Collectors.toList()));
+            links.addAll(addressIds.stream().map(l -> "/Address/" + l).toList());
+            links.addAll(funkyIds.stream().map(l -> "/FunkyLongAddress/" + l).toList());
 
             Map<String, Map<String, List<String>>> relationsBySource = new LinkedHashMap<>();
             Map<String, Map<String, List<String>>> relationsByTarget = new LinkedHashMap<>();
@@ -1166,8 +1160,8 @@ public abstract class PersistenceIntegrationTest {
             for (int i = 0; i < personIds.size(); i++) {
                 String personId = personIds.get(i);
                 readLinksAndCheckDocuments(tx, "$.history.previousAddresses[]", personId, timestamp, entityIdsByEntityName);
-                readLinkAndCheckDocument(tx, "$.history.currentAddress", personId, timestamp, entityIdsByEntityName);
-                readLinkAndCheckDocument(tx, "$.history.workAddress", personId, timestamp, entityIdsByEntityName);
+                readLinkAndCheckDocument(tx, "$.history.currentAddress", personId, timestamp);
+                readLinkAndCheckDocument(tx, "$.history.workAddress", personId, timestamp);
             }
 
             for (int i = 0; i < addressIds.size(); i++) {
@@ -1189,7 +1183,7 @@ public abstract class PersistenceIntegrationTest {
     private void readLinksAndCheckDocuments(Transaction tx, String jsonNavigationPath, String personId, ZonedDateTime timestamp, Map<String, List<String>> entityIdsByEntityName) throws JSONException {
         for (String targetEntity : Set.of("Address", "FunkyLongAddress")) {
             List<JsonDocument> actualDocuments = new ArrayList<>();
-            persistence.readLinkedDocuments(tx, timestamp, namespace, "Person", personId, JsonNavigationPath.from(jsonNavigationPath), targetEntity, Range.unbounded())
+            persistence.readTargetDocuments(tx, timestamp, namespace, "Person", personId, JsonNavigationPath.from(jsonNavigationPath), targetEntity, Range.unbounded())
                     .blockingForEach(actualJsonDocument -> actualDocuments.add(actualJsonDocument));
             assertEquals(actualDocuments.size(), entityIdsByEntityName.get(targetEntity).size(), String.format("for entity: '%s'", targetEntity));
             for (JsonDocument actualDoc : actualDocuments) {
@@ -1199,10 +1193,10 @@ public abstract class PersistenceIntegrationTest {
         }
     }
 
-    private void readLinkAndCheckDocument(Transaction tx, String jsonNavigationPath, String personId, ZonedDateTime timestamp, Map<String, List<String>> entityIdsByEntityName) throws JSONException {
+    private void readLinkAndCheckDocument(Transaction tx, String jsonNavigationPath, String personId, ZonedDateTime timestamp) throws JSONException {
         List<JsonDocument> actualDocuments = new ArrayList<>();
         for (String targetEntity : Set.of("Address", "FunkyLongAddress")) {
-            persistence.readLinkedDocuments(tx, timestamp, namespace, "Person", personId, JsonNavigationPath.from(jsonNavigationPath), targetEntity, Range.unbounded())
+            persistence.readTargetDocuments(tx, timestamp, namespace, "Person", personId, JsonNavigationPath.from(jsonNavigationPath), targetEntity, Range.unbounded())
                     .blockingForEach(actualJsonDocument -> actualDocuments.add(actualJsonDocument));
         }
         assertEquals(actualDocuments.size(), 1);
@@ -1218,8 +1212,8 @@ public abstract class PersistenceIntegrationTest {
         String targetLink = "/" + targetEntity + "/" + targetId;
         List<String> expectedLinks = relationsByTarget.get(targetLink).get(jsonNavigationPath);
         assertEquals(actualDocuments.size(), expectedLinks.size(), String.format("for entity: '%s'", targetEntity));
-        Collections.sort(actualDocuments);
-        Collections.sort(expectedLinks);
+        actualDocuments.sort(null);
+        expectedLinks.sort(null);
         assertEquals(actualDocuments, expectedLinks);
     }
 
@@ -1335,11 +1329,11 @@ public abstract class PersistenceIntegrationTest {
             assertReadAsWritten(tx, specification, "Person", "link-no-slash", "{'history':{'currentAddress':'Address/more-home'}}");
             assertReadAsWritten(tx, specification, "Person", "link-no-id", "{'history':{'currentAddress':'/Address/','previousAddresses':['/Address/']}}");
 
-            assertThat(persistence.readLinkedDocuments(tx, Y2020, namespace, "Person", "link-other-entity", JsonNavigationPath.from("$.history.currentAddress"), "Address", Range.unbounded())
+            assertThat(persistence.readTargetDocuments(tx, Y2020, namespace, "Person", "link-other-entity", JsonNavigationPath.from("$.history.currentAddress"), "Address", Range.unbounded())
                     .toList().blockingGet()).isEmpty();
             // a link is written /Entity/id: without its first slash it is a text, and is not followed
             writeAndRead(tx, specification, "Address", "more-home", json("{'city':'Home'}"));
-            assertThat(persistence.readLinkedDocuments(tx, Y2020, namespace, "Person", "link-no-slash", JsonNavigationPath.from("$.history.currentAddress"), "Address", Range.unbounded())
+            assertThat(persistence.readTargetDocuments(tx, Y2020, namespace, "Person", "link-no-slash", JsonNavigationPath.from("$.history.currentAddress"), "Address", Range.unbounded())
                     .toList().blockingGet()).isEmpty();
         }
     }
@@ -1356,9 +1350,9 @@ public abstract class PersistenceIntegrationTest {
             writeAndRead(tx, specification, "Person", "more-linker", json("{'firstname':'L','more':[1,{'x':'y'}],"
                     + "'history':{'note':'n','currentAddress':'/Address/more-home','previousAddresses':['/Address/more-before','no link'],'more':{'deep':true}}}"));
 
-            assertThat(persistence.readLinkedDocuments(tx, Y2020, namespace, "Person", "more-linker", JsonNavigationPath.from("$.history.currentAddress"), "Address", Range.unbounded())
+            assertThat(persistence.readTargetDocuments(tx, Y2020, namespace, "Person", "more-linker", JsonNavigationPath.from("$.history.currentAddress"), "Address", Range.unbounded())
                     .map(document -> document.jackson().get("city").asString()).toList().blockingGet()).containsExactly("Home");
-            assertThat(persistence.readLinkedDocuments(tx, Y2020, namespace, "Person", "more-linker", JsonNavigationPath.from("$.history.previousAddresses[]"), "Address", Range.unbounded())
+            assertThat(persistence.readTargetDocuments(tx, Y2020, namespace, "Person", "more-linker", JsonNavigationPath.from("$.history.previousAddresses[]"), "Address", Range.unbounded())
                     .map(document -> document.jackson().get("city").asString()).toList().blockingGet()).containsExactly("Before");
             assertThat(persistence.readSourceDocuments(tx, Y2020, namespace, "Address", "more-home", JsonNavigationPath.from("$.history.currentAddress"), "Person", Range.unbounded())
                     .map(document -> document.key().id()).toList().blockingGet()).containsExactly("more-linker");

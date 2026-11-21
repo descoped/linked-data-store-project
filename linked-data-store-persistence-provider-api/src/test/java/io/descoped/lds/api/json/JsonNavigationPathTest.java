@@ -3,6 +3,7 @@ package io.descoped.lds.api.json;
 import org.testng.annotations.Test;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.expectThrows;
 
 public class JsonNavigationPathTest {
 
@@ -46,5 +47,24 @@ public class JsonNavigationPathTest {
     @Test(expectedExceptions = IllegalArgumentException.class)
     public void thatArrayElementMalformed5IsIllegal() {
         JsonNavigationPath.from("$.x[aw]y");
+    }
+
+    @Test
+    public void thatElementWithStrayOpeningBracketIsIllegal() {
+        IllegalArgumentException e = expectThrows(IllegalArgumentException.class, () -> JsonNavigationPath.from("$", "a", "b[c"));
+        assertEquals(e.getClass(), IllegalArgumentException.class);
+        assertEquals(e.getMessage(), "json-path element at index 2 contain square bracket symbol without being formatted as a proper array element");
+    }
+
+    @Test
+    public void thatElementWithStrayClosingBracketIsIllegal() {
+        IllegalArgumentException e = expectThrows(IllegalArgumentException.class, () -> JsonNavigationPath.from("$", "b]c"));
+        assertEquals(e.getClass(), IllegalArgumentException.class);
+        assertEquals(e.getMessage(), "json-path element at index 1 contain square bracket symbol without being formatted as a proper array element");
+    }
+
+    @Test
+    public void thatPopBackRemovesTheLastElement() {
+        assertEquals(JsonNavigationPath.from("$.a[].b").popBack().getPath(), new String[]{"$", "a", "[]"});
     }
 }

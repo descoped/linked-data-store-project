@@ -95,7 +95,8 @@ public class JsonSchemaBuilder {
             }
         }
 
-        // TODO remove link directives from schema
+        // The link directives (_link_property_<field>) are not removed: the schema that validates has them as
+        // ordinary properties.
         Schema schema = REGISTRY.getSchema(schemaNode);
         // now, so that a $ref that leads nowhere fails at start and not at the first write
         schema.initializeValidators();
@@ -106,69 +107,17 @@ public class JsonSchemaBuilder {
     private JsonSchemaDefinitionElement buildElement(JsonNode definitions, JsonNode jsonElement, String name) {
         object(jsonElement, name);
         if (jsonElement.has("$ref")) {
-            String refValue = string(jsonElement.get("$ref"), "$ref of " + name);
-            Matcher m = REF.matcher(refValue);
-            if (!m.matches()) {
-                throw new IllegalStateException("$ref present but unable to resolve: " + refValue);
-            }
-            String definitionRef = m.group(1);
-            if (!jsonSchema.getDefinitions().containsKey(definitionRef)) {
-                JsonNode definition = definitions.get(definitionRef);
-                if (definition == null) {
-                    throw new IllegalStateException("Referenced definition does not exist: " + refValue);
-                }
-                JsonSchemaDefinitionElement jsde = buildElement(definitions, definition, definitionRef);
-                jsonSchema.addDefinition(definitionRef, jsde);
-            }
-            return jsonSchema.getDefinitions().get(definitionRef);
+            return buildReference(definitions, jsonElement, name);
         }
-        String[] types = new String[]{"object"};
-        JsonNode typeNode = jsonElement.get("type");
-        String type = text(typeNode);
-        if (typeNode != null && typeNode.isArray()) {
-            // a list of types is what anyOf with one type in each is
-            Set<String> set = new LinkedHashSet<>();
-            for (JsonNode typeName : typeNode) {
-                set.add(string(typeName, "a type of " + name));
-            }
-            types = set.toArray(new String[0]);
-        } else if (type != null) {
-            types = new String[]{type};
-        } else {
-            JsonNode anyOf = jsonElement.get("anyOf");
-            if (anyOf != null && anyOf.isArray()) {
-                Set<String> set = new LinkedHashSet<>();
-                for (JsonNode alternative : anyOf) {
-                    String anyOfType = text(alternative.get("type"));
-                    if (anyOfType != null) {
-                        set.add(anyOfType);
-                    }
-                }
-                types = set.toArray(new String[0]);
-            }
-        }
+        String[] types = types(jsonElement, name);
         String title = text(jsonElement.get("title"));
         String format = text(jsonElement.get("format"));
-        Map<String, JsonSchemaDefinitionElement> properties = new LinkedHashMap<>();
-        if (jsonElement.has("properties")) {
-            for (Map.Entry<String, JsonNode> property : object(jsonElement.get("properties"), "properties of " + name).properties()) {
-                properties.put(property.getKey(), buildElement(definitions, property.getValue(), property.getKey()));
-            }
-        }
+        Map<String, JsonSchemaDefinitionElement> properties = properties(definitions, jsonElement, name);
         JsonSchemaDefinitionElement items = null;
         if (jsonElement.has("items")) {
             items = buildElement(definitions, jsonElement.get("items"), "items of " + name);
         }
-        Set<String> required = new LinkedHashSet<>();
-        if (jsonElement.has("required")) {
-            JsonNode requiredNames = jsonElement.get("required");
-            if (!requiredNames.isArray()) {
-                throw new IllegalArgumentException("In the JSON Schema of " + schemaName + ", required of " + name + " is not an array");
-            }
-            for (JsonNode requiredName : requiredNames) {
-                required.add(string(requiredName, "a name in required of " + name));
-            }
-        }
+        Set<String> required = required(jsonElement, name);
         String description = "";
         if (jsonElement.has("description")) {
             description = string(jsonElement.get("description"), "description of " + name);
@@ -182,6 +131,82 @@ public class JsonSchemaBuilder {
                 items,
                 required
         );
+    }
+
+    /*
+     * The definition a $ref names, built when no schema has given it before.
+     */
+    private JsonSchemaDefinitionElement buildReference(JsonNode definitions, JsonNode jsonElement, String name) {
+        String refValue = string(jsonElement.get("$ref"), "$ref of " + name);
+        Matcher m = REF.matcher(refValue);
+        if (!m.matches()) {
+            throw new IllegalStateException("$ref present but unable to resolve: " + refValue);
+        }
+        String definitionRef = m.group(1);
+        if (!jsonSchema.getDefinitions().containsKey(definitionRef)) {
+            JsonNode definition = definitions.get(definitionRef);
+            if (definition == null) {
+                throw new IllegalStateException("Referenced definition does not exist: " + refValue);
+            }
+            JsonSchemaDefinitionElement jsde = buildElement(definitions, definition, definitionRef);
+            jsonSchema.addDefinition(definitionRef, jsde);
+        }
+        return jsonSchema.getDefinitions().get(definitionRef);
+    }
+
+    /*
+     * The types of an element: those of type, the one of type, those of the alternatives of anyOf, or object.
+     */
+    private String[] types(JsonNode jsonElement, String name) {
+        JsonNode typeNode = jsonElement.get("type");
+        String type = text(typeNode);
+        if (typeNode != null && typeNode.isArray()) {
+            // a list of types is what anyOf with one type in each is
+            Set<String> set = new LinkedHashSet<>();
+            for (JsonNode typeName : typeNode) {
+                set.add(string(typeName, "a type of " + name));
+            }
+            return set.toArray(new String[0]);
+        }
+        if (type != null) {
+            return new String[]{type};
+        }
+        JsonNode anyOf = jsonElement.get("anyOf");
+        if (anyOf != null && anyOf.isArray()) {
+            Set<String> set = new LinkedHashSet<>();
+            for (JsonNode alternative : anyOf) {
+                String anyOfType = text(alternative.get("type"));
+                if (anyOfType != null) {
+                    set.add(anyOfType);
+                }
+            }
+            return set.toArray(new String[0]);
+        }
+        return new String[]{"object"};
+    }
+
+    private Map<String, JsonSchemaDefinitionElement> properties(JsonNode definitions, JsonNode jsonElement, String name) {
+        Map<String, JsonSchemaDefinitionElement> properties = new LinkedHashMap<>();
+        if (jsonElement.has("properties")) {
+            for (Map.Entry<String, JsonNode> property : object(jsonElement.get("properties"), "properties of " + name).properties()) {
+                properties.put(property.getKey(), buildElement(definitions, property.getValue(), property.getKey()));
+            }
+        }
+        return properties;
+    }
+
+    private Set<String> required(JsonNode jsonElement, String name) {
+        Set<String> required = new LinkedHashSet<>();
+        if (jsonElement.has("required")) {
+            JsonNode requiredNames = jsonElement.get("required");
+            if (!requiredNames.isArray()) {
+                throw new IllegalArgumentException("In the JSON Schema of " + schemaName + ", required of " + name + " is not an array");
+            }
+            for (JsonNode requiredName : requiredNames) {
+                required.add(string(requiredName, "a name in required of " + name));
+            }
+        }
+        return required;
     }
 
     private JsonNode object(JsonNode node, String what) {

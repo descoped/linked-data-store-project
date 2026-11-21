@@ -67,8 +67,8 @@ public class PersistenceLinksConnectionFetcher extends ConnectionFetcher<Map<Str
 
     private List<GraphQLNamedOutputType> getConcreteTypes(GraphQLSchema graphQLSchema, String typeName) {
         GraphQLType actualType = graphQLSchema.getType(typeName);
-        if (actualType instanceof GraphQLUnionType) {
-            return ((GraphQLUnionType) actualType).getTypes();
+        if (actualType instanceof GraphQLUnionType unionType) {
+            return unionType.getTypes();
         } else if (actualType instanceof GraphQLInterfaceType) {
             List<GraphQLNamedOutputType> types = new ArrayList<>();
             for (GraphQLNamedType concreteType : graphQLSchema.getAllTypesAsList()) {

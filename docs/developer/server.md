@@ -98,7 +98,7 @@ environment and the system properties. A later source wins over an earlier one.
 
 | Order | Source | Where it is |
 |---|---|---|
-| 1 | `application-defaults.properties` on the class path | In the jar of `linked-data-store-core`. The name comes from `UndertowApplication.getDefaultConfigurationResourcePath()`. |
+| 1 | `application-defaults.properties` on the class path | In the jar of `linked-data-store-core`. The name comes from `UndertowApplication.DEFAULT_CONFIGURATION_RESOURCE_PATH`. |
 | 2 | `application-defaults.properties` under the working directory | Not there unless someone puts it there. |
 | 3 | `application-server-defaults.properties` on the class path | In the jar of this module. |
 | 4 | `application-server-defaults.properties` under the working directory | Not there unless someone puts it there. |

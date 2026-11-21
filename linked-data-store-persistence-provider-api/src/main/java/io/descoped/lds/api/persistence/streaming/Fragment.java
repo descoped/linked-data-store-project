@@ -14,8 +14,8 @@ public class Fragment implements Comparable<Fragment> {
     public static final short LIMITED_CODE = 41;
     public static final short NOT_LIMITED_CODE = 42;
 
-    private final static Pattern arrayIndexPattern = Pattern.compile("\\[([0-9]*)\\]");
-    private final static Pattern noIndexPattern = Pattern.compile("\\[\\]");
+    private static final Pattern arrayIndexPattern = Pattern.compile("\\[(\\d*)\\]");
+    private static final Pattern noIndexPattern = Pattern.compile("\\[\\]");
 
     public static String computeIndexUnawarePath(String path, List<Integer> indices) {
         StringBuilder sb = new StringBuilder();
@@ -226,9 +226,9 @@ public class Fragment implements Comparable<Fragment> {
         if (streamingControl && o.streamingControl) {
             return controlCode - o.controlCode;
         } else if (streamingControl) {
-            return Integer.MAX_VALUE;
+            return 1;
         } else if (o.streamingControl) {
-            return Integer.MIN_VALUE;
+            return -1;
         }
         int cmp;
         cmp = namespace.compareTo(o.namespace);

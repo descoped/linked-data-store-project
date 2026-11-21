@@ -28,7 +28,7 @@ builds the rest from it when it starts:
 - when search is on, a `Search` field with its types;
 - a data fetcher for every field that reads from persistence.
 
-The code is in the package `io.descoped.lds.graphql` and the packages under it. The package `jsonSchema` belongs to
+The code is in the package `io.descoped.lds.graphql` and the packages under it. The package `jsonschema` belongs to
 [the model](core-model.md) and is not described here. The module does not export these packages. It `opens`
 `io.descoped.lds.graphql.graphiql`, which holds the GraphiQL page. The libraries are graphql-java and
 graphql-java-extended-scalars (`graphql-java.version` and `graphql-java-extended-scalars.version` in the root POM).
@@ -1075,7 +1075,7 @@ AssertJ. The others are TestNG.
 Not finished: the paging of the fetchers that read persistence has no test that runs.
 `fetcher/PersistenceRootConnectionFetcherTest` is disabled as a class, and `testForwardPagination` and
 `testBackwardPagination`, the only tests of `fetcher/PersistenceLinksConnectionFetcherTest`, are disabled, all
-with `@Ignore` and a note that they hang. `schemas/GraphQLSchemaBuilderTest` has a `main` method and no test.
+with `@Ignore` and a note that they hang.
 
 The command for a single test class has the form
 `./mvnw test -pl linked-data-store-core -Dtest=GraphQLSchemaGoldenTest`. `./mvnw verify -pl linked-data-store-core -am`
@@ -1150,8 +1150,8 @@ Not finished: when the exception comes from `getGraphQL`, the main thread ends a
 server. This was seen for every case above that stops the start. When it comes from `parseSchema`, the process
 ends.
 
-Not finished: the argument `searchable` of `@domain` has no effect. `AddSearchTypesVisitor.isSearchable` is
-deprecated and not called. A type with `@domain(searchable: false)` is in `TypeFilters` and in `SearchResult`.
+Not finished: the argument `searchable` of `@domain` has no effect. `DomainDirective.isSearchable` is not called.
+A type with `@domain(searchable: false)` is in `TypeFilters` and in `SearchResult`.
 
 Not finished: a field with `@reverseLink(pagination: false)` gets no fetcher and is always `null`. A
 `@reverseLink` field written in the schema file is also a property of the JSON Schema of its entity type
@@ -1173,9 +1173,8 @@ gets for a list of links in such a type is computed in the same way; the expecte
 `Zip.area`.
 
 Not finished: `LinkDirective.getPagination` and `ReverseLinkDirective.getPagination` return the default in both
-branches. `ReverseLinkDirective.REVERSE_LINK_DIRECTIVE` is not used. `JsonSchemaBuilder` is an empty class.
-`EmptyPersistence` is used by the `main` of `GraphQLSchemaBuilderTest` only. `GraphQLContext` has a `TODO` about
-its name, which is that of a class of graphql-java.
+branches. `ReverseLinkDirective.REVERSE_LINK_DIRECTIVE` is not used. `EmptyPersistence` is used by
+`GraphQLSchemaBuilderTest` only. `GraphQLContext` has the name of a class of graphql-java.
 
 ### In the fetchers and in search
 

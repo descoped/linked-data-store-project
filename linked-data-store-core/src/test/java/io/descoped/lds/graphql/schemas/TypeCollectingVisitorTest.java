@@ -76,7 +76,8 @@ class TypeCollectingVisitorTest {
         GraphQLObjectType one = newObject().name("Thing").field(newFieldDefinition().name("a").type(GraphQLString)).build();
         GraphQLObjectType other = newObject().name("Thing").field(newFieldDefinition().name("b").type(GraphQLString)).build();
 
-        assertThatThrownBy(() -> collect(List.of(one, other)))
+        List<GraphQLObjectType> types = List.of(one, other);
+        assertThatThrownBy(() -> collect(types))
                 .isInstanceOf(AssertException.class)
                 .hasMessage("""
                         All types within a GraphQL schema must have unique names. No two provided types may have the same name.
@@ -89,7 +90,8 @@ class TypeCollectingVisitorTest {
         GraphQLObjectType object = newObject().name("Thing").field(newFieldDefinition().name("a").type(GraphQLString)).build();
         GraphQLEnumType anEnum = GraphQLEnumType.newEnum().name("Thing").value("A").build();
 
-        assertThatThrownBy(() -> collect(List.of(object, anEnum)))
+        List<GraphQLSchemaElement> types = List.of(object, anEnum);
+        assertThatThrownBy(() -> collect(types))
                 .isInstanceOf(AssertException.class)
                 .hasMessageEndingWith("You have redefined the type 'Thing' from being a 'GraphQLObjectType' to a 'GraphQLEnumType'");
     }

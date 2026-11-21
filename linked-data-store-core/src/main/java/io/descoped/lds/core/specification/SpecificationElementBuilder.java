@@ -6,12 +6,14 @@ import io.descoped.lds.api.specification.SpecificationValidator;
 import io.descoped.lds.core.schema.JsonSchema;
 import io.descoped.lds.core.schema.JsonSchemaDefinitionElement;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 
 class SpecificationElementBuilder {
@@ -100,11 +102,7 @@ class SpecificationElementBuilder {
         if (jsonTypes != null) {
             return jsonTypes;
         }
-        Set<String> set = new LinkedHashSet<>();
-        for (String type : schemaElement.types) {
-            set.add(type);
-        }
-        return set;
+        return new LinkedHashSet<>(Arrays.asList(schemaElement.types));
     }
 
     SpecificationElementBuilder refTypes(Set<String> refTypes) {
@@ -116,14 +114,16 @@ class SpecificationElementBuilder {
         return refTypes;
     }
 
-    Set<String> linkedDomains(String property) {
+    /*
+     * The entities a property may link to, or empty when the property is not a link (has no _link_property_).
+     */
+    Optional<Set<String>> linkedDomains(String property) {
         String linkPropertyName = "_link_property_" + property;
         if (!schemaElement.properties.containsKey(linkPropertyName)) {
-            return null;
+            return Optional.empty();
         }
         JsonSchemaDefinitionElement jsde = schemaElement.properties.get(linkPropertyName);
-        Set<String> refTypes = new LinkedHashSet<>(jsde.properties.keySet());
-        return refTypes;
+        return Optional.of(new LinkedHashSet<>(jsde.properties.keySet()));
     }
 
     List<SpecificationValidator> validators() {
@@ -136,38 +136,18 @@ class SpecificationElementBuilder {
         }
         // Name is required for graphql implementation.
         // See comment in JsonSchemaDefinitionElement.java.
-        String name = schemaElement.items.name != null ? schemaElement.items.name : "";
-        SpecificationElement child = new SpecificationElementBuilder(schemaElement.items)
-                // TODO(kim): master uses .name("[]"). I (hadrien) need it to link types in graphql.
-                .name(name)
+        String itemsName = schemaElement.items.name != null ? schemaElement.items.name : "";
+        return new SpecificationElementBuilder(schemaElement.items)
+                .name(itemsName)
                 .parent(specificationElement)
                 .build();
-        return child;
     }
 
     Map<String, SpecificationElement> properties() {
-        Map<String, SpecificationElement> map = new LinkedHashMap<>();
         if (SpecificationElementType.ROOT.equals(specificationElementType)) {
-            if (jsonSchema == null) {
-                return map;
-            }
-            for (Map.Entry<String, JsonSchemaDefinitionElement> entry : jsonSchema.getDefinitions().entrySet()) {
-                SpecificationElementType specificationElementType;
-                if (jsonSchema.getSchemaNames().contains(entry.getKey())) {
-                    specificationElementType = SpecificationElementType.MANAGED;
-                } else {
-                    specificationElementType = SpecificationElementType.EMBEDDED;
-                }
-                SpecificationElement managed = new SpecificationElementBuilder(entry.getValue())
-                        .name(entry.getKey())
-                        .parent(specificationElement)
-                        .specificationElementType(specificationElementType)
-                        .required(entry.getValue().required)
-                        .build();
-                map.put(entry.getKey(), managed);
-            }
-            return map;
+            return rootProperties();
         }
+        Map<String, SpecificationElement> map = new LinkedHashMap<>();
         if (schemaElement == null || schemaElement.properties == null || schemaElement.properties.isEmpty()) {
             return null;
         }
@@ -175,18 +155,44 @@ class SpecificationElementBuilder {
             if (e.getKey().startsWith("_link_property_")) {
                 continue;
             }
-            Set<String> refTypes = linkedDomains(e.getKey());
+            Set<String> linkedDomains = linkedDomains(e.getKey()).orElse(null);
             SpecificationElementBuilder childBuilder = new SpecificationElementBuilder(e.getValue())
                     .name(e.getKey())
                     .description(e.getValue().description)
                     .parent(specificationElement)
                     .specificationElementType(SpecificationElementType.EMBEDDED)
-                    .refTypes(refTypes);
-            if (refTypes != null) {
+                    .refTypes(linkedDomains);
+            if (linkedDomains != null) {
                 childBuilder.specificationElementType(SpecificationElementType.REF);
             }
             SpecificationElement child = childBuilder.build();
             map.put(e.getKey(), child);
+        }
+        return map;
+    }
+
+    /*
+     * The entities and the embedded types of the root: a definition that is the schema of an entity is managed.
+     */
+    private Map<String, SpecificationElement> rootProperties() {
+        Map<String, SpecificationElement> map = new LinkedHashMap<>();
+        if (jsonSchema == null) {
+            return map;
+        }
+        for (Map.Entry<String, JsonSchemaDefinitionElement> entry : jsonSchema.getDefinitions().entrySet()) {
+            SpecificationElementType type;
+            if (jsonSchema.getSchemaNames().contains(entry.getKey())) {
+                type = SpecificationElementType.MANAGED;
+            } else {
+                type = SpecificationElementType.EMBEDDED;
+            }
+            SpecificationElement managed = new SpecificationElementBuilder(entry.getValue())
+                    .name(entry.getKey())
+                    .parent(specificationElement)
+                    .specificationElementType(type)
+                    .required(entry.getValue().required)
+                    .build();
+            map.put(entry.getKey(), managed);
         }
         return map;
     }

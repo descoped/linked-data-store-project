@@ -17,6 +17,8 @@ import java.util.function.Function;
 
 public class MemoryTransactionFactory implements TransactionFactory {
 
+    private static final System.Logger LOG = System.getLogger(MemoryTransactionFactory.class.getName());
+
     final ExecutorService executor = Executors.newFixedThreadPool(8, r -> {
         Thread thread = new Thread(r);
         thread.setName("Memory-Pool-" + thread.getName());
@@ -44,6 +46,7 @@ public class MemoryTransactionFactory implements TransactionFactory {
         try {
             return new MemoryTransaction(executor, indexByIndex, readOnly ? readWriteLock.readLock() : readWriteLock.writeLock(), cancelTxOnClose);
         } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
             throw new RuntimeException(e);
         }
     }
@@ -60,10 +63,11 @@ public class MemoryTransactionFactory implements TransactionFactory {
             if (!pool.awaitTermination(10, TimeUnit.SECONDS)) {
                 pool.shutdownNow(); // Cancel currently executing tasks
                 // Wait a while for tasks to respond to being cancelled
-                if (!pool.awaitTermination(10, TimeUnit.SECONDS))
-                    System.err.println("Pool did not terminate");
+                if (!pool.awaitTermination(10, TimeUnit.SECONDS)) {
+                    LOG.log(System.Logger.Level.WARNING, "Pool did not terminate");
+                }
             }
-        } catch (InterruptedException ie) {
+        } catch (InterruptedException _) {
             // (Re-)Cancel if current thread also interrupted
             pool.shutdownNow();
             // Preserve interrupt status

@@ -62,7 +62,7 @@ public class Statistics {
     /** The variance of the sample. */
     public static final String STAT_SAMPLE_VARIANCE = "sample-variance";
 
-    final Map<String, Map<Number, Number>> stat_datasets = new LinkedHashMap<>();
+    final Map<String, Map<Number, Number>> statDatasets = new LinkedHashMap<>();
     private final DescriptiveStatistics readLatencyStatistics = new DescriptiveStatistics();
     private final DescriptiveStatistics writeLatencyStatistics = new DescriptiveStatistics();
     private final DescriptiveStatistics readFailedLatencyStatistics = new DescriptiveStatistics();
@@ -74,6 +74,7 @@ public class Statistics {
      * Statistics with nothing recorded.
      */
     public Statistics() {
+        // every statistic starts empty, in the fields above
     }
 
     /**
@@ -197,29 +198,29 @@ public class Statistics {
     }
 
     private void sample(DescriptiveStatistics stats, String prefix, int x, int sampleWindowSeconds) {
-        stat_datasets.computeIfAbsent(prefix + STAT_N, k -> new LinkedHashMap<>()).put(x, stats.getN());
-        stat_datasets.computeIfAbsent(prefix + STAT_SECONDS, k -> new LinkedHashMap<>()).put(x, sampleWindowSeconds);
-        stat_datasets.computeIfAbsent(prefix + STAT_N_PER_SEC, k -> new LinkedHashMap<>()).put(x, (double) stats.getN() / sampleWindowSeconds);
-        stat_datasets.computeIfAbsent(prefix + STAT_MIN, k -> new LinkedHashMap<>()).put(x, stats.getMin());
-        stat_datasets.computeIfAbsent(prefix + STAT_GMEAN, k -> new LinkedHashMap<>()).put(x, stats.getGeometricMean());
-        stat_datasets.computeIfAbsent(prefix + STAT_MEAN, k -> new LinkedHashMap<>()).put(x, stats.getMean());
-        stat_datasets.computeIfAbsent(prefix + STAT_P0_1, k -> new LinkedHashMap<>()).put(x, stats.getPercentile(0.1));
-        stat_datasets.computeIfAbsent(prefix + STAT_P1, k -> new LinkedHashMap<>()).put(x, stats.getPercentile(1));
-        stat_datasets.computeIfAbsent(prefix + STAT_P5, k -> new LinkedHashMap<>()).put(x, stats.getPercentile(5));
-        stat_datasets.computeIfAbsent(prefix + STAT_P10, k -> new LinkedHashMap<>()).put(x, stats.getPercentile(10));
-        stat_datasets.computeIfAbsent(prefix + STAT_P25, k -> new LinkedHashMap<>()).put(x, stats.getPercentile(25));
-        stat_datasets.computeIfAbsent(prefix + STAT_MEDIAN, k -> new LinkedHashMap<>()).put(x, stats.getPercentile(50));
-        stat_datasets.computeIfAbsent(prefix + STAT_P75, k -> new LinkedHashMap<>()).put(x, stats.getPercentile(75));
-        stat_datasets.computeIfAbsent(prefix + STAT_P90, k -> new LinkedHashMap<>()).put(x, stats.getPercentile(90));
-        stat_datasets.computeIfAbsent(prefix + STAT_P95, k -> new LinkedHashMap<>()).put(x, stats.getPercentile(95));
-        stat_datasets.computeIfAbsent(prefix + STAT_P99, k -> new LinkedHashMap<>()).put(x, stats.getPercentile(99));
-        stat_datasets.computeIfAbsent(prefix + STAT_P99_9, k -> new LinkedHashMap<>()).put(x, stats.getPercentile(99.9));
-        stat_datasets.computeIfAbsent(prefix + STAT_MAX, k -> new LinkedHashMap<>()).put(x, stats.getMax());
-        stat_datasets.computeIfAbsent(prefix + STAT_STDDEV, k -> new LinkedHashMap<>()).put(x, stats.getStandardDeviation());
-        stat_datasets.computeIfAbsent(prefix + STAT_KURTOSIS, k -> new LinkedHashMap<>()).put(x, stats.getKurtosis());
-        stat_datasets.computeIfAbsent(prefix + STAT_SKEWNESS, k -> new LinkedHashMap<>()).put(x, stats.getSkewness());
-        stat_datasets.computeIfAbsent(prefix + STAT_SUM, k -> new LinkedHashMap<>()).put(x, stats.getSum());
-        stat_datasets.computeIfAbsent(prefix + STAT_SAMPLE_VARIANCE, k -> new LinkedHashMap<>()).put(x, stats.getVariance());
+        statDatasets.computeIfAbsent(prefix + STAT_N, k -> new LinkedHashMap<>()).put(x, stats.getN());
+        statDatasets.computeIfAbsent(prefix + STAT_SECONDS, k -> new LinkedHashMap<>()).put(x, sampleWindowSeconds);
+        statDatasets.computeIfAbsent(prefix + STAT_N_PER_SEC, k -> new LinkedHashMap<>()).put(x, (double) stats.getN() / sampleWindowSeconds);
+        statDatasets.computeIfAbsent(prefix + STAT_MIN, k -> new LinkedHashMap<>()).put(x, stats.getMin());
+        statDatasets.computeIfAbsent(prefix + STAT_GMEAN, k -> new LinkedHashMap<>()).put(x, stats.getGeometricMean());
+        statDatasets.computeIfAbsent(prefix + STAT_MEAN, k -> new LinkedHashMap<>()).put(x, stats.getMean());
+        statDatasets.computeIfAbsent(prefix + STAT_P0_1, k -> new LinkedHashMap<>()).put(x, stats.getPercentile(0.1));
+        statDatasets.computeIfAbsent(prefix + STAT_P1, k -> new LinkedHashMap<>()).put(x, stats.getPercentile(1));
+        statDatasets.computeIfAbsent(prefix + STAT_P5, k -> new LinkedHashMap<>()).put(x, stats.getPercentile(5));
+        statDatasets.computeIfAbsent(prefix + STAT_P10, k -> new LinkedHashMap<>()).put(x, stats.getPercentile(10));
+        statDatasets.computeIfAbsent(prefix + STAT_P25, k -> new LinkedHashMap<>()).put(x, stats.getPercentile(25));
+        statDatasets.computeIfAbsent(prefix + STAT_MEDIAN, k -> new LinkedHashMap<>()).put(x, stats.getPercentile(50));
+        statDatasets.computeIfAbsent(prefix + STAT_P75, k -> new LinkedHashMap<>()).put(x, stats.getPercentile(75));
+        statDatasets.computeIfAbsent(prefix + STAT_P90, k -> new LinkedHashMap<>()).put(x, stats.getPercentile(90));
+        statDatasets.computeIfAbsent(prefix + STAT_P95, k -> new LinkedHashMap<>()).put(x, stats.getPercentile(95));
+        statDatasets.computeIfAbsent(prefix + STAT_P99, k -> new LinkedHashMap<>()).put(x, stats.getPercentile(99));
+        statDatasets.computeIfAbsent(prefix + STAT_P99_9, k -> new LinkedHashMap<>()).put(x, stats.getPercentile(99.9));
+        statDatasets.computeIfAbsent(prefix + STAT_MAX, k -> new LinkedHashMap<>()).put(x, stats.getMax());
+        statDatasets.computeIfAbsent(prefix + STAT_STDDEV, k -> new LinkedHashMap<>()).put(x, stats.getStandardDeviation());
+        statDatasets.computeIfAbsent(prefix + STAT_KURTOSIS, k -> new LinkedHashMap<>()).put(x, stats.getKurtosis());
+        statDatasets.computeIfAbsent(prefix + STAT_SKEWNESS, k -> new LinkedHashMap<>()).put(x, stats.getSkewness());
+        statDatasets.computeIfAbsent(prefix + STAT_SUM, k -> new LinkedHashMap<>()).put(x, stats.getSum());
+        statDatasets.computeIfAbsent(prefix + STAT_SAMPLE_VARIANCE, k -> new LinkedHashMap<>()).put(x, stats.getVariance());
     }
 
 }

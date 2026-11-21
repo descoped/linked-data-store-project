@@ -17,13 +17,13 @@ import java.util.Map;
 
 public class PersistenceCreateOrOverwriteSagaAdapter extends Adapter<JsonNode> {
 
-    public static final String NAME = "Persistence-Create-or-Overwrite";
+    public static final String ADAPTER_NAME = "Persistence-Create-or-Overwrite";
 
     private final RxJsonPersistence persistence;
     private final Specification specification;
 
     public PersistenceCreateOrOverwriteSagaAdapter(RxJsonPersistence persistence, Specification specification) {
-        super(JsonNode.class, NAME);
+        super(JsonNode.class, ADAPTER_NAME);
         this.persistence = persistence;
         this.specification = specification;
     }

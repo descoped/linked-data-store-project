@@ -59,7 +59,7 @@ class TypeTraverserTest {
             this.quitAt = quitAt;
         }
 
-        private TraversalControl record(String event) {
+        private TraversalControl note(String event) {
             seen.add(event);
             return quitAt.test(event) ? TraversalControl.QUIT : TraversalControl.CONTINUE;
         }
@@ -73,42 +73,42 @@ class TypeTraverserTest {
 
         @Override
         public TraversalControl visitGraphQLObjectType(GraphQLObjectType node, TraverserContext<GraphQLSchemaElement> context) {
-            return record("object " + text(node));
+            return note("object " + text(node));
         }
 
         @Override
         public TraversalControl visitGraphQLFieldDefinition(GraphQLFieldDefinition node, TraverserContext<GraphQLSchemaElement> context) {
-            return record("field " + text(node));
+            return note("field " + text(node));
         }
 
         @Override
         public TraversalControl visitGraphQLList(GraphQLList node, TraverserContext<GraphQLSchemaElement> context) {
-            return record("list " + text(node));
+            return note("list " + text(node));
         }
 
         @Override
         public TraversalControl visitGraphQLNonNull(GraphQLNonNull node, TraverserContext<GraphQLSchemaElement> context) {
-            return record("non-null " + text(node));
+            return note("non-null " + text(node));
         }
 
         @Override
         public TraversalControl visitGraphQLScalarType(GraphQLScalarType node, TraverserContext<GraphQLSchemaElement> context) {
-            return record("scalar " + text(node));
+            return note("scalar " + text(node));
         }
 
         @Override
         public TraversalControl visitGraphQLDirective(GraphQLDirective node, TraverserContext<GraphQLSchemaElement> context) {
-            return record("directive " + text(node));
+            return note("directive " + text(node));
         }
 
         @Override
         public TraversalControl visitGraphQLAppliedDirective(GraphQLAppliedDirective node, TraverserContext<GraphQLSchemaElement> context) {
-            return record("applied directive " + text(node));
+            return note("applied directive " + text(node));
         }
 
         @Override
         public TraversalControl visitBackRef(TraverserContext<GraphQLSchemaElement> context) {
-            return record("back reference " + text(context.thisNode()));
+            return note("back reference " + text(context.thisNode()));
         }
     }
 

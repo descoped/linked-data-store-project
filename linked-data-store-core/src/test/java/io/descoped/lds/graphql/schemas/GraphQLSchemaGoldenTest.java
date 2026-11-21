@@ -10,7 +10,7 @@ import io.descoped.lds.core.schema.JsonSchema;
 import io.descoped.lds.core.schema.JsonSchemaBuilder;
 import io.descoped.lds.core.specification.JsonSchemaBasedSpecification;
 import io.descoped.lds.core.specification.SpecificationJsonSchemaBuilder;
-import io.descoped.lds.graphql.jsonSchema.GraphQLToJsonConverter;
+import io.descoped.lds.graphql.jsonschema.GraphQLToJsonConverter;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;

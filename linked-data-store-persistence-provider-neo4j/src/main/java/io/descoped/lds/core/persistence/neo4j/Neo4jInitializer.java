@@ -24,6 +24,10 @@ public class Neo4jInitializer implements PersistenceInitializer {
             JavaUtilLoggerBridge.installJavaUtilLoggerBridgeHandler(Level.INFO);
         }
 
+        private JavaUtilLoggingInitializer() {
+            // static methods only
+        }
+
         static void initialize() {
             // exists to run the static initializer above, once
         }

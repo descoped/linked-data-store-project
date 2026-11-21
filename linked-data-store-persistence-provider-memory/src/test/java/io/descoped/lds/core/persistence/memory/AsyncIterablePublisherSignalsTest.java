@@ -30,6 +30,7 @@ class AsyncIterablePublisherSignalsTest {
             AsyncIterablePublisher<KeyValue> publisher = new AsyncIterablePublisher<>(tx.getRange(
                     KeySelector.firstGreaterOrEqual(new byte[]{0}), KeySelector.firstGreaterOrEqual(new byte[]{9}), "i", ROW_LIMIT_UNLIMITED));
             List<String> signals = new CopyOnWriteArrayList<>();
+            CountDownLatch delivered = new CountDownLatch(1);
             CountDownLatch done = new CountDownLatch(1);
 
             publisher.subscribe(new Subscriber<>() {
@@ -37,8 +38,9 @@ class AsyncIterablePublisherSignalsTest {
                 public void onSubscribe(Subscription subscription) {
                     subscription.request(Long.MAX_VALUE);
                     try {
-                        Thread.sleep(200); // time for another thread to deliver, if it were allowed to
-                    } catch (InterruptedException e) {
+                        // time for another thread to deliver, if it were allowed to
+                        assertThat(delivered.await(200, TimeUnit.MILLISECONDS)).isFalse();
+                    } catch (InterruptedException _) {
                         Thread.currentThread().interrupt();
                     }
                     signals.add("onSubscribe returns");
@@ -47,6 +49,7 @@ class AsyncIterablePublisherSignalsTest {
                 @Override
                 public void onNext(KeyValue entry) {
                     signals.add("onNext " + entry.key()[0]);
+                    delivered.countDown();
                 }
 
                 @Override
@@ -86,7 +89,7 @@ class AsyncIterablePublisherSignalsTest {
         new AsyncIterablePublisher<>(failingOnTheSecond).subscribe(subscriber);
 
         assertThat(subscriber.done.await(10, TimeUnit.SECONDS)).isTrue();
-        Thread.sleep(200); // time for anything that would follow
+        assertThat(subscriber.followed.await(200, TimeUnit.MILLISECONDS)).isFalse(); // time for anything that would follow
         assertThat(subscriber.signals).containsExactly("onNext 1", "onError the second item cannot be read");
     }
 
@@ -99,7 +102,7 @@ class AsyncIterablePublisherSignalsTest {
 
         assertThat(subscriber.done.await(10, TimeUnit.SECONDS)).isTrue();
         subscriber.subscription.request(1);
-        Thread.sleep(200); // time for anything that would follow
+        assertThat(subscriber.followed.await(200, TimeUnit.MILLISECONDS)).isFalse(); // time for anything that would follow
         assertThat(subscriber.signals).containsExactly("onError requested amount must be > 0");
     }
 
@@ -139,10 +142,14 @@ class AsyncIterablePublisherSignalsTest {
         }
     }
 
-    /* Requests once, when it is subscribed, and keeps what it is signalled. It stops asking after three items. */
+    /*
+     * Requests once, when it is subscribed, and keeps what it is signalled. It stops asking after three items.
+     * followed is counted down by a signal that comes after done.
+     */
     private static final class Recording implements Subscriber<Integer> {
         final List<String> signals = new CopyOnWriteArrayList<>();
         final CountDownLatch done = new CountDownLatch(1);
+        final CountDownLatch followed = new CountDownLatch(1);
         final long firstRequest;
         volatile Subscription subscription;
 
@@ -158,7 +165,7 @@ class AsyncIterablePublisherSignalsTest {
 
         @Override
         public void onNext(Integer item) {
-            signals.add("onNext " + item);
+            record("onNext " + item);
             if (item == 3) {
                 subscription.cancel();
                 done.countDown();
@@ -167,14 +174,21 @@ class AsyncIterablePublisherSignalsTest {
 
         @Override
         public void onError(Throwable failure) {
-            signals.add("onError " + failure.getMessage());
+            record("onError " + failure.getMessage());
             done.countDown();
         }
 
         @Override
         public void onComplete() {
-            signals.add("onComplete");
+            record("onComplete");
             done.countDown();
+        }
+
+        private void record(String signal) {
+            if (done.getCount() == 0) {
+                followed.countDown();
+            }
+            signals.add(signal);
         }
     }
 }

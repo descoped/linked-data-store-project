@@ -499,9 +499,9 @@ Docker.
 ## Not finished
 
 Not finished: a path does not go into the elements of an array. `ResourceContext`, `ReferenceJsonHelper` and
-`EmbeddedResourceHandler` have `TODO` notes about array-navigation, and `ResourceJsonTraversalTuple` throws
-`UnsupportedOperationException("array-navigation not supported")` when the parent of the last step is not an
-object. A part of an object that is an element of an array has no address:
+`EmbeddedResourceHandler` have comments that say array-navigation is not supported, and
+`ResourceJsonTraversalTuple` throws `UnsupportedOperationException("array-navigation not supported")` when the
+parent of the last step is not an object. A part of an object that is an element of an array has no address:
 `/ns/Company/big/about/languageText` is answered `Not a valid path element: "languageText"`.
 
 Not finished: with a model from a GraphQL schema, a field whose type is another object type (not a list) has no
@@ -560,19 +560,20 @@ becomes an id with a space, and `%2541` becomes `A`. `%2F` reached `ResourceCont
 `/ns/Person/a%2Fb` is the id `a/b`. `ResourceContextIntegrationTest`, the only test of encoded names, is
 switched off with `@Ignore`.
 
-Not finished: the read of all documents of an entity type and the read of the versions are not paged. The read
-of the versions has `TODO Support pagination or time-range based query parameters`. Both ask the store for
-everything (`Range.unbounded()`) and build the answer in memory before it is sent.
+Not finished: the read of all documents of an entity type and the read of the versions are not paged, and the
+read of the versions takes no range of time. Both ask the store for everything (`Range.unbounded()`) and build
+the answer in memory before it is sent.
 
 Not finished: the form of the answer of an embedded GET depends on the value: an object or an array as it is, a
-simple value in an array, `[null]` for nothing. The code has a `TODO` about one form for all.
+simple value in an array, `[null]` for nothing. A comment in the code says that one form for all is not
+decided.
 
 Not finished: `SagaInput` has a field `schema`, and every handler gives it the text `"TODO"`.
 
 Not finished: the error callback of `receiveFullString` in the embedded and the reference handler sends a text
-and sets no status. `ResourceContext.subTree` throws `RuntimeException("")` when the parent of the last step is
-a simple value. `ReferenceJsonHelper.createReferenceJson` calls `equals` on the result of `JsonTools.text`, which
-is null when a single link field holds something that is not a text.
+and sets no status. `ResourceContext.subTree` throws `IllegalStateException` when the parent of the last step
+is a simple value. `ReferenceJsonHelper.createReferenceJson` calls `equals` on the result of `JsonTools.text`,
+which is null when a single link field holds something that is not a text.
 
 Not finished: a method that is not answered gets 400, not 405, and HEAD is one of them.
 

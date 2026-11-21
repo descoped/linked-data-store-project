@@ -89,8 +89,6 @@ public class GraphqlHttpHandlerTest {
 
         // When receiving an HTTP GET request, the GraphQL query should be
         // specified in the "query" query string.
-
-        // http://myapi/graphql?query={me{name}}
         HttpRequest request = HttpRequest.newBuilder(
                 URI.create(uriTemplate.set("query", "{me{name}}").expand())).build();
 
@@ -164,12 +162,9 @@ public class GraphqlHttpHandlerTest {
     public void testPostValidateContentType() throws IOException, InterruptedException {
 
         // A standard GraphQL POST request should use the application/json content
-        // type, and include a JSON-encoded body.
-        // {
-        //  "query": "...",
-        //  "operationName": "...",
-        //  "variables": { "myVariable": "someValue", ... }
-        //}
+        // type, and include a JSON-encoded body: an object with the fields query,
+        // operationName and variables, the last an object that maps the name of each
+        // variable to its value.
         //
         // operationName and variables are optional fields. operationName is only required
         // if multiple operations are present in the query.

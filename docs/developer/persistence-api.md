@@ -98,9 +98,6 @@ Who uses what:
 | `createTransaction(readOnly)` | A new transaction (see [Transactions and their factory](#transactions-and-their-factory)). |
 | `close()` | Releases what the provider holds. The application calls it when it stops. |
 
-`readLinkedDocuments` is a deprecated default method that calls `readTargetDocuments`. Only the
-[shared suite](../glossary.md#shared-suite) calls it.
-
 A provider stores a document as it is given and gives it back the same: also a field the model does not have, a
 value of another kind than the model says, a null, an array inside an array. The shared suite
 (`PersistenceIntegrationTest`) holds every provider to this and to the table above.
@@ -373,7 +370,7 @@ Not finished: in `findDocument` the limit is put on before the documents that on
 so a page can hold fewer documents than asked for. Seen with the memory provider and a capacity of 8 bytes: the
 documents `a`, `b` and `c` hold the names `12345678-other`, `12345678-wanted` and `12345678-wanted`. A find of
 `12345678-wanted` gives `b` and `c` without a limit, nothing with `Range.first(1)`, and `b` alone with
-`Range.first(2)`. Only texts are found; the code has a `TODO` for other types.
+`Range.first(2)`. Only texts are found; a comment in the code says so.
 
 ## Links at this level
 
@@ -440,7 +437,7 @@ The REST controller (`DataController` in `linked-data-store-core`) turns the tim
 `snapshot` of a request to the provider in the zone it was written with.
 
 Not finished: the interfaces take and give `ZonedDateTime`. An [invariant](architecture.md#the-invariants) of the
-project is that versions are stored and compared as UTC instants, and the bridge has a `TODO` that says the same.
+project is that versions are stored and compared as UTC instants, and a comment in the bridge says the same.
 What a provider does with a time in another zone is up to the provider today. The PostgreSQL and Neo4j providers
 turn every time they are given into its instant (`PostgresPersistence.instantOf`, `Neo4jPersistence.inUtc`). The
 memory provider stores the date and time of day as they are given, without changing the zone
@@ -683,10 +680,12 @@ element (`$.name[1].first`). Where the document does not have the path, nothing 
 node, or null when the node holds anything else. Use it where a text is taken out of a node that may be of another
 kind, because Jackson 3 throws when a text is asked of such a node.
 
+An element of a path that holds a square bracket without being an array element is refused with an
+`IllegalArgumentException`: `from("$", "x[1]")` and `from("$", "a]")` give "json-path element at index 1 contain
+square bracket symbol without being formatted as a proper array element".
+
 Not finished: `JsonNavigationPath` does not refuse every malformed path. `from("$.x[aw]")` gives the path `$.x`.
-`from("$", "a]")` is accepted. `from("$name.x")` is accepted, because the first part only has to start with `$`.
-`from("$", "x[1]")` throws `MissingFormatArgumentException` (a subclass of `IllegalArgumentException`) with the
-text `Format specifier '%d'` where a message about the path is meant.
+`from("$name.x")` is accepted, because the first part only has to start with `$`.
 
 ## Rules to keep
 
@@ -726,7 +725,7 @@ text `Format specifier '%d'` where a message about the path is meant.
 
 - **Clean break.**
   3.0.0 is not released, and a milestone promises no compatibility, so there is nothing to stay compatible with:
-  no deprecated aliases, no shims, no code for older data. `readLinkedDocuments` is such an alias and is still there.
+  no deprecated aliases, no shims, no code for older data.
 
 - **JSON.**
   Jackson 3, as a tree. No classes are bound.
@@ -781,12 +780,12 @@ module with `-pl linked-data-store-persistence-provider-api` and `-am`.
 What is said above under `Not finished:`, and these:
 
 Not finished: `RxJsonPersistence` says of itself that it is a temporary interface. Its comments leave open how a
-failure of the store is reported: they have a `TODO` for `onError(PersistenceException)` on almost every method.
+failure of the store is reported: on almost every method its Javadoc says that `onError(PersistenceException)` is
+not settled.
 
 Not finished: no provider makes a streaming-control fragment. The second constructor of `Fragment`,
 `isStreamingControl`, `isLimited`, `isNotLimited` and the codes `LIMITED_CODE` and `NOT_LIMITED_CODE` are used
-only by the `takeWhile` at the start of `toDocuments`. `Fragment.samePathAs` and `RxGroupByTools.debug` (which
-prints to `System.out`) are not called.
+only by the `takeWhile` at the start of `toDocuments`. `Fragment.samePathAs` is not called.
 
 Not finished: `groupByOrdered` starts a new thread for every group, which in the bridge is every document of a
 list. It keeps an entry for every group in a map and does not remove it. A cancel can fail: when the groups are

@@ -47,7 +47,7 @@ public class JsonSchemaBasedSpecification implements Specification, SchemaReposi
                 jsonSchema = schemaFromFile(jsonSchema, sb, schemaPath);
             }
         }
-        LOG.info("{}", (sb.length() == 0 ? "No schemas configured!" : "Managed domains: " + sb.toString().substring(1)));
+        LOG.info("{}", (sb.isEmpty() ? "No schemas configured!" : "Managed domains: " + sb.toString().substring(1)));
         return SpecificationJsonSchemaBuilder.createBuilder(jsonSchema).build();
     }
 

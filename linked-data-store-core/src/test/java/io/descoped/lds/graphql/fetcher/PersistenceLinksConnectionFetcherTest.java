@@ -100,7 +100,7 @@ public class PersistenceLinksConnectionFetcherTest {
 
     }
 
-    @Ignore // TODO @Hadrien Investigate why this method hangs on the very first line
+    @Ignore // Hangs on the very first line.
     @Test
     public void testForwardPagination() throws Exception {
         Connection<Map<String, Object>> firstFive = connectionFetcher.get(withArguments(Map.of("first", 5)));
@@ -123,7 +123,7 @@ public class PersistenceLinksConnectionFetcherTest {
         );
     }
 
-    @Ignore // TODO @Hadrien Investigate why this method hangs on the very first line
+    @Ignore // Hangs on the very first line.
     @Test
     public void testBackwardPagination() throws Exception {
         Connection<Map<String, Object>> lastFive = connectionFetcher.get(withArguments(Map.of("last", 5)));

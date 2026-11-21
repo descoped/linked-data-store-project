@@ -13,7 +13,6 @@ import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 public class JsonToFlattenedDocument {
 
@@ -54,46 +53,51 @@ public class JsonToFlattenedDocument {
 
     void populateMapFromJson(Deque<String> parentPath, Map<String, FlattenedDocumentLeafNode> leafNodesByPath, JsonNode node) {
         if (node == null || node.isNull()) {
-            String path = parentPath.stream().collect(Collectors.joining("."));
-            leafNodesByPath.put(path, new FlattenedDocumentLeafNode(documentKey, path, FragmentType.NULL, null, fragmentCapacity));
+            putLeaf(parentPath, leafNodesByPath, FragmentType.NULL, null);
         } else if (node.isString()) {
-            String path = parentPath.stream().collect(Collectors.joining("."));
-            leafNodesByPath.put(path, new FlattenedDocumentLeafNode(documentKey, path, FragmentType.STRING, node.stringValue(), fragmentCapacity));
+            putLeaf(parentPath, leafNodesByPath, FragmentType.STRING, node.stringValue());
         } else if (node.isNumber()) {
-            String path = parentPath.stream().collect(Collectors.joining("."));
-            leafNodesByPath.put(path, new FlattenedDocumentLeafNode(documentKey, path, FragmentType.NUMERIC, node.asString(), fragmentCapacity));
+            putLeaf(parentPath, leafNodesByPath, FragmentType.NUMERIC, node.asString());
         } else if (node.isBoolean()) {
-            String path = parentPath.stream().collect(Collectors.joining("."));
-            leafNodesByPath.put(path, new FlattenedDocumentLeafNode(documentKey, path, FragmentType.BOOLEAN, node.asString(), fragmentCapacity));
+            putLeaf(parentPath, leafNodesByPath, FragmentType.BOOLEAN, node.asString());
         } else if (node.isArray()) {
-            ArrayNode array = (ArrayNode) node;
-            if (array.size() == 0) {
-                String path = parentPath.stream().collect(Collectors.joining("."));
-                leafNodesByPath.put(path, new FlattenedDocumentLeafNode(documentKey, path, FragmentType.EMPTY_ARRAY, null, fragmentCapacity));
-            } else {
-                for (int i = 0; i < array.size(); i++) {
-                    String originalLast = parentPath.removeLast();
-                    String last = originalLast + "[" + i + "]";
-                    parentPath.addLast(last);
-                    populateMapFromJson(parentPath, leafNodesByPath, array.get(i));
-                    parentPath.removeLast();
-                    parentPath.addLast(originalLast);
-                }
-            }
+            populateMapFromArray(parentPath, leafNodesByPath, (ArrayNode) node);
         } else if (node.isObject()) {
-            ObjectNode object = (ObjectNode) node;
-            if (object.size() == 0) {
-                String path = parentPath.stream().collect(Collectors.joining("."));
-                leafNodesByPath.put(path, new FlattenedDocumentLeafNode(documentKey, path, FragmentType.EMPTY_OBJECT, null, fragmentCapacity));
-            } else {
-                for (Map.Entry<String, JsonNode> field : node.properties()) {
-                    parentPath.addLast(field.getKey());
-                    populateMapFromJson(parentPath, leafNodesByPath, field.getValue());
-                    parentPath.removeLast();
-                }
-            }
+            populateMapFromObject(parentPath, leafNodesByPath, (ObjectNode) node);
         } else {
             throw new UnsupportedOperationException("Type " + node.getClass().getName() + " not supported for path " + parentPath);
         }
+    }
+
+    private void populateMapFromArray(Deque<String> parentPath, Map<String, FlattenedDocumentLeafNode> leafNodesByPath, ArrayNode array) {
+        if (array.size() == 0) {
+            putLeaf(parentPath, leafNodesByPath, FragmentType.EMPTY_ARRAY, null);
+            return;
+        }
+        for (int i = 0; i < array.size(); i++) {
+            String originalLast = parentPath.removeLast();
+            String last = originalLast + "[" + i + "]";
+            parentPath.addLast(last);
+            populateMapFromJson(parentPath, leafNodesByPath, array.get(i));
+            parentPath.removeLast();
+            parentPath.addLast(originalLast);
+        }
+    }
+
+    private void populateMapFromObject(Deque<String> parentPath, Map<String, FlattenedDocumentLeafNode> leafNodesByPath, ObjectNode object) {
+        if (object.size() == 0) {
+            putLeaf(parentPath, leafNodesByPath, FragmentType.EMPTY_OBJECT, null);
+            return;
+        }
+        for (Map.Entry<String, JsonNode> field : object.properties()) {
+            parentPath.addLast(field.getKey());
+            populateMapFromJson(parentPath, leafNodesByPath, field.getValue());
+            parentPath.removeLast();
+        }
+    }
+
+    private void putLeaf(Deque<String> parentPath, Map<String, FlattenedDocumentLeafNode> leafNodesByPath, FragmentType type, String value) {
+        String path = String.join(".", parentPath);
+        leafNodesByPath.put(path, new FlattenedDocumentLeafNode(documentKey, path, type, value, fragmentCapacity));
     }
 }

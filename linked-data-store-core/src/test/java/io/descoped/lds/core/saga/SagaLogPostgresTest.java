@@ -162,7 +162,7 @@ public class SagaLogPostgresTest {
                 "saga.commands.enabled", "true"));
         values.addAll(List.of(overrides));
         DynamicConfiguration.Builder builder = DynamicConfiguration.builder()
-                .classpath(UndertowApplication.getDefaultConfigurationResourcePath())
+                .classpath(UndertowApplication.DEFAULT_CONFIGURATION_RESOURCE_PATH)
                 .classpath("application_test.properties");
         for (int i = 0; i < values.size(); i += 2) {
             builder.value(values.get(i), values.get(i + 1)); // a later value of a key is the one that counts

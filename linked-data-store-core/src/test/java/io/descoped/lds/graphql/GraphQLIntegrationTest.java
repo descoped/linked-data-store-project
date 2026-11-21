@@ -11,7 +11,6 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 import javax.inject.Inject;
-import java.io.IOException;
 
 import static io.descoped.lds.core.utils.FileAndClasspathReaderUtils.readFileOrClasspathResource;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -33,7 +32,7 @@ public class GraphQLIntegrationTest {
             "specification.schema", "src/test/resources/spec/abstract/jsonschemas",
             "graphql.schema", "src/test/resources/spec/abstract/graphqlschemas/schema.graphql"
     })
-    public void testAbstractRelations() throws IOException {
+    public void testAbstractRelations() {
         putResource("/data/Cat/cat1", "spec/abstract/cat1.json");
         putResource("/data/Cat/cat2", "spec/abstract/cat2.json");
         putResource("/data/Dog/dog1", "spec/abstract/dog1.json");

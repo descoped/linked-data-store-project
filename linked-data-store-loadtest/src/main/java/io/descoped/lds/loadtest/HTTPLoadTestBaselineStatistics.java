@@ -25,6 +25,10 @@ import java.util.stream.Stream;
  */
 public final class HTTPLoadTestBaselineStatistics {
 
+    private static final Pattern CSV_FILE_PATTERN = Pattern.compile("(.*)\\.csv");
+    private static final Pattern READ_PATTERN = Pattern.compile("\\(Read-URL:");
+    private static final Pattern WRITE_PATTERN = Pattern.compile("\\(Write-URL:");
+
     private HTTPLoadTestBaselineStatistics() {
     }
 
@@ -36,100 +40,28 @@ public final class HTTPLoadTestBaselineStatistics {
      * @throws IOException when a file cannot be read or written
      */
     public static void main(String[] args) throws IOException {
-        if (args.length != 3) {
-            System.err.println("Must provide the following three arguments: INFOLDER OUTFOLDER OUTBASENAME");
+        if (!argumentsAreValid(args)) {
             return;
         }
-        String inFolder = args[0];
-        Path resultsPath = Path.of(inFolder);
-        if (!Files.isDirectory(resultsPath)) {
-            System.err.println("Invalid INFOLDER argument, not a directory: " + inFolder);
-            return;
-        }
-        String outFolder = args[1];
-        Path plotfilesFolder = Path.of(outFolder);
-        if (!Files.isDirectory(plotfilesFolder)) {
-            System.err.println("Invalid OUTFOLDER argument, not a directory: " + outFolder);
-            return;
-        }
-        if (!Files.isWritable(plotfilesFolder)) {
-            System.err.println("Invalid OUTFOLDER argument, invalid permissions: " + outFolder);
-            return;
-        }
-
+        Path resultsPath = Path.of(args[0]);
+        Path plotfilesFolder = Path.of(args[1]);
         String outBasename = args[2];
 
         Statistics statistics = new Statistics();
-        Pattern csvFilePattern = Pattern.compile("(.*)\\.csv");
-        Pattern readPattern = Pattern.compile("\\(Read-URL:");
-        Pattern writePattern = Pattern.compile("\\(Write-URL:");
         ObjectMapper mapper = new ObjectMapper();
         List<Path> csvFiles;
         try (Stream<Path> files = Files.list(resultsPath)) {
-            csvFiles = files.filter(path -> csvFilePattern.matcher(path.getFileName().toString().toLowerCase()).matches()).toList();
+            csvFiles = files.filter(path -> CSV_FILE_PATTERN.matcher(path.getFileName().toString().toLowerCase()).matches()).toList();
         }
 
         for (Path csvFile : csvFiles) {
-            int deviations = 0;
-            int undeterminedReadWrite = 0;
-            Matcher csvFilenameMatcher = csvFilePattern.matcher(csvFile.getFileName().toString().toLowerCase());
+            Matcher csvFilenameMatcher = CSV_FILE_PATTERN.matcher(csvFile.getFileName().toString().toLowerCase());
             csvFilenameMatcher.matches();
             String testBasename = csvFilenameMatcher.group(1);
 
-            Path testResultsFile = resultsPath.resolve(testBasename + ".json");
-            try (JsonParser jParser = mapper.createParser(testResultsFile.toFile())) {
-                if (jParser.nextToken() != JsonToken.START_ARRAY) {
-                    throw new IllegalStateException("Expected an array");
-                }
-                while (jParser.nextToken() == JsonToken.START_OBJECT) {
-                    // one request at a time: a file of a run holds tens of megabytes
-                    JsonNode node = jParser.readValueAsTree();
-                    double duration = node.get("test_duration").asDouble();
-                    boolean success = node.get("test_success").asBoolean();
-                    boolean deviation = node.get("test_deviation_flag").asBoolean();
-                    int workerConcurrencyDegree = node.get("worker_concurrency_degree").asInt();
-                    statistics.recordWorkerConcurrency(workerConcurrencyDegree);
-                    int commandConcurrencyDegree = node.get("command_concurrency_degree").asInt();
-                    statistics.recordCommandConcurrency(commandConcurrencyDegree);
-
-                    String tags = node.get("test_tags").asString();
-                    Matcher readMatcher = readPattern.matcher(tags);
-                    if (readMatcher.find()) {
-                        if (success) {
-                            statistics.recordReadLatency(duration);
-                        } else {
-                            statistics.recordReadFailedLatency(duration);
-                        }
-                        if (deviation) {
-                            // NOTE: Deviation counts are reported and then discarded
-                            deviations++;
-                        }
-                    } else {
-                        Matcher writeMatcher = writePattern.matcher(tags);
-                        if (writeMatcher.find()) {
-                            if (success) {
-                                statistics.recordWriteLatency(duration);
-                            } else {
-                                statistics.recordWriteFailedLatency(duration);
-                            }
-                            if (deviation) {
-                                // NOTE: Deviation counts are reported and then discarded
-                                deviations++;
-                            }
-                        } else {
-                            undeterminedReadWrite++;
-                        }
-                    }
-                }
-            }
-
-            if (deviations > 0) {
-                System.err.println(testBasename + " Number of deviations: " + deviations);
-            }
-            if (undeterminedReadWrite > 0) {
-                System.err.println(testBasename + " Number of test_tags that match neither read nor write pattern: " + undeterminedReadWrite);
-            }
-
+            Run run = new Run(statistics);
+            run.readRequests(mapper, resultsPath.resolve(testBasename + ".json"));
+            run.report(testBasename);
 
             Path loadConfigurationFile = resultsPath.resolve(testBasename + "_load_specififation.json");
             JsonNode loadConfigurationNode = mapper.readTree(loadConfigurationFile.toFile());
@@ -139,5 +71,102 @@ public final class HTTPLoadTestBaselineStatistics {
         }
 
         GnuplotFileGenerator.writeStatisticsGnuplotAndDatafile(statistics, "clients", plotfilesFolder, outBasename);
+    }
+
+    /*
+     * Whether there are three arguments and the folders are folders, the one to write to writable; tells the user
+     * what is wrong when not. The messages are for the person who runs the program, on its standard error.
+     */
+    private static boolean argumentsAreValid(String[] args) {
+        if (args.length != 3) {
+            System.err.println("Must provide the following three arguments: INFOLDER OUTFOLDER OUTBASENAME");
+            return false;
+        }
+        String inFolder = args[0];
+        if (!Files.isDirectory(Path.of(inFolder))) {
+            System.err.println("Invalid INFOLDER argument, not a directory: " + inFolder);
+            return false;
+        }
+        String outFolder = args[1];
+        Path plotfilesFolder = Path.of(outFolder);
+        if (!Files.isDirectory(plotfilesFolder)) {
+            System.err.println("Invalid OUTFOLDER argument, not a directory: " + outFolder);
+            return false;
+        }
+        if (!Files.isWritable(plotfilesFolder)) {
+            System.err.println("Invalid OUTFOLDER argument, invalid permissions: " + outFolder);
+            return false;
+        }
+        return true;
+    }
+
+    /*
+     * The requests of one run, recorded in the statistics, and what of them could not be counted.
+     */
+    private static final class Run {
+
+        private final Statistics statistics;
+        private int deviations;
+        private int undeterminedReadWrite;
+
+        Run(Statistics statistics) {
+            this.statistics = statistics;
+        }
+
+        void readRequests(ObjectMapper mapper, Path testResultsFile) {
+            try (JsonParser jParser = mapper.createParser(testResultsFile.toFile())) {
+                if (jParser.nextToken() != JsonToken.START_ARRAY) {
+                    throw new IllegalStateException("Expected an array");
+                }
+                while (jParser.nextToken() == JsonToken.START_OBJECT) {
+                    // one request at a time: a file of a run holds tens of megabytes
+                    record(jParser.readValueAsTree());
+                }
+            }
+        }
+
+        private void record(JsonNode node) {
+            double duration = node.get("test_duration").asDouble();
+            boolean success = node.get("test_success").asBoolean();
+            boolean deviation = node.get("test_deviation_flag").asBoolean();
+            int workerConcurrencyDegree = node.get("worker_concurrency_degree").asInt();
+            statistics.recordWorkerConcurrency(workerConcurrencyDegree);
+            int commandConcurrencyDegree = node.get("command_concurrency_degree").asInt();
+            statistics.recordCommandConcurrency(commandConcurrencyDegree);
+
+            String tags = node.get("test_tags").asString();
+            if (READ_PATTERN.matcher(tags).find()) {
+                if (success) {
+                    statistics.recordReadLatency(duration);
+                } else {
+                    statistics.recordReadFailedLatency(duration);
+                }
+            } else if (WRITE_PATTERN.matcher(tags).find()) {
+                if (success) {
+                    statistics.recordWriteLatency(duration);
+                } else {
+                    statistics.recordWriteFailedLatency(duration);
+                }
+            } else {
+                undeterminedReadWrite++;
+                return;
+            }
+            if (deviation) {
+                // NOTE: Deviation counts are reported and then discarded
+                deviations++;
+            }
+        }
+
+        /*
+         * Tells the person who runs the program, on its standard error, of requests that could not be counted.
+         */
+        void report(String testBasename) {
+            if (deviations > 0) {
+                System.err.println(testBasename + " Number of deviations: " + deviations);
+            }
+            if (undeterminedReadWrite > 0) {
+                System.err.println(testBasename + " Number of test_tags that match neither read nor write pattern: " + undeterminedReadWrite);
+            }
+        }
     }
 }

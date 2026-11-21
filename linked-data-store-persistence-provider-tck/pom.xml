@@ -30,7 +30,7 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
                     <compilerArgs combine.self="override">
-                        <arg>-Xlint:all,-deprecation,-this-escape</arg>
+                        <arg>-Xlint:all,-this-escape</arg>
                         <arg>-Werror</arg>
                     </compilerArgs>
                 </configuration>

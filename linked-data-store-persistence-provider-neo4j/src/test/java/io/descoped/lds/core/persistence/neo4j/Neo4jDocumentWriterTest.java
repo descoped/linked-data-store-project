@@ -46,20 +46,20 @@ class Neo4jDocumentWriterTest {
 
     private static final List<String> TARGETS = List.of("Boat", "House");
 
-    private static Map<String, Object> record(String json) throws Exception {
+    private static Map<String, Object> parametersOf(String json) throws Exception {
         JsonNode document = mapper.readTree(json.replace('\'', '"'));
         DocumentKey key = new DocumentKey("ns", "Person", "p1", ZonedDateTime.of(2020, 1, 1, 12, 0, 0, 0, ZoneId.of("Europe/Oslo")));
-        return Neo4jDocumentWriter.record(new JsonDocument(key, document), PERSON, TARGETS);
+        return Neo4jDocumentWriter.documentParameters(new JsonDocument(key, document), PERSON, TARGETS);
     }
 
     @SuppressWarnings("unchecked")
-    private static List<Map<String, Object>> nodes(Map<String, Object> record) {
-        return (List<Map<String, Object>>) record.get("nodes");
+    private static List<Map<String, Object>> nodes(Map<String, Object> parameters) {
+        return (List<Map<String, Object>>) parameters.get("nodes");
     }
 
     @SuppressWarnings("unchecked")
-    private static List<List<Map<String, Object>>> links(Map<String, Object> record) {
-        return (List<List<Map<String, Object>>>) record.get("links");
+    private static List<List<Map<String, Object>>> links(Map<String, Object> parameters) {
+        return (List<List<Map<String, Object>>>) parameters.get("links");
     }
 
     @Test
@@ -70,19 +70,19 @@ class Neo4jDocumentWriterTest {
 
     @Test
     void aDocumentIsItsKeyWithTheVersionInUtc() throws Exception {
-        Map<String, Object> record = record("{}");
+        Map<String, Object> parameters = parametersOf("{}");
 
-        assertThat(record).containsEntry("namespace", "ns").containsEntry("id", "p1");
-        assertThat(record.get("version")).isEqualTo(ZonedDateTime.of(2020, 1, 1, 11, 0, 0, 0, ZoneId.of("Etc/UTC")));
-        assertThat(nodes(record)).isEmpty();
-        assertThat(links(record)).containsExactly(List.of(), List.of());
+        assertThat(parameters).containsEntry("namespace", "ns").containsEntry("id", "p1")
+                .containsEntry("version", ZonedDateTime.of(2020, 1, 1, 11, 0, 0, 0, ZoneId.of("Etc/UTC")));
+        assertThat(nodes(parameters)).isEmpty();
+        assertThat(links(parameters)).containsExactly(List.of(), List.of());
     }
 
     @Test
     void theNodesAreInTheOrderOfTheDocumentAndEachNamesItsParentByItsPlace() throws Exception {
-        Map<String, Object> record = record("{'name':'N','more':{'list':[true,{'deep':1.5}],'nothing':null},'count':7}");
+        Map<String, Object> parameters = parametersOf("{'name':'N','more':{'list':[true,{'deep':1.5}],'nothing':null},'count':7}");
 
-        assertThat(nodes(record)).containsExactly(
+        assertThat(nodes(parameters)).containsExactly(
                 Map.of("parent", 0, "name", "name", "type", "string", "path", "$.name", "value", "N"),
                 Map.of("parent", 0, "name", "more", "type", "map", "path", "$.more"),
                 Map.of("parent", 2, "name", "list", "type", "array", "path", "$.more.list"),
@@ -95,23 +95,23 @@ class Neo4jDocumentWriterTest {
 
     @Test
     void aTextInALinkFieldThatNamesAnEntityItMayLinkToIsALink() throws Exception {
-        Map<String, Object> record = record("{'home':'/Boat/b1','history':{'lived':['/House/h1','/House/h2']}}");
+        Map<String, Object> parameters = parametersOf("{'home':'/Boat/b1','history':{'lived':['/House/h1','/House/h2']}}");
 
-        assertThat(links(record).get(0)).containsExactly(Map.of("parent", 0, "name", "home", "id", "b1"));
-        assertThat(links(record).get(1)).containsExactly(
+        assertThat(links(parameters).get(0)).containsExactly(Map.of("parent", 0, "name", "home", "id", "b1"));
+        assertThat(links(parameters).get(1)).containsExactly(
                 Map.of("parent", 2, "name", "[]", "index", 0, "id", "h1"),
                 Map.of("parent", 2, "name", "[]", "index", 1, "id", "h2"));
-        assertThat(nodes(record)).extracting(node -> node.get("path")).containsExactly("$.history", "$.history.lived");
+        assertThat(nodes(parameters)).extracting(node -> node.get("path")).containsExactly("$.history", "$.history.lived");
     }
 
     @Test
     void anythingElseInALinkFieldIsTheValueItIs() throws Exception {
         // no link, a link to an entity the field may not link to, a link without its first slash, a link without an
         // id, a number, nothing; and a link in a field that is no link field
-        Map<String, Object> record = record("{'home':'nowhere','history':{'lived':['/Boat/b1','House/h1','/House/',5,null]},'name':'/House/h1'}");
+        Map<String, Object> parameters = parametersOf("{'home':'nowhere','history':{'lived':['/Boat/b1','House/h1','/House/',5,null]},'name':'/House/h1'}");
 
-        assertThat(links(record)).containsExactly(List.of(), List.of());
-        assertThat(nodes(record)).extracting(node -> node.get("type") + " " + node.get("path") + " " + node.get("value")).containsExactly(
+        assertThat(links(parameters)).containsExactly(List.of(), List.of());
+        assertThat(nodes(parameters)).extracting(node -> node.get("type") + " " + node.get("path") + " " + node.get("value")).containsExactly(
                 "string $.home nowhere",
                 "map $.history null",
                 "array $.history.lived null",
@@ -138,26 +138,26 @@ class Neo4jDocumentWriterTest {
     @Test
     void aLongTextIsLookedUpByItsHashAndAShortOneAsItIs() throws Exception {
         String forty = "0123456789012345678901234567890123456789";
-        Map<String, Object> record = record("{'short':'" + forty + "','long':'" + forty + "1'}");
+        Map<String, Object> parameters = parametersOf("{'short':'" + forty + "','long':'" + forty + "1'}");
 
-        assertThat(nodes(record).get(0)).containsEntry("value", forty).doesNotContainKey("hash");
-        assertThat(nodes(record).get(1)).containsEntry("value", forty + "1").containsEntry("hash", Neo4jDocumentWriter.hashOf(forty + "1"));
+        assertThat(nodes(parameters).get(0)).containsEntry("value", forty).doesNotContainKey("hash");
+        assertThat(nodes(parameters).get(1)).containsEntry("value", forty + "1").containsEntry("hash", Neo4jDocumentWriter.hashOf(forty + "1"));
         assertThat(Neo4jDocumentWriter.hashOf("abc")).isEqualTo("a9993e364706816aba3e25717850c26c9cd0d89d");
     }
 
     @Test
     void aWholeNumberThatALongDoesNotHoldIsWrittenAsADouble() throws Exception {
-        Map<String, Object> record = record("{'big':12345678901234567890,'most':9223372036854775807}");
+        Map<String, Object> parameters = parametersOf("{'big':12345678901234567890,'most':9223372036854775807}");
 
-        assertThat(nodes(record).get(0)).containsEntry("value", 1.2345678901234567E19);
-        assertThat(nodes(record).get(1)).containsEntry("value", Long.MAX_VALUE);
+        assertThat(nodes(parameters).get(0)).containsEntry("value", 1.2345678901234567E19);
+        assertThat(nodes(parameters).get(1)).containsEntry("value", Long.MAX_VALUE);
     }
 
     @Test
     void aDocumentThatIsNoObjectIsRefused() {
         JsonDocument document = new JsonDocument(new DocumentKey("ns", "Person", "p1", ZonedDateTime.now()), mapper.createArrayNode());
 
-        assertThatThrownBy(() -> Neo4jDocumentWriter.record(document, PERSON, TARGETS))
+        assertThatThrownBy(() -> Neo4jDocumentWriter.documentParameters(document, PERSON, TARGETS))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("JSON object");
     }
 

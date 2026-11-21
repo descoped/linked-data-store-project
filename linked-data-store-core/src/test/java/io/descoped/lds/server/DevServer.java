@@ -12,11 +12,11 @@ public class DevServer {
 
     private static final Logger LOG = LoggerFactory.getLogger(DevServer.class);
 
-    public static void main(String[] args) {
+    public static void main() {
         long now = System.currentTimeMillis();
 
         DynamicConfiguration configuration = DynamicConfiguration.builder()
-                .classpath(UndertowApplication.getDefaultConfigurationResourcePath()).file(Path.of(UndertowApplication.getDefaultConfigurationResourcePath()))
+                .classpath(UndertowApplication.DEFAULT_CONFIGURATION_RESOURCE_PATH).file(Path.of(UndertowApplication.DEFAULT_CONFIGURATION_RESOURCE_PATH))
                 .values(Map.of("persistence.provider", "mem",
                         "persistence.fragment.capacity", "8192",
                         "specification.schema", "spec/demo/contact.json,spec/demo/provisionagreement.json"))
@@ -43,7 +43,8 @@ public class DevServer {
             // wait for termination signal
             try {
                 Thread.currentThread().join();
-            } catch (InterruptedException e) {
+            } catch (InterruptedException _) {
+                // the wait is over: the server is stopped below
             }
         } finally {
             application.stop();

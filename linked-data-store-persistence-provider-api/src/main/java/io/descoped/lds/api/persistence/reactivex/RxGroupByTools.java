@@ -1,17 +1,21 @@
 package io.descoped.lds.api.persistence.reactivex;
 
+import io.reactivex.rxjava3.core.Emitter;
 import io.reactivex.rxjava3.core.Flowable;
+import io.reactivex.rxjava3.functions.BiConsumer;
 import io.reactivex.rxjava3.schedulers.Schedulers;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
 public class RxGroupByTools {
+
+    private RxGroupByTools() {
+    }
 
     /**
      * Assumes that the upstream is pre-ordered by group, so that all upstream items belonging to the same group
@@ -40,76 +44,82 @@ public class RxGroupByTools {
         final AtomicReference<K> groupKeyRef = new AtomicReference<>();
         final Map<K, BlockingQueue<GroupedItemWrapper<T>>> itemsByGroup = new LinkedHashMap<>();
 
-        return upstream.filter(item -> {
-            // Group by object determined by groupKeyFunction
-            K groupKey = groupKeyFunction.apply(item);
+        return upstream
+                .filter(item -> addToGroup(item, groupKeyFunction, groupKeyRef, itemsByGroup, groupCompleteItem))
+                .doOnSubscribe(subscription -> {
+                    groupKeyRef.set(null);
+                    itemsByGroup.clear();
+                })
+                .doOnComplete(() -> putInCurrentGroup(groupKeyRef, itemsByGroup, groupCompleteItem))
+                .doOnError(throwable -> putInCurrentGroup(groupKeyRef, itemsByGroup, new GroupedItemWrapper<>(throwable)))
+                .doOnCancel(() -> putInCurrentGroup(groupKeyRef, itemsByGroup, cancelledItem))
+                .map(item -> {
+                    final K groupKey = groupKeyRef.get();
+                    final BlockingQueue<GroupedItemWrapper<T>> blockingQueue = itemsByGroup.get(groupKey);
+                    final BiConsumer<BlockingQueue<GroupedItemWrapper<T>>, Emitter<T>> generator =
+                            (queue, emitter) -> emitNext(queue, emitter, groupCompleteItem, cancelledItem);
+                    Flowable<T> innerGroupFlow = Flowable.generate(() -> blockingQueue, generator, BlockingQueue::clear);
+                    return new MyGroupedFlowable<>(groupKey, innerGroupFlow.subscribeOn(Schedulers.newThread()));
+                });
+    }
 
-            if (groupKeyRef.get() == null) {
-                // very first upstream item, add item to new group
-                groupKeyRef.set(groupKey);
-                itemsByGroup.computeIfAbsent(groupKey, k -> new LinkedBlockingQueue<>()).add(new GroupedItemWrapper<>(item));
-                return true;
-            }
-            if (groupKey.equals(groupKeyRef.get())) {
-                // group already exists, add item to existing group
-                itemsByGroup.computeIfAbsent(groupKey, k -> new LinkedBlockingQueue<>()).add(new GroupedItemWrapper<>(item));
-                return false;
-            }
+    /*
+     * Adds an upstream item to its group. True when the item starts a new group, which completes the previous one.
+     */
+    private static <T, K> boolean addToGroup(T item, Function<? super T, ? extends K> groupKeyFunction, AtomicReference<K> groupKeyRef,
+                                             Map<K, BlockingQueue<GroupedItemWrapper<T>>> itemsByGroup,
+                                             GroupedItemWrapper<T> groupCompleteItem) {
+        // Group by object determined by groupKeyFunction
+        K groupKey = groupKeyFunction.apply(item);
 
-            // new group, signal completion of previous group and add item to new group
-            itemsByGroup.get(groupKeyRef.get()).add(groupCompleteItem);
+        if (groupKeyRef.get() == null) {
+            // very first upstream item, add item to new group
             groupKeyRef.set(groupKey);
             itemsByGroup.computeIfAbsent(groupKey, k -> new LinkedBlockingQueue<>()).add(new GroupedItemWrapper<>(item));
             return true;
+        }
+        if (groupKey.equals(groupKeyRef.get())) {
+            // group already exists, add item to existing group
+            itemsByGroup.computeIfAbsent(groupKey, k -> new LinkedBlockingQueue<>()).add(new GroupedItemWrapper<>(item));
+            return false;
+        }
 
-        }).doOnSubscribe(subscription -> {
-            groupKeyRef.set(null);
-            itemsByGroup.clear();
+        // new group, signal completion of previous group and add item to new group
+        itemsByGroup.get(groupKeyRef.get()).add(groupCompleteItem);
+        groupKeyRef.set(groupKey);
+        itemsByGroup.computeIfAbsent(groupKey, k -> new LinkedBlockingQueue<>()).add(new GroupedItemWrapper<>(item));
+        return true;
+    }
 
-        }).doOnComplete(() -> {
-            K groupKey = groupKeyRef.get();
-            if (groupKey == null) {
-                return;
-            }
-            itemsByGroup.get(groupKey).put(groupCompleteItem);
+    /*
+     * Puts a signal in the queue of the current group, if there is one.
+     */
+    private static <T, K> void putInCurrentGroup(AtomicReference<K> groupKeyRef, Map<K, BlockingQueue<GroupedItemWrapper<T>>> itemsByGroup,
+                                                 GroupedItemWrapper<T> wrapper) throws InterruptedException {
+        K groupKey = groupKeyRef.get();
+        if (groupKey == null) {
+            return;
+        }
+        itemsByGroup.get(groupKey).put(wrapper);
+    }
 
-        }).doOnError(throwable -> {
-            K groupKey = groupKeyRef.get();
-            if (groupKey == null) {
-                return;
-            }
-            itemsByGroup.get(groupKey).put(new GroupedItemWrapper<>(throwable));
-
-        }).doOnCancel(() -> {
-            K groupKey = groupKeyRef.get();
-            if (groupKey == null) {
-                return;
-            }
-            itemsByGroup.get(groupKey).put(cancelledItem);
-
-        }).map(item -> {
-            final K groupKey = groupKeyRef.get();
-            final BlockingQueue<GroupedItemWrapper<T>> blockingQueue = itemsByGroup.get(groupKey);
-            Flowable<T> innerGroupFlow = Flowable.generate(
-                    () -> blockingQueue,
-                    (queue, emitter) -> {
-                        GroupedItemWrapper<T> wrapper = queue.take();
-                        if (wrapper == groupCompleteItem) {
-                            emitter.onComplete();
-                            return;
-                        }
-                        if (wrapper == cancelledItem) {
-                            emitter.onError(new RuntimeException("cancelled"));
-                        }
-                        if (wrapper.throwable != null) {
-                            emitter.onError(wrapper.throwable);
-                        }
-                        emitter.onNext(wrapper.item);
-                    },
-                    queue -> queue.clear()
-            );
-            return new MyGroupedFlowable<>(groupKey, innerGroupFlow.subscribeOn(Schedulers.newThread()));
-        });
+    /*
+     * Gives the next item of a group to its subscriber, or ends the group.
+     */
+    private static <T> void emitNext(BlockingQueue<GroupedItemWrapper<T>> queue, Emitter<T> emitter,
+                                     GroupedItemWrapper<T> groupCompleteItem, GroupedItemWrapper<T> cancelledItem) throws InterruptedException {
+        GroupedItemWrapper<T> wrapper = queue.take();
+        if (wrapper == groupCompleteItem) {
+            emitter.onComplete();
+            return;
+        }
+        if (wrapper == cancelledItem) {
+            emitter.onError(new RuntimeException("cancelled"));
+        }
+        if (wrapper.throwable != null) {
+            emitter.onError(wrapper.throwable);
+        }
+        emitter.onNext(wrapper.item);
     }
 
     public static class MyGroupedFlowable<T, K> {
@@ -143,42 +153,5 @@ public class RxGroupByTools {
             this.item = null;
             this.throwable = t;
         }
-    }
-
-    static AtomicInteger nextFlowId = new AtomicInteger(1);
-
-    public static <T> Flowable<T> debug(final Flowable<T> flowable, final String flowDescription) {
-        final int flowId = nextFlowId.getAndIncrement();
-
-        return flowable
-
-                // terminate
-
-                .doOnComplete(() -> {
-                    System.out.printf("%d %s onComplete%n", flowId, flowDescription);
-                })
-                .doOnError(throwable -> {
-                    System.out.printf("%d %s onError: %s%n", flowId, flowDescription, throwable.getMessage());
-                })
-
-
-                //lifecycle
-
-                .doOnSubscribe(subscription -> {
-                    System.out.printf("%d %s onSubscribe: %s%n", flowId, flowDescription, subscription.toString());
-                })
-                .doOnCancel(() -> {
-                    System.out.printf("%d %s onCancel%n", flowId, flowDescription);
-                })
-                .doOnRequest(r -> {
-                    System.out.printf("%d %s onRequest %d%n", flowId, flowDescription, r);
-                })
-
-
-                // data-flow
-
-                .doOnNext(item -> {
-                    System.out.printf("%d %s onNext: %s%n", flowId, flowDescription, item.toString());
-                });
     }
 }

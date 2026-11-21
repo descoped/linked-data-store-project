@@ -109,7 +109,7 @@ public class ReferenceResourceHandler implements HttpHandler {
                     } else {
                         new ReferenceJsonHelper(specification, topLevelElement).createReferenceJson(resourceContext, jsonDocument.jackson());
 
-                        boolean sync = exchange.getQueryParameters().getOrDefault("sync", new LinkedList<>()).stream().anyMatch(s -> "true".equalsIgnoreCase(s));
+                        boolean sync = exchange.getQueryParameters().getOrDefault("sync", new LinkedList<>()).stream().anyMatch("true"::equalsIgnoreCase);
 
                         Saga saga = sagaRepository.get(SagaRepository.SAGA_CREATE_OR_UPDATE_MANAGED_RESOURCE);
 

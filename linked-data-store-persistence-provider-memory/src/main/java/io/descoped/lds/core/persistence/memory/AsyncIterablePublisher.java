@@ -44,7 +44,7 @@ public class AsyncIterablePublisher<T> implements Publisher<T> {
 
         void onSubscribeReturned() {
             publicationPending.set(false);
-            queuePublicationRequest(() -> asyncIterate());
+            queuePublicationRequest(this::asyncIterate);
         }
 
         @Override
@@ -56,7 +56,8 @@ public class AsyncIterablePublisher<T> implements Publisher<T> {
                 if (cancelled.get()) {
                     return;
                 }
-                long r, newRequestedValue;
+                long r;
+                long newRequestedValue;
                 do {
                     r = requested.get();
                     if (Long.MAX_VALUE - r < n) {
@@ -66,7 +67,7 @@ public class AsyncIterablePublisher<T> implements Publisher<T> {
                         newRequestedValue = r + n;
                     }
                 } while (!requested.compareAndSet(r, newRequestedValue));
-                queuePublicationRequest(() -> asyncIterate());
+                queuePublicationRequest(this::asyncIterate);
             } catch (Throwable t) {
                 signalError(t);
             }
@@ -78,17 +79,17 @@ public class AsyncIterablePublisher<T> implements Publisher<T> {
          */
         private void signalError(Throwable failure) {
             cancelled.set(true);
-            Subscriber<? super T> subscriber = this.subscriber.getAndSet(null);
-            if (subscriber != null) {
-                subscriber.onError(failure);
+            Subscriber<? super T> target = this.subscriber.getAndSet(null);
+            if (target != null) {
+                target.onError(failure);
             }
         }
 
         private void signalComplete() {
             cancelled.set(true);
-            Subscriber<? super T> subscriber = this.subscriber.getAndSet(null);
-            if (subscriber != null) {
-                subscriber.onComplete();
+            Subscriber<? super T> target = this.subscriber.getAndSet(null);
+            if (target != null) {
+                target.onComplete();
             }
         }
 
@@ -98,25 +99,25 @@ public class AsyncIterablePublisher<T> implements Publisher<T> {
                     signalError(failure); // the iterator could not tell whether there is a next item
                     return;
                 }
-                Subscriber<? super T> subscriber = this.subscriber.get();
-                if (subscriber == null) {
+                Subscriber<? super T> target = this.subscriber.get();
+                if (target == null) {
                     // asynchronously cancelled
                     return;
                 }
-                if (!hasNext) {
+                if (!hasNext.booleanValue()) {
                     signalComplete();
                     return;
                 }
                 try {
                     T item = asyncIterator.next();
-                    subscriber.onNext(item);
+                    target.onNext(item);
                     published.incrementAndGet();
                 } catch (Throwable t) {
                     signalError(t);
                     return; // the publication stays held
                 }
                 publicationPending.set(false);
-                queuePublicationRequest(() -> asyncIterate());
+                queuePublicationRequest(this::asyncIterate);
             });
         }
 

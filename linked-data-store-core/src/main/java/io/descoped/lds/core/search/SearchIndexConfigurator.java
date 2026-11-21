@@ -12,6 +12,9 @@ public class SearchIndexConfigurator {
 
     private static final Logger LOG = LoggerFactory.getLogger(SearchIndexConfigurator.class);
 
+    private SearchIndexConfigurator() {
+    }
+
     public static SearchIndex configureSearchIndex(DynamicConfiguration configuration) {
         boolean graphqlSearchEnabled = configuration.getBoolean("graphql.search.enabled", false);
         if (graphqlSearchEnabled) {
@@ -24,7 +27,7 @@ public class SearchIndexConfigurator {
                     return provider.getSearchIndex(configuration.asMap());
                 }
             }
-            throw new RuntimeException("No search index provider found for providerId: " + providerId);
+            throw new IllegalStateException("No search index provider found for providerId: " + providerId);
         } else {
             LOG.info("GraphQL Search is disabled. Skipping search index initialisation");
             return null;

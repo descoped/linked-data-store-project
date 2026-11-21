@@ -22,18 +22,6 @@ public final class TestClient {
     private TestClient(TestUriResolver server) {
         this.server = server;
         this.client = HttpClient.newBuilder().build();
-
-        /*
-        String username = "";
-        String password = "";
-        String basicAuth = new String(java.util.Base64.getEncoder().encode((username + ":" + password).getBytes(StandardCharsets.UTF_8)), StandardCharsets.UTF_8);
-        HttpRequest.BodyPublisher bodyPublisher = HttpRequest.BodyPublisher.fromString("{\"some\":\"data\"");
-        HttpRequest.newBuilder(URI.create(server.testURL("something")))
-                .POST(bodyPublisher)
-                .header("Content-Type", "application/json")
-                .header("Authentication", "Basic " + basicAuth)
-                .build();
-        */
     }
 
     public static TestClient newClient(TestUriResolver server) {

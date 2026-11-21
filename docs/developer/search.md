@@ -450,9 +450,9 @@ Not finished: what search covers is under review. The Solr provider indexes only
 core only after the first such text is written. On a new core, a search before that is answered by Solr with
 `undefined field searchfield`, and no test covers it.
 
-Not finished: the argument `searchable` of `@domain` is not read. `AddSearchTypesVisitor.isSearchable` and
-`DomainDirective.isSearchable` are called by nothing. An entity type with `@domain(searchable: false)` is
-in `TypeFilters` and `SearchResult`, is indexed and is found, like every other entity type.
+Not finished: the argument `searchable` of `@domain` is not read. `DomainDirective.isSearchable` is called by
+nothing. An entity type with `@domain(searchable: false)` is in `TypeFilters` and `SearchResult`, is indexed and is
+found, like every other entity type.
 
 Not finished: with a model of JSON Schema files and no GraphQL schema, search can be on, and every write goes
 to the index, but LDS has no `Search` field and so nothing reads the index.

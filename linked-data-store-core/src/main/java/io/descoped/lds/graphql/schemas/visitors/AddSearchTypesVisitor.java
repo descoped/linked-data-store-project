@@ -1,8 +1,6 @@
 package io.descoped.lds.graphql.schemas.visitors;
 
 import graphql.schema.GraphQLAppliedDirective;
-import graphql.schema.GraphQLArgument;
-import graphql.schema.GraphQLDirective;
 import graphql.schema.GraphQLEnumType;
 import graphql.schema.GraphQLFieldDefinition;
 import graphql.schema.GraphQLNamedType;
@@ -28,7 +26,6 @@ import static io.descoped.lds.graphql.schemas.SchemaElements.newEnum;
 import static io.descoped.lds.graphql.schemas.SchemaElements.newFieldDefinition;
 import static io.descoped.lds.graphql.schemas.SchemaElements.newObject;
 import static io.descoped.lds.graphql.schemas.SchemaElements.newUnionType;
-import static io.descoped.lds.graphql.schemas.SchemaElements.value;
 
 public class AddSearchTypesVisitor extends GraphQLTypeVisitorStub {
 
@@ -39,7 +36,9 @@ public class AddSearchTypesVisitor extends GraphQLTypeVisitorStub {
      */
     public static final String SEARCH_NAME = "search";
 
-    private static final Logger log = LoggerFactory.getLogger(AddConnectionVisitor.class);
+    private static final Logger log = LoggerFactory.getLogger(AddSearchTypesVisitor.class);
+    private static final String TYPE_FILTERS = "TypeFilters";
+    private static final String SEARCH_RESULT = "SearchResult";
 
     private final GraphQLObjectType.Builder query;
     private final Map<String, GraphQLNamedType> typeMap;
@@ -51,11 +50,11 @@ public class AddSearchTypesVisitor extends GraphQLTypeVisitorStub {
         this.query = query;
         // Create a union type for the search results and a Type filter for the query.
         this.typeFilterEnum = newEnum()
-                .name("TypeFilters")
+                .name(TYPE_FILTERS)
                 .description("Defines valid type filters");
 
         this.searchResultType = newUnionType()
-                .name("SearchResult")
+                .name(SEARCH_RESULT)
                 .description("Union type for possible search results");
     }
 
@@ -65,17 +64,6 @@ public class AddSearchTypesVisitor extends GraphQLTypeVisitorStub {
 
     public AddSearchTypesVisitor(Map<String, GraphQLNamedType> typeMap, GraphQLObjectType query) {
         this(typeMap, newObject(query));
-    }
-
-    @Deprecated
-    private static boolean isSearchable(GraphQLObjectType node) {
-        for (GraphQLDirective directive : node.getDirectives()) {
-            if ("domain".equals(directive.getName())) {
-                GraphQLArgument searchable = directive.getArgument("searchable");
-                return searchable != null && value(searchable) != null && value(searchable).equals(true);
-            }
-        }
-        return false;
     }
 
     @Override
@@ -89,19 +77,21 @@ public class AddSearchTypesVisitor extends GraphQLTypeVisitorStub {
 
     public GraphQLType getQuery() {
 
-        if (typeMap.containsKey("TypeFilters")) {
-            throw new IllegalArgumentException("type map already contains TypeFilters");
+        if (typeMap.containsKey(TYPE_FILTERS)) {
+            throw new IllegalArgumentException("type map already contains " + TYPE_FILTERS);
         }
-        GraphQLEnumType typeFilterEnum = this.typeFilterEnum.build();
-        typeMap.put("TypeFilters", typeFilterEnum);
+        GraphQLEnumType typeFilters = this.typeFilterEnum.build();
+        typeMap.put(TYPE_FILTERS, typeFilters);
 
-        if (typeMap.containsKey("SearchResult")) {
-            throw new IllegalArgumentException("type map already contains SearchResult");
+        if (typeMap.containsKey(SEARCH_RESULT)) {
+            throw new IllegalArgumentException("type map already contains " + SEARCH_RESULT);
         }
 
-        GraphQLUnionType searchResultType = this.searchResultType.build();
-        typeMap.put("SearchResult", searchResultType);
-        log.debug("Creating {} type {}", searchResultType.getName(), GraphQLTypeUtil.simplePrint(searchResultType));
+        GraphQLUnionType searchResult = this.searchResultType.build();
+        typeMap.put(SEARCH_RESULT, searchResult);
+        if (log.isDebugEnabled()) {
+            log.debug("Creating {} type {}", searchResult.getName(), GraphQLTypeUtil.simplePrint(searchResult));
+        }
 
         // Create a new field in the query
         GraphQLFieldDefinition.Builder searchField = newFieldDefinition()
@@ -111,9 +101,9 @@ public class AddSearchTypesVisitor extends GraphQLTypeVisitorStub {
                         .name("query")
                         .type(nonNull(GraphQLString)))
                 .argument(newArgument().name("filter")
-                        .type(list(typeFilterEnum))
+                        .type(list(typeFilters))
                         .build())
-                .type(nonNull(list(nonNull(searchResultType))));
+                .type(nonNull(list(nonNull(searchResult))));
 
         query.field(searchField);
 

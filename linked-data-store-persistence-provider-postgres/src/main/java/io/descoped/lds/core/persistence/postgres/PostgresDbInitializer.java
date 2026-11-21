@@ -37,6 +37,7 @@ public class PostgresDbInitializer implements PersistenceInitializer {
      * Called by the service loader.
      */
     public PostgresDbInitializer() {
+        // the provider is set up by initialize
     }
 
     /**

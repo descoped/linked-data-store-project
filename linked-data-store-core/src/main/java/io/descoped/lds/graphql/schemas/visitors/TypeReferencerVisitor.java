@@ -53,12 +53,6 @@ public class TypeReferencerVisitor extends GraphQLTypeVisitorStub {
             });
         }
 
-        // TODO: Figure out why this fails. We should have tree with same instance of all types
-        //if (!typeMap.replace(existing.getName(), existing, newObject)) {
-        //    throw new IllegalArgumentException(String.format(
-        //            "Could not replace %s, the schema probably contains references", existing.getName()
-        //    ));
-        //}
         GraphQLNamedType oldObject = typeMap.put(node.getName(), newInterface.build());
         if (oldObject != null && Objects.equals(oldObject, node)) {
             log.debug("Existing object {} is not equal to visited object {}", node, oldObject);
@@ -75,12 +69,6 @@ public class TypeReferencerVisitor extends GraphQLTypeVisitorStub {
                 newUnionType.possibleType(GraphQLTypeReference.typeRef(type.getName()));
             }
         }
-        // TODO: Figure out why this fails. We should have tree with same instance of all types
-        //if (!typeMap.replace(existing.getName(), existing, newObject)) {
-        //    throw new IllegalArgumentException(String.format(
-        //            "Could not replace %s, the schema probably contains references", existing.getName()
-        //    ));
-        //}
         GraphQLNamedType oldObject = typeMap.put(node.getName(), newUnionType.build());
         if (oldObject != null && Objects.equals(oldObject, node)) {
             log.debug("Existing object {} is not equal to visited object {}", node, oldObject);
@@ -102,12 +90,6 @@ public class TypeReferencerVisitor extends GraphQLTypeVisitorStub {
                 newObject.withInterfaces(GraphQLTypeReference.typeRef(name(reference)));
             });
         }
-        // TODO: Figure out why this fails. We should have tree with same instance of all types
-        //if (!typeMap.replace(existing.getName(), existing, newObject)) {
-        //    throw new IllegalArgumentException(String.format(
-        //            "Could not replace %s, the schema probably contains references", existing.getName()
-        //    ));
-        //}
         GraphQLNamedType oldObject = typeMap.put(node.getName(), newObject.build());
         if (oldObject != null && Objects.equals(oldObject, node)) {
             log.debug("Existing object {} is not equal to visited object {}", node, oldObject);

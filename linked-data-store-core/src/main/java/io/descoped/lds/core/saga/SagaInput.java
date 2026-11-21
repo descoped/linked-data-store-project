@@ -12,6 +12,8 @@ import static java.util.Optional.ofNullable;
 
 public class SagaInput {
 
+    private static final String VERSION = "version";
+
     final JsonNode node;
 
     public SagaInput(JsonNode node) {
@@ -20,24 +22,24 @@ public class SagaInput {
 
     public SagaInput(UUID txId, String method, String schema, String namespace, String entity,
                      String id, ZonedDateTime version, String source, String sourceId, JsonNode data) {
-        ObjectNode node = JsonTools.mapper.createObjectNode();
-        node.put("txid", txId.toString());
-        node.put("method", method);
-        node.put("schema", schema);
-        node.put("namespace", namespace);
-        node.put("entity", entity);
-        node.put("id", id);
-        node.put("version", DateTimeFormatter.ISO_ZONED_DATE_TIME.format(version));
+        ObjectNode json = JsonTools.mapper.createObjectNode();
+        json.put("txid", txId.toString());
+        json.put("method", method);
+        json.put("schema", schema);
+        json.put("namespace", namespace);
+        json.put("entity", entity);
+        json.put("id", id);
+        json.put(VERSION, DateTimeFormatter.ISO_ZONED_DATE_TIME.format(version));
         if (source != null) {
-            node.put("source", source);
+            json.put("source", source);
         }
         if (sourceId != null) {
-            node.put("sourceId", sourceId);
+            json.put("sourceId", sourceId);
         }
         if (data != null) {
-            node.set("data", data);
+            json.set("data", data);
         }
-        this.node = node;
+        this.node = json;
     }
 
     JsonNode asJsonNode() {
@@ -69,13 +71,12 @@ public class SagaInput {
     }
 
     public ZonedDateTime version() {
-        String versionStr = JsonTools.text(node.get("version"));
+        String versionStr = JsonTools.text(node.get(VERSION));
         return ZonedDateTime.parse(versionStr, DateTimeFormatter.ISO_ZONED_DATE_TIME);
     }
 
     public String versionAsString() {
-        String versionStr = JsonTools.text(node.get("version"));
-        return versionStr;
+        return JsonTools.text(node.get(VERSION));
     }
 
     public String source() {

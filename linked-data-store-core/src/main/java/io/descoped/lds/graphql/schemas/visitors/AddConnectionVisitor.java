@@ -43,6 +43,7 @@ import static io.descoped.lds.graphql.schemas.visitors.AddSearchTypesVisitor.SEA
 public class AddConnectionVisitor extends GraphQLTypeVisitorStub {
 
     private static final Logger log = LoggerFactory.getLogger(AddConnectionVisitor.class);
+    private static final String PAGE_INFO = "PageInfo";
     private final Map<String, GraphQLNamedType> typeMap;
 
     public AddConnectionVisitor(Map<String, GraphQLNamedType> typeMap) {
@@ -53,7 +54,7 @@ public class AddConnectionVisitor extends GraphQLTypeVisitorStub {
         for (GraphQLDirective directive : node.getDirectives()) {
             if ("link".equals(directive.getName()) || "reverseLink".equals(directive.getName())) {
                 GraphQLArgument pagination = directive.getArgument("pagination");
-                // TODO: Figure out how arguments are supposed to be used.
+                // A link without the argument pagination, or without a value for it, is paged.
                 if (pagination == null) {
                     return true;
                 }
@@ -82,7 +83,7 @@ public class AddConnectionVisitor extends GraphQLTypeVisitorStub {
 
         GraphQLInterfaceType.Builder newObject = newInterface(node);
         for (GraphQLFieldDefinition fieldDefinition : fieldsWithPagination) {
-            newObject.field(createConnectionField(node, fieldDefinition));
+            newObject.field(createConnectionField(fieldDefinition));
         }
 
         typeMap.put(node.getName(), newObject.build());
@@ -94,8 +95,10 @@ public class AddConnectionVisitor extends GraphQLTypeVisitorStub {
         List<GraphQLFieldDefinition> fieldsWithPagination = new ArrayList<>();
         for (GraphQLFieldDefinition fieldDefinition : node.getFieldDefinitions()) {
             if (hasLinkWithPagination(fieldDefinition) && isList(unwrapNonNull(fieldDefinition.getType()))) {
-                log.trace("Found link from {} to {} on field {}", node.getName(), simplePrint(fieldDefinition.getType()),
-                        fieldDefinition.getName());
+                if (log.isTraceEnabled()) {
+                    log.trace("Found link from {} to {} on field {}", node.getName(),
+                            simplePrint(fieldDefinition.getType()), fieldDefinition.getName());
+                }
                 fieldsWithPagination.add(fieldDefinition);
             }
         }
@@ -115,15 +118,9 @@ public class AddConnectionVisitor extends GraphQLTypeVisitorStub {
         GraphQLObjectType.Builder newObject = newObject(
                 (GraphQLObjectType) typeMap.get(node.getName()));
         for (GraphQLFieldDefinition fieldDefinition : fieldsWithPagination) {
-            newObject.field(createConnectionField(node, fieldDefinition));
+            newObject.field(createConnectionField(fieldDefinition));
         }
 
-        // TODO: Figure out why this fails. We should have tree with same instance of all types
-        //if (!typeMap.replace(existing.getName(), existing, newObject)) {
-        //    throw new IllegalArgumentException(String.format(
-        //            "Could not replace %s, the schema probably contains references", existing.getName()
-        //    ));
-        //}
         GraphQLNamedType oldObject = typeMap.put(node.getName(), newObject.build());
         if (oldObject != null && Objects.equals(oldObject, node)) {
             log.debug("Existing object {} is not equal to visited object {}", node, oldObject);
@@ -132,7 +129,7 @@ public class AddConnectionVisitor extends GraphQLTypeVisitorStub {
         return TraversalControl.CONTINUE;
     }
 
-    private GraphQLFieldDefinition createConnectionField(GraphQLType from, GraphQLFieldDefinition field) {
+    private GraphQLFieldDefinition createConnectionField(GraphQLFieldDefinition field) {
         GraphQLType to = unwrapType(field.getType()).pop();
         GraphQLFieldDefinition.Builder newFieldDefinition = newFieldDefinition(field);
         return newFieldDefinition
@@ -140,14 +137,13 @@ public class AddConnectionVisitor extends GraphQLTypeVisitorStub {
                 .argument(GraphQLArgument.newArgument().name("after").type(GraphQLString).build())
                 .argument(GraphQLArgument.newArgument().name("last").type(GraphQLInt).build())
                 .argument(GraphQLArgument.newArgument().name("before").type(GraphQLString).build())
-                .type((GraphQLOutputType) createConnectionType(from, to))
+                .type((GraphQLOutputType) createConnectionType(to))
                 .build();
     }
 
-    private GraphQLType createConnectionType(GraphQLType from, GraphQLType to) {
+    private GraphQLType createConnectionType(GraphQLType to) {
         // We do not use Relay Connection name convertion to reduce the amount of
         // types.
-        // String connectionTypeName = from.getName() + to.getName() + "Connection";
         String connectionTypeName = name(to) + "Connection";
         if (!typeMap.containsKey(connectionTypeName)) {
             GraphQLFieldDefinition.Builder pageInfoField = newFieldDefinition()
@@ -156,7 +152,7 @@ public class AddConnectionVisitor extends GraphQLTypeVisitorStub {
             GraphQLFieldDefinition.Builder edgesField = newFieldDefinition()
                     .type(GraphQLNonNull.nonNull(
                             GraphQLList.list(GraphQLNonNull.nonNull(
-                                    createEdgeType(from, to))
+                                    createEdgeType(to))
                             ))
                     )
                     .name("edges");
@@ -171,12 +167,11 @@ public class AddConnectionVisitor extends GraphQLTypeVisitorStub {
         return typeMap.get(connectionTypeName);
     }
 
-    private GraphQLType createEdgeType(GraphQLType from, GraphQLType to) {
+    private GraphQLType createEdgeType(GraphQLType to) {
         // We do not use Relay Connection name conversion to reduce the amount of
         // types.
-        // String edgeTypeName = from.getName() + to.getName() + "Connection";
         String edgeTypeName = name(to) + "Edge";
-        if (!typeMap.containsKey(edgeTypeName)) {
+        return typeMap.computeIfAbsent(edgeTypeName, edgeName -> {
 
             GraphQLFieldDefinition.Builder nodeField = newFieldDefinition()
                     .type(GraphQLNonNull.nonNull(to)).name("node");
@@ -185,24 +180,23 @@ public class AddConnectionVisitor extends GraphQLTypeVisitorStub {
                     .type(GraphQLNonNull.nonNull(GraphQLString)).name("cursor");
 
             GraphQLObjectType.Builder edgeType = newObject()
-                    .name(edgeTypeName)
+                    .name(edgeName)
                     .field(cursorField)
                     .field(nodeField);
 
-            typeMap.put(edgeTypeName, edgeType.build());
-        }
-        return typeMap.get(edgeTypeName);
+            return edgeType.build();
+        });
     }
 
     private GraphQLType createPageInfoType() {
-        if (!typeMap.containsKey("PageInfo")) {
+        if (!typeMap.containsKey(PAGE_INFO)) {
             GraphQLObjectType pageInfoType = newObject()
-                    .name("PageInfo")
+                    .name(PAGE_INFO)
                     .field(newFieldDefinition().name("hasNextPage").type(GraphQLNonNull.nonNull(GraphQLBoolean)))
                     .field(newFieldDefinition().name("hasPreviousPage").type(GraphQLNonNull.nonNull(GraphQLBoolean)))
                     .build();
-            typeMap.put("PageInfo", pageInfoType);
+            typeMap.put(PAGE_INFO, pageInfoType);
         }
-        return typeMap.get("PageInfo");
+        return typeMap.get(PAGE_INFO);
     }
 }

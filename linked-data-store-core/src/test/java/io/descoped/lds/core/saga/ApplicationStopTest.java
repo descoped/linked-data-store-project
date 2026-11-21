@@ -12,6 +12,7 @@ import no.cantara.sagalog.SagaLog;
 import no.cantara.sagalog.SagaLogEntry;
 import no.cantara.sagalog.SagaLogEntryType;
 import no.cantara.sagalog.SagaLogOwner;
+import no.cantara.sagalog.SagaLogPool;
 import no.cantara.sagalog.SagaPoolShutdownException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -147,8 +148,9 @@ class ApplicationStopTest {
         assertThat(completion).isCompletedExceptionally();
         assertThatThrownBy(completion::join).hasRootCauseInstanceOf(RejectedExecutionException.class);
         assertThat(held.laterSteps.get()).isLessThan(2); // the saga runs one of the two itself
-        assertThat(entries).anyMatch(entry -> Saga.ID_START.equals(entry.getNodeId()) && entry.getEntryType() == SagaLogEntryType.Start);
-        assertThat(entries).anyMatch(entry -> "a".equals(entry.getNodeId()) && entry.getEntryType() == SagaLogEntryType.End);
+        assertThat(entries)
+                .anyMatch(entry -> Saga.ID_START.equals(entry.getNodeId()) && entry.getEntryType() == SagaLogEntryType.Start)
+                .anyMatch(entry -> "a".equals(entry.getNodeId()) && entry.getEntryType() == SagaLogEntryType.End);
         assertThat(sec.semaphore.availablePermits()).isEqualTo(permits);
         assertThat(sec.executionIdBySagaLogId).isEmpty();
         assertStopped(server);
@@ -341,7 +343,8 @@ class ApplicationStopTest {
         SagaExecutionCoordinator sec = stopped.getApplication().getSec();
         SagaLogOwner owner = new SagaLogOwner("application-stop-test");
         assertThat(sec.getThreadPool().isTerminated()).isTrue();
-        assertThatThrownBy(() -> sec.getSagaLogPool().tryAcquire(owner)).isInstanceOf(SagaPoolShutdownException.class);
+        SagaLogPool sagaLogPool = sec.getSagaLogPool();
+        assertThatThrownBy(() -> sagaLogPool.tryAcquire(owner)).isInstanceOf(SagaPoolShutdownException.class);
     }
 
     /**
@@ -392,7 +395,7 @@ class ApplicationStopTest {
 
     private TestServer start() {
         DynamicConfiguration configuration = DynamicConfiguration.builder()
-                .classpath(UndertowApplication.getDefaultConfigurationResourcePath())
+                .classpath(UndertowApplication.DEFAULT_CONFIGURATION_RESOURCE_PATH)
                 .classpath("application_test.properties")
                 .values(Map.of(
                         "sagalog.provider", SlowTruncateSagaLogInitializer.class.getName(),

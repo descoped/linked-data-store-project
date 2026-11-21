@@ -8,7 +8,7 @@ import no.cantara.saga.execution.SagaHandoffResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.concurrent.ExecutionException;
+import java.util.concurrent.CompletionException;
 
 public class SagasObserver implements Runnable {
 
@@ -40,23 +40,23 @@ public class SagasObserver implements Runnable {
         try {
             sagaObserverThread.join();
         } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
             throw new RuntimeException(e);
         }
         return this;
     }
 
     private void fireSagaSuccess(SagaHandoffControl sagaHandoffControl) {
-        LOG.trace(String.format("Observed Saga success. Saga-name: \"%s\", executionId: \"%s\"",
+        LOG.trace("Observed Saga success. Saga-name: \"{}\", executionId: \"{}\"",
                 sagaHandoffControl.getSaga().name,
-                sagaHandoffControl.getExecutionId())
+                sagaHandoffControl.getExecutionId()
         );
     }
 
     private void fireSagaFailed(SagaHandoffControl sagaHandoffControl, Throwable t) {
-        LOG.error(
-                String.format("Observed Saga failure during execution. Saga-name: \"%s\", executionId: \"%s\"",
-                        sagaHandoffControl.getSaga().name,
-                        sagaHandoffControl.getExecutionId()),
+        LOG.error("Observed Saga failure during execution. Saga-name: \"{}\", executionId: \"{}\"",
+                sagaHandoffControl.getSaga().name,
+                sagaHandoffControl.getExecutionId(),
                 t
         );
     }
@@ -77,29 +77,26 @@ public class SagasObserver implements Runnable {
                     return;
                 }
 
-                /*
-                 * Deal with successful completion and failure of a the selected saga
-                 */
-                boolean interrupted;
-                do {
-                    interrupted = false;
-                    try {
-                        selected.future.get(); // should never block
-                        if (selected.control != null) {
-                            fireSagaSuccess(selected.control);
-                        }
-                    } catch (ExecutionException e) {
-                        fireSagaFailed(selected.control, e.getCause());
-                    } catch (InterruptedException e) {
-                        interrupted = true;
-                        LOG.warn("SagaObserver thread interrupted, resetting interrupt status", e);
-                        Thread.interrupted(); // clear interrupt status and continue
-                    }
-                } while (interrupted);
+                fireSagaCompletion(selected);
             }
             LOG.info("controlled shut-down of saga-observer.");
         } catch (Throwable t) {
             LOG.error("", t);
+        }
+    }
+
+    /*
+     * Deal with successful completion and failure of the selected saga. A future is selected when it is done, so
+     * the join does not wait.
+     */
+    private void fireSagaCompletion(Selection<SagaHandoffResult, SagaHandoffControl> selected) {
+        try {
+            selected.future.join();
+            if (selected.control != null) {
+                fireSagaSuccess(selected.control);
+            }
+        } catch (CompletionException e) {
+            fireSagaFailed(selected.control, e.getCause());
         }
     }
 }

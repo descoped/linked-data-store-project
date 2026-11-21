@@ -36,8 +36,8 @@ public class HealthCheckHandler implements HttpHandler {
         }
 
         try {
-            // TODO: Extract to health() method in RxJsonPersistence interface.
-            // TODO: Check search index, log and event provider.
+            // Only the persistence provider is checked, by opening a transaction, as RxJsonPersistence has no
+            // method for its health. The search index, the logs and the event provider are not checked.
             Transaction transaction = persistence.createTransaction(true);
             transaction.cancel();
             exchange.setStatusCode(HttpURLConnection.HTTP_OK);

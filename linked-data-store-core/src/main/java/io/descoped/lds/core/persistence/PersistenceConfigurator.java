@@ -15,53 +15,20 @@ import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 public class PersistenceConfigurator {
 
     private static final Logger LOG = LoggerFactory.getLogger(PersistenceConfigurator.class);
 
+    private PersistenceConfigurator() {
+    }
+
     public static RxJsonPersistence configurePersistence(DynamicConfiguration configuration, Specification specification) {
         final String providerId = configuration.find("persistence.provider").orElse(null);
         LOG.info("Using persistence provider: {}", providerId);
 
-        ServiceLoader<PersistenceInitializer> loader = ServiceLoader.load(PersistenceInitializer.class);
-
-        List<ServiceLoader.Provider<PersistenceInitializer>> providers = loader.stream()
-                .filter(p -> {
-                    Class<? extends PersistenceInitializer> type = p.type();
-                    ProviderName providerName = type.getDeclaredAnnotation(ProviderName.class);
-                    return providerId.equals(providerName.value());
-                })
-                .collect(Collectors.toList());
-        if (providers.isEmpty()) {
-            throw new RuntimeException("No persistence providers found for providerId: " + providerId);
-        }
-        if (providers.size() > 1) {
-            throw new RuntimeException("More than one persistence provider found for providerId: " + providerId);
-        }
-
-        PersistenceInitializer initializer = providers.get(0).get(); // instantiate persistence-initializer through provider
-
-        if (!providerId.equals(initializer.persistenceProviderId())) {
-            throw new RuntimeException("Annotated providerId of persistence-module does not match with the provider-id returned from the initializer instance method");
-        }
-
-        Set<String> configurationKeys = initializer.configurationKeys();
-        Set<String> missingConfigurationKeys = new LinkedHashSet<>();
-        for (String key : configurationKeys) {
-            if (configuration.find(key).isEmpty()) {
-                missingConfigurationKeys.add(key);
-            }
-        }
-        if (missingConfigurationKeys.size() > 0) {
-            throw new IllegalArgumentException("Configuration missing for: " + missingConfigurationKeys);
-        }
-
-        Map<String, String> configurationByKey = new LinkedHashMap<>();
-        for (String key : configurationKeys) {
-            configuration.find(key).ifPresent(value -> configurationByKey.put(key, value));
-        }
+        PersistenceInitializer initializer = findInitializer(providerId);
+        Map<String, String> configurationByKey = configurationOf(initializer, configuration);
 
         int maxWaitSeconds = configuration.getInt("persistence.initialization.max-wait-seconds");
         long start = System.currentTimeMillis();
@@ -77,7 +44,7 @@ public class PersistenceConfigurator {
                 if (remainingMs > 0) {
                     try {
                         Thread.sleep(Math.min(1000, remainingMs));
-                    } catch (InterruptedException ie) {
+                    } catch (InterruptedException _) {
                         Thread.currentThread().interrupt();
                         throw new RuntimeException("Interrupted while attempting to sleep, interrupt status preserved.", e);
                     }
@@ -86,5 +53,51 @@ public class PersistenceConfigurator {
                 }
             }
         }
+    }
+
+    /* The one initializer of the provider: annotated with its id, and giving that id itself. */
+    private static PersistenceInitializer findInitializer(String providerId) {
+        ServiceLoader<PersistenceInitializer> loader = ServiceLoader.load(PersistenceInitializer.class);
+
+        List<ServiceLoader.Provider<PersistenceInitializer>> providers = loader.stream()
+                .filter(p -> {
+                    Class<? extends PersistenceInitializer> type = p.type();
+                    ProviderName providerName = type.getDeclaredAnnotation(ProviderName.class);
+                    return providerId.equals(providerName.value());
+                })
+                .toList();
+        if (providers.isEmpty()) {
+            throw new IllegalStateException("No persistence providers found for providerId: " + providerId);
+        }
+        if (providers.size() > 1) {
+            throw new IllegalStateException("More than one persistence provider found for providerId: " + providerId);
+        }
+
+        PersistenceInitializer initializer = providers.get(0).get(); // instantiate persistence-initializer through provider
+
+        if (!providerId.equals(initializer.persistenceProviderId())) {
+            throw new IllegalStateException("Annotated providerId of persistence-module does not match with the provider-id returned from the initializer instance method");
+        }
+        return initializer;
+    }
+
+    /* The configuration the initializer asks for, every key of it. */
+    private static Map<String, String> configurationOf(PersistenceInitializer initializer, DynamicConfiguration configuration) {
+        Set<String> configurationKeys = initializer.configurationKeys();
+        Set<String> missingConfigurationKeys = new LinkedHashSet<>();
+        for (String key : configurationKeys) {
+            if (configuration.find(key).isEmpty()) {
+                missingConfigurationKeys.add(key);
+            }
+        }
+        if (!missingConfigurationKeys.isEmpty()) {
+            throw new IllegalArgumentException("Configuration missing for: " + missingConfigurationKeys);
+        }
+
+        Map<String, String> configurationByKey = new LinkedHashMap<>();
+        for (String key : configurationKeys) {
+            configuration.find(key).ifPresent(value -> configurationByKey.put(key, value));
+        }
+        return configurationByKey;
     }
 }

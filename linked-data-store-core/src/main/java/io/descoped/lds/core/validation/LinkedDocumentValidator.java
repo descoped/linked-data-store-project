@@ -47,37 +47,51 @@ public class LinkedDocumentValidator {
 
         SpecificationElement managedDomainElement = specification.getRootElement().getProperties().get(managedDomain);
         SpecificationTraversal.depthFirstPreOrderFullTraversal(managedDomainElement, (ancestors, te) -> {
-            if (SpecificationElementType.REF != te.getSpecificationElementType()) {
-                return;
-            }
-            JsonNode context = linkedDocument;
-            for (SpecificationElement ancestor : ancestors) {
-                if (SpecificationElementType.ROOT == ancestor.getSpecificationElementType()) {
-                    continue;
-                }
-                if (SpecificationElementType.MANAGED == ancestor.getSpecificationElementType()) {
-                    continue;
-                }
-                context = context.get(ancestor.getName());
-                if (context == null || !context.isObject()) {
-                    // the document does not have the object the link would be in
-                    return;
-                }
-            }
-            JsonNode value = context.get(te.getName());
-            if (value == null || value.isNull()) {
-                return;
-            }
-            if (te.getJsonTypes().contains("array")) {
-                for (JsonNode link : value) {
-                    if (!link.isNull()) {
-                        validateLink(ancestors, te, text(link));
-                    }
-                }
-            } else {
-                validateLink(ancestors, te, text(value));
+            if (SpecificationElementType.REF == te.getSpecificationElementType()) {
+                validateLinks(ancestors, te, linkedDocument);
             }
         });
+    }
+
+    /*
+     * The links of one link field of the document, if the document has the field.
+     */
+    private void validateLinks(Deque<SpecificationElement> ancestors, SpecificationElement te, JsonNode linkedDocument) throws LinkedDocumentValidationException {
+        JsonNode context = parentOfLink(ancestors, linkedDocument);
+        if (context == null) {
+            // the document does not have the object the link would be in
+            return;
+        }
+        JsonNode value = context.get(te.getName());
+        if (value == null || value.isNull()) {
+            return;
+        }
+        if (te.getJsonTypes().contains("array")) {
+            for (JsonNode link : value) {
+                if (!link.isNull()) {
+                    validateLink(ancestors, te, text(link));
+                }
+            }
+        } else {
+            validateLink(ancestors, te, text(value));
+        }
+    }
+
+    /*
+     * The object of the document that the link field is in, or null when the document does not have it.
+     */
+    private static JsonNode parentOfLink(Deque<SpecificationElement> ancestors, JsonNode linkedDocument) {
+        JsonNode context = linkedDocument;
+        for (SpecificationElement ancestor : ancestors) {
+            SpecificationElementType type = ancestor.getSpecificationElementType();
+            if (SpecificationElementType.ROOT != type && SpecificationElementType.MANAGED != type) {
+                context = context.get(ancestor.getName());
+                if (context == null || !context.isObject()) {
+                    return null;
+                }
+            }
+        }
+        return context;
     }
 
     /*

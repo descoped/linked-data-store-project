@@ -53,6 +53,10 @@ public class GraphqlHttpHandler implements HttpHandler {
             "application/(.*\\+)?graphql"
     );
 
+    private static final String QUERY = "query";
+    private static final String VARIABLES = "variables";
+    private static final String OPERATION_NAME = "operationName";
+
     private final GraphQL graphQl;
 
     /**
@@ -92,6 +96,45 @@ public class GraphqlHttpHandler implements HttpHandler {
         }
     }
 
+    /**
+     * Reads the query, the variables and the name of the operation from the body of a POST.
+     *
+     * @return false when the content type is neither GraphQL nor JSON
+     */
+    private static boolean readBody(HttpServerExchange exchange, ExecutionInput.Builder executionInput)
+            throws IOException {
+        if (IS_GRAPHQL.resolve(exchange)) {
+            executionInput.query(toString(exchange));
+        } else if (IS_JSON.resolve(exchange)) {
+            JsonNode json = toJson(exchange);
+            executionInput.query(JsonTools.text(json.get(QUERY)));
+            if (json.has(VARIABLES) && !json.get(VARIABLES).isNull()) {
+                executionInput.variables(JsonTools.toMap(json.get(VARIABLES)));
+            }
+            if (json.has(OPERATION_NAME)) {
+                executionInput.operationName(JsonTools.text(json.get(OPERATION_NAME)));
+            }
+        } else {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Reads the query, the variables and the name of the operation from the query parameters of a GET.
+     */
+    private static void readQueryParameters(Map<String, Deque<String>> parameters,
+                                            ExecutionInput.Builder executionInput) {
+        Optional<String> query = extractParam(parameters, QUERY);
+        query.ifPresent(executionInput::query);
+
+        Optional<String> operationName = extractParam(parameters, OPERATION_NAME);
+        operationName.ifPresent(executionInput::operationName);
+
+        Optional<String> variables = extractParam(parameters, VARIABLES);
+        variables.map(JsonTools::toJsonNode).map(JsonTools::toMap).ifPresent(executionInput::variables);
+    }
+
     @Override
     public void handleRequest(HttpServerExchange exchange) throws Exception {
         if (exchange.isInIoThread()) {
@@ -112,34 +155,12 @@ public class GraphqlHttpHandler implements HttpHandler {
         exchange.startBlocking();
         ExecutionInput.Builder executionInput = ExecutionInput.newExecutionInput();
         if (method.equals(POST)) {
-            if (IS_GRAPHQL.resolve(exchange)) {
-                executionInput.query(toString(exchange));
-            } else if (IS_JSON.resolve(exchange)) {
-                JsonNode json = toJson(exchange);
-                executionInput.query(JsonTools.text(json.get("query")));
-                if (json.has("variables") && !json.get("variables").isNull()) {
-                    executionInput.variables(JsonTools.toMap(json.get("variables")));
-                }
-                if (json.has("operationName")) {
-                    executionInput.operationName(JsonTools.text(json.get("operationName")));
-                }
-            } else {
+            if (!readBody(exchange, executionInput)) {
                 exchange.setStatusCode(StatusCodes.UNSUPPORTED_MEDIA_TYPE);
                 return;
             }
         } else if (method.equals(GET)) {
-
-            Map<String, Deque<String>> parameters = exchange.getQueryParameters();
-
-            Optional<String> query = extractParam(parameters, "query");
-            query.ifPresent(executionInput::query);
-
-            Optional<String> operationName = extractParam(parameters, "operationName");
-            operationName.ifPresent(executionInput::operationName);
-
-            Optional<String> variables = extractParam(parameters, "variables");
-            variables.map(JsonTools::toJsonNode).map(JsonTools::toMap).ifPresent(executionInput::variables);
-
+            readQueryParameters(exchange.getQueryParameters(), executionInput);
         } else {
             exchange.setStatusCode(StatusCodes.METHOD_NOT_ALLOWED);
             return;

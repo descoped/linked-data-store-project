@@ -14,12 +14,12 @@ import java.util.Map;
 
 public class PersistenceDeleteSagaAdapter extends Adapter<JsonNode> {
 
-    public static final String NAME = "Persistence-Delete";
+    public static final String ADAPTER_NAME = "Persistence-Delete";
 
     private final RxJsonPersistence persistence;
 
     public PersistenceDeleteSagaAdapter(RxJsonPersistence persistence) {
-        super(JsonNode.class, NAME);
+        super(JsonNode.class, ADAPTER_NAME);
         this.persistence = persistence;
     }
 

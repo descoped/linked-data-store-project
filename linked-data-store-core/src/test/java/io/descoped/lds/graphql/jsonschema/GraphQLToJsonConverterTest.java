@@ -1,4 +1,4 @@
-package io.descoped.lds.graphql.jsonSchema;
+package io.descoped.lds.graphql.jsonschema;
 
 import graphql.Assert;
 import graphql.schema.GraphQLSchema;
@@ -10,8 +10,8 @@ import tools.jackson.databind.node.ObjectNode;
 
 import java.io.File;
 import java.net.URL;
-import java.util.LinkedHashMap;
 import java.util.Optional;
+import java.util.SequencedMap;
 
 public class GraphQLToJsonConverterTest {
 
@@ -23,7 +23,7 @@ public class GraphQLToJsonConverterTest {
 
         GraphQLSchema schema = GraphQLSchemaBuilder.parseSchema(definitionRegistry);
         GraphQLToJsonConverter graphQLToJsonConverter = new GraphQLToJsonConverter(schema);
-        LinkedHashMap<String, ObjectNode> jsonMap = graphQLToJsonConverter.createSpecification(schema);
+        SequencedMap<String, ObjectNode> jsonMap = graphQLToJsonConverter.createSpecification(schema);
 
         jsonMap.forEach((name, json) -> {
             System.out.printf("%s :: %s%n", name, json);

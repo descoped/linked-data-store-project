@@ -1,6 +1,7 @@
 package io.descoped.lds.core.utils;
 
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.net.URL;
 import java.net.URLConnection;
 import java.nio.ByteBuffer;
@@ -9,10 +10,14 @@ import java.nio.charset.Charset;
 import java.nio.charset.CoderResult;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
 public class FileAndClasspathReaderUtils {
+
+    private FileAndClasspathReaderUtils() {
+    }
 
     public static Path currentPath() {
         return Paths.get(".").toAbsolutePath().normalize();
@@ -55,7 +60,7 @@ public class FileAndClasspathReaderUtils {
         try {
             Path path = Paths.get(pathStr);
             if (Files.notExists(path)) {
-                throw new RuntimeException("File not found: " + pathStr);
+                throw new UncheckedIOException(new NoSuchFileException(pathStr, null, "File not found"));
             }
             byte[] bytes = Files.readAllBytes(path);
             CharBuffer cbuf = CharBuffer.allocate(bytes.length);

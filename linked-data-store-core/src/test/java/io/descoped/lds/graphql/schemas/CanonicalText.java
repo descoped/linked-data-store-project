@@ -220,7 +220,7 @@ final class CanonicalText {
                 return schema.getCodeRegistry().getTypeResolver(anInterface) != null;
             }
             return schema.getCodeRegistry().getTypeResolver((GraphQLUnionType) type) != null;
-        } catch (RuntimeException | Error e) {
+        } catch (RuntimeException | Error _) {
             return false;
         }
     }

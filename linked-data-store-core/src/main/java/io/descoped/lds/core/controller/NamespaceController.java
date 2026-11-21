@@ -16,6 +16,8 @@ import java.util.stream.Collectors;
 
 public class NamespaceController implements HttpHandler {
 
+    private static final String SCHEMA = "schema";
+
     private final String defaultNamespace;
 
     private final Specification specification;
@@ -44,20 +46,20 @@ public class NamespaceController implements HttpHandler {
     public void handleRequest(HttpServerExchange exchange) throws Exception {
         String requestPath = exchange.getRelativePath();
 
-        // TODO: This should be handled by a path handler.
+        // no namespace in the path
         if (requestPath.trim().length() <= 1) {
             exchange.setStatusCode(404);
             return;
         }
 
-        if (requestPath.equals(defaultNamespace) && exchange.getQueryParameters().containsKey("schema") && exchange.getQueryParameters().get("schema").getFirst().isBlank()) {
+        if (requestPath.equals(defaultNamespace) && exchange.getQueryParameters().containsKey(SCHEMA) && exchange.getQueryParameters().get(SCHEMA).getFirst().isBlank()) {
             List<String> managedDomains = specification.getManagedDomains().stream().sorted().map(md -> String.format("\"%s/%s?schema\"", defaultNamespace, md)).collect(Collectors.toList());
             exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/json; charset=utf-8");
             exchange.getResponseSender().send("[" + managedDomains.stream().collect(Collectors.joining(",")) + "]", StandardCharsets.UTF_8);
             return;
         }
 
-        if (requestPath.equals(defaultNamespace) && exchange.getQueryParameters().containsKey("schema") && exchange.getQueryParameters().get("schema").contains("embed")) {
+        if (requestPath.equals(defaultNamespace) && exchange.getQueryParameters().containsKey(SCHEMA) && exchange.getQueryParameters().get(SCHEMA).contains("embed")) {
             List<String> managedDomains = specification.getManagedDomains().stream().sorted().map(md -> schemaRepository.getJsonSchema().getSchemaJson(md)).collect(Collectors.toList());
             exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/json; charset=utf-8");
             exchange.getResponseSender().send("[" + managedDomains.stream().collect(Collectors.joining(",")) + "]", StandardCharsets.UTF_8);

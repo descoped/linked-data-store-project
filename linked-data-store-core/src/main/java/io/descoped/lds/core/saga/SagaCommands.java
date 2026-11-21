@@ -2,6 +2,7 @@ package io.descoped.lds.core.saga;
 
 import io.undertow.server.HttpServerExchange;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.LinkedHashMap;
@@ -10,6 +11,9 @@ import java.util.List;
 import java.util.Map;
 
 public class SagaCommands {
+
+    private SagaCommands() {
+    }
 
     public static Map<String, List<SagaCommand>> getSagaAdminParameterCommands(HttpServerExchange exchange) {
         Deque<String> sagaCommands = exchange.getQueryParameters().get("saga");
@@ -24,10 +28,7 @@ public class SagaCommands {
             }
             String command = parts[0];
             String nodeId = parts[1];
-            List<String> args = new LinkedList<>();
-            for (int i = 2; i < parts.length; i++) {
-                args.add(parts[i]);
-            }
+            List<String> args = new LinkedList<>(Arrays.asList(parts).subList(2, parts.length));
             map.computeIfAbsent(nodeId, n -> new LinkedList<>()).add(new SagaCommand(nodeId, command, args));
         }
         return map;

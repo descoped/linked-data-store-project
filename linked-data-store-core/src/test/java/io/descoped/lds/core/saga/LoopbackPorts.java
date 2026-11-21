@@ -30,6 +30,7 @@ public final class LoopbackPorts implements CreateContainerCmdModifier {
      * Created by Testcontainers.
      */
     public LoopbackPorts() {
+        // nothing to set up: the class holds no state
     }
 
     @Override

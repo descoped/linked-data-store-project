@@ -17,7 +17,7 @@ import java.util.function.Supplier;
 import static java.util.Optional.ofNullable;
 
 /**
- * TODO Support json array-navigation
+ * The resource a request path names. A path does not navigate into the elements of a json array.
  */
 public class ResourceContext {
 
@@ -150,7 +150,7 @@ public class ResourceContext {
         JsonNode node = rootNode;
         ResourceElement element = firstElement;
         element = element.next();
-        // TODO Support array-navigation
+        // array-navigation is not supported
         while (element.hasNext()) {
             node = node.get(element.name());
             if (node == null) {
@@ -162,7 +162,7 @@ public class ResourceContext {
     }
 
     public boolean referenceToExists(JsonNode rootNode) {
-        return navigateJson(rootNode, (vc) -> {
+        return navigateJson(rootNode, vc -> {
             if (vc.node == null) {
                 return false;
             }
@@ -187,18 +187,18 @@ public class ResourceContext {
      * @return null if content is empty, the JsonNode instance representing the root of the sub-tree otherwise.
      */
     public JsonNode subTree(JsonNode rootNode) {
-        return navigateJson(rootNode, (vc) -> {
+        return navigateJson(rootNode, vc -> {
             if (vc.node == null) {
                 return null;
             }
             if (!vc.node.isContainer()) {
-                throw new RuntimeException("");
+                throw new IllegalStateException("The parent of \"" + vc.element.name() + "\" is not an object");
             }
             if (vc.node.isObject()) {
                 return vc.node.get(vc.element.name());
             } else {
                 // array
-                throw new UnsupportedOperationException("array-navigation not supported"); // TODO
+                throw new UnsupportedOperationException("array-navigation not supported");
             }
         }, () -> null);
     }
@@ -208,7 +208,7 @@ public class ResourceContext {
     }
 
     private <R> R navigateAndCreateJson(ResourceElement re, JsonNode jn, Function<ResourceJsonTraversalTuple, R> f) {
-        // TODO support array-navigation
+        // array-navigation is not supported
         ResourceElement nextResourceElement = re.next();
         if (!nextResourceElement.hasNext()) {
             return f.apply(new ResourceJsonTraversalTuple(nextResourceElement, jn));

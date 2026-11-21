@@ -24,7 +24,7 @@ import static io.descoped.lds.api.persistence.json.JsonTools.mapper;
 import static io.descoped.lds.graphql.fetcher.PersistenceLinksConnectionFetcherTest.TestEnvironment;
 import static org.assertj.core.api.Assertions.assertThat;
 
-@Ignore // TODO @Hadrien investigate why these tests hang
+@Ignore // These tests hang.
 public class PersistenceRootConnectionFetcherTest {
 
     private PersistenceRootConnectionFetcher connectionFetcher;

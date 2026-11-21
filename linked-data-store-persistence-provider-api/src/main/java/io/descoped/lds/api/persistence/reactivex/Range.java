@@ -123,7 +123,10 @@ public class Range<T> {
      * respectively.
      */
     public Integer getLimit() {
-        return hasFirst() ? getFirst() : hasLast() ? getLast() : null;
+        if (hasFirst()) {
+            return getFirst();
+        }
+        return hasLast() ? getLast() : null;
     }
 
     /**

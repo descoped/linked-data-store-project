@@ -38,8 +38,8 @@ public class MemoryRxPersistence implements RxPersistence {
     public static final String PRIMARY_INDEX = "Primary";
     public static final String PATH_VALUE_INDEX = "PathValueIndex";
 
-    private static final ZonedDateTime BEGINNING_OF_TIME = ZonedDateTime.of(1, 1, 1, 0, 0, 0, 0, ZoneId.of("Etc/UTC"));
-    private static final ZonedDateTime END_OF_TIME = ZonedDateTime.of(9999, 1, 1, 0, 0, 0, 0, ZoneId.of("Etc/UTC"));
+    private static final ZonedDateTime BEGINNING_OF_TIME = ZonedDateTime.of(1, 1, 1, 0, 0, 0, 0, ZONE_ID_UTC);
+    private static final ZonedDateTime END_OF_TIME = ZonedDateTime.of(9999, 1, 1, 0, 0, 0, 0, ZONE_ID_UTC);
 
     public static final KeyValue EMPTY = new KeyValue(new byte[0], new byte[0]);
 
@@ -88,7 +88,6 @@ public class MemoryRxPersistence implements RxPersistence {
 
     @Override
     public Completable createOrOverwrite(Transaction tx, Flowable<Fragment> publisher) {
-        // TODO add batch-size
         final OrderedKeyValueTransaction transaction = (OrderedKeyValueTransaction) tx;
         final CopyOnWriteArraySet<Range> clearedRanges = new CopyOnWriteArraySet<>();
         return publisher.flatMapCompletable(fragment -> getPrimary(fragment.namespace(), fragment.entity()).flatMapCompletable(primary -> {
@@ -179,8 +178,7 @@ public class MemoryRxPersistence implements RxPersistence {
         FragmentType fragmentType = FragmentType.fromTypeCode(fragmentTypeCode);
         long offset = keyTuple.getLong(4);
 
-        Fragment fragment = new Fragment(namespace, entity, dbId, toTimestamp(version), path, fragmentType, offset, kv.value());
-        return fragment;
+        return new Fragment(namespace, entity, dbId, toTimestamp(version), path, fragmentType, offset, kv.value());
     }
 
     @Override
@@ -258,46 +256,60 @@ public class MemoryRxPersistence implements RxPersistence {
                 byte[] truncatedValue = Fragment.hashOf(value);
                 AsyncIterablePublisher<KeyValue> indexMatchesPublisher = new AsyncIterablePublisher<>(transaction.getRange(index.range(Tuple.of(truncatedValue)), PATH_VALUE_INDEX, ROW_LIMIT_UNLIMITED));
                 AtomicReference<String> idRef = new AtomicReference<>(null);
-                return Flowable.fromPublisher(indexMatchesPublisher).filter(pathValueIndexedKeyValue -> {
-                    Tuple key = index.unpack(pathValueIndexedKeyValue.key());
-                    Tuple matchedVersion = key.getNestedTuple(2);
-                    if (toTimestamp(matchedVersion).isAfter(snapshot)) {
-                        return false; // false-positive, version was not yet visible at snapshot time
-                    }
-                    String id = key.getString(1);
-                    if (id.equals(idRef.get())) {
-                        return false; // false-positive, older version of same resource as previous
-                    }
-                    idRef.set(id);
-                    return true;
-                }).concatMapEager(pathValueIndexedKeyValue -> {
-                    Tuple key = index.unpack(pathValueIndexedKeyValue.key());
-                    Tuple matchedVersion = key.getNestedTuple(2);
-                    String id = key.getString(1);
-                    return findAnyOneMatchingFragmentInPrimary(transaction, primary, id, toTuple(snapshot)).flatMapPublisher(aMatchingFragmentKv -> {
-                        Tuple keyTuple = primary.unpack(aMatchingFragmentKv.key());
-                        Tuple versionTuple = keyTuple.getNestedTuple(1);
-                        FragmentType fragmentType = FragmentType.fromTypeCode(keyTuple.getBytes(3)[0]);
-                        if (!matchedVersion.equals(versionTuple)) {
-                            return Flowable.empty(); // false-positive index-match on older version
-                        }
-                        if (FragmentType.DELETED.equals(fragmentType)) {
-                            // Version was overwritten in primary by a delete-marker, remove index fragment asynchronously in separate transaction.
-                            transactionFactory().runAsyncInIsolatedTransaction(otherTx -> {
-                                ((OrderedKeyValueTransaction) otherTx).clear(aMatchingFragmentKv.key(), PATH_VALUE_INDEX);
-                                return null;
-                            }, false);
-                            return Flowable.empty();
-                        }
-
-                        // NOTE It's possible to get false-positive due to either index-value-truncation or value occupying
-                        // multiple key-value slots. These must be discarded by client or the buffered persistence layer.
-
-                        AsyncIterablePublisher<KeyValue> resourcePublisher = new AsyncIterablePublisher<>(transaction.getRange(primary.range(Tuple.of(id, matchedVersion)), PRIMARY_INDEX, ROW_LIMIT_UNLIMITED));
-                        return Flowable.fromPublisher(resourcePublisher).map(kv -> toFragment(primary, kv, namespace, entity));
-                    });
-                });
+                return Flowable.fromPublisher(indexMatchesPublisher)
+                        .filter(pathValueIndexedKeyValue -> isVisibleAndFirstOfItsResource(index, pathValueIndexedKeyValue, snapshot, idRef))
+                        .concatMapEager(pathValueIndexedKeyValue -> readMatchedVersion(transaction, primary, index, pathValueIndexedKeyValue, snapshot, namespace, entity));
             });
+        });
+    }
+
+    /*
+     * Whether an index match is a candidate: its version was visible at snapshot time, and it is not an older version
+     * of the resource of the match before it.
+     */
+    private static boolean isVisibleAndFirstOfItsResource(Subspace index, KeyValue pathValueIndexedKeyValue, ZonedDateTime snapshot, AtomicReference<String> idRef) {
+        Tuple key = index.unpack(pathValueIndexedKeyValue.key());
+        Tuple matchedVersion = key.getNestedTuple(2);
+        if (toTimestamp(matchedVersion).isAfter(snapshot)) {
+            return false; // false-positive, version was not yet visible at snapshot time
+        }
+        String id = key.getString(1);
+        if (id.equals(idRef.get())) {
+            return false; // false-positive, older version of same resource as previous
+        }
+        idRef.set(id);
+        return true;
+    }
+
+    /*
+     * The fragments of the version an index match points at, or nothing when that version is not the one visible at
+     * snapshot time, or was deleted.
+     */
+    private Flowable<Fragment> readMatchedVersion(OrderedKeyValueTransaction transaction, Subspace primary, Subspace index, KeyValue pathValueIndexedKeyValue, ZonedDateTime snapshot, String namespace, String entity) {
+        Tuple key = index.unpack(pathValueIndexedKeyValue.key());
+        Tuple matchedVersion = key.getNestedTuple(2);
+        String id = key.getString(1);
+        return findAnyOneMatchingFragmentInPrimary(transaction, primary, id, toTuple(snapshot)).flatMapPublisher(aMatchingFragmentKv -> {
+            Tuple keyTuple = primary.unpack(aMatchingFragmentKv.key());
+            Tuple versionTuple = keyTuple.getNestedTuple(1);
+            FragmentType fragmentType = FragmentType.fromTypeCode(keyTuple.getBytes(3)[0]);
+            if (!matchedVersion.equals(versionTuple)) {
+                return Flowable.empty(); // false-positive index-match on older version
+            }
+            if (FragmentType.DELETED.equals(fragmentType)) {
+                // Version was overwritten in primary by a delete-marker, remove index fragment asynchronously in separate transaction.
+                transactionFactory().runAsyncInIsolatedTransaction(otherTx -> {
+                    ((OrderedKeyValueTransaction) otherTx).clear(aMatchingFragmentKv.key(), PATH_VALUE_INDEX);
+                    return null;
+                }, false);
+                return Flowable.empty();
+            }
+
+            // NOTE It's possible to get false-positive due to either index-value-truncation or value occupying
+            // multiple key-value slots. These must be discarded by client or the buffered persistence layer.
+
+            AsyncIterablePublisher<KeyValue> resourcePublisher = new AsyncIterablePublisher<>(transaction.getRange(primary.range(Tuple.of(id, matchedVersion)), PRIMARY_INDEX, ROW_LIMIT_UNLIMITED));
+            return Flowable.fromPublisher(resourcePublisher).map(kv -> toFragment(primary, kv, namespace, entity));
         });
     }
 
@@ -349,24 +361,19 @@ public class MemoryRxPersistence implements RxPersistence {
 
             Tuple keyTuple = primary.unpack(kv.key());
             String resourceId = keyTuple.getString(0);
-            if (!id.equals(resourceId)) {
-                // (2) fragment of an unrelated resource
-                return false;
-            }
-
-            // (1) Match found
-            return true;
+            // (1) Match found, or (2) fragment of an unrelated resource
+            return id.equals(resourceId);
         });
     }
 
     @Override
     public Completable delete(Transaction transaction, String namespace, String entity, String
             id, ZonedDateTime version, PersistenceDeletePolicy policy) throws PersistenceException {
-        return doDelete((OrderedKeyValueTransaction) transaction, namespace, entity, id, toTuple(version), policy);
+        return doDelete((OrderedKeyValueTransaction) transaction, namespace, entity, id, toTuple(version));
     }
 
     private Completable doDelete(OrderedKeyValueTransaction transaction, String namespace, String
-            entity, String resourceId, Tuple resourceVersion, PersistenceDeletePolicy policy) {
+            entity, String resourceId, Tuple resourceVersion) {
         return Single.defer(() -> getPrimary(namespace, entity).doOnSuccess(primary -> {
             /*
              * Get all fragments of given versioned resource.
@@ -409,11 +416,11 @@ public class MemoryRxPersistence implements RxPersistence {
     @Override
     public Completable deleteAllVersions(Transaction transaction, String namespace, String
             entity, String id, PersistenceDeletePolicy policy) throws PersistenceException {
-        return doDeleteAllVersions((OrderedKeyValueTransaction) transaction, namespace, entity, id, policy);
+        return doDeleteAllVersions((OrderedKeyValueTransaction) transaction, namespace, entity, id);
     }
 
     private Completable doDeleteAllVersions(OrderedKeyValueTransaction transaction, String
-            namespace, String entity, String resourceId, PersistenceDeletePolicy policy) {
+            namespace, String entity, String resourceId) {
         return Completable.defer(() -> getPrimary(namespace, entity)
                 .flatMapCompletable(primary -> Flowable.fromPublisher(new AsyncIterablePublisher<>(transaction.getRange(primary.range(Tuple.of(resourceId)), PRIMARY_INDEX, ROW_LIMIT_UNLIMITED)))
                         .flatMapCompletable(kv -> deleteFragmentFromPathValueIndex(transaction, namespace, entity, primary, kv))

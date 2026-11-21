@@ -90,7 +90,7 @@ public class SolrSearchIndex implements SearchIndex {
         return Completable.fromAction(() -> {
             final String idString = getIdString(jsonDocument.key());
             this.solrUpdateClient.deleteById(idString, 5000);
-            LOG.info("Finished deleting : " + idString);
+            LOG.info("Finished deleting : {}", idString);
         });
     }
 
@@ -105,15 +105,15 @@ public class SolrSearchIndex implements SearchIndex {
     @Override
     public Single<SearchResponse> search(String text, Set<String> typeFilters, long from, long size) {
         try {
-            SolrQuery query = new SolrQuery().setStart(Long.valueOf(from).intValue())
-                    .setRows(Long.valueOf(size).intValue());
+            SolrQuery query = new SolrQuery().setStart((int) from)
+                    .setRows((int) size);
             query.set(CommonParams.Q, text + createFilters(typeFilters));
             query.set(CommonParams.DF, DEFAULT_SEARCH_FIELD);
             query.setHighlight(true);
             query.set(HighlightParams.FIELDS, "*languageText");
-            LOG.info("Executing query: " + query.toString());
+            LOG.info("Executing query: {}", query);
             SolrDocumentList response = this.solrQueryClient.query(query).getResults();
-            LOG.info("Number of hits: " + response.getNumFound());
+            LOG.info("Number of hits: {}", response.getNumFound());
             List<SearchResult> results = response.stream()
                     .map(result -> new SearchResult(fromIdString(result.get("id").toString())))
                     .collect(Collectors.toList());

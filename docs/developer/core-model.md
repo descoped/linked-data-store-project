@@ -36,7 +36,7 @@ All of it is in `linked-data-store-core`, except the interfaces of the specifica
 | Class | Responsibility |
 |---|---|
 | `UndertowApplication.initializeUndertowApplication` (package `io.descoped.lds.core`) | Decides which model is read (`graphql.schema` or `specification.schema`) and builds the specification before anything else is started. `parseSchemaFile` finds the GraphQL file; `createJsonSpecification` reads the JSON Schemas that the converter wrote. |
-| `GraphQLToJsonConverter` (package `io.descoped.lds.graphql.jsonSchema`) | Makes one JSON Schema for every type with `@domain` of a GraphQL schema. The work is done by two visitors: `ParseObjectTypesVisitor` (one schema for each entity type) and `AddDefinitionVisitor` (the properties of a definition, the link notation, the definitions of embedded types). |
+| `GraphQLToJsonConverter` (package `io.descoped.lds.graphql.jsonschema`) | Makes one JSON Schema for every type with `@domain` of a GraphQL schema. The work is done by two visitors: `ParseObjectTypesVisitor` (one schema for each entity type) and `AddDefinitionVisitor` (the properties of a definition, the link notation, the definitions of embedded types). |
 | `JsonSchemaBuilder` (package `io.descoped.lds.core.schema`) | Reads the JSON Schema of one entity type into a `JsonSchema`: checks that it is 2020-12, keeps its text, reads its `$defs` into `JsonSchemaDefinitionElement` trees, and makes the `Schema` of the validator. It holds the dialect of LDS (`DIALECT_OF_LDS`) and the registry of the validator (`REGISTRY`). |
 | `JsonSchema` | The result for all entity types: the validator schema, the text and the definitions, by name. `validate` validates one document. `SchemaRepository` is the interface the handlers get it through. |
 | `JsonSchemaDefinitionElement` | One node of a definition as LDS reads it: `types`, `properties`, `items`, `required`, `description`, `title`, `format`, and `name` when it is a definition of `$defs`. |
@@ -604,8 +604,7 @@ reaches it and the links in it by path. A list of an entity type that has no suc
 
 Not finished: `visitEmbeddedType` writes every list field of the entity type as a list of links, with
 `_link_property_<field>` naming the type of the items, also for `[String]`. The other fields are left out, so they
-are not checked. It makes the field one object, so a list is refused, and it writes each field definition and the
-result to standard output with `System.out.println`. The GraphQL schema keeps the field as a list
+are not checked. It makes the field one object, so a list is refused. The GraphQL schema keeps the field as a list
 of the entity type, and a query of it is answered with `type mismatch error, expected type LIST`. It ends the start
 with a `NullPointerException` when it meets a list of a list.
 
@@ -614,12 +613,12 @@ then refused with a `ClassCastException` (`GraphQLSchemaGoldenTest.aListOfLinksT
 The exception comes in the constructor of `UndertowApplication`, after the thread pools of the sagas are made, and
 the process stays up without listening.
 
-Not finished: `JsonSchemaBuilder.build` has the comment `TODO remove link directives from schema`. The
+Not finished: `JsonSchemaBuilder.build` does not remove the link directives from the schema. The
 `_link_property_<field>` objects stay in the schema that validates, so a document may hold a field of that name
 when its value is an object.
 
-Not finished: `io.descoped.lds.graphql.schemas.JsonSchemaBuilder` is an empty class. Several test resources are
-not used by any test (`spec/strangeschema`, `spec/v1`, `io/descoped/lds/graphql/schemas/examples`, the `.raml`
-files under `spec/abstract/schemas`), and several tests set `specification.schema` to files that do not exist
-(`spec/demo/contact.json`), which goes unseen because `graphql.schema` is set as well.
+Not finished: several test resources are not used by any test (`spec/strangeschema`, `spec/v1`,
+`io/descoped/lds/graphql/schemas/examples`, the `.raml` files under `spec/abstract/schemas`), and several tests set
+`specification.schema` to files that do not exist (`spec/demo/contact.json`), which goes unseen because
+`graphql.schema` is set as well.
 `SpecificationJsonSchemaBuilderTest.thatSpecificationBuiltFromJsonSchemaWithCustomLinkingWorks` asserts nothing.

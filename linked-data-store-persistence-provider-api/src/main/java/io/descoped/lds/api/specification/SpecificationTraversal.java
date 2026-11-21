@@ -7,6 +7,9 @@ import java.util.function.BiConsumer;
 
 public class SpecificationTraversal {
 
+    private SpecificationTraversal() {
+    }
+
     public static void depthFirstPreOrderFullTraversal(SpecificationElement element, BiConsumer<Deque<SpecificationElement>, SpecificationElement> visit) {
         Deque<SpecificationElement> ancestors = new LinkedList<>();
         visit.accept(ancestors, element);

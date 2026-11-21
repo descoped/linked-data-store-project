@@ -37,6 +37,8 @@ import static java.util.Optional.ofNullable;
 public class EmbeddedResourceHandler implements HttpHandler {
 
     private static final Logger LOG = LoggerFactory.getLogger(EmbeddedResourceHandler.class);
+    private static final String TEXT_PLAIN = "text/plain";
+    private static final String APPLICATION_JSON = "application/json";
 
     private final Specification specification;
     private final SchemaRepository schemaRepository;
@@ -67,7 +69,7 @@ public class EmbeddedResourceHandler implements HttpHandler {
             deleteEmbedded(exchange);
         } else {
             exchange.setStatusCode(400);
-            exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "text/plain");
+            exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, TEXT_PLAIN);
             exchange.getResponseSender().send("Unsupported embedded resource method: " + exchange.getRequestMethod());
         }
     }
@@ -86,8 +88,8 @@ public class EmbeddedResourceHandler implements HttpHandler {
             return;
         }
 
-        // TODO consistent API independent of sub-tree json type. i.e. figure out whether we should always wrap
-        // TODO result in a json-array?
+        // The form of the answer depends on the json type of the sub-tree: it is not decided whether the result
+        // should always be wrapped in a json-array.
         JsonNode subTreeRoot = resourceContext.subTree(jsonNode);
         String result;
         if (subTreeRoot == null) {
@@ -122,11 +124,11 @@ public class EmbeddedResourceHandler implements HttpHandler {
                     }
 
                     String contentType = ofNullable(exchange.getRequestHeaders().get(Headers.CONTENT_TYPE))
-                            .map(HeaderValues::getFirst).orElse("application/json");
+                            .map(HeaderValues::getFirst).orElse(APPLICATION_JSON);
                     JsonNode embeddedJson = bodyParser.deserializeBody(contentType, message);
 
                     if (LOG.isTraceEnabled()) {
-                        LOG.trace("{} {}\n{}", exchange.getRequestMethod(), exchange.getRequestPath(), message);
+                        LOG.trace("{} {}\n{}", exchange.getRequestMethod(), exchange.getRequestPath(), message);
                     }
 
                     mergeJson(resourceContext, managedDocument, embeddedJson);
@@ -137,7 +139,7 @@ public class EmbeddedResourceHandler implements HttpHandler {
                     } catch (LinkedDocumentValidationException ve) {
                         LOG.debug("Schema validation error: {}", ve.getMessage());
                         exchange.setStatusCode(400);
-                        exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "text/plain");
+                        exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, TEXT_PLAIN);
                         exchange.getResponseSender().send("Schema validation error: " + ve.getMessage());
                         return;
                     }
@@ -155,11 +157,11 @@ public class EmbeddedResourceHandler implements HttpHandler {
                     SagaHandoffResult handoffResult = handoff.join();
 
                     exchange.setStatusCode(200);
-                    exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/json");
+                    exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, APPLICATION_JSON);
                     exchange.getResponseSender().send("{\"saga-execution-id\":\"" + handoffResult.getExecutionId() + "\"}");
                 },
                 (exchange1, e) -> {
-                    exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "text/plain");
+                    exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, TEXT_PLAIN);
                     exchange.getResponseSender().send("Error putting embedded resource: " + e.getMessage());
                     LOG.warn("", e);
                 },
@@ -200,11 +202,11 @@ public class EmbeddedResourceHandler implements HttpHandler {
                     SagaHandoffResult handoffResult = handoff.join();
 
                     exchange.setStatusCode(200);
-                    exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/json");
+                    exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, APPLICATION_JSON);
                     exchange.getResponseSender().send("{\"saga-execution-id\":\"" + handoffResult.getExecutionId() + "\"}");
                 },
                 (exchange1, e) -> {
-                    exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "text/plain");
+                    exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, TEXT_PLAIN);
                     exchange.getResponseSender().send("Error deleting embedded resource: " + e.getMessage());
                     LOG.warn("", e);
                 },
@@ -215,7 +217,7 @@ public class EmbeddedResourceHandler implements HttpHandler {
         return resourceContext.navigateAndCreateJson(documentRootNode, t -> {
             String embeddedPropertyName = t.resourceElement.name();
             if (t.jsonObject.isArray()) {
-                // TODO support array-navigation
+                // array-navigation is not supported
                 throw new UnsupportedOperationException("array navigation not supported");
             }
             if (subTree == null) {

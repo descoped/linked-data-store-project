@@ -50,7 +50,7 @@ public class RxJsonPersistenceBridgeTest {
         try {
             JSONAssert.assertEquals(JsonTools.toJson(node1), JsonTools.toJson(node2), false);
             return true;
-        } catch (AssertionError e) {
+        } catch (AssertionError _) {
             return false;
         } catch (JSONException e) {
             throw new RuntimeException(e);

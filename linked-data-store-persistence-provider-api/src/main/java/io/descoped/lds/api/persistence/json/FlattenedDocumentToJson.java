@@ -40,11 +40,13 @@ public class FlattenedDocumentToJson {
 
     /*
      * One part of a path, between two dots: a name, and the places in arrays that follow it. A place has at most
-     * nine digits, so that it is a number an array can have; what is longer is part of the name.
+     * nine digits, so that it is a number an array can have; what is longer is part of the name. The places are
+     * taken possessively: a place can be read in one way only, so this matches what a greedy repetition matches, and
+     * a part with very many places does not overflow the stack.
      */
-    private static final Pattern PART = Pattern.compile("(.*?)((?:\\[[0-9]{1,9}])*)", Pattern.DOTALL);
+    private static final Pattern PART = Pattern.compile("(.*?)((?:\\[\\d{1,9}])*+)", Pattern.DOTALL);
 
-    private static final Pattern PLACE = Pattern.compile("\\[([0-9]+)]");
+    private static final Pattern PLACE = Pattern.compile("\\[(\\d+)]");
 
     final FlattenedDocument document;
 
@@ -128,10 +130,10 @@ public class FlattenedDocumentToJson {
     private static JsonNode number(String text) {
         try {
             return IntNode.valueOf(Integer.parseInt(text));
-        } catch (NumberFormatException notAnInt) {
+        } catch (NumberFormatException _) {
             try {
                 return LongNode.valueOf(Long.parseLong(text));
-            } catch (NumberFormatException notALong) {
+            } catch (NumberFormatException _) {
                 return DoubleNode.valueOf(Double.parseDouble(text));
             }
         }

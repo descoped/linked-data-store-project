@@ -105,6 +105,6 @@ class EmptyPersistence implements RxJsonPersistence {
 
     @Override
     public void close() throws PersistenceException {
-
+        // Holds nothing, so there is nothing to close.
     }
 }

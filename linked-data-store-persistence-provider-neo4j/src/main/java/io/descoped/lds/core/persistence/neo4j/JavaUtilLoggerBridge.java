@@ -7,6 +7,10 @@ import java.util.logging.LogManager;
 
 class JavaUtilLoggerBridge {
 
+    private JavaUtilLoggerBridge() {
+        // static methods only
+    }
+
     private static class Initializer {
         static {
             LogManager.getLogManager().reset();

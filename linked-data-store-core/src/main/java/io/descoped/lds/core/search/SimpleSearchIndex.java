@@ -21,7 +21,7 @@ import java.util.stream.Collectors;
 
 public class SimpleSearchIndex implements SearchIndex {
 
-    private Map<String, FlattenedDocument> index = Collections.synchronizedMap(new HashMap<>());
+    private final Map<String, FlattenedDocument> index = Collections.synchronizedMap(new HashMap<>());
 
     @Override
     public Completable createOrOverwrite(JsonDocument document) {

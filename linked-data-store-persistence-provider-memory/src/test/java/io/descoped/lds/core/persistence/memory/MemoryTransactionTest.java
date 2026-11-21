@@ -63,7 +63,7 @@ public class MemoryTransactionTest {
             try {
                 getRange(tx, startsWith(new byte[]{1, 2, 3, 7}), "i1");
                 Assert.fail("Accessing database from within a cancelled transaction is expected to be illegal.");
-            } catch (IllegalStateException e) {
+            } catch (IllegalStateException _) {
                 // expected
             }
         }

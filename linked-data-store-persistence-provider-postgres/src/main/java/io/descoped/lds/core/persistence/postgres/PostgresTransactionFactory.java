@@ -21,16 +21,20 @@ final class PostgresTransactionFactory implements TransactionFactory {
     @Override
     public PostgresTransaction createTransaction(boolean readOnly) throws PersistenceException {
         try {
-            Connection connection = dataSource.getConnection();
-            try {
-                connection.setAutoCommit(false);
-                return new PostgresTransaction(connection);
-            } catch (SQLException | RuntimeException e) {
-                connection.close();
-                throw e;
-            }
+            return transactionOn(dataSource.getConnection());
         } catch (SQLException e) {
             throw new PersistenceException(e);
+        }
+    }
+
+    /* The connection is closed when the transaction cannot be opened on it. */
+    private static PostgresTransaction transactionOn(Connection connection) throws SQLException {
+        try {
+            connection.setAutoCommit(false);
+            return new PostgresTransaction(connection);
+        } catch (SQLException | RuntimeException e) {
+            connection.close();
+            throw e;
         }
     }
 

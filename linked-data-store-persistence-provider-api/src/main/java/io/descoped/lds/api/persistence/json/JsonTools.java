@@ -12,6 +12,9 @@ public class JsonTools {
 
     public static final ObjectMapper mapper = new ObjectMapper();
 
+    private JsonTools() {
+    }
+
     /**
      * The text a node holds.
      *
@@ -27,8 +30,8 @@ public class JsonTools {
         });
     }
 
-    public static List<?> toList(JsonNode node) {
-        return mapper.convertValue(node, new TypeReference<List>() {
+    public static List<Object> toList(JsonNode node) {
+        return mapper.convertValue(node, new TypeReference<List<Object>>() {
         });
     }
 

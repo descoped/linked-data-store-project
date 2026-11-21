@@ -51,7 +51,7 @@ public class MemoryTransaction implements OrderedKeyValueTransaction {
         if (!locked.get()) {
             throw new IllegalStateException("Attempting to access database from within a closed transaction.");
         }
-        return mapByIndex.computeIfAbsent(index, k -> new ConcurrentSkipListMap<>((o1, o2) -> Arrays.compareUnsigned(o1, o2)));
+        return mapByIndex.computeIfAbsent(index, k -> new ConcurrentSkipListMap<>(Arrays::compareUnsigned));
     }
 
     /*
@@ -122,14 +122,6 @@ public class MemoryTransaction implements OrderedKeyValueTransaction {
             try {
                 commit().join();
                 committed = true;
-            } catch (Throwable t) {
-                if (t instanceof RuntimeException) {
-                    throw (RuntimeException) t;
-                }
-                if (t instanceof Error) {
-                    throw (Error) t;
-                }
-                throw new RuntimeException(t);
             } finally {
                 if (!committed) {
                     cancel().join();
@@ -171,44 +163,51 @@ public class MemoryTransaction implements OrderedKeyValueTransaction {
         byte[] fromInclusive = keySelectorFunction(index).apply(begin);
         byte[] toExclusive = keySelectorFunction(index).apply(end);
         if (fromInclusive != null) {
-            if (toExclusive != null) {
-                int compareUnsigned = Arrays.compareUnsigned(fromInclusive, toExclusive);
-                if (compareUnsigned >= 0) {
-                    // negative or empty range
-                    return new MemoryAsyncIterable(executor, Collections.emptyNavigableMap(), limit);
-                }
-                // positive range
-                return new MemoryAsyncIterable(executor, copy(getMapByIndex(index).subMap(fromInclusive, true, toExclusive, false)), limit);
-            }
-            // toExclusive is null
-            if (end.offset() == 0) {
-                // end less
+            return getRangeFrom(fromInclusive, toExclusive, end, index, limit);
+        }
+        return getRangeWithoutFrom(toExclusive, begin, end, index, limit);
+    }
+
+    private AsyncIterable<KeyValue> getRangeFrom(byte[] fromInclusive, byte[] toExclusive, KeySelector end, String index, int limit) {
+        if (toExclusive != null) {
+            int compareUnsigned = Arrays.compareUnsigned(fromInclusive, toExclusive);
+            if (compareUnsigned >= 0) {
+                // negative or empty range
                 return new MemoryAsyncIterable(executor, Collections.emptyNavigableMap(), limit);
             }
-            // end greater
-            return new MemoryAsyncIterable(executor, copy(getMapByIndex(index).tailMap(fromInclusive, true)), limit);
-        } else {
-            // fromInclusive == null
-            if (toExclusive != null) {
-                if (begin.offset() == 0) {
-                    // begin less
-                    return new MemoryAsyncIterable(executor, copy(getMapByIndex(index).headMap(toExclusive, false)), limit);
-                }
-                // begin greater
-                return new MemoryAsyncIterable(executor, Collections.emptyNavigableMap(), limit);
-            }
-            // toExclusive == null
-            if (begin.offset() == 0 && end.offset() == 1) {
-                // begin less and end greater
-                return new MemoryAsyncIterable(executor, copy(getMapByIndex(index)), limit);
-            }
-            // begin greater or end less
+            // positive range
+            return new MemoryAsyncIterable(executor, copy(getMapByIndex(index).subMap(fromInclusive, true, toExclusive, false)), limit);
+        }
+        // toExclusive is null
+        if (end.offset() == 0) {
+            // end less
             return new MemoryAsyncIterable(executor, Collections.emptyNavigableMap(), limit);
         }
+        // end greater
+        return new MemoryAsyncIterable(executor, copy(getMapByIndex(index).tailMap(fromInclusive, true)), limit);
+    }
+
+    /* fromInclusive == null */
+    private AsyncIterable<KeyValue> getRangeWithoutFrom(byte[] toExclusive, KeySelector begin, KeySelector end, String index, int limit) {
+        if (toExclusive != null) {
+            if (begin.offset() == 0) {
+                // begin less
+                return new MemoryAsyncIterable(executor, copy(getMapByIndex(index).headMap(toExclusive, false)), limit);
+            }
+            // begin greater
+            return new MemoryAsyncIterable(executor, Collections.emptyNavigableMap(), limit);
+        }
+        // toExclusive == null
+        if (begin.offset() == 0 && end.offset() == 1) {
+            // begin less and end greater
+            return new MemoryAsyncIterable(executor, copy(getMapByIndex(index)), limit);
+        }
+        // begin greater or end less
+        return new MemoryAsyncIterable(executor, Collections.emptyNavigableMap(), limit);
     }
 
     NavigableMap<byte[], byte[]> copy(NavigableMap<byte[], byte[]> source) {
-        ConcurrentSkipListMap<byte[], byte[]> dest = new ConcurrentSkipListMap<>((o1, o2) -> Arrays.compareUnsigned(o1, o2));
+        ConcurrentSkipListMap<byte[], byte[]> dest = new ConcurrentSkipListMap<>(Arrays::compareUnsigned);
         dest.putAll(source);
         return dest;
     }

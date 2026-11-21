@@ -26,14 +26,14 @@ final class Neo4jTransaction implements Transaction {
 
     private final boolean logCypher;
     private final Session session;
-    private final org.neo4j.driver.Transaction neo4jTransaction;
+    private final org.neo4j.driver.Transaction driverTransaction;
     private final TransactionStatistics statistics = new TransactionStatistics();
     private final CompletableFuture<TransactionStatistics> result;
 
     Neo4jTransaction(Session session, boolean logCypher) {
         this.logCypher = logCypher;
         this.session = session;
-        this.neo4jTransaction = session.beginTransaction();
+        this.driverTransaction = session.beginTransaction();
         this.result = new CompletableFuture<>();
     }
 
@@ -59,9 +59,9 @@ final class Neo4jTransaction implements Transaction {
         Throwable failure = null;
         try {
             if (commit) {
-                neo4jTransaction.commit();
+                driverTransaction.commit();
             } else {
-                neo4jTransaction.rollback();
+                driverTransaction.rollback();
             }
         } catch (Throwable t) {
             failure = t;
@@ -87,7 +87,7 @@ final class Neo4jTransaction implements Transaction {
      */
     Result executeCypher(String query, Map<String, Object> parameters) {
         log(query, parameters);
-        return neo4jTransaction.run(query, parameters);
+        return driverTransaction.run(query, parameters);
     }
 
     /**

@@ -71,7 +71,7 @@ public class SagaExecutionCoordinatorWatchdogTest {
             sec.sagaRepository.getAdapterLoader().register(new Adapter<>(JsonNode.class, "SlowNodeAdapter", (i, d) -> {
                 try {
                     releaseSlowNodes.await(60, TimeUnit.SECONDS);
-                } catch (InterruptedException e) {
+                } catch (InterruptedException _) {
                     Thread.currentThread().interrupt();
                 }
                 return empty;
@@ -80,7 +80,7 @@ public class SagaExecutionCoordinatorWatchdogTest {
             sec.sagaRepository.register(Saga
                     .start(SagaRepository.SAGA_CREATE_OR_UPDATE_MANAGED_RESOURCE).linkTo("slownode", "search-index-update")
                     .id("slownode").adapter("SlowNodeAdapter").linkTo("persistence")
-                    .id("persistence").adapter(PersistenceCreateOrOverwriteSagaAdapter.NAME).linkToEnd()
+                    .id("persistence").adapter(PersistenceCreateOrOverwriteSagaAdapter.ADAPTER_NAME).linkToEnd()
                     .id("search-index-update").adapter("search").linkToEnd()
                     .end());
         }
@@ -126,10 +126,10 @@ public class SagaExecutionCoordinatorWatchdogTest {
                     }
                     previousActiveCount = sec.threadPool.getActiveCount();
                     previousCompletedTaskCount = sec.threadPool.getCompletedTaskCount();
-                    LOG.debug("Threadpool-state: {}", sec.threadPool.toString());
+                    LOG.debug("Threadpool-state: {}", sec.threadPool);
                     Thread.sleep(TimeUnit.SECONDS.toMillis(1));
                 } while (!sec.threadPoolWatchDog.possibleDeadlock(previousActiveCount, previousCompletedTaskCount));
-                LOG.debug("Threadpool-state: {}", sec.threadPool.toString());
+                LOG.debug("Threadpool-state: {}", sec.threadPool);
                 LOG.debug("DEADLOCKED!");
             }
 
@@ -144,7 +144,7 @@ public class SagaExecutionCoordinatorWatchdogTest {
                     if (++i >= 30) {
                         Assert.fail("Unable to detect deadlock resolution attempt within 30 seconds, failing!");
                     }
-                    LOG.debug("Threadpool-state: {}", sec.threadPool.toString());
+                    LOG.debug("Threadpool-state: {}", sec.threadPool);
                 } while (sec.threadPoolWatchDog.deadlockResolutionAttemptCounter.get() == 0);
             }
 
@@ -184,7 +184,7 @@ public class SagaExecutionCoordinatorWatchdogTest {
                     System.err.println("Pool did not terminate");
                 }
             }
-        } catch (InterruptedException ie) {
+        } catch (InterruptedException _) {
             pool.shutdownNow();
             Thread.currentThread().interrupt();
         }

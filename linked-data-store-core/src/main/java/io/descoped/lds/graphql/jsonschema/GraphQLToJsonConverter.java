@@ -1,8 +1,8 @@
-package io.descoped.lds.graphql.jsonSchema;
+package io.descoped.lds.graphql.jsonschema;
 
 import graphql.schema.GraphQLNamedType;
 import graphql.schema.GraphQLSchema;
-import io.descoped.lds.graphql.jsonSchema.visitors.ParseObjectTypesVisitor;
+import io.descoped.lds.graphql.jsonschema.visitors.ParseObjectTypesVisitor;
 import io.descoped.lds.graphql.schemas.TypeTraverser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,6 +10,7 @@ import tools.jackson.databind.node.ObjectNode;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.SequencedMap;
 
 public class GraphQLToJsonConverter {
     private static final Logger LOG = LoggerFactory.getLogger(GraphQLToJsonConverter.class);
@@ -20,19 +21,19 @@ public class GraphQLToJsonConverter {
         this.graphQLSchema = schema;
     }
 
-    public LinkedHashMap<String, ObjectNode> createSpecification(GraphQLSchema graphQLSchema) {
+    public SequencedMap<String, ObjectNode> createSpecification(GraphQLSchema graphQLSchema) {
         Map<String, GraphQLNamedType> typeMap = graphQLSchema.getTypeMap();
         LinkedHashMap<String, ObjectNode> jsonMap = new LinkedHashMap<>();
         StringBuilder sb = new StringBuilder();
 
-        ParseObjectTypesVisitor parseObjectTypesVisitor = new ParseObjectTypesVisitor(typeMap, jsonMap);
+        ParseObjectTypesVisitor parseObjectTypesVisitor = new ParseObjectTypesVisitor(jsonMap);
         TRAVERSER.depthFirst(parseObjectTypesVisitor, typeMap.values());
 
         jsonMap.forEach((managedDomain, jsonObject) -> {
             sb.append(" /" + managedDomain);
         });
 
-        LOG.info("{}", (sb.length() == 0 ? "No schemas configured!" : "Managed domains: " + sb.toString().substring(1)));
+        LOG.info("{}", (sb.isEmpty() ? "No schemas configured!" : "Managed domains: " + sb.toString().substring(1)));
 
         return jsonMap;
     }
