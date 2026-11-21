@@ -32,8 +32,8 @@ that keeps them. Four ideas make it what it is:
   keeps them, and a [search index provider](../glossary.md#search-index-provider) finds them by text. Each is chosen by
   configuration, and the requests stay the same.
 
-Version `3.0.0` of LDS is in development and not released. Where something does not work as a user would
-expect, this document says so in a paragraph that starts with "Not finished:".
+This document is about LDS 3.0.0. Where something does not work as a user would expect, it says so in a paragraph
+that starts with "Not finished:".
 
 ## About the examples
 

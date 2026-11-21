@@ -433,8 +433,9 @@ a module makes that module meet them.
   at 18. The owner says when it is raised, and Renovate is told to stay below 19 (`.github/renovate.json`).
 - **Secrets.** Nothing but the documented development defaults: the database user `lds` of the tests and the
   compose files.
-- **Releases by hand.** A release is made by hand, with the owner's go-ahead, to Maven Central through the Central
-  Portal (profiles `central` and `sign`). CI publishes nothing: no SNAPSHOTs, no releases, no images.
+- **Releases by hand.** A release is started by hand, with the owner's go-ahead: the release workflow publishes the
+  images of the server on Docker Hub (`descoped/lds`), tags the version and makes the release on GitHub with its
+  notes. No jar is published. CI publishes nothing: no SNAPSHOTs, no releases, no images.
 - **SonarCloud**: one project, `descoped_linked-data-store-project`, for the whole reactor.
 
 Two more rules touch every part. The GraphQL schema is built with the walk of LDS (`TypeTraverser`,
@@ -448,8 +449,7 @@ and the two API modules, which define the service interfaces, do not.
 
 ## Not finished
 
-Not finished: LDS 3.0 is in development and 3.0.0 is not released. These are the large items. Every document below
-has its own list.
+Not finished: these are the large items that 3.0.0 does not have. Every document below has its own list.
 
 - **Streaming ends in the handlers** (see [Streaming on RxJava 3](#streaming-on-rxjava-3)), and lists over REST are not
   paged: [the persistence interface](persistence-api.md), [the REST handlers](core-rest.md).

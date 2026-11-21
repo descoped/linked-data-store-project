@@ -13,15 +13,16 @@ LDS does today, and says plainly what it does not do.
 
 ## About what is shown
 
-LDS 3.0 is in development and 3.0.0 is not released. Everything here is about LDS built from the repository.
+Everything here is about LDS 3.0.0, as the images on Docker Hub and as it is built from the repository.
 
 - The requests were run against LDS started on the JDK. The addresses are written with the default port, 9090.
   The LDS of the runs had another port; nothing else differs. An answer is shown as its status line and its
   body.
 - The runs with PostgreSQL used a PostgreSQL 18.7 on the same machine, at the address `::1` and the port 19407.
   That address is in some of the messages below.
-- The commands that need Docker are those of the repository. They were not run for this document. What is said
-  about the image and the compose file is read from the two files and from the tests that build and start them.
+- The commands that need Docker are those of the repository. What is said about the images and the compose file
+  is read from the two files and from the tests that build and start them, and the debug image was run for its
+  section.
 - No Neo4j and no Solr were at hand. What is said about Neo4j, and about a Solr that answers, is read from the
   code and its tests. What LDS does when Solr does not answer was run.
 - A line of the log is shown with its time, its level and its message. A long line is broken here.
@@ -47,22 +48,45 @@ and Solr are called the engines.
 
 ## The image
 
-The image is built on your machine from the repository. It is not fetched from anywhere: no image of LDS is
-published. Build LDS first ([Getting started](getting-started.md) has the command). Then, in the root of
-the repository:
+LDS is published on Docker Hub as `descoped/lds`, for Linux on amd64 and arm64, in three variants of the same LDS:
+
+| Tags | What it is for |
+|---|---|
+| `3.0.0`, `3.0`, `3`, `latest` | The regular image. It has a shell and the small tools of busybox (`sh`, `wget`, `ls`, `ps`, `top`, `vi`), for looking around in a running container. |
+| `3.0.0-distroless`, `3.0-distroless`, `3-distroless`, `distroless` | No shell and no program but `java`. For production, and for platforms where no shell is used, such as Cloud Run and Fargate. `docker exec` can run `java` in it and nothing more. |
+| `3.0.0-debug`, `3.0-debug`, `3-debug`, `debug` | The regular image with the tools of the JDK for diagnostics: remote JMX, a remote debugger, `jcmd`, `jstack`, `jmap`, `jstat`, `jhsdb`, `jfr` and heap dumps. See [Diagnostics with the debug image](#diagnostics-with-the-debug-image). |
+
+`3.0.0` names one release; `3.0` and `3` move to the newest release of that line, and `latest` to the newest
+release. Name the whole version, or the digest, where what runs must not change on its own.
+
+```sh
+docker run --rm -p 127.0.0.1:9090:9090 descoped/lds:3.0.0
+```
+
+The same images are built from the repository with three commands, after LDS is built
+([Getting started](getting-started.md) has the command):
 
 ```sh
 docker build -t lds-server linked-data-store-server
-docker run --rm -p 127.0.0.1:9090:9090 lds-server
+docker build -t lds-server:distroless --target distroless linked-data-store-server
+docker build -t lds-server:debug --target debug linked-data-store-server
 ```
 
-What is in the image:
+Every published image has a list of what it holds (an SBOM) and the record of its build (provenance), and is
+signed with cosign by the release workflow of the repository. Check the signature with:
+
+```sh
+cosign verify descoped/lds:3.0.0 \
+  --certificate-identity https://github.com/descoped/linked-data-store-project/.github/workflows/release.yml@refs/heads/master \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+What is in each image:
 
 - A Java runtime, version 27, with only the parts of Java that LDS uses, made from the JDK of the image
-  `eclipse-temurin:27-jdk`.
-- The C library glibc, CA certificates and time zones, from Debian 13 (the distroless image
-  `gcr.io/distroless/base-nossl-debian13`), and nothing else: no shell, no package manager, no other program.
-  `docker exec` can run `java` in the container and nothing more.
+  `eclipse-temurin:27-jdk`. The debug image has the parts for diagnostics as well.
+- The C library glibc, CA certificates and time zones, from Debian 13 (Google's distroless images), and in the
+  regular and the debug image busybox in `/busybox`. No package manager.
 - LDS in the directory `/lds`: its jar files in `/lds/lib`, and the example model in
   `/lds/schemas/schema.graphql`.
 - No script. The Java program is the process of the container.
@@ -84,10 +108,10 @@ How it is given a model and a configuration:
   `/lds/conf/application.properties`. [Configuration](configuration.md) has the keys and the rules.
 - Options of the JVM are given in the variable `JAVA_TOOL_OPTIONS`.
 
-The health check of the image is a small Java program that asks `/ping` inside the container (a `java` of its
-own, which also reads `JAVA_TOOL_OPTIONS` but keeps its own memory settings): once a second in the first 60
-seconds, then every 10 seconds. An answer must come within 3 seconds, and after 3 checks that fail the container is called
-unhealthy. Three things follow:
+The health check of the image asks `/ping` inside the container: in the regular and the debug image with `wget`,
+in the distroless image with a small Java program (a `java` of its own, which also reads `JAVA_TOOL_OPTIONS` but
+keeps its own memory settings). It asks once a second in the first 60 seconds, then every 10 seconds. An answer must
+come within 3 seconds, and after 3 checks that fail the container is called unhealthy. Three things follow:
 
 - The check knows the port from the variable `LDS_HTTP_PORT`, and uses 9090 without it. Move the port in the
   container with that variable, not in a mounted file.
@@ -100,6 +124,34 @@ unhealthy. Three things follow:
 and the container ends with exit code 143. A stop takes 30 seconds or more when a write is held up. A container that is
 ended by force before LDS has stopped has crashed, as far as its writes go; see [Writes that fail, crashes and
 recovery](#writes-that-fail-crashes-and-recovery).
+
+### Diagnostics with the debug image
+
+The debug image holds the tools of the JDK. They run in the container, as the user `lds`, and attach to LDS, the
+process with the number 1:
+
+```sh
+docker exec <container> jcmd 1 VM.version
+docker exec <container> jstack 1
+docker exec <container> jcmd 1 GC.heap_dump /tmp/heap.hprof
+docker cp <container>:/tmp/heap.hprof .
+```
+
+Remote JMX and a remote debugger are switched on by options of the JVM. Give them in `JDK_JAVA_OPTIONS`, which only
+the `java` that starts LDS reads, and not in `JAVA_TOOL_OPTIONS`, which every tool of the JDK reads as well: a tool
+would then try to open the same port, and fail. This run opened JMX on 9010 and the debugger on 5005, both on
+127.0.0.1 of the machine, and the container stayed healthy:
+
+```sh
+docker run --rm -p 127.0.0.1:9090:9090 -p 127.0.0.1:9010:9010 -p 127.0.0.1:5005:5005 \
+  -e JDK_JAVA_OPTIONS="-Dcom.sun.management.jmxremote.port=9010 -Dcom.sun.management.jmxremote.rmi.port=9010 \
+    -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false \
+    -Djava.rmi.server.hostname=127.0.0.1 -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005" \
+  descoped/lds:3.0.0-debug
+```
+
+JMX without a password and a debugger give anyone who reaches the port the whole of LDS. Publish such ports on
+127.0.0.1 only, as here, and use the debug image only for as long as the investigation takes.
 
 ## The compose file: a whole LDS for development
 

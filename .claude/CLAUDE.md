@@ -131,9 +131,14 @@ which validates the Jackson tree of the document). A schema that at its root say
   Travis, Drone or OSSRH configuration.
 - **Secrets.** Nothing but documented development defaults (the `lds` database user and the Neo4j password
   `lds-development` in tests and the compose file).
-- **Releases only with the owner's go-ahead**, by hand. **CI publishes nothing**: no SNAPSHOTs, no releases, no
-  images. Maven Central goes through the Central Portal (profiles `central,sign`). A milestone (`3.0.0-M1`) is a
-  tag and a GitHub release with its notes (`RELEASE-NOTES.md`), source only, made as `docs/developer/build.md` says.
+- **Releases only with the owner's go-ahead**, started by hand. **CI publishes nothing**: no SNAPSHOTs, no
+  releases, no images. A release (`3.0.0`) is the release workflow (`.github/workflows/release.yml`, `gh workflow
+  run release.yml -f version=3.0.0`): the three images of the server on Docker Hub (`descoped/lds`, linux/amd64 and
+  linux/arm64, signed with cosign), a tag and a GitHub release with its notes (`RELEASE-NOTES.md`). **No jar is
+  published**: the profiles `central,sign` are kept for the day the owner decides to put only the modules outside
+  users build on on Maven Central. Builds are repeatable (`project.build.outputTimestamp`, base images by digest,
+  `SOURCE_DATE_EPOCH`), so a release run can be repeated until the tag is made. A milestone (`3.0.0-M1`) is a tag
+  and a GitHub release, source only. Both as `docs/developer/build.md` says.
 - **SonarCloud**: one project, `descoped_linked-data-store-project`, for the whole reactor.
 
 Several of these describe where 3.0.0 is going and are not true of the pre-3.0 code yet (UTC instants in the
@@ -177,8 +182,9 @@ module makes that module meet them.
   requests are answered 503 while those being handled complete, the running sagas complete, then their thread
   pool, the saga log pool and the stores.
 - The server's tests are the tests of the image (`*IT`, run by Failsafe after the jars are made, so by `verify`
-  and not by `test`). `ServerImageIT` builds the image with `docker build` and starts it as it is: the example
-  model in memory, the health check, the user it runs as, and that it stops when asked to. `ServerStackIT` starts
+  and not by `test`). `ServerImageIT` builds the three images with `docker build` and starts each as it is: the
+  example model in memory, the health check, the user it runs as, that it stops when asked to, no shell in the
+  distroless image and the JDK tools in the debug image. `ServerStackIT` starts
   `compose.yaml` with `docker compose`, with ports that Docker picks, and writes, reads, follows links and
   searches through LDS with Neo4j, PostgreSQL and Solr. So **the build needs the `docker` command with compose**,
   not only the Docker engine.
@@ -221,14 +227,17 @@ system property sets only a key that one of the files has).
 
 ## The server image
 
-`linked-data-store-server/Dockerfile` makes the image from what Maven has packaged (`target/lib`, the jar of the
-module and the class `HealthCheck`) on the distroless `gcr.io/distroless/base-nossl-debian13` (glibc, CA
-certificates, time zones; no shell), pinned by digest, with a Java runtime that `jlink` makes in a stage from
-`eclipse-temurin:27-jdk`: only the JDK modules `jdeps` finds in the jars, and the few used only by name
-(`jdk.charsets`, `jdk.localedata`), with the class data sharing archive of the default settings of the JVM. The
-reactor is built first, and the context is the module directory. `compose.yaml` next to it is a whole LDS for
-development: the image, Neo4j, PostgreSQL (saga log and transaction log, the databases made by `postgres-init.sql`)
-and Solr, with the images the tests of the providers use. Keep these when changing them:
+`linked-data-store-server/Dockerfile` makes three images of the same LDS from what Maven has packaged (`target/lib`,
+the jar of the module and the class `HealthCheck`), each a target: `regular` (the default, tag `3.0.0`), on the
+distroless base with busybox (`gcr.io/distroless/base-nossl-debian13:debug`); `distroless` (`3.0.0-distroless`), on
+the distroless base with no shell; `debug` (`3.0.0-debug`), as `regular` with the modules of the JDK for diagnostics
+(remote JMX, JDWP, `jcmd`, `jstack`, `jmap`, `jhsdb`, JFR) and debug information. The Java runtimes are made by
+`jlink` in a stage from `eclipse-temurin:27-jdk`: the JDK modules `jdeps` finds in the jars and the few used only by
+name (`jdk.charsets`, `jdk.localedata`), with the class data sharing archive of the default settings of the JVM.
+Every base is pinned by digest. The reactor is built first, and the context is the module directory. `compose.yaml`
+next to it is a whole LDS for development: the regular image, Neo4j, PostgreSQL (saga log and transaction log, the
+databases made by `postgres-init.sql`) and Solr, with the images the tests of the providers use. Keep these when
+changing them:
 
 - **LDS runs on the class path**, as the tests do. On the module path the libraries Undertow is made of (Undertow,
   XNIO, WildFly client config, SmallRye common) cannot make their message loggers: jboss-logging has to read
@@ -239,11 +248,13 @@ and Solr, with the images the tests of the providers use. Keep these when changi
 - **The image is configured from outside by environment variables**, which set only keys a file has. So
   `application-server-defaults.properties` has the keys of every provider, with LDS in memory as the default and
   no password. A key is added there when the image needs to be given it.
-- **The image is distroless**: `java` is its one program. Nothing is installed in it; the health check is a class
-  of the server module (`HealthCheck`, only `java.base`) run by `java` in exec form, and the user `lds` is added to
-  `/etc/passwd` in the build stage.
-- **The image runs as the user `lds`**, has a health check on `/ping`, and has the example model in
-  `/lds/schemas`. No image is published (see Invariants).
+- **Three images, one LDS**: they differ only in base and runtime; the rest (`app` stage, user, entry point) is
+  the same in each and is kept so. Nothing is installed in an image. The distroless image has `java` as its one
+  program; its health check is a class of the server module (`HealthCheck`, only `java.base`) run by `java` in exec
+  form. The two with a shell check with busybox `wget`, so no second JVM reads the options of the JVM (a JMX or JDWP
+  port would clash). The user `lds` is added to `/etc/passwd` in the build stage.
+- **The images run as the user `lds`**, have a health check on `/ping`, and have the example model in
+  `/lds/schemas`. They are published only by the release workflow (see Invariants).
 - **Every port of the compose file is published on 127.0.0.1**, and can be moved (`LDS_PORT`, ...), which is how
   `ServerStackIT` runs next to a stack that is up. The passwords in it are development defaults.
 - **The JDK of the image is the baseline**: Renovate is told to keep `eclipse-temurin` at 27. A JDK module that a

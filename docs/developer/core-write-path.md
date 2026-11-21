@@ -615,8 +615,8 @@ Keys that the two PostgreSQL providers read and no defaults file has, read in th
   reactive call (`blockingAwait`), on a thread of the saga thread pool.
 - **Stop in order.** A new part of the write path is stopped in `UndertowApplication.stop` after the sagas that
   use it have completed.
-- **No backward-compatibility code.** 3.0.0 is not released, and a milestone promises no compatibility, so a change of
-  the saga input or of the configuration keys needs no alias and no migration.
+- **No backward-compatibility code.** Nothing of LDS 3 was released before 3.0.0, so 3.0.0 carries no alias and no
+  migration for an earlier saga input or earlier configuration keys.
 - **Lint and Javadoc.** The `pom.xml` of core switches some lint categories and the doclint check for missing
   Javadoc off, for the code of core that is not revised. New and revised code meets `-Xlint:all -Werror` and
   doclint `all`.
