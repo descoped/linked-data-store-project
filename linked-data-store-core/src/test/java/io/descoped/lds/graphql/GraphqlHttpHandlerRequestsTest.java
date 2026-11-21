@@ -1,7 +1,6 @@
 package io.descoped.lds.graphql;
 
 import graphql.GraphQL;
-import graphql.schema.StaticDataFetcher;
 import graphql.schema.idl.SchemaGenerator;
 import graphql.schema.idl.SchemaParser;
 import io.descoped.lds.api.persistence.json.JsonTools;
@@ -125,6 +124,7 @@ class GraphqlHttpHandlerRequestsTest {
                 URI.create(address + "/?query=" + query + "&query=" + query)));
 
         assertThat(response.statusCode()).isEqualTo(500);
+        assertThat(response.body()).isEmpty();
     }
 
     @Test
