@@ -12,15 +12,15 @@ read
 echo
 echo
 echo
-echo "Create ProvisionAgreement Pengebingen"
+echo "Create ProvisionAgreement Money Bin"
 echo
-http -p HBhb -j PUT localhost:9090/data/provisionagreement/2a41c < 1-pengebingen.json
+http -p HBhb -j PUT localhost:9090/data/provisionagreement/2a41c < 1-money-bin.json
 
 read
 echo
 echo
 echo
-echo "Get Pengebingen"
+echo "Get Money Bin"
 echo
 http -p HBhb localhost:9090/data/provisionagreement/2a41c
 
@@ -28,15 +28,15 @@ read
 echo
 echo
 echo
-echo "Add Address to Pengebingen"
+echo "Add Address to Money Bin"
 echo
-http -p HBhb -j PUT localhost:9090/data/provisionagreement/2a41c/address < 2-pengebingen-address.json
+http -p HBhb -j PUT localhost:9090/data/provisionagreement/2a41c/address < 2-money-bin-address.json
 
 read
 echo
 echo
 echo
-echo "Get Pengebingen"
+echo "Get Money Bin"
 echo
 http -p HBhb localhost:9090/data/provisionagreement/2a41c
 
@@ -44,15 +44,15 @@ read
 echo
 echo
 echo
-echo "Create contact Skrue"
+echo "Create contact Scrooge"
 echo
-http -p HBhb -j PUT localhost:9090/data/contact/4b2ef < 3-skrue.json
+http -p HBhb -j PUT localhost:9090/data/contact/4b2ef < 3-scrooge.json
 
 read
 echo
 echo
 echo
-echo "Get Skrue"
+echo "Get Scrooge"
 echo
 http -p HBhb localhost:9090/data/contact/4b2ef
 
@@ -76,7 +76,7 @@ read
 echo
 echo
 echo
-echo "Add Skrue to Pengebingen contacts"
+echo "Add Scrooge to Money Bin contacts"
 echo
 http -p HBhb -j PUT localhost:9090/data/provisionagreement/2a41c/contacts/contact/4b2ef
 
@@ -84,7 +84,7 @@ read
 echo
 echo
 echo
-echo "Get Pengebingen"
+echo "Get Money Bin"
 echo
 http -p HBhb localhost:9090/data/provisionagreement/2a41c
 
@@ -92,7 +92,7 @@ read
 echo
 echo
 echo
-echo "Add Donald to Pengebingen contacts"
+echo "Add Donald to Money Bin contacts"
 echo
 http -p HBhb -j PUT localhost:9090/data/provisionagreement/2a41c/contacts/contact/821aa
 
@@ -100,7 +100,7 @@ read
 echo
 echo
 echo
-echo "Get Pengebingen"
+echo "Get Money Bin"
 echo
 http -p HBhb localhost:9090/data/provisionagreement/2a41c
 
@@ -108,7 +108,7 @@ read
 echo
 echo
 echo
-echo "Delete Skrue from Pengebingen contacts"
+echo "Delete Scrooge from Money Bin contacts"
 echo
 http -p HBhb DELETE localhost:9090/data/provisionagreement/2a41c/contacts/contact/4b2ef
 
@@ -116,6 +116,6 @@ read
 echo
 echo
 echo
-echo "Get Pengebingen"
+echo "Get Money Bin"
 echo
 http -p HBhb localhost:9090/data/provisionagreement/2a41c

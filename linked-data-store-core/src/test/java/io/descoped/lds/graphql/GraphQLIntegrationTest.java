@@ -69,7 +69,7 @@ public class GraphQLIntegrationTest {
     public void thatGetContactOnlyWorks() {
         // setup demo data
         putResource("/data/contact/821aa", "demo/4-donald.json");
-        assertEquals(client.get("/data/contact/821aa").expect200Ok().body(), "{\"email\":\"donald@duck.no\",\"name\":\"Donald Duck\"}");
+        assertEquals(client.get("/data/contact/821aa").expect200Ok().body(), "{\"email\":\"donald@webfoot.example\",\"name\":\"Donald Duck\"}");
 
         assertNoErrors(executeGraphQLQuery("spec/demo/graphql/contact_only.json"));
         assertNoErrors(executeGraphQLQuery("spec/demo/graphql/contact_by_id.json", "821aa"));
@@ -100,16 +100,16 @@ public class GraphQLIntegrationTest {
     })
     public void thatNestedSeachWorks() {
         // setup demo data
-        putResource("/data/provisionagreement/2a41c", "demo/1-pengebingen.json");
-        putResource("/data/provisionagreement/2a41c/address", "demo/2-pengebingen-address.json");
+        putResource("/data/provisionagreement/2a41c", "demo/1-money-bin.json");
+        putResource("/data/provisionagreement/2a41c/address", "demo/2-money-bin-address.json");
 
-        JsonNode result = executeGraphQLQuery("spec/demo/graphql/search_address.json", "Andeby");
+        JsonNode result = executeGraphQLQuery("spec/demo/graphql/search_address.json", "Duckburg");
         assertNoErrors(result);
         Assert.assertEquals(result.get("data").get("Search").get("edges").size(), 1);
-        Assert.assertEquals(JsonTools.text(result.get("data").get("Search").get("edges").get(0).get("node").get("name")), "Pengebingen");
+        Assert.assertEquals(JsonTools.text(result.get("data").get("Search").get("edges").get(0).get("node").get("name")), "Money Bin");
         // Check that the entity index is updated
         client.put("/data/provisionagreement/2a41c", readFileOrClasspathResource(
-                "demo/1-pengebingen.json").replace("Pengebingen", "Jupiter"));
+                "demo/1-money-bin.json").replace("Money Bin", "Jupiter"));
         result = executeGraphQLQuery("spec/demo/graphql/search_address.json", "Jupiter");
         assertNoErrors(result);
         Assert.assertEquals(result.get("data").get("Search").get("edges").size(), 1);
@@ -122,9 +122,9 @@ public class GraphQLIntegrationTest {
     })
     public void thatLinkingQueryWorks() {
         // setup demo data
-        putResource("/data/provisionagreement/2a41c", "demo/1-pengebingen.json");
-        putResource("/data/provisionagreement/2a41c/address", "demo/2-pengebingen-address.json");
-        putResource("/data/contact/4b2ef", "demo/3-skrue.json");
+        putResource("/data/provisionagreement/2a41c", "demo/1-money-bin.json");
+        putResource("/data/provisionagreement/2a41c/address", "demo/2-money-bin-address.json");
+        putResource("/data/contact/4b2ef", "demo/3-scrooge.json");
         putResource("/data/contact/821aa", "demo/4-donald.json");
         client.put("/data/provisionagreement/2a41c/contacts/contact/4b2ef");
         client.put("/data/provisionagreement/2a41c/contacts/contact/821aa");

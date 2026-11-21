@@ -1,11 +1,11 @@
 {
   "__id": "100",
-  "name": "Pengebingen",
+  "name": "Money Bin",
   "str/ange=Prop#Name": "Freaky property",
   "address": {
-    "street": "Pengebingen",
-    "city": "Andeby",
-    "country": "Andeland"
+    "street": "Killmotor Hill",
+    "city": "Duckburg",
+    "country": "USA"
   },
   "contacts": [
     "/contact/101",
