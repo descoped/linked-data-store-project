@@ -183,6 +183,8 @@ docker compose -f linked-data-store-server/compose.yaml up --build
   `lds` with the password `lds` for PostgreSQL. They are for development. Do not use the file as it is for
   anything else.
 - **Order.** LDS is started when Neo4j, PostgreSQL and Solr each say they are healthy.
+- **Stopping.** LDS is given a minute to stop (`stop_grace_period: 60s`), so `docker compose stop` and `down`
+  let it stop in order also when a write is held up.
 - **The model.** The folder `linked-data-store-server/schemas` is mounted as `/lds/schemas`, read-only. LDS reads
   the model at start, so restart the service `lds` after a change of the model.
 - **What the stack makes before LDS starts.** PostgreSQL makes the databases `sagalog` and `txlog` from the file
