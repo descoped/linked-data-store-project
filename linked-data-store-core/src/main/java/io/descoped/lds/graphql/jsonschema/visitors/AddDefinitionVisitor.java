@@ -221,7 +221,7 @@ public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
         if (type instanceof GraphQLObjectType objectType) {
             return visitListOfObjects(node, objectType, fieldProperties, itemList, context);
         } else if (type instanceof GraphQLScalarType scalarType) {
-            if (scalarType.getName().equalsIgnoreCase("string")) {
+            if (scalarType.getName().equalsIgnoreCase(STRING)) {
                 itemList.put("type", STRING);
             }
             fieldProperties.set(ITEMS, itemList);
