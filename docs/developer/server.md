@@ -396,9 +396,10 @@ with 143. The comment in the Dockerfile says it: the signal that stops the conta
 that LDS answers what it is handling and completes its sagas before it ends. Options of the JVM are given in
 the variable `JAVA_TOOL_OPTIONS`, which the JVM reads itself; the entry point has no place for them.
 
-Neither the Dockerfile nor the compose file says how long Docker waits before it ends a container that was
-asked to stop (no `STOPSIGNAL`, no `stop_grace_period`), so the time is Docker's own. `ServerImageIT` gives its
-container 60 seconds.
+The Dockerfile does not say how long Docker waits before it ends a container that was asked to stop (no
+`STOPSIGNAL`), so with `docker run` the time is Docker's own, 10 seconds, unless `docker stop -t` gives another.
+The compose file gives LDS 60 seconds (`stop_grace_period`), since a stop with a write held up takes 30 seconds or
+more. `ServerImageIT` gives its container 60 seconds.
 
 ### Why the class path and not the module path
 

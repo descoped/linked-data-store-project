@@ -130,7 +130,8 @@ things follow, and a fourth for the distroless image:
 and the container ends with exit code 143. A stop takes 30 seconds or more when a write is held up. A container that is
 ended by force before LDS has stopped has crashed, as far as its writes go; see [Writes that fail, crashes and
 recovery](#writes-that-fail-crashes-and-recovery). Docker ends a container by force 10 seconds after `docker stop`
-unless it is given longer, so give LDS a minute: `docker stop -t 60 <container>`, and `docker compose stop -t 60`.
+unless it is given longer, so give LDS a minute: `docker stop -t 60 <container>`, and in a compose file of your own
+`stop_grace_period: 60s`, as the compose file of the repository has.
 
 ### Diagnostics with the debug image
 
@@ -183,6 +184,8 @@ docker compose -f linked-data-store-server/compose.yaml up --build
   `lds` with the password `lds` for PostgreSQL. They are for development. Do not use the file as it is for
   anything else.
 - **Order.** LDS is started when Neo4j, PostgreSQL and Solr each say they are healthy.
+- **Stopping.** LDS is given a minute to stop (`stop_grace_period: 60s`), so `docker compose stop` and `down`
+  let it stop in order also when a write is held up.
 - **The model.** The folder `linked-data-store-server/schemas` is mounted as `/lds/schemas`, read-only. LDS reads
   the model at start, so restart the service `lds` after a change of the model.
 - **What the stack makes before LDS starts.** PostgreSQL makes the databases `sagalog` and `txlog` from the file
