@@ -34,9 +34,11 @@ class HealthCheckTest {
         server = new ServerSocket(0, 1, InetAddress.getLoopbackAddress());
         Thread.ofVirtual().start(() -> {
             try (Socket socket = server.accept()) {
-                String requestLine = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.US_ASCII)).readLine();
-                int answer = requestLine.startsWith("GET " + path + " ") ? status : 404;
-                socket.getOutputStream().write(("HTTP/1.1 " + answer + " X\r\nContent-Length: 0\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
+                BufferedReader request = new BufferedReader(
+                        new InputStreamReader(socket.getInputStream(), StandardCharsets.US_ASCII));
+                int answer = request.readLine().startsWith("GET " + path + " ") ? status : 404;
+                String response = "HTTP/1.1 " + answer + " X\r\nContent-Length: 0\r\n\r\n";
+                socket.getOutputStream().write(response.getBytes(StandardCharsets.US_ASCII));
             } catch (IOException e) {
                 // the server is closed
             }

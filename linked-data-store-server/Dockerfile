@@ -83,8 +83,9 @@ COPY schemas/ /lds/schemas/
 # The three images. They differ in their base and their runtime; the rest is the same in each, and is kept the same.
 #
 # The health check of the distroless image is a class of its own on a class path of its own, run by a JVM that is
-# made to start quickly and to use little memory; it uses only java.base. Its options come after those of
-# JAVA_TOOL_OPTIONS, and win. The images with a shell ask with wget of busybox, so that no JVM but the one of LDS reads
+# made to start quickly and to use little memory; it uses only java.base. That JVM also reads JAVA_TOOL_OPTIONS and
+# JDK_JAVA_OPTIONS: its heap options come after them and win, and it names no garbage collector, since a second one
+# given there would stop it from starting. An option there that opens a port (JMX, JDWP) would clash with LDS. The images with a shell ask with wget of busybox, so that no JVM but the one of LDS reads
 # the options of the JVM: an option that opens a port (remote JMX, a remote debugger) would fail in a second JVM.
 #
 # java is the process of the container, so that the signal that stops the container reaches it: LDS then answers
@@ -100,7 +101,7 @@ WORKDIR /lds
 USER lds
 EXPOSE 9090
 HEALTHCHECK --start-period=60s --start-interval=1s --interval=10s --timeout=3s --retries=3 \
-    CMD ["java", "-XX:TieredStopAtLevel=1", "-XX:+UseSerialGC", "-XX:-UsePerfData", "-Xms8m", "-Xmx8m", \
+    CMD ["java", "-XX:TieredStopAtLevel=1", "-XX:-UsePerfData", "-Xms8m", "-Xmx8m", \
          "-cp", "/lds/health", "io.descoped.lds.server.HealthCheck"]
 ENTRYPOINT ["java", "-cp", "/lds/lib/*", "io.descoped.lds.server.Server"]
 

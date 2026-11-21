@@ -109,9 +109,10 @@ How it is given a model and a configuration:
 - Options of the JVM are given in the variable `JAVA_TOOL_OPTIONS`.
 
 The health check of the image asks `/ping` inside the container: in the regular and the debug image with `wget`,
-in the distroless image with a small Java program (a `java` of its own, which also reads `JAVA_TOOL_OPTIONS` but
-keeps its own memory settings). It asks once a second in the first 60 seconds, then every 10 seconds. An answer must
-come within 3 seconds, and after 3 checks that fail the container is called unhealthy. Three things follow:
+in the distroless image with a small Java program (a `java` of its own, which also reads `JAVA_TOOL_OPTIONS` and
+`JDK_JAVA_OPTIONS` but keeps its own memory settings). It asks once a second in the first 60 seconds, then every 10
+seconds. An answer must come within 3 seconds, and after 3 checks that fail the container is called unhealthy. Three
+things follow, and a fourth for the distroless image:
 
 - The check knows the port from the variable `LDS_HTTP_PORT`, and uses 9090 without it. Move the port in the
   container with that variable, not in a mounted file.
@@ -119,6 +120,10 @@ come within 3 seconds, and after 3 checks that fail the container is called unhe
   `/ping` gave `404` and `/lds/ping` gave `200`. The container is then called unhealthy while LDS runs.
 - `/ping` asks no store. A healthy container means that LDS answers HTTP, not that its stores can be reached.
   See [The health addresses](#the-health-addresses).
+- In the distroless image, do not give an option that opens a port (remote JMX, a remote debugger) in
+  `JAVA_TOOL_OPTIONS` or `JDK_JAVA_OPTIONS`: the check's `java` would try the same port, fail, and the container
+  is called unhealthy. Use the debug image for that
+  ([Diagnostics with the debug image](#diagnostics-with-the-debug-image)).
 
 `docker stop` sends the signal TERM to the Java program. LDS then stops in order, as [Stopping](#stopping) describes,
 and the container ends with exit code 143. A stop takes 30 seconds or more when a write is held up. A container that is

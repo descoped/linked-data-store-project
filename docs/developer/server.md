@@ -380,8 +380,11 @@ soon as the HTTP server is up, without asking a store.
   the `java` of the image. It asks over a plain socket and ends with 0 when the status line of the answer says 200,
   and with 1 otherwise, also when nothing answers within 2 seconds, or when the variable is not a number (it then
   asks 9090). It uses only `java.base` and starts no thread. Its JVM is told to start quickly and to use little
-  memory (`-XX:TieredStopAtLevel=1 -XX:+UseSerialGC -XX:-UsePerfData -Xms8m -Xmx8m`); these options come after
-  those of `JAVA_TOOL_OPTIONS`, which the JVM of the check reads too, and win. A check takes about 35 milliseconds.
+  memory (`-XX:TieredStopAtLevel=1 -XX:-UsePerfData -Xms8m -Xmx8m`). It reads `JAVA_TOOL_OPTIONS` and
+  `JDK_JAVA_OPTIONS` too: its own options come after them and win, and it names no garbage collector, because a
+  second one chosen there for LDS (`-XX:+UseZGC`) would stop it from starting ("Multiple garbage collectors
+  selected"). An option there that opens a port, for remote JMX or a remote debugger, makes the check fail, as the
+  port is taken by LDS: such options belong in the debug image. A check takes about 35 milliseconds.
 
 The health check knows the port only from the variable `LDS_HTTP_PORT`, and knows no prefix. A port set in a
 mounted `conf/application.properties`, or any `http.prefix` but `/`, makes the container unhealthy while LDS
