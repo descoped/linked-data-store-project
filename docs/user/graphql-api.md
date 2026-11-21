@@ -173,15 +173,12 @@ A query is sent with POST or with GET. The answer is the same for both.
 
 ### POST with a JSON body
 
-The body is a JSON object, and the content type is `application/json`.
+The body is a JSON object with the query as the text of `query`, and the content type is `application/json`.
 
 ```sh
-curl -i 'http://localhost:9090/graphql' -H 'Content-Type: application/graphql' \
+curl -i 'http://localhost:9090/graphql' -H 'Content-Type: application/json' \
      -d '{
-       CompanyById(id: "acme") {
-         name
-         founded
-       }
+       "query": "{ CompanyById(id: \"acme\") { name founded } }"
      }'
 ```
 

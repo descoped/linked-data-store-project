@@ -1,0 +1,11 @@
+{
+  "name": "lds",
+  "description": "Skills for Linked Data Store (LDS): run it, design a model for a domain as a GraphQL schema or JSON Schema, write and read versioned, linked documents over REST, query them with GraphQL, and operate LDS. For anyone who has not used LDS before.",
+  "author": {
+    "name": "Descoped"
+  },
+  "homepage": "https://lds.descoped.io/",
+  "repository": "https://github.com/descoped/linked-data-store-project",
+  "license": "Apache-2.0",
+  "keywords": ["lds", "linked-data-store", "time-machine", "versioned-documents", "graphql", "json-schema", "rest"]
+}

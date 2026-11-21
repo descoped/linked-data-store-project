@@ -85,6 +85,19 @@ curl 'http://localhost:9090/ns/Company/fjord?timestamp=2021-06-01T00:00:00Z'
 Without `timestamp` the same address gives the version valid now, and `?timeline` lists every version with its valid
 time. [Getting started](/docs/user/getting-started/) runs a session like it from the start.
 
+## With Claude Code
+
+Never used LDS? Ask for it in plain words. The plugin `lds` for Claude Code starts LDS, makes a model of your
+domain with you from a description, sample data or an SQL schema, and writes, reads and queries the documents for
+you:
+
+```text
+/plugin install lds --marketplace descoped/linked-data-store-project
+```
+
+Then ask, for example, "model a library with books, authors and loans, and load these members from members.csv".
+[With Claude Code](/docs/user/claude-code/)
+
 ## When it fits
 
 LDS fits when the history of the data is part of the data: registers, master data and reference data that change over
@@ -102,5 +115,4 @@ It does not fit, as it is today, when:
 LDS 3.0.0 is released: the server as images on Docker Hub, `descoped/lds`, for Linux on amd64 and arm64, in three
 variants (the regular image with a shell, one without, and one with the tools of the JDK for diagnostics), each signed,
 with the [release notes](https://github.com/descoped/linked-data-store-project/releases/tag/3.0.0) on GitHub. No jar
-is published; LDS is also built from the repository on JDK 27. What is unfinished is said in the documentation where
-a reader meets it, in a paragraph that starts with "Not finished:".
+is published; LDS is also built from the repository on JDK 27.

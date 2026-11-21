@@ -39,6 +39,7 @@ const landing = defineCollection({
     'What a document is made of',
     'How it works',
     'See it',
+    'With Claude Code',
     'When it fits',
     'Status',
   ],

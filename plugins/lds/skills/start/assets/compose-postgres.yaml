@@ -1,0 +1,76 @@
+# Linked Data Store (LDS) 3.0.0 with everything in one PostgreSQL: the documents, the saga log and the
+# transaction log. No search. For development only: the password is written here.
+# The port is published on localhost (127.0.0.1), because LDS asks no caller who it is.
+#
+#   docker compose up -d --wait        start; LDS answers on http://localhost:9090
+#   docker compose restart lds         after a change of the model in ./schemas
+#   docker compose down                stop; the data stays in the volume
+#   docker compose down -v             stop and remove the data
+#
+# A port that is taken on the machine is moved with LDS_PORT: LDS_PORT=9190 docker compose up -d --wait
+name: lds-postgres
+
+services:
+
+  lds:
+    image: descoped/lds:3.0.0
+    # LDS can need 30 seconds or more to stop in order while a write is held up; Docker's 10 would cut it short.
+    stop_grace_period: 60s
+    ports:
+      - "127.0.0.1:${LDS_PORT:-9090}:9090"
+    environment:
+      LDS_PERSISTENCE_PROVIDER: postgres
+      LDS_POSTGRES_DRIVER_HOST: postgres
+      LDS_POSTGRES_DRIVER_USER: lds
+      LDS_POSTGRES_DRIVER_PASSWORD: lds
+      LDS_POSTGRES_DRIVER_DATABASE: lds
+      LDS_SAGALOG_PROVIDER: no.cantara.sagalog.postgres.PostgresSagaLogInitializer
+      LDS_SAGALOG_CONFIG_CLUSTER_OWNER: development
+      LDS_SAGALOG_CONFIG_CLUSTER_NAME: lds
+      LDS_SAGALOG_CONFIG_CLUSTER_INSTANCE_ID: "01"
+      LDS_SAGALOG_CONFIG_POSTGRES_DRIVER_HOST: postgres
+      LDS_SAGALOG_CONFIG_POSTGRES_DRIVER_USER: lds
+      LDS_SAGALOG_CONFIG_POSTGRES_DRIVER_PASSWORD: lds
+      LDS_SAGALOG_CONFIG_POSTGRES_DRIVER_DATABASE: sagalog
+      LDS_TXLOG_RAWDATA_PROVIDER: postgres
+      LDS_TXLOG_CONFIG_POSTGRES_DRIVER_HOST: postgres
+      LDS_TXLOG_CONFIG_POSTGRES_DRIVER_USER: lds
+      LDS_TXLOG_CONFIG_POSTGRES_DRIVER_PASSWORD: lds
+      LDS_TXLOG_CONFIG_POSTGRES_DRIVER_DATABASE: txlog
+    # Without these two lines LDS has the example model of the image. With them it reads ./schemas/schema.graphql.
+    # volumes:
+    #   - ./schemas:/lds/schemas:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # LDS is tested with PostgreSQL 18. The two databases of the logs are made once, when the volume is empty;
+  # the documents are in the database lds, in the table fragment, which LDS makes at start.
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: lds
+      POSTGRES_PASSWORD: lds
+      POSTGRES_DB: lds
+    configs:
+      - source: postgres-init
+        target: /docker-entrypoint-initdb.d/postgres-init.sql
+    volumes:
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      # over TCP, which PostgreSQL answers only when the init script has been run
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "lds", "-d", "txlog"]
+      start_period: 60s
+      start_interval: 2s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+configs:
+  postgres-init:
+    content: |
+      CREATE DATABASE sagalog;
+      CREATE DATABASE txlog;
+
+volumes:
+  postgres:

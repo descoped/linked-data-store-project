@@ -687,7 +687,7 @@ except in the cases of [A start that fails and a process that stays](#a-start-th
 | A properties file that is not UTF-8 | `io.descoped.config.ConfigurationException: Cannot read file .../conf/application.properties: not valid UTF-8` |
 | The file of `graphql.schema` is not there (`LDS_GRAPHQL_SCHEMA=models/missing.graphql`) | `java.lang.RuntimeException: java.nio.file.NoSuchFileException: models/missing.graphql` |
 | A file of `specification.schema` is not there | `java.lang.IllegalArgumentException: Unable to find resource: models/jsonschema/Missing.json` |
-| An unknown `persistence.provider` (`nope`) | `java.lang.RuntimeException: No persistence providers found for providerId: nope` |
+| An unknown `persistence.provider` (`nope`) | `java.lang.IllegalStateException: No persistence providers found for providerId: nope` |
 | An unknown `sagalog.provider` | `java.util.NoSuchElementException: No value present`. The message does not name the key. |
 | An unknown `txlog.rawdata.provider` (`nope`) | `io.descoped.service.provider.api.ProviderException: No provider named 'nope'; available: [discard, memory, postgres]`, after 30 seconds |
 | An unknown `search.index.provider` (`nope`), with search on | `java.lang.RuntimeException: No search index provider found for providerId: nope` |
@@ -729,8 +729,13 @@ ends with:
   an empty string.`
 - a wrong password: `Failed to initialize pool: FATAL: password authentication failed for user "lds"`
 - no such database: `Failed to initialize pool: FATAL: database "nosuch" does not exist`
+- a name of the PostgreSQL host that is not known, such as a service of a compose file that is not started:
+  `Failed to initialize pool: The connection attempt failed.`
 - Neo4j does not answer: `org.neo4j.driver.exceptions.ServiceUnavailableException: Unable to connect to
   127.0.0.1:19306, ensure the database is running and that there is a working network connection to it.`
+- a wrong Neo4j password: `org.neo4j.driver.exceptions.AuthenticationException: The client is unauthorized due to
+  authentication failure.`, and after several tries `org.neo4j.driver.exceptions.SecurityException: The client has
+  provided incorrect authentication details too many times in a row.`
 
 ### A start that fails and a process that stays
 

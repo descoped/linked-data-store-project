@@ -32,6 +32,7 @@ You run LDS, give it a model, and read and write documents. You do not need to r
 | [The GraphQL API](user/graphql-api.md) | The queries LDS makes from a model, paging, links, as-of reads, search. |
 | [Configuration](user/configuration.md) | Every key, its default and its meaning, and how keys are set. |
 | [Running LDS](user/operations.md) | The image and the compose file, starting and stopping, health, logs, what is stored where. |
+| [With Claude Code](user/claude-code.md) | The plugin lds for Claude Code: start LDS, make a model of a domain, write, read and query documents by asking. |
 | [Glossary](glossary.md) | The terms of this documentation, each with one meaning. |
 
 ## For those who develop and maintain LDS

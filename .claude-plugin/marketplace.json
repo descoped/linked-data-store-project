@@ -1,0 +1,14 @@
+{
+  "name": "lds",
+  "owner": {
+    "name": "Descoped"
+  },
+  "description": "Agent skills for Linked Data Store (LDS), the time machine for versioned, linked JSON documents.",
+  "plugins": [
+    {
+      "name": "lds",
+      "source": "./plugins/lds",
+      "description": "Skills that help anyone with no knowledge of LDS run it, design a model for a domain, write and read documents over REST, query them with GraphQL, and operate LDS."
+    }
+  ]
+}
