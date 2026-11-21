@@ -1,6 +1,6 @@
 # Linked Data Store (LDS) 3.0.0 with an engine for each thing it keeps: Neo4j for the documents, PostgreSQL for
 # the saga log and the transaction log, Solr for search. For development only: the passwords are written here.
-# Every port is published on 127.0.0.1, because LDS asks no caller who it is.
+# Every port is published on localhost (127.0.0.1), because LDS asks no caller who it is.
 #
 #   docker compose up -d --wait        start; LDS answers on http://localhost:9090
 #   docker compose restart lds         after a change of the model in ./schemas
@@ -15,6 +15,8 @@ services:
 
   lds:
     image: descoped/lds:3.0.0
+    # LDS can need 30 seconds or more to stop in order while a write is held up; Docker's 10 would cut it short.
+    stop_grace_period: 60s
     ports:
       - "127.0.0.1:${LDS_PORT:-9090}:9090"
     environment:

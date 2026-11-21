@@ -72,9 +72,9 @@ second. Everything is gone when the container stops, so this is for trying LDS a
 Not finished: the memory store has known faults. One GraphQL query stops every read and write while `/ping` still
 answers `200` (see `lds:query`, reverse links). For anything beyond a first try, keep the data in PostgreSQL.
 
-Publish the port on `127.0.0.1`, as above, and not as `-p 9090:9090`. LDS asks no caller who it is: whoever
-reaches the port can read, write and delete every document. Without the address Docker publishes the port on
-every network of the machine. The same holds for every port of the compose files, which publish on 127.0.0.1.
+Publish the port on localhost only, as above, and not as `-p 9090:9090`; Docker takes no name there, so the
+command says `127.0.0.1`. LDS asks no caller who it is: whoever reaches the port can read, write and delete every
+document. Without the address Docker publishes the port on every network of the machine. The same holds for every port of the compose files, which publish on localhost only.
 
 ## Check that LDS answers
 

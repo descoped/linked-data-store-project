@@ -80,7 +80,7 @@ The busybox tools of the regular image are there too (`ps`, `top`): `docker exec
 
 Give the options in `JDK_JAVA_OPTIONS`, which only the `java` that starts LDS reads, not in `JAVA_TOOL_OPTIONS`,
 which every JDK tool reads as well (a tool would then try to open the same port and fail). This run opened JMX on
-9010 and a debugger on 5005, both on 127.0.0.1 of the machine; the container stayed healthy and `jcmd` still
+9010 and a debugger on 5005, both on localhost of the machine; the container stayed healthy and `jcmd` still
 worked:
 
 ```sh
@@ -92,10 +92,10 @@ docker run --rm -p 127.0.0.1:9090:9090 -p 127.0.0.1:9010:9010 -p 127.0.0.1:5005:
 ```
 
 The log then starts with `NOTE: Picked up JDK_JAVA_OPTIONS: ...` and `Listening for transport dt_socket at address:
-5005`. Connect JConsole or VisualVM to `127.0.0.1:9010`, and a Java debugger to `127.0.0.1:5005`.
+5005`. Connect JConsole or VisualVM to `localhost:9010`, and a Java debugger to `localhost:5005`.
 
 JMX without a password and a debugger give whoever reaches the port the whole process and its data. Publish them on
-127.0.0.1 only, as here; on a remote machine reach them through an SSH tunnel, never an open port. Remove them when
+localhost only, as here; on a remote machine reach them through an SSH tunnel, never an open port. Remove them when
 the investigation is done. Do not put them in the distroless image: its health check is a `java` of its own that
 reads the same options, tries the same port, fails, and the container is called unhealthy.
 

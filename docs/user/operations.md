@@ -97,7 +97,7 @@ How it runs:
 - LDS is started in `/lds`, so a relative path in the configuration is a path under `/lds`.
 - It runs as the user `lds`, not as root.
 - It listens on port 9090 in the container. The `docker run` above makes that port 9090 on the machine, on the
-  address 127.0.0.1 only.
+  address 127.0.0.1, localhost, only.
 - With no configuration it is LDS as it comes: everything in memory, with the example model.
 
 How it is given a model and a configuration:
@@ -147,7 +147,7 @@ docker cp <container>:/tmp/heap.hprof .
 Remote JMX and a remote debugger are switched on by options of the JVM. Give them in `JDK_JAVA_OPTIONS`, which only
 the `java` that starts LDS reads, and not in `JAVA_TOOL_OPTIONS`, which every tool of the JDK reads as well: a tool
 would then try to open the same port, and fail. This run opened JMX on 9010 and the debugger on 5005, both on
-127.0.0.1 of the machine, and the container stayed healthy:
+localhost of the machine, and the container stayed healthy:
 
 ```sh
 docker run --rm -p 127.0.0.1:9090:9090 -p 127.0.0.1:9010:9010 -p 127.0.0.1:5005:5005 \
@@ -158,7 +158,7 @@ docker run --rm -p 127.0.0.1:9090:9090 -p 127.0.0.1:9010:9010 -p 127.0.0.1:5005:
 ```
 
 JMX without a password and a debugger give anyone who reaches the port the whole of LDS. Publish such ports on
-127.0.0.1 only, as here, and use the debug image only for as long as the investigation takes.
+localhost only, as here, and use the debug image only for as long as the investigation takes.
 
 ## The compose file: a whole LDS for development
 
@@ -176,8 +176,8 @@ docker compose -f linked-data-store-server/compose.yaml up --build
 | `postgres` | `postgres:18-alpine` | The saga log, in the database `sagalog`, and the transaction log, in the database `txlog`. | none |
 | `solr` | `solr:10.1` | The search index, in the core `lds-index`. The admin pages of Solr are on `http://localhost:8983`. | 8983, moved with `SOLR_PORT` |
 
-- **Ports.** Every port is published on 127.0.0.1 only, so the stack is reached from the machine it runs on and
-  from nowhere else. PostgreSQL has no port on the machine. A port that is taken is moved with its variable:
+- **Ports.** Every port is published on localhost (127.0.0.1) only, so the stack is reached from the machine it runs
+  on and from nowhere else. PostgreSQL has no port on the machine. A port that is taken is moved with its variable:
   write `LDS_PORT=9190` in front of `docker compose`.
 - **Passwords.** They are written in the file: user `neo4j` with the password `lds-development` for Neo4j, user
   `lds` with the password `lds` for PostgreSQL. They are for development. Do not use the file as it is for
@@ -730,5 +730,5 @@ Each of these was checked in the code, and some also by a request.
   TLS. [Configuration](configuration.md) lists what has no key.
 
 As it comes, LDS listens on every address of the machine (`http.host` is `0.0.0.0`). The `docker run` and the
-compose file of this document publish its port on 127.0.0.1 only. Who can reach the port, and whether the way
+compose file of this document publish its port on localhost only. Who can reach the port, and whether the way
 there is encrypted, is decided outside LDS.

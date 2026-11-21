@@ -4,7 +4,7 @@
 #   try-model.sh [--keep] <model-folder> [port]
 #
 # The folder holds either one GraphQL schema (a file ending in .graphql) or JSON Schema files (*.json), and is
-# mounted read-only at /lds/schemas. LDS runs in memory on 127.0.0.1:<port> (9098 when not given) in a container
+# mounted read-only at /lds/schemas. LDS runs in memory on localhost:<port> (9098 when not given) in a container
 # named lds-model-try. The script waits until LDS answers, ends or hangs, and prints what LDS read or why it did
 # not start. Without --keep the container is removed at the end; with it, LDS keeps running for test writes.
 # The image is descoped/lds:3.0.0, or the one named in the variable LDS_IMAGE; the container name can be set
@@ -49,7 +49,7 @@ i=0
 while [ $i -lt 30 ]; do
   if [ "$(docker inspect -f '{{.State.Status}}' "$name" 2>/dev/null)" = exited ]; then result=ended; break; fi
   if docker logs "$name" 2>&1 | grep -q 'No schemas configured!'; then result=empty; break; fi
-  if [ "$(curl -s -o /dev/null -m 1 -w '%{http_code}' "http://127.0.0.1:$port/ping")" = 200 ]; then
+  if [ "$(curl -s -o /dev/null -m 1 -w '%{http_code}' "http://localhost:$port/ping")" = 200 ]; then
     result=up; break
   fi
   sleep 1; i=$((i + 1))
@@ -59,12 +59,12 @@ status=1
 case $result in
   up)
     docker logs "$name" 2>&1 | grep -E 'Managed domains|Unknown keyword' | sed 's/^.* - //' | cut -c1-200
-    list=$(curl -s "http://127.0.0.1:$port/ns?schema")
+    list=$(curl -s "http://localhost:$port/ns?schema")
     echo "GET /ns?schema: $list"
     status=0
     # Each entity type must answer its list of documents; a JSON Schema file LDS could not use answers 400.
     for entity in $(printf '%s' "$list" | tr -d '[]"' | tr ',' '\n' | sed 's|^/ns/||; s|?schema$||'); do
-      answer=$(curl -s -w ' %{http_code}' "http://127.0.0.1:$port/ns/$entity")
+      answer=$(curl -s -w ' %{http_code}' "http://localhost:$port/ns/$entity")
       case $answer in
         *' 200') ;;
         *) echo "GET /ns/$entity is answered: $answer"; status=1 ;;

@@ -184,7 +184,7 @@ used as written in every address: `/ns/Member`, not `/ns/member`.
 Run the script of this skill on the model folder. Its scripts are in `${CLAUDE_SKILL_DIR}/scripts/`: run them as `sh
 "${CLAUDE_SKILL_DIR}/scripts/<name>"`, from any folder. The references name them `scripts/<name>`, and `<skill dir>`
 there is `${CLAUDE_SKILL_DIR}`. It starts `descoped/lds:3.0.0` in memory in a throwaway container (`lds-model-try`, on
-`127.0.0.1:9098`), waits until LDS answers, ends or hangs, and prints what LDS read, or the reason from its log. It also
+`localhost:9098`), waits until LDS answers, ends or hangs, and prints what LDS read, or the reason from its log. It also
 asks every entity type for its list, which catches JSON Schema files that LDS lists and cannot use.
 
 ```sh

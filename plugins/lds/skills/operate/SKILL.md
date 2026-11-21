@@ -166,7 +166,7 @@ anyone on the network:
   their passwords. The compose file's passwords (`lds`, `lds-development`) are development defaults: set others
   everywhere else, and do not publish engine ports outside the machine.
 - **Diagnostics open doors.** Remote JMX without a password and a remote debugger give whoever reaches the port
-  the whole process. Publish them on 127.0.0.1 only, and only while investigating.
+  the whole process. Publish them on localhost only, and only while investigating.
 - **CORS is not access control.** `http.cors.allow.origin` (default `.*`) only tells browsers which pages may read
   answers; any other client is answered all the same.
 - **The log can hold secrets** (see Logs), so keep `http.request.dump` and `neo4j.cypher.show` off outside a
