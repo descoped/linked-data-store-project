@@ -139,6 +139,6 @@ jobs:
             --model opus
             --disallowedTools "Agent"
             --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh issue view:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git status:*),Bash(./mvnw --batch-mode --no-transfer-progress verify:*),Bash(./mvnw --batch-mode --no-transfer-progress package:*)"
-            --append-system-prompt "Read .claude/CLAUDE.md before changing anything. When you change code, run ./mvnw --batch-mode --no-transfer-progress -T 1C clean verify once the Maven wrapper exists, and push only when it passes; say plainly when it does not."
+            --append-system-prompt "Read .claude/CLAUDE.md before changing anything. When you change code, run ./mvnw --batch-mode --no-transfer-progress verify javadoc:javadoc once the Maven wrapper exists, and push only when it passes; say plainly when it does not."
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           track_progress: true
