@@ -17,14 +17,19 @@ on:
     types: [created]
   pull_request_review_comment:
     types: [created]
-  # Reviews code and documentation: README.md, docs/ and the other Markdown files
-  # are checked against the behaviour, so unlike ci.yml they are not ignored. A
-  # pull request that touches nothing but these paths is not reviewed. (Comment
-  # and issue events cannot be filtered by path; `respond` acts on them only when
-  # someone writes @claude.)
+  # Reviews code. A pull request that touches nothing but these paths (the
+  # documentation, the site, the Claude Code plugin and the files around the
+  # build) is not reviewed: they are not code, and a review costs minutes.
+  # (Comment and issue events cannot be filtered by path; `respond` acts on them
+  # only when someone writes @claude.)
   pull_request:
     types: [opened, reopened]
     paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'site/**'
+      - 'plugins/**'
+      - '.claude-plugin/**'
       - 'LICENSE'
       - '.claude/**'
       - '.github/workflows/claude.yml'

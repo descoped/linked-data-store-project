@@ -494,8 +494,9 @@ It runs on:
 
 A push or a pull request starts it only when it changes what can change the products: the root `pom.xml`,
 `mvnw`, `.mvn/`, a file in a module folder (`linked-data-store-*/`) that is not a Markdown file, or `ci.yml`
-itself. A change of the documentation (`docs/`, `README.md`, any Markdown file), `LICENSE`, `.claude/`,
-`claude.yml`, `renovate.json` or `.gitignore` alone does not start it. A tag starts it whatever it changes.
+itself. A change of the documentation (`docs/`, `README.md`, any Markdown file), the site (`site/`), the Claude Code
+plugin (`plugins/`, `.claude-plugin/`), `LICENSE`, `.claude/`, `claude.yml`, `renovate.json` or `.gitignore` alone
+does not start it. A tag starts it whatever it changes.
 A newer push to the same pull request or branch ends the run that is in progress.
 
 The job checks out the code, sets up JDK 27 (Temurin) with the Maven cache, restores the build cache, and runs one
@@ -524,9 +525,9 @@ SNAPSHOT, no release and no image.
 The actions are pinned by commit, with the version in a comment. Renovate moves them.
 
 `.github/workflows/claude.yml` has two jobs. `review` reads a pull request when it is opened or reopened and
-posts one review; it does not run the tests, and its token cannot change the code. It reviews Markdown files and
-`docs/` too, and is not started by a pull request that changes nothing but `LICENSE`, `.claude/`, `claude.yml`,
-`renovate.json` or `.gitignore`. `respond` answers an `@claude` mention from the owner, a member or a
+posts one review; it does not run the tests, and its token cannot change the code. It reviews code: a pull
+request that changes nothing but Markdown files, `docs/`, `site/`, the Claude Code plugin (`plugins/`,
+`.claude-plugin/`), `LICENSE`, `.claude/`, `claude.yml`, `renovate.json` or `.gitignore` does not start it. `respond` answers an `@claude` mention from the owner, a member or a
 collaborator, in a pull request or an issue, and may run `./mvnw ... verify` or `package` on JDK 27 before it
 pushes a fix. Both jobs need the secret `CLAUDE_CODE_OAUTH_TOKEN`.
 

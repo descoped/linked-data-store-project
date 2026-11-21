@@ -1,0 +1,118 @@
+# Linked Data Store (LDS) 3.0.0 with an engine for each thing it keeps: Neo4j for the documents, PostgreSQL for
+# the saga log and the transaction log, Solr for search. For development only: the passwords are written here.
+# Every port is published on localhost (127.0.0.1), because LDS asks no caller who it is.
+#
+#   docker compose up -d --wait        start; LDS answers on http://localhost:9090
+#   docker compose restart lds         after a change of the model in ./schemas
+#   docker compose down                stop; the data stays in the volumes
+#   docker compose down -v             stop and remove the data
+#
+# A port that is taken on the machine is moved with LDS_PORT, NEO4J_HTTP_PORT, NEO4J_BOLT_PORT or SOLR_PORT:
+#   LDS_PORT=9190 docker compose up -d --wait
+name: lds
+
+services:
+
+  lds:
+    image: descoped/lds:3.0.0
+    # LDS can need 30 seconds or more to stop in order while a write is held up; Docker's 10 would cut it short.
+    stop_grace_period: 60s
+    ports:
+      - "127.0.0.1:${LDS_PORT:-9090}:9090"
+    environment:
+      LDS_PERSISTENCE_PROVIDER: neo4j
+      LDS_NEO4J_DRIVER_URL: bolt://neo4j:7687
+      LDS_NEO4J_DRIVER_USERNAME: neo4j
+      LDS_NEO4J_DRIVER_PASSWORD: lds-development
+      LDS_SAGALOG_PROVIDER: no.cantara.sagalog.postgres.PostgresSagaLogInitializer
+      LDS_SAGALOG_CONFIG_CLUSTER_OWNER: development
+      LDS_SAGALOG_CONFIG_CLUSTER_NAME: lds
+      LDS_SAGALOG_CONFIG_CLUSTER_INSTANCE_ID: "01"
+      LDS_SAGALOG_CONFIG_POSTGRES_DRIVER_HOST: postgres
+      LDS_SAGALOG_CONFIG_POSTGRES_DRIVER_USER: lds
+      LDS_SAGALOG_CONFIG_POSTGRES_DRIVER_PASSWORD: lds
+      LDS_SAGALOG_CONFIG_POSTGRES_DRIVER_DATABASE: sagalog
+      LDS_TXLOG_RAWDATA_PROVIDER: postgres
+      LDS_TXLOG_CONFIG_POSTGRES_DRIVER_HOST: postgres
+      LDS_TXLOG_CONFIG_POSTGRES_DRIVER_USER: lds
+      LDS_TXLOG_CONFIG_POSTGRES_DRIVER_PASSWORD: lds
+      LDS_TXLOG_CONFIG_POSTGRES_DRIVER_DATABASE: txlog
+      LDS_GRAPHQL_SEARCH_ENABLED: "true"
+      LDS_SEARCH_INDEX_PROVIDER: solr
+      LDS_SEARCH_INDEX_URL: http://solr:8983/solr/lds-index
+    # Without these two lines LDS has the example model of the image. With them it reads ./schemas/schema.graphql.
+    # volumes:
+    #   - ./schemas:/lds/schemas:ro
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      solr:
+        condition: service_healthy
+
+  # The browser of Neo4j is on http://localhost:7474 (user neo4j).
+  neo4j:
+    image: neo4j:2026.10-community
+    ports:
+      - "127.0.0.1:${NEO4J_HTTP_PORT:-7474}:7474"
+      - "127.0.0.1:${NEO4J_BOLT_PORT:-7687}:7687"
+    environment:
+      NEO4J_AUTH: neo4j/lds-development
+    volumes:
+      - neo4j:/data
+    healthcheck:
+      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "lds-development", "RETURN 1"]
+      start_period: 60s
+      start_interval: 2s
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  # LDS is tested with PostgreSQL 18. The two databases of the logs are made once, when the volume is empty.
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: lds
+      POSTGRES_PASSWORD: lds
+      POSTGRES_DB: lds
+    configs:
+      - source: postgres-init
+        target: /docker-entrypoint-initdb.d/postgres-init.sql
+    volumes:
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      # over TCP, which PostgreSQL answers only when the init script has been run
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "lds", "-d", "txlog"]
+      start_period: 60s
+      start_interval: 2s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # The admin pages of Solr are on http://localhost:8983.
+  solr:
+    image: solr:10.1
+    command: ["solr-precreate", "lds-index"]
+    ports:
+      - "127.0.0.1:${SOLR_PORT:-8983}:8983"
+    volumes:
+      - solr:/var/solr
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8983/solr/lds-index/admin/ping"]
+      start_period: 60s
+      start_interval: 2s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+configs:
+  postgres-init:
+    content: |
+      CREATE DATABASE sagalog;
+      CREATE DATABASE txlog;
+
+volumes:
+  neo4j:
+  postgres:
+  solr:
