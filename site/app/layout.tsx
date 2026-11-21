@@ -64,9 +64,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }):
               <a href="https://github.com/descoped/linked-data-store-project/blob/master/LICENSE">Apache License 2.0</a>
             </span>
             <span>
-              Visits are counted with <a href="https://plausible.io/data-policy">Plausible</a>, without cookies
-            </span>
-            <span>
               Built with <a href="https://krantho.com">Krantho</a>
             </span>
           </div>
