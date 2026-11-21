@@ -64,6 +64,9 @@ cosign verify descoped/lds:3.0.0 \
 
 ### Since 3.0.0-M1
 
+What changed since the milestone
+[3.0.0-M1](https://github.com/descoped/linked-data-store-project/releases/tag/3.0.0-M1), a tag of the source:
+
 - The images: three variants, a runtime of only the modules LDS uses, on distroless, for amd64 and arm64, published
   by a release workflow that is started by hand.
 - The health check of the image is a small Java program, so it needs no shell.
