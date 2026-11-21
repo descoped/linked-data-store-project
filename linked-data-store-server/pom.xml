@@ -15,6 +15,16 @@
     <name>Linked Data Store Server</name>
     <description>The runnable Linked Data Store: core with every persistence and search provider, the main class and the container image.</description>
 
+    <properties>
+        <!-- What the tests of the image read besides src: the build cache counts a change of them as a change of
+             the module, so the image is tested again. -->
+        <maven.build.cache.input.1>Dockerfile</maven.build.cache.input.1>
+        <maven.build.cache.input.2>.dockerignore</maven.build.cache.input.2>
+        <maven.build.cache.input.3>compose.yaml</maven.build.cache.input.3>
+        <maven.build.cache.input.4>postgres-init.sql</maven.build.cache.input.4>
+        <maven.build.cache.input.5>schemas</maven.build.cache.input.5>
+    </properties>
+
     <build>
         <plugins>
             <!-- The image is made of every jar in target and target/lib. The jars of an earlier build go first,
@@ -208,6 +218,11 @@
                                 <goals>
                                     <goal>report-aggregate</goal>
                                 </goals>
+                                <configuration>
+                                    <dataFileIncludes>
+                                        <dataFileInclude>target/jacoco/*.exec</dataFileInclude>
+                                    </dataFileIncludes>
+                                </configuration>
                             </execution>
                         </executions>
                     </plugin>

@@ -195,10 +195,18 @@ module makes that module meet them.
   hand, set `distributionSha256Sum` to the SHA-256 of the new `apache-maven-<version>-bin.zip`, after checking that
   zip against the `.sha512` Maven publishes next to it.
 
+## Build cache
+
+- `maven-build-cache-extension` (`.mvn/extensions.xml`, `.mvn/maven-build-cache-config.xml`) skips a module whose
+  inputs have not changed, its tests included; only a build that starts with `clean` is kept. CI on a pull request
+  reads the cache; a push to master builds and tests everything (`-Dmaven.build.cache.skipCache=true`). Files a
+  module's tests read outside `src` are named as inputs (`maven.build.cache.input.*`, as in the server's POM).
+  Javadoc is checked in `verify`, never as a goal on the command line, which would keep nothing in the cache.
+
 ## Commands
 
 ```sh
-./mvnw verify javadoc:javadoc                       # what CI runs: build, tests, Javadoc (needs Docker and JDK 27)
+./mvnw -T 1C clean verify                           # what CI runs: build, tests, Javadoc (needs Docker and JDK 27)
 ./mvnw verify -pl linked-data-store-server -am -Dtest=None -Dsurefire.failIfNoSpecifiedTests=false   # the image tests only
 ./mvnw verify -pl linked-data-store-core -am        # one module and what it needs
 ./mvnw test -pl linked-data-store-core -Dtest=DataControllerTest

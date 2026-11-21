@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The build cache (maven-build-cache-extension, in .mvn/extensions.xml). A module whose inputs are the same as in an
+  earlier build (its sources and test sources, its resources, its effective POM and the modules and libraries it
+  depends on) is not built again: its jar and the outputs below are taken from the cache, and its tests are not run
+  again. A module with any change, and every module that depends on it, is built and tested as always.
+  CI keeps the cache between runs; a push to master builds everything and fills it, a pull request reads it.
+-->
+<cache xmlns="http://maven.apache.org/BUILD-CACHE-CONFIG/1.4.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://maven.apache.org/BUILD-CACHE-CONFIG/1.4.0 https://maven.apache.org/xsd/build-cache-config-1.4.0.xsd">
+    <configuration>
+        <enabled>true</enabled>
+        <hashAlgorithm>SHA-256</hashAlgorithm>
+        <!-- Only a build that started with clean is kept: in a build without it, a plugin can take its result as
+             up to date from what an earlier build left in target (the Javadoc does), and keep a success that is
+             not one. -->
+        <mandatoryClean>true</mandatoryClean>
+        <!-- What SonarCloud and the joined coverage report read from a module that was not built again: its classes,
+             its test classes, the data of the coverage agent (target/jacoco), the reports (target/site) and the
+             results of its tests. -->
+        <attachedOutputs>
+            <dirNames>
+                <dirName>classes</dirName>
+                <dirName>test-classes</dirName>
+                <dirName>jacoco</dirName>
+                <dirName>site</dirName>
+                <dirName>surefire-reports</dirName>
+                <dirName>failsafe-reports</dirName>
+            </dirNames>
+        </attachedOutputs>
+    </configuration>
+</cache>

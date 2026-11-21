@@ -121,9 +121,14 @@ For each module, in reactor order:
 6. In the server module only: before the jar is made, the jars of an earlier build are removed (`target/*.jar` and
    `target/lib`); after it, every library LDS runs with is copied to `target/lib` (`copy-dependencies`, scope
    `runtime`); then Failsafe runs the tests of the image (`*IT`).
-7. `javadoc:javadoc`, when it is named on the command line as CI does, checks the Javadoc (see [Javadoc](#javadoc)). The
-   goal runs the build up to `generate-sources` once more before it starts, so the log shows `enforcer:enforce`
-   twice for each module.
+7. In the phase `verify`, the Javadoc of the module is checked (`javadoc-no-fork`, see [Javadoc](#javadoc)).
+
+Before these steps, the build cache looks the module up (see [The build cache](#the-build-cache)). When an earlier
+build of the same inputs is there, steps 2 to 7 are not run: the jar and the outputs the cache keeps are put back in
+`target`, and the log says `Skipping plugin execution (cached)` for each step.
+
+With `-T 1C`, as CI runs it, Maven builds the modules that do not depend on each other at the same time, one
+thread for each core: the three providers and core run their tests side by side.
 
 What goes out is one jar for each module in its `target` folder, and in `linked-data-store-server/target` the jar
 of the server and the folder `lib`. Those two are what the image is made of; see
@@ -142,11 +147,11 @@ Content-Length: 0
 Date: Fri, 20 Nov 2026 15:31:41 GMT
 ```
 
-These are the commands of the build. `./mvnw verify javadoc:javadoc` is what CI runs, and it needs Docker and
+These are the commands of the build. `./mvnw -T 1C clean verify` is what CI runs, and it needs Docker and
 JDK 27. The commands were not run for this document, and their output is not shown.
 
 ```sh
-./mvnw verify javadoc:javadoc                  # what CI runs: build, tests, Javadoc
+./mvnw -T 1C clean verify                      # what CI runs: build, tests, Javadoc
 ./mvnw package -DskipTests                     # the jars, without running the tests
 ./mvnw verify -pl linked-data-store-core -am   # one module and what it needs
 ./mvnw test -pl linked-data-store-core -Dtest=DataControllerTest
@@ -262,8 +267,10 @@ the Javadoc that is there and does not ask for what is missing: the persistence 
 the search API, the Solr provider and core. The Neo4j provider, the PostgreSQL provider and the server follow the
 rule of the root.
 
-Javadoc is not part of `verify`. It runs when `javadoc:javadoc` is named, as CI does, and when the profile
-`central` makes the Javadoc jar. `detectOfflineLinks` is `false`: the Javadoc of the modules is not published
+The Javadoc is checked in every build, in the phase `verify` (the execution `check-javadoc` of the root POM, goal
+`javadoc-no-fork`, which writes it to `target/reports/apidocs`), and when the profile `central` makes the Javadoc
+jar. It is part of the lifecycle and not a goal named on the command line, because the build cache keeps no result
+of a build that names `javadoc:javadoc`. `detectOfflineLinks` is `false`: the Javadoc of the modules is not published
 anywhere, and `javadoc` warns when a module on the class path (the TCK) links to a named module.
 
 ### JPMS
@@ -311,7 +318,7 @@ POM.
 
 | Profile | What it does |
 |---|---|
-| `coverage` | Runs the tests with the JaCoCo agent (`prepare-agent`) and writes the report of each module in the phase `prepare-package`. In the phase `verify`, `linked-data-store-server` also writes one report of every module it is made of, from the tests of all of them (`report-aggregate`, in `target/site/jacoco-aggregate`): a class is covered by the tests of any module that runs it, as the shared suite runs the persistence API in each provider. The tests of the image run no code of the reactor in the JVM of the build and add nothing. |
+| `coverage` | Runs the tests with the JaCoCo agent (`prepare-agent`, which writes its data to `target/jacoco/jacoco.exec`, a folder the build cache keeps) and writes the report of each module in the phase `prepare-package`. In the phase `verify`, `linked-data-store-server` also writes one report of every module it is made of, from the tests of all of them (`report-aggregate`, in `target/site/jacoco-aggregate`): a class is covered by the tests of any module that runs it, as the shared suite runs the persistence API in each provider. The tests of the image run no code of the reactor in the JVM of the build and add nothing. |
 | `sonar` | Sets the address, the organisation (`descoped`) and the project key (`descoped_linked-data-store-project`) of SonarCloud, and the version of the scanner. There is one SonarCloud project for the whole reactor. Coverage is read from the joined report of the `coverage` profile, and from a module's own report for the load test, which is outside it. The rules that do not fit a file are switched off for that file (`sonar.issue.ignore.multicriteria`), and the comment above the profile gives the reason of each. The scanner runs only when its goal is named, as CI does. |
 | `central` | For a release: attaches a sources jar and a Javadoc jar to every module, and adds `central-publishing-maven-plugin`, which uploads to the Central Portal as server `central`, waits until the upload is validated, and does not publish it (`autoPublish` `false`). |
 | `sign` | For a release: signs every artifact with GPG in the phase `verify`, with the default key of `gpg`. |
@@ -323,7 +330,31 @@ No profile is active by default.
 `./mvnw` is a script and nothing else (`distributionType=only-script`): no jar of the wrapper is in the
 repository. On first use it downloads the Maven named in `.mvn/wrapper/maven-wrapper.properties`, now 3.10.1,
 compares the download with `distributionSha256Sum`, and unpacks it under `~/.m2/wrapper/dists`. If the checksum
-differs, the script stops. CI runs `./mvnw`. The folder `.mvn` holds nothing but the properties of the wrapper.
+differs, the script stops. CI runs `./mvnw`. Besides the properties of the wrapper, the folder `.mvn` holds the build
+cache: the extension that adds it (`extensions.xml`) and its settings (`maven-build-cache-config.xml`).
+
+## The build cache
+
+`maven-build-cache-extension` (in `.mvn/extensions.xml`) keeps the result of each module in `~/.m2/build-cache`,
+under a SHA-256 of the module's inputs:
+
+- its sources, test sources and resources, its effective POM (the profiles of the build count), and the
+  checksums of the modules and libraries it depends on;
+- in the server module, also the files the tests of the image read outside `src`: `Dockerfile`, `.dockerignore`,
+  `compose.yaml`, `postgres-init.sql` and `schemas` (the properties `maven.build.cache.input.*` of its POM).
+
+A build that finds a module's inputs unchanged does not compile, test or document it again. It puts back the jar and
+the folders of `target` that SonarCloud and the joined coverage report read: `classes`, `test-classes`, `jacoco`,
+`site`, `surefire-reports` and `failsafe-reports`. A module whose inputs changed, and every module that depends on
+it, is built and tested as always. So a change in core tests core and the server again, and takes the providers from
+the cache; a change in the persistence API tests every module.
+
+Only a build that starts with `clean` is kept (`mandatoryClean`): a build without it can take a plugin's result as
+up to date from what an earlier build left in `target`, as the Javadoc plugin does, and a success kept from it
+would not be one. A build that also names `javadoc:javadoc` on the command line keeps nothing.
+
+`-Dmaven.build.cache.skipCache=true` builds everything without looking the cache up, and keeps the result;
+`-Dmaven.build.cache.enabled=false` builds without the cache.
 
 The checksum in the file is the SHA-256 of the zip that `distributionUrl` names:
 
@@ -462,12 +493,21 @@ itself. A change of the documentation (`docs/`, `README.md`, any Markdown file),
 `claude.yml`, `renovate.json` or `.gitignore` alone does not start it. A tag starts it whatever it changes.
 A newer push to the same pull request or branch ends the run that is in progress.
 
-The job checks out the code, sets up JDK 27 (Temurin) with the Maven cache, and runs one of two commands:
+The job checks out the code, sets up JDK 27 (Temurin) with the Maven cache, restores the build cache, and runs one
+of two commands:
 
 | When | Command |
 |---|---|
-| a pull request from a fork, or a start by hand | `./mvnw --batch-mode --no-transfer-progress verify javadoc:javadoc` |
-| a push, or a pull request from this repository | the same with `-P coverage`, then the SonarCloud scanner with `-P sonar` |
+| a pull request from a fork, or a start by hand | `./mvnw --batch-mode --no-transfer-progress -T 1C clean verify` |
+| a push, or a pull request from this repository | the same with `-P coverage`, then the SonarCloud scanner with `-P sonar` and the build cache off |
+
+The build cache (see [The build cache](#the-build-cache)) is kept between runs with `actions/cache`, one entry for
+each run. A pull request starts from the newest entry of its own branch, else of `master`, and takes the modules
+that have not changed from it. The name of an entry holds the version of the JDK and a hash of `mvnw`, `.mvn/` and
+`ci.yml`, which the cache does not count as inputs of a module: a pull request that changes one of them, as
+Renovate does when it moves an action, the wrapper or the extension, finds no entry and tests every module. A push to `master` or of a tag, and a start by hand, give
+`-Dmaven.build.cache.skipCache=true`: they build and test every module, so every engine is tested at every merge,
+and their entry is the one the pull requests start from.
 
 The SonarCloud step is not a gate: it has `continue-on-error`, so a fault of SonarCloud or of its token (the
 secret `SONARCLOUD_TOKEN`) does not fail the build. A pull request from a fork gets no secrets, so it gets no

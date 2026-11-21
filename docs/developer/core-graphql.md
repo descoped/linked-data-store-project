@@ -1079,7 +1079,7 @@ with `@Ignore` and a note that they hang.
 
 The command for a single test class has the form
 `./mvnw test -pl linked-data-store-core -Dtest=GraphQLSchemaGoldenTest`. `./mvnw verify -pl linked-data-store-core -am`
-builds and tests core and what it needs, and `./mvnw verify javadoc:javadoc` is what CI runs. The build needs JDK 27 and
+builds and tests core and what it needs, and `./mvnw -T 1C clean verify` is what CI runs. The build needs JDK 27 and
 Docker. The commands were not run when this document was written.
 
 ## Not finished and known to be wrong
