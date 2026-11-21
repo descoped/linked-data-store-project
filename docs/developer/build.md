@@ -311,8 +311,8 @@ POM.
 
 | Profile | What it does |
 |---|---|
-| `coverage` | Runs the tests with the JaCoCo agent (`prepare-agent`) and writes the report of each module in the phase `prepare-package`. The tests of the image run after that phase and are not in the report. |
-| `sonar` | Sets the address, the organisation (`descoped`) and the project key (`descoped_linked-data-store-project`) of SonarCloud, and the version of the scanner. There is one SonarCloud project for the whole reactor. The scanner runs only when its goal is named, as CI does. |
+| `coverage` | Runs the tests with the JaCoCo agent (`prepare-agent`) and writes the report of each module in the phase `prepare-package`. In the phase `verify`, `linked-data-store-server` also writes one report of every module it is made of, from the tests of all of them (`report-aggregate`, in `target/site/jacoco-aggregate`): a class is covered by the tests of any module that runs it, as the shared suite runs the persistence API in each provider. The tests of the image run no code of the reactor in the JVM of the build and add nothing. |
+| `sonar` | Sets the address, the organisation (`descoped`) and the project key (`descoped_linked-data-store-project`) of SonarCloud, and the version of the scanner. There is one SonarCloud project for the whole reactor. Coverage is read from the joined report of the `coverage` profile, and from a module's own report for the load test, which is outside it. The rules that do not fit a file are switched off for that file (`sonar.issue.ignore.multicriteria`), and the comment above the profile gives the reason of each. The scanner runs only when its goal is named, as CI does. |
 | `central` | For a release: attaches a sources jar and a Javadoc jar to every module, and adds `central-publishing-maven-plugin`, which uploads to the Central Portal as server `central`, waits until the upload is validated, and does not publish it (`autoPublish` `false`). |
 | `sign` | For a release: signs every artifact with GPG in the phase `verify`, with the default key of `gpg`. |
 

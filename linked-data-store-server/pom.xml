@@ -174,4 +174,30 @@
         </dependency>
     </dependencies>
 
+    <profiles>
+        <!-- One coverage report of every module the server is made of, from the tests of all of them: a class is
+             covered by the tests of any module that runs it (the shared suite runs the persistence API in each
+             provider). SonarCloud reads it (sonar.coverage.jacoco.xmlReportPaths in the root POM). -->
+        <profile>
+            <id>coverage</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.jacoco</groupId>
+                        <artifactId>jacoco-maven-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>report-aggregate</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>report-aggregate</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+
 </project>
