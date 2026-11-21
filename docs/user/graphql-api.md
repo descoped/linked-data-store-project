@@ -323,7 +323,7 @@ in the field `query` of a JSON body, as in the first example.
 ### Other methods
 
 `OPTIONS /graphql` is answered `200 OK` with no body and with `Allow` headers that name `GET`, `POST` and
-`OPTIONS`. PUT, DELETE and HEAD are answered `405 Method Not Allowed`.
+`OPTIONS`; `GET` is named twice. PUT, DELETE and HEAD are answered `405 Method Not Allowed`.
 
 A browser that sends a query from a page of another origin first asks with a preflight request. LDS answers it
 for `/graphql` as for every address; [the REST API](rest-api.md) tells how.

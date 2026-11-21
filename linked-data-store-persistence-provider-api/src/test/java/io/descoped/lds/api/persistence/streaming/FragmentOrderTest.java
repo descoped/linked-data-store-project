@@ -83,8 +83,7 @@ class FragmentOrderTest {
         Fragment string = a();
         Fragment numeric = fragment("ns", "E", "1", T1, "$.a", FragmentType.NUMERIC, 0, "x");
 
-        assertThat(string).isEqualTo(numeric);
-        assertThat(string).isNotEqualByComparingTo(numeric);
+        assertThat(string).isEqualTo(numeric).isNotEqualByComparingTo(numeric);
     }
 
     @Test
