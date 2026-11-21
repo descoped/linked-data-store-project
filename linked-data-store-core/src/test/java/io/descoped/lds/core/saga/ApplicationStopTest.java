@@ -306,7 +306,7 @@ class ApplicationStopTest {
      * there: it schedules no pass after it.
      */
     @Test
-    void theRecoveryTriggerEndsWhenTheSagaLogPoolIsShutDown() throws Exception {
+    void theRecoveryTriggerEndsWhenTheSagaLogPoolIsShutDown() {
         server = start();
         SagaExecutionCoordinator sec = server.getApplication().getSec();
         server.getApplication().stop();
