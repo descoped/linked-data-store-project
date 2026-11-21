@@ -93,14 +93,14 @@ public class SagaExecutionCoordinatorWatchdogTest {
         final ExecutorService executor = Executors.newFixedThreadPool(sagaThreadPoolCoreSize);
 
         try {
-            JsonNode provisionAgreementSirius = resource("provisionagreement_sirius.json");
+            JsonNode provisionAgreementMoneyBin = resource("provisionagreement_money-bin.json");
 
             CountDownLatch requestsHandled = new CountDownLatch(sagaThreadPoolCoreSize);
             AtomicInteger requestsFailed = new AtomicInteger();
             for (int i = 0; i < sagaThreadPoolCoreSize; i++) {
                 CompletableFuture.runAsync(() -> {
                     try {
-                        client.put("/data/provisionagreement/100", provisionAgreementSirius.toString()).expect201Created();
+                        client.put("/data/provisionagreement/100", provisionAgreementMoneyBin.toString()).expect201Created();
                     } catch (Throwable t) {
                         requestsFailed.incrementAndGet();
                         t.printStackTrace();

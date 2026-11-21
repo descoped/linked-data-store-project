@@ -99,7 +99,7 @@ public class DataControllerTest {
             assertThat(response.header(Headers.CONTENT_TYPE_STRING))
                     .as("content type header in response to %s", getContacts)
                     .startsWith("application/json");
-            assertThat(response.body().string()).isEqualTo("[{\"email\":\"donald@duck.no\",\"name\":\"Donald Duck\"}]");
+            assertThat(response.body().string()).isEqualTo("[{\"email\":\"donald@webfoot.example\",\"name\":\"Donald Duck\"}]");
         }
     }
 
@@ -115,7 +115,7 @@ public class DataControllerTest {
                     .as("content type header in response to %s", getContact)
                     .startsWith("application/json");
             assertThat(response.body().string())
-                    .as("body in response to %s").isEqualTo("{\"email\":\"donald@duck.no\",\"name\":\"Donald Duck\"}");
+                    .as("body in response to %s").isEqualTo("{\"email\":\"donald@webfoot.example\",\"name\":\"Donald Duck\"}");
         }
     }
 

@@ -42,9 +42,9 @@ public class ReplayTxLogTest {
         /*
          * Produce 7 entries in tx-log through http api
          */
-        client.put("/data/provisionagreement/2a41c?sync=true&source=test&sourceId=abc123", readFileOrClasspathResource("demo/1-sirius.json")).expect201Created();
-        client.put("/data/provisionagreement/2a41c/address?sync=true", readFileOrClasspathResource("demo/2-sirius-address.json")).expect200Ok();
-        client.put("/data/contact/4b2ef?sync=true", readFileOrClasspathResource("demo/3-skrue.json")).expect201Created();
+        client.put("/data/provisionagreement/2a41c?sync=true&source=test&sourceId=abc123", readFileOrClasspathResource("demo/1-money-bin.json")).expect201Created();
+        client.put("/data/provisionagreement/2a41c/address?sync=true", readFileOrClasspathResource("demo/2-money-bin-address.json")).expect200Ok();
+        client.put("/data/contact/4b2ef?sync=true", readFileOrClasspathResource("demo/3-scrooge.json")).expect201Created();
         client.put("/data/contact/821aa?sync=true", readFileOrClasspathResource("demo/4-donald.json")).expect201Created();
         client.put("/data/provisionagreement/2a41c/contacts/contact/4b2ef?sync=true").expect200Ok();
         client.put("/data/provisionagreement/2a41c/contacts/contact/821aa?sync=true").expect200Ok();
@@ -106,7 +106,7 @@ public class ReplayTxLogTest {
             "specification.schema", "spec/demo/contact.json"
     })
     public void thatTheVersionOfAnEntryIsInUtc() throws Exception {
-        client.put("/data/contact/utc1?sync=true&timestamp=2020-01-01T00:00:00%2B01:00", readFileOrClasspathResource("demo/3-skrue.json")).expect201Created();
+        client.put("/data/contact/utc1?sync=true&timestamp=2020-01-01T00:00:00%2B01:00", readFileOrClasspathResource("demo/3-scrooge.json")).expect201Created();
         client.get("/data/contact/utc1?timestamp=2019-12-31T23:00:00Z").expect200Ok();
         client.get("/data/contact/utc1?timestamp=2019-12-31T22:59:59Z").expect404NotFound();
 
