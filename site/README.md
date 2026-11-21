@@ -48,7 +48,9 @@ group). The `# Title` of the file is the heading of the page.
 Page views are counted with [Plausible](https://plausible.io), which sets no cookies (`components/analytics.tsx`).
 The tracker is part of the site's own script, and it starts only at `lds.descoped.io`, so a local build is not
 counted. It sends each view to `https://e.descoped.io/e`, a relay on Descoped's own domain that forwards it to
-Plausible, so blockers that refuse third-party requests or know Plausible's address let it through.
+Plausible, so blockers that refuse third-party requests or know Plausible's address let it through. The relay is
+not in this repository: it is the stack `live/plausible-relay` of Descoped's AWS platform, which says what it
+forwards. The footer of every page tells the reader that visits are counted.
 
 ## Look
 
