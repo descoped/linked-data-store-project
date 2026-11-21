@@ -73,6 +73,10 @@ hash of the text in UTF-8, as hexadecimal digits (`Neo4jDocumentWriter.hashOf`).
 text. `namespace` is on the nodes that have a value and on no other node below the document node. The index of
 `<entity>_E` is on `namespace`, `path` and `hashOrValue`.
 
+Not finished: a long text and a short text are looked up in the same property. A find of a text longer than 40 finds
+the documents whose value is that text, and also those whose value is a short text equal to its hash.
+`Neo4jProviderTest.aShortTextThatIsTheHashOfALongOneIsFoundByTheLongOne` shows it.
+
 ### Links
 
 The model tells the writer one thing: which fields are links, and to which entity types. A link is the text

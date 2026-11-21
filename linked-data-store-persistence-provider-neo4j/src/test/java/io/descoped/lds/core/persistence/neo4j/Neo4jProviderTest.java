@@ -282,6 +282,23 @@ class Neo4jProviderTest {
         }
     }
 
+    /**
+     * Not finished: a long text is looked up by its hash, and a short text by itself, in the same property
+     * ({@code hashOrValue}). So a find of a long text also finds a document whose value is a short text equal to the
+     * hash of the long one. This test shows what the provider does today; it changes when that is corrected.
+     */
+    @Test
+    void aShortTextThatIsTheHashOfALongOneIsFoundByTheLongOne() {
+        String longText = "a text that is longer than forty characters, so it is looked up by its hash";
+        write("hash-or-value", "City", "short", T1, city(Neo4jDocumentWriter.hashOf(longText)));
+        write("hash-or-value", "City", "long", T1, city(longText));
+
+        try (Transaction tx = persistence.createTransaction(true)) {
+            assertThat(ids(persistence.findDocument(tx, NOW, "hash-or-value", "City", NAME, longText, Range.unbounded())))
+                    .containsExactly("long", "short");
+        }
+    }
+
     // ---- lists
 
     @Test
