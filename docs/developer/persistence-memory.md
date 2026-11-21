@@ -458,6 +458,10 @@ answer either; `/ping` and `/health/ready`, which do not touch the store, answer
 stopped two minutes after a `SIGTERM`. With eight such documents there was no hang, and none with twelve
 documents that were deleted at a later time than their version.
 
+Not finished: **a delete of one version leaves its index entries.** `delete` builds the clean-up of the entries in
+`PathValueIndex` of each fragment of the version and never runs it, then clears the version in `Primary`.
+`deleteAllVersions` does run it. The entries stay in the map. `MemoryDeleteTest` shows it.
+
 Not finished: **that clean-up clears nothing.** It calls `clear` on the index `PathValueIndex` with the key of the
 entry in `Primary`. No index entry has that key.
 
