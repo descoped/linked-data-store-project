@@ -29,8 +29,8 @@
             </dirNames>
         </attachedOutputs>
     </configuration>
-    <!-- A result is used again only for a run that asks for the same tests: a build limited with -Dtest or
-         -Dit.test, or one that skipped them, is not taken for one that ran them all. A run that skips the tests
+    <!-- A result is used again only for a run that asks for the same tests: a build limited with -Dtest, -Dit.test
+         or -Dgroups, or one that skipped them, is not taken for one that ran them all. A run that skips the tests
          may take any result. -->
     <executionControl>
         <reconcile>
@@ -38,6 +38,8 @@
                 <plugin artifactId="maven-surefire-plugin" goal="test">
                     <reconciles>
                         <reconcile propertyName="test"/>
+                        <reconcile propertyName="groups"/>
+                        <reconcile propertyName="excludedGroups"/>
                         <reconcile propertyName="skip" skipValue="true"/>
                         <reconcile propertyName="skipExec" skipValue="true"/>
                         <reconcile propertyName="skipTests" skipValue="true"/>
@@ -47,6 +49,8 @@
                 <plugin artifactId="maven-failsafe-plugin" goal="integration-test">
                     <reconciles>
                         <reconcile propertyName="test"/>
+                        <reconcile propertyName="groups"/>
+                        <reconcile propertyName="excludedGroups"/>
                         <reconcile propertyName="skip" skipValue="true"/>
                         <reconcile propertyName="skipITs" skipValue="true"/>
                         <reconcile propertyName="skipTests" skipValue="true"/>

@@ -353,9 +353,9 @@ Only a build that starts with `clean` is kept (`mandatoryClean`): a build withou
 up to date from what an earlier build left in `target`, as the Javadoc plugin does, and a success kept from it
 would not be one. A build that also names `javadoc:javadoc` on the command line keeps nothing.
 
-A result is used again only for a build that asks for the same tests (`executionControl` in the settings): one
-kept from a build limited with `-Dtest` or `-Dit.test` is not taken for a build that runs them all, which builds
-the module again. A build that skips the tests (`-DskipTests`) may take any result.
+A result is used again only for a build that asks for the same tests (`executionControl` in the settings): one kept from
+a build limited with `-Dtest`, `-Dit.test`, `-Dgroups` or `-DexcludedGroups` is not taken for a build that runs them
+all, which builds the module again. A build that skips the tests (`-DskipTests`) may take any result.
 
 `-Dmaven.build.cache.skipCache=true` builds everything without looking the cache up, and keeps the result;
 `-Dmaven.build.cache.enabled=false` builds without the cache.
@@ -505,13 +505,13 @@ of two commands:
 | a pull request from a fork, or a start by hand | `./mvnw --batch-mode --no-transfer-progress -T 1C clean verify` |
 | a push, or a pull request from this repository | the same with `-P coverage`, then the SonarCloud scanner with `-P sonar` and the build cache off |
 
-The build cache (see [The build cache](#the-build-cache)) is kept between runs with `actions/cache`, one entry for
-each run. A pull request starts from the newest entry of its own branch, else of `master`, and takes the modules
-that have not changed from it. The name of an entry holds the version of the JDK and a hash of `mvnw`, `.mvn/` and
-`ci.yml`, which the cache does not count as inputs of a module: a pull request that changes one of them, as
-Renovate does when it moves an action, the wrapper or the extension, finds no entry and tests every module. A push to `master` or of a tag, and a start by hand, give
-`-Dmaven.build.cache.skipCache=true`: they build and test every module, so every engine is tested at every merge,
-and their entry is the one the pull requests start from.
+The build cache (see [The build cache](#the-build-cache)) is kept between runs with `actions/cache`, one entry for each
+run. A pull request starts from the newest entry of its own branch, else of `master`, and takes the modules that have
+not changed from it. The name of an entry holds the version of the JDK and a hash of `mvnw`, `.mvn/` and `ci.yml`, which
+the cache does not count as inputs of a module: a pull request that changes one of them, as Renovate does when it moves
+an action, the wrapper or the extension, finds no entry and tests every module. A push to `master` or of a tag, and a
+start by hand, give `-Dmaven.build.cache.skipCache=true`: they build and test every module, so every engine is tested at
+every merge, and their entry is the one the pull requests start from.
 
 The SonarCloud step is not a gate: it has `continue-on-error`, so a fault of SonarCloud or of its token (the
 secret `SONARCLOUD_TOKEN`) does not fail the build. A pull request from a fork gets no secrets, so it gets no
