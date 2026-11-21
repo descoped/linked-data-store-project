@@ -1,5 +1,6 @@
 package io.descoped.lds.core.persistence.memory;
 
+import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.PersistenceDeletePolicy;
 import io.descoped.lds.api.persistence.PersistenceException;
 import io.descoped.lds.api.persistence.Transaction;
@@ -155,7 +156,8 @@ public class MemoryRxPersistence implements RxPersistence {
                             Tuple version = key.getNestedTuple(1);
                             FragmentType fragmentType = FragmentType.fromTypeCode(key.getBytes(3)[0]);
                             if (FragmentType.DELETED.equals(fragmentType)) {
-                                Fragment deleteMarkerFragment = new Fragment(namespace, entity, id, toTimestamp(version), "", FragmentType.DELETED, 0, EMPTY_BYTE_ARRAY);
+                                DocumentKey documentKey = new DocumentKey(namespace, entity, id, toTimestamp(version));
+                                Fragment deleteMarkerFragment = new Fragment(documentKey, "", FragmentType.DELETED, 0, EMPTY_BYTE_ARRAY);
                                 return Single.just(deleteMarkerFragment).toFlowable();
                             }
 
@@ -178,7 +180,8 @@ public class MemoryRxPersistence implements RxPersistence {
         FragmentType fragmentType = FragmentType.fromTypeCode(fragmentTypeCode);
         long offset = keyTuple.getLong(4);
 
-        return new Fragment(namespace, entity, dbId, toTimestamp(version), path, fragmentType, offset, kv.value());
+        DocumentKey documentKey = new DocumentKey(namespace, entity, dbId, toTimestamp(version));
+        return new Fragment(documentKey, path, fragmentType, offset, kv.value());
     }
 
     @Override

@@ -64,36 +64,30 @@ public interface RxJsonPersistence {
     /**
      * Read the <b>target</b> {@link JsonDocument}s linked to a <b>source</b> document.
      *
-     * @param tx               the transaction
-     * @param snapshot         upper bound of the returned version
-     * @param ns               the name space
-     * @param sourceEntityName the source entity name
-     * @param sourceId         the source id
-     * @param relationPath     the json-navigation-path
-     * @param targetEntityName the target entity name
-     * @param range            lower and upper id bounds
-     * @see #readSourceDocuments(Transaction, ZonedDateTime, String, String, String, JsonNavigationPath, String, Range)
+     * @param tx       the transaction
+     * @param snapshot upper bound of the returned version
+     * @param query    the source document (namespace, entity type, id), the path of the link field in it, and the
+     *                 entity type of the target documents ({@link LinkQuery#otherEntity()})
+     * @param range    lower and upper id bounds
+     * @see #readSourceDocuments(Transaction, ZonedDateTime, LinkQuery, Range)
      */
-    Flowable<JsonDocument> readTargetDocuments(Transaction tx, ZonedDateTime snapshot, String ns,
-                                               String sourceEntityName, String sourceId, JsonNavigationPath relationPath,
-                                               String targetEntityName, Range<String> range);
+    Flowable<JsonDocument> readTargetDocuments(Transaction tx, ZonedDateTime snapshot, LinkQuery query,
+                                               Range<String> range);
 
     /**
      * Read the <b>source</b> {@link JsonDocument}s that links to a <b>target</b> document.
      * <p>
      * Note that the range applies to the source documents.
      *
-     * @param tx               the transaction
-     * @param snapshot         upper bound of the returned version
-     * @param ns               the name space
-     * @param targetEntityName the target entity name
-     * @param targetId         the target id
-     * @param range            lower and upper id bounds
-     * @see #readTargetDocuments(Transaction, ZonedDateTime, String, String, String, JsonNavigationPath, String, Range)
+     * @param tx       the transaction
+     * @param snapshot upper bound of the returned version
+     * @param query    the target document (namespace, entity type, id), the path of the link field in the source
+     *                 documents, and the entity type of the source documents ({@link LinkQuery#otherEntity()})
+     * @param range    lower and upper id bounds
+     * @see #readTargetDocuments(Transaction, ZonedDateTime, LinkQuery, Range)
      */
-    Flowable<JsonDocument> readSourceDocuments(Transaction tx, ZonedDateTime snapshot, String ns,
-                                               String targetEntityName, String targetId, JsonNavigationPath relationPath,
-                                               String sourceEntityName, Range<String> range);
+    Flowable<JsonDocument> readSourceDocuments(Transaction tx, ZonedDateTime snapshot, LinkQuery query,
+                                               Range<String> range);
 
     /**
      * Not settled: whether a failure of the store is given as {@code onError(PersistenceException)}.

@@ -100,7 +100,7 @@ public class FlattenedDocumentLeafNode {
         Map<Integer, byte[]> valueByOffset = valueByOffset(type, capacity, value);
         List<Fragment> fragments = new LinkedList<>();
         for (Map.Entry<Integer, byte[]> entry : valueByOffset.entrySet()) {
-            fragments.add(new Fragment(key.namespace(), key.entity(), key.id(), key.timestamp(), path, type, entry.getKey(), entry.getValue()));
+            fragments.add(new Fragment(key, path, type, entry.getKey(), entry.getValue()));
         }
         return fragments.iterator();
     }

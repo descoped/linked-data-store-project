@@ -117,7 +117,7 @@ public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
     private static void putScalarType(ObjectNode propertyElements, GraphQLType graphQLType) {
         if (graphQLType instanceof GraphQLScalarType scalarType) {
             String scalarName = scalarType.getName();
-            if (scalarName.equalsIgnoreCase("string")) {
+            if (scalarName.equalsIgnoreCase(STRING)) {
                 propertyElements.put("type", STRING);
             }
             switch (scalarName) {
@@ -139,7 +139,7 @@ public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
     }
 
     /*
-     * The properties of a field with @link. Returns false when the type of the field is not one a link is written
+     * The properties of a field with the link directive. Returns false when the type of the field is not one a link is written
      * for; the field is then walked as any other.
      */
     private boolean visitLinkField(GraphQLFieldDefinition node, ObjectNode definitionElements) {

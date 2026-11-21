@@ -5,6 +5,7 @@ import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.json.JsonDocument;
 import io.descoped.lds.api.persistence.json.JsonTools;
+import io.descoped.lds.api.persistence.reactivex.LinkQuery;
 import io.descoped.lds.api.persistence.reactivex.Range;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.api.specification.Specification;
@@ -138,30 +139,30 @@ class Neo4jProviderTest {
         write("link-b", "Citizen", "ola", T1, citizen("Ola", "/City/oslo", List.of("/City/oslo", "/City/bergen")));
 
         try (Transaction tx = persistence.createTransaction(true)) {
-            assertThat(names(persistence.readTargetDocuments(tx, NOW, "link-a", "Citizen", "kari", HOME, "City", Range.unbounded())))
+            assertThat(names(persistence.readTargetDocuments(tx, NOW, new LinkQuery("link-a", "Citizen", "kari", HOME, "City"), Range.unbounded())))
                     .containsExactly("Oslo of a");
             // bergen is not written in namespace a: the link is there, its target is not (yet)
-            assertThat(names(persistence.readTargetDocuments(tx, NOW, "link-a", "Citizen", "kari", EARLIER, "City", Range.unbounded())))
+            assertThat(names(persistence.readTargetDocuments(tx, NOW, new LinkQuery("link-a", "Citizen", "kari", EARLIER, "City"), Range.unbounded())))
                     .isEmpty();
-            assertThat(names(persistence.readTargetDocuments(tx, NOW, "link-b", "Citizen", "ola", EARLIER, "City", Range.unbounded())))
+            assertThat(names(persistence.readTargetDocuments(tx, NOW, new LinkQuery("link-b", "Citizen", "ola", EARLIER, "City"), Range.unbounded())))
                     .containsExactly("Bergen of b", "Oslo of b");
-            assertThat(ids(persistence.readTargetDocuments(tx, NOW, "link-b", "Citizen", "kari", HOME, "City", Range.unbounded())))
+            assertThat(ids(persistence.readTargetDocuments(tx, NOW, new LinkQuery("link-b", "Citizen", "kari", HOME, "City"), Range.unbounded())))
                     .isEmpty();
 
-            assertThat(ids(persistence.readSourceDocuments(tx, NOW, "link-a", "City", "oslo", HOME, "Citizen", Range.unbounded())))
+            assertThat(ids(persistence.readSourceDocuments(tx, NOW, new LinkQuery("link-a", "City", "oslo", HOME, "Citizen"), Range.unbounded())))
                     .containsExactly("kari");
-            assertThat(ids(persistence.readSourceDocuments(tx, NOW, "link-b", "City", "oslo", HOME, "Citizen", Range.unbounded())))
+            assertThat(ids(persistence.readSourceDocuments(tx, NOW, new LinkQuery("link-b", "City", "oslo", HOME, "Citizen"), Range.unbounded())))
                     .containsExactly("ola");
-            assertThat(ids(persistence.readSourceDocuments(tx, NOW, "link-b", "City", "bergen", EARLIER, "Citizen", Range.unbounded())))
+            assertThat(ids(persistence.readSourceDocuments(tx, NOW, new LinkQuery("link-b", "City", "bergen", EARLIER, "Citizen"), Range.unbounded())))
                     .containsExactly("ola");
-            assertThat(ids(persistence.readSourceDocuments(tx, NOW, "link-a", "City", "bergen", EARLIER, "Citizen", Range.unbounded())))
+            assertThat(ids(persistence.readSourceDocuments(tx, NOW, new LinkQuery("link-a", "City", "bergen", EARLIER, "Citizen"), Range.unbounded())))
                     .containsExactly("kari");
         }
 
         // the target comes into being in namespace a, after the link to it
         write("link-a", "City", "bergen", T1, city("Bergen of a"));
         try (Transaction tx = persistence.createTransaction(true)) {
-            assertThat(names(persistence.readTargetDocuments(tx, NOW, "link-a", "Citizen", "kari", EARLIER, "City", Range.unbounded())))
+            assertThat(names(persistence.readTargetDocuments(tx, NOW, new LinkQuery("link-a", "Citizen", "kari", EARLIER, "City"), Range.unbounded())))
                     .containsExactly("Bergen of a");
         }
     }
@@ -175,11 +176,11 @@ class Neo4jProviderTest {
         write("top-link", "Citizen", "kari", T1, citizen("Kari", "/City/oslo", List.of("/City/bergen")));
 
         try (Transaction tx = persistence.createTransaction(true)) {
-            assertThat(names(persistence.readTargetDocuments(tx, NOW, "top-link", "Citizen", "kari", HOME, "City", Range.unbounded())))
+            assertThat(names(persistence.readTargetDocuments(tx, NOW, new LinkQuery("top-link", "Citizen", "kari", HOME, "City"), Range.unbounded())))
                     .containsExactly("Oslo");
-            assertThat(names(persistence.readTargetDocuments(tx, NOW, "top-link", "Citizen", "kari", EARLIER, "City", Range.unbounded())))
+            assertThat(names(persistence.readTargetDocuments(tx, NOW, new LinkQuery("top-link", "Citizen", "kari", EARLIER, "City"), Range.unbounded())))
                     .containsExactly("Bergen");
-            assertThat(ids(persistence.readSourceDocuments(tx, NOW, "top-link", "City", "oslo", HOME, "Citizen", Range.unbounded())))
+            assertThat(ids(persistence.readSourceDocuments(tx, NOW, new LinkQuery("top-link", "City", "oslo", HOME, "Citizen"), Range.unbounded())))
                     .containsExactly("kari");
         }
     }
@@ -192,11 +193,11 @@ class Neo4jProviderTest {
         write("link-limit", "Citizen", "kari", T1, citizen("Kari", "/City/c", List.of("/City/a", "/City/b", "/City/c", "/City/d")));
 
         try (Transaction tx = persistence.createTransaction(true)) {
-            assertThat(ids(persistence.readTargetDocuments(tx, NOW, "link-limit", "Citizen", "kari", EARLIER, "City", Range.first(1))))
+            assertThat(ids(persistence.readTargetDocuments(tx, NOW, new LinkQuery("link-limit", "Citizen", "kari", EARLIER, "City"), Range.first(1))))
                     .containsExactly("c");
-            assertThat(ids(persistence.readTargetDocuments(tx, NOW, "link-limit", "Citizen", "kari", EARLIER, "City", Range.firstAfter(1, "a"))))
+            assertThat(ids(persistence.readTargetDocuments(tx, NOW, new LinkQuery("link-limit", "Citizen", "kari", EARLIER, "City"), Range.firstAfter(1, "a"))))
                     .containsExactly("c");
-            assertThat(ids(persistence.readTargetDocuments(tx, NOW, "link-limit", "Citizen", "kari", EARLIER, "City", Range.last(1))))
+            assertThat(ids(persistence.readTargetDocuments(tx, NOW, new LinkQuery("link-limit", "Citizen", "kari", EARLIER, "City"), Range.last(1))))
                     .containsExactly("d");
         }
     }
@@ -208,12 +209,12 @@ class Neo4jProviderTest {
         write("link-twice", "Citizen", "kari", T1, citizen("Kari", "/City/oslo", List.of("/City/bergen", "/City/oslo", "/City/bergen")));
 
         try (Transaction tx = persistence.createTransaction(true)) {
-            assertThat(ids(persistence.readTargetDocuments(tx, NOW, "link-twice", "Citizen", "kari", EARLIER, "City", Range.unbounded())))
+            assertThat(ids(persistence.readTargetDocuments(tx, NOW, new LinkQuery("link-twice", "Citizen", "kari", EARLIER, "City"), Range.unbounded())))
                     .containsExactly("bergen", "oslo");
             // the limit counts documents, not links
-            assertThat(ids(persistence.readTargetDocuments(tx, NOW, "link-twice", "Citizen", "kari", EARLIER, "City", Range.first(2))))
+            assertThat(ids(persistence.readTargetDocuments(tx, NOW, new LinkQuery("link-twice", "Citizen", "kari", EARLIER, "City"), Range.first(2))))
                     .containsExactly("bergen", "oslo");
-            assertThat(ids(persistence.readSourceDocuments(tx, NOW, "link-twice", "City", "bergen", EARLIER, "Citizen", Range.unbounded())))
+            assertThat(ids(persistence.readSourceDocuments(tx, NOW, new LinkQuery("link-twice", "City", "bergen", EARLIER, "Citizen"), Range.unbounded())))
                     .containsExactly("kari");
         }
         assertThat(read("link-twice", "Citizen", "kari").jackson().get("earlier")).hasSize(3);
@@ -244,9 +245,9 @@ class Neo4jProviderTest {
         try (Transaction tx = persistence.createTransaction(true)) {
             assertThat(ids(persistence.findDocument(tx, NOW, "odd", ODD_ENTITY, JsonNavigationPath.from("$", ODD_FIELD), "there", Range.unbounded())))
                     .containsExactly("there");
-            assertThat(ids(persistence.readTargetDocuments(tx, NOW, "odd", ODD_ENTITY, "here", JsonNavigationPath.from("$", "where"), ODD_ENTITY, Range.unbounded())))
+            assertThat(ids(persistence.readTargetDocuments(tx, NOW, new LinkQuery("odd", ODD_ENTITY, "here", JsonNavigationPath.from("$", "where"), ODD_ENTITY), Range.unbounded())))
                     .containsExactly("there");
-            assertThat(ids(persistence.readSourceDocuments(tx, NOW, "odd", ODD_ENTITY, "there", JsonNavigationPath.from("$", "where"), ODD_ENTITY, Range.unbounded())))
+            assertThat(ids(persistence.readSourceDocuments(tx, NOW, new LinkQuery("odd", ODD_ENTITY, "there", JsonNavigationPath.from("$", "where"), ODD_ENTITY), Range.unbounded())))
                     .containsExactly("here");
             assertThat(ids(persistence.readDocumentVersions(tx, "odd", ODD_ENTITY, "here", Range.unbounded()))).containsExactly("here");
         }
@@ -278,6 +279,23 @@ class Neo4jProviderTest {
             assertThat(ids(persistence.findDocument(tx, NOW, "find-range", "City", NAME, "same", Range.between("a", "d")))).containsExactly("b", "c");
             assertThat(ids(persistence.findDocument(tx, NOW, "find-range", "City", NAME, "same", Range.last(2)))).containsExactly("e", "d");
             assertThat(ids(persistence.findDocument(tx, NOW, "find-range", "City", NAME, "same", Range.lastBefore(2, "c")))).containsExactly("b", "a");
+        }
+    }
+
+    /**
+     * Not finished: a long text is looked up by its hash, and a short text by itself, in the same property
+     * ({@code hashOrValue}). So a find of a long text also finds a document whose value is a short text equal to the
+     * hash of the long one. This test shows what the provider does today; it changes when that is corrected.
+     */
+    @Test
+    void aShortTextThatIsTheHashOfALongOneIsFoundByTheLongOne() {
+        String longText = "a text that is longer than forty characters, so it is looked up by its hash";
+        write("hash-or-value", "City", "short", T1, city(Neo4jDocumentWriter.hashOf(longText)));
+        write("hash-or-value", "City", "long", T1, city(longText));
+
+        try (Transaction tx = persistence.createTransaction(true)) {
+            assertThat(ids(persistence.findDocument(tx, NOW, "hash-or-value", "City", NAME, longText, Range.unbounded())))
+                    .containsExactly("long", "short");
         }
     }
 

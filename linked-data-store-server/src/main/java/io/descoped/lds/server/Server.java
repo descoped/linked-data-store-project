@@ -23,11 +23,9 @@ public class Server {
      * Starts LDS. The configuration is read from the defaults of core and of the server, then from
      * {@code conf/application.properties} and {@code conf_dev/application.properties} under the working
      * directory, then from the environment variables that start with {@code LDS_} and from the system
-     * properties; a later source wins over an earlier one.
-     *
-     * @param args not used
+     * properties; a later source wins over an earlier one. It takes no arguments.
      */
-    public static void main(String[] args) {
+    public static void main() {
         long now = System.currentTimeMillis();
 
         // Each name is looked for on the class path and then as a file under the working directory, and the

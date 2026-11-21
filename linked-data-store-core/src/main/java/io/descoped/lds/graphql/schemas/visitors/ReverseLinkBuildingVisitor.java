@@ -128,9 +128,9 @@ public class ReverseLinkBuildingVisitor extends GraphQLTypeVisitorStub {
         GraphQLOutputType source = getObjectType(sourceName);
         GraphQLOutputType target = getObjectType(targetName);
 
-        if (target instanceof GraphQLUnionType) {
+        if (target instanceof GraphQLUnionType union) {
             boolean replaced = false;
-            for (GraphQLNamedOutputType concreteType : ((GraphQLUnionType) target).getTypes()) {
+            for (GraphQLNamedOutputType concreteType : union.getTypes()) {
                 replaced = addReverseField(node, context, reverseName, source, getObjectType(concreteType.getName()));
             }
             return replaced;

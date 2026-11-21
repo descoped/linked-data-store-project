@@ -1,5 +1,6 @@
 package io.descoped.lds.core.txlog;
 
+import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.core.saga.SagaInput;
 import io.descoped.rawdata.api.RawdataMessage;
@@ -54,10 +55,10 @@ public class TxLogTools {
         return new SagaInput(message.id(),
                 JsonTools.text(meta.get("method")),
                 JsonTools.text(meta.get("schema")),
-                JsonTools.text(meta.get("namespace")),
-                JsonTools.text(meta.get("entity")),
-                JsonTools.text(meta.get("id")),
-                ZonedDateTime.parse(JsonTools.text(meta.get("version")), DateTimeFormatter.ISO_ZONED_DATE_TIME),
+                new DocumentKey(JsonTools.text(meta.get("namespace")),
+                        JsonTools.text(meta.get("entity")),
+                        JsonTools.text(meta.get("id")),
+                        ZonedDateTime.parse(JsonTools.text(meta.get("version")), DateTimeFormatter.ISO_ZONED_DATE_TIME)),
                 ofNullable(meta.get("source")).map(JsonTools::text).orElse(null),
                 ofNullable(meta.get("sourceId")).map(JsonTools::text).orElse(null),
                 data);

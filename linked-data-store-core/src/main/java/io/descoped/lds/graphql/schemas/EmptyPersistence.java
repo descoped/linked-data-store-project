@@ -6,6 +6,7 @@ import io.descoped.lds.api.persistence.PersistenceException;
 import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.TransactionStatistics;
 import io.descoped.lds.api.persistence.json.JsonDocument;
+import io.descoped.lds.api.persistence.reactivex.LinkQuery;
 import io.descoped.lds.api.persistence.reactivex.Range;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.api.specification.Specification;
@@ -34,12 +35,14 @@ class EmptyPersistence implements RxJsonPersistence {
     }
 
     @Override
-    public Flowable<JsonDocument> readTargetDocuments(Transaction tx, ZonedDateTime snapshot, String ns, String sourceEntityName, String sourceId, JsonNavigationPath relationPath, String targetEntityName, Range<String> range) {
+    public Flowable<JsonDocument> readTargetDocuments(Transaction tx, ZonedDateTime snapshot, LinkQuery query,
+                                                      Range<String> range) {
         return Flowable.empty();
     }
 
     @Override
-    public Flowable<JsonDocument> readSourceDocuments(Transaction tx, ZonedDateTime snapshot, String ns, String targetEntityName, String targetId, JsonNavigationPath relationPath, String sourceEntityName, Range<String> range) {
+    public Flowable<JsonDocument> readSourceDocuments(Transaction tx, ZonedDateTime snapshot, LinkQuery query,
+                                                      Range<String> range) {
         return Flowable.empty();
     }
 

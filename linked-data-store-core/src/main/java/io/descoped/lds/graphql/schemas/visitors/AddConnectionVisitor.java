@@ -189,14 +189,10 @@ public class AddConnectionVisitor extends GraphQLTypeVisitorStub {
     }
 
     private GraphQLType createPageInfoType() {
-        if (!typeMap.containsKey(PAGE_INFO)) {
-            GraphQLObjectType pageInfoType = newObject()
-                    .name(PAGE_INFO)
-                    .field(newFieldDefinition().name("hasNextPage").type(GraphQLNonNull.nonNull(GraphQLBoolean)))
-                    .field(newFieldDefinition().name("hasPreviousPage").type(GraphQLNonNull.nonNull(GraphQLBoolean)))
-                    .build();
-            typeMap.put(PAGE_INFO, pageInfoType);
-        }
-        return typeMap.get(PAGE_INFO);
+        return typeMap.computeIfAbsent(PAGE_INFO, name -> newObject()
+                .name(name)
+                .field(newFieldDefinition().name("hasNextPage").type(GraphQLNonNull.nonNull(GraphQLBoolean)))
+                .field(newFieldDefinition().name("hasPreviousPage").type(GraphQLNonNull.nonNull(GraphQLBoolean)))
+                .build());
     }
 }

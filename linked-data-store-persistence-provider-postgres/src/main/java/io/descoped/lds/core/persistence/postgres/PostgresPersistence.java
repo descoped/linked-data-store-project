@@ -368,7 +368,7 @@ final class PostgresPersistence implements RxPersistence {
         String path = Fragment.computePathFromIndexUnawarePathAndIndices(indexUnawarePath, List.of((Integer[]) indices.getArray()));
         short type = row.getShort(5);
         byte[] value = row.getBytes(6);
-        return new Fragment(namespace, entity, id, timestamp, path, FragmentType.fromTypeCode((byte) type), 0, value);
+        return new Fragment(new DocumentKey(namespace, entity, id, timestamp), path, FragmentType.fromTypeCode((byte) type), 0, value);
     }
 
     /**

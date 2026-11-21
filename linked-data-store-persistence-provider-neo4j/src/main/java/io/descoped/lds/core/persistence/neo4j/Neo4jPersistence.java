@@ -9,6 +9,7 @@ import io.descoped.lds.api.persistence.flattened.FlattenedDocument;
 import io.descoped.lds.api.persistence.flattened.FlattenedDocumentLeafNode;
 import io.descoped.lds.api.persistence.json.FlattenedDocumentToJson;
 import io.descoped.lds.api.persistence.json.JsonDocument;
+import io.descoped.lds.api.persistence.reactivex.LinkQuery;
 import io.descoped.lds.api.persistence.reactivex.Range;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.api.persistence.streaming.FragmentType;
@@ -267,10 +268,14 @@ final class Neo4jPersistence implements RxJsonPersistence {
     }
 
     @Override
-    public Flowable<JsonDocument> readTargetDocuments(Transaction tx, ZonedDateTime snapshot, String ns,
-                                                      String entityName, String id, JsonNavigationPath jsonNavigationPath,
-                                                      String targetEntityName, Range<String> range) {
+    public Flowable<JsonDocument> readTargetDocuments(Transaction tx, ZonedDateTime snapshot, LinkQuery query,
+                                                      Range<String> range) {
         return Flowable.defer(() -> {
+            String ns = query.namespace();
+            String entityName = query.entity();
+            String id = query.id();
+            JsonNavigationPath jsonNavigationPath = query.relationPath();
+            String targetEntityName = query.otherEntity();
             Map<String, Object> params = new LinkedHashMap<>();
             params.put(NAMESPACE, ns);
             params.put(SNAPSHOT, inUtc(snapshot));
@@ -296,11 +301,14 @@ final class Neo4jPersistence implements RxJsonPersistence {
     }
 
     @Override
-    public Flowable<JsonDocument> readSourceDocuments(Transaction tx, ZonedDateTime snapshot, String ns,
-                                                      String targetEntityName, String targetId,
-                                                      JsonNavigationPath relationPath, String sourceEntityName,
+    public Flowable<JsonDocument> readSourceDocuments(Transaction tx, ZonedDateTime snapshot, LinkQuery query,
                                                       Range<String> range) {
         return Flowable.defer(() -> {
+            String ns = query.namespace();
+            String targetEntityName = query.entity();
+            String targetId = query.id();
+            JsonNavigationPath relationPath = query.relationPath();
+            String sourceEntityName = query.otherEntity();
             Map<String, Object> params = new LinkedHashMap<>();
             params.put(NAMESPACE, ns);
             params.put(SNAPSHOT, inUtc(snapshot));

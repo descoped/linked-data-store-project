@@ -8,6 +8,7 @@ import no.cantara.sagalog.SagaLog;
 import no.cantara.sagalog.SagaLogId;
 import no.cantara.sagalog.SagaLogOwner;
 import no.cantara.sagalog.SagaLogPool;
+import org.awaitility.Awaitility;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.AfterMethod;
@@ -212,11 +213,7 @@ public class SagaLogPostgresTest {
         return sec.getSagaLogPool().connect(sec.deadSagaLogId).readIncompleteSagas().count();
     }
 
-    private static void await(Duration atMost, Callable<Boolean> condition) throws Exception {
-        long deadline = System.nanoTime() + atMost.toNanos();
-        while (!condition.call()) {
-            assertThat(System.nanoTime()).as("waited %s", atMost).isLessThan(deadline);
-            Thread.sleep(100);
-        }
+    private static void await(Duration atMost, Callable<Boolean> condition) {
+        Awaitility.await().atMost(atMost).pollDelay(Duration.ZERO).pollInterval(Duration.ofMillis(100)).until(condition);
     }
 }

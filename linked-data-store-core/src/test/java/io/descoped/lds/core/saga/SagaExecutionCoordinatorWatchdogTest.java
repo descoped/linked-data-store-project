@@ -19,14 +19,17 @@ import tools.jackson.databind.node.ObjectNode;
 
 import javax.inject.Inject;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static io.descoped.lds.api.persistence.json.JsonTools.mapper;
+import static org.awaitility.Awaitility.await;
 import static org.testng.Assert.assertEquals;
 
 @Listeners(TestServerListener.class)
@@ -112,41 +115,40 @@ public class SagaExecutionCoordinatorWatchdogTest {
             }
 
             LOG.debug("Waiting for deadlock to settle");
-            Thread.sleep(300);
+            await().pollDelay(Duration.ofMillis(300)).until(() -> true);
 
             {
                 LOG.debug("Confirm that there is a deadlock");
                 assertEquals(sec.threadPoolWatchDog.deadlockResolutionAttemptCounter.get(), 0);
-                int previousActiveCount;
-                long previousCompletedTaskCount;
-                int i = 0;
-                do {
-                    if (i++ >= 30) {
-                        Assert.fail("Unable to provoke deadlock within 30 seconds, failing!");
-                    }
-                    previousActiveCount = sec.threadPool.getActiveCount();
-                    previousCompletedTaskCount = sec.threadPool.getCompletedTaskCount();
-                    LOG.debug("Threadpool-state: {}", sec.threadPool);
-                    Thread.sleep(TimeUnit.SECONDS.toMillis(1));
-                } while (!sec.threadPoolWatchDog.possibleDeadlock(previousActiveCount, previousCompletedTaskCount));
+                /*
+                 * The state of the pool is compared with its state a second before, 30 times at most; the half second
+                 * over 30 lets the 30th look be made before the wait gives up.
+                 */
+                AtomicInteger previousActiveCount = new AtomicInteger(sec.threadPool.getActiveCount());
+                AtomicLong previousCompletedTaskCount = new AtomicLong(sec.threadPool.getCompletedTaskCount());
                 LOG.debug("Threadpool-state: {}", sec.threadPool);
+                await("Unable to provoke deadlock within 30 seconds").atMost(Duration.ofMillis(30_500))
+                        .pollDelay(Duration.ofSeconds(1)).pollInterval(Duration.ofSeconds(1))
+                        .until(() -> {
+                            boolean deadlock = sec.threadPoolWatchDog.possibleDeadlock(previousActiveCount.get(), previousCompletedTaskCount.get());
+                            previousActiveCount.set(sec.threadPool.getActiveCount());
+                            previousCompletedTaskCount.set(sec.threadPool.getCompletedTaskCount());
+                            LOG.debug("Threadpool-state: {}", sec.threadPool);
+                            return deadlock;
+                        });
                 LOG.debug("DEADLOCKED!");
             }
 
             LOG.debug("Starting saga watch-dog");
             sec.startThreadpoolWatchdog();
 
-            {
-                LOG.debug("Waiting for deadlock resolution attempt");
-                int i = 0;
-                do {
-                    Thread.sleep(1000);
-                    if (++i >= 30) {
-                        Assert.fail("Unable to detect deadlock resolution attempt within 30 seconds, failing!");
-                    }
-                    LOG.debug("Threadpool-state: {}", sec.threadPool);
-                } while (sec.threadPoolWatchDog.deadlockResolutionAttemptCounter.get() == 0);
-            }
+            LOG.debug("Waiting for deadlock resolution attempt");
+            await("Unable to detect deadlock resolution attempt within 30 seconds").atMost(Duration.ofSeconds(30))
+                    .pollDelay(Duration.ofSeconds(1)).pollInterval(Duration.ofSeconds(1))
+                    .until(() -> {
+                        LOG.debug("Threadpool-state: {}", sec.threadPool);
+                        return sec.threadPoolWatchDog.deadlockResolutionAttemptCounter.get() != 0;
+                    });
 
             LOG.debug("Waiting for sagas to complete after deadlock resolution attempt");
             releaseSlowNodes.countDown();

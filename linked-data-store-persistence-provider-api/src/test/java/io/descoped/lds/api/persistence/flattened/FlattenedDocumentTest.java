@@ -33,7 +33,7 @@ public class FlattenedDocumentTest {
         Iterator<Fragment> iterator = document.fragmentIterator();
         assertTrue(iterator.hasNext());
         Fragment fragment = iterator.next();
-        Fragment expected = new Fragment("ns", "E", "1", now, "name", FragmentType.STRING, 0, "My Name".getBytes(StandardCharsets.UTF_8));
+        Fragment expected = new Fragment(new DocumentKey("ns", "E", "1", now), "name", FragmentType.STRING, 0, "My Name".getBytes(StandardCharsets.UTF_8));
         assertEquals(fragment, expected);
         assertFalse(iterator.hasNext());
     }
@@ -52,20 +52,20 @@ public class FlattenedDocumentTest {
 
         assertTrue(iterator.hasNext());
         Fragment acutalFirstname0 = iterator.next();
-        Fragment expectedFirstname0 = new Fragment("ns", "E", "1", now, "firstname", FragmentType.STRING, 0, "Joh".getBytes(StandardCharsets.UTF_8));
+        Fragment expectedFirstname0 = new Fragment(new DocumentKey("ns", "E", "1", now), "firstname", FragmentType.STRING, 0, "Joh".getBytes(StandardCharsets.UTF_8));
         assertEquals(acutalFirstname0, expectedFirstname0);
         assertTrue(iterator.hasNext());
         Fragment acutalFirstname3 = iterator.next();
-        Fragment expectedFirstname3 = new Fragment("ns", "E", "1", now, "firstname", FragmentType.STRING, 3, "n".getBytes(StandardCharsets.UTF_8));
+        Fragment expectedFirstname3 = new Fragment(new DocumentKey("ns", "E", "1", now), "firstname", FragmentType.STRING, 3, "n".getBytes(StandardCharsets.UTF_8));
         assertEquals(acutalFirstname3, expectedFirstname3);
 
         assertTrue(iterator.hasNext());
         Fragment acutalLastname0 = iterator.next();
-        Fragment expectedLastname0 = new Fragment("ns", "E", "1", now, "lastname", FragmentType.STRING, 0, "Smi".getBytes(StandardCharsets.UTF_8));
+        Fragment expectedLastname0 = new Fragment(new DocumentKey("ns", "E", "1", now), "lastname", FragmentType.STRING, 0, "Smi".getBytes(StandardCharsets.UTF_8));
         assertEquals(acutalLastname0, expectedLastname0);
         assertTrue(iterator.hasNext());
         Fragment acutalLastname3 = iterator.next();
-        Fragment expectedLastname3 = new Fragment("ns", "E", "1", now, "lastname", FragmentType.STRING, 3, "th".getBytes(StandardCharsets.UTF_8));
+        Fragment expectedLastname3 = new Fragment(new DocumentKey("ns", "E", "1", now), "lastname", FragmentType.STRING, 3, "th".getBytes(StandardCharsets.UTF_8));
         assertEquals(acutalLastname3, expectedLastname3);
 
         assertFalse(iterator.hasNext());
@@ -85,10 +85,10 @@ public class FlattenedDocumentTest {
         fragmentsByPath.put("firstname", fristnameFragments);
         LinkedList<Fragment> lastnameFragments = new LinkedList<>();
         fragmentsByPath.put("lastname", lastnameFragments);
-        fristnameFragments.add(new Fragment(key.namespace(), key.entity(), key.id(), key.timestamp(), "firstname", FragmentType.STRING, 0, "Joh".getBytes(StandardCharsets.UTF_8)));
-        fristnameFragments.add(new Fragment(key.namespace(), key.entity(), key.id(), key.timestamp(), "firstname", FragmentType.STRING, 3, "n".getBytes(StandardCharsets.UTF_8)));
-        lastnameFragments.add(new Fragment(key.namespace(), key.entity(), key.id(), key.timestamp(), "lastname", FragmentType.STRING, 0, "Smi".getBytes(StandardCharsets.UTF_8)));
-        lastnameFragments.add(new Fragment(key.namespace(), key.entity(), key.id(), key.timestamp(), "lastname", FragmentType.STRING, 3, "th".getBytes(StandardCharsets.UTF_8)));
+        fristnameFragments.add(new Fragment(key, "firstname", FragmentType.STRING, 0, "Joh".getBytes(StandardCharsets.UTF_8)));
+        fristnameFragments.add(new Fragment(key, "firstname", FragmentType.STRING, 3, "n".getBytes(StandardCharsets.UTF_8)));
+        lastnameFragments.add(new Fragment(key, "lastname", FragmentType.STRING, 0, "Smi".getBytes(StandardCharsets.UTF_8)));
+        lastnameFragments.add(new Fragment(key, "lastname", FragmentType.STRING, 3, "th".getBytes(StandardCharsets.UTF_8)));
 
         FlattenedDocument actual = FlattenedDocument.decodeDocument(key, fragmentsByPath, 3);
 
@@ -116,10 +116,10 @@ public class FlattenedDocumentTest {
         fragmentsByPath.put("$.name[0].last", name0Last);
         fragmentsByPath.put("$.name[1].first", name1First);
         fragmentsByPath.put("$.name[1].last", name1Last);
-        name0First.add(new Fragment(key.namespace(), key.entity(), key.id(), key.timestamp(), "$.name[0].first", FragmentType.STRING, 0, "John".getBytes(StandardCharsets.UTF_8)));
-        name0Last.add(new Fragment(key.namespace(), key.entity(), key.id(), key.timestamp(), "$.name[0].last", FragmentType.STRING, 0, "Smith".getBytes(StandardCharsets.UTF_8)));
-        name1First.add(new Fragment(key.namespace(), key.entity(), key.id(), key.timestamp(), "$.name[1].first", FragmentType.STRING, 0, "Jane".getBytes(StandardCharsets.UTF_8)));
-        name1Last.add(new Fragment(key.namespace(), key.entity(), key.id(), key.timestamp(), "$.name[1].last", FragmentType.STRING, 0, "Doe".getBytes(StandardCharsets.UTF_8)));
+        name0First.add(new Fragment(key, "$.name[0].first", FragmentType.STRING, 0, "John".getBytes(StandardCharsets.UTF_8)));
+        name0Last.add(new Fragment(key, "$.name[0].last", FragmentType.STRING, 0, "Smith".getBytes(StandardCharsets.UTF_8)));
+        name1First.add(new Fragment(key, "$.name[1].first", FragmentType.STRING, 0, "Jane".getBytes(StandardCharsets.UTF_8)));
+        name1Last.add(new Fragment(key, "$.name[1].last", FragmentType.STRING, 0, "Doe".getBytes(StandardCharsets.UTF_8)));
 
         FlattenedDocument actual = FlattenedDocument.decodeDocument(key, fragmentsByPath, 64);
 

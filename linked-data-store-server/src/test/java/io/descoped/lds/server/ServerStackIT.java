@@ -14,6 +14,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 
 /**
  * The whole LDS of the compose file, started with {@code docker compose} as a person would: the image built from
@@ -92,12 +93,8 @@ class ServerStackIT {
         assertThat(lds.put("/ns/Company/brew", "{\"name\":\"Nordic Brewing\",\"about\":[{\"languageCode\":\"en\",\"languageText\":\"A small brewery by the fjord\"}]}").statusCode()).isEqualTo(201);
 
         String query = "{ Search(query: \"fjord\") { edges { node { ... on Company { name } } } } }";
-        String found = lds.graphql(query);
-        long giveUp = System.nanoTime() + Duration.ofSeconds(30).toNanos();
-        while (!found.contains("Nordic Brewing") && System.nanoTime() < giveUp) {
-            Thread.sleep(500);
-            found = lds.graphql(query);
-        }
+        String found = await().atMost(Duration.ofSeconds(30)).pollDelay(Duration.ZERO).pollInterval(Duration.ofMillis(500))
+                .until(() -> lds.graphql(query), answer -> answer.contains("Nordic Brewing"));
 
         assertThat(found).isEqualTo("{\"data\":{\"Search\":{\"edges\":[{\"node\":{\"name\":\"Nordic Brewing\"}}]}}}");
     }

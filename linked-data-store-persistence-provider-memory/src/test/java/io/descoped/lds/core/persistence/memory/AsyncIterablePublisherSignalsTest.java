@@ -165,7 +165,7 @@ class AsyncIterablePublisherSignalsTest {
 
         @Override
         public void onNext(Integer item) {
-            record("onNext " + item);
+            note("onNext " + item);
             if (item == 3) {
                 subscription.cancel();
                 done.countDown();
@@ -174,17 +174,17 @@ class AsyncIterablePublisherSignalsTest {
 
         @Override
         public void onError(Throwable failure) {
-            record("onError " + failure.getMessage());
+            note("onError " + failure.getMessage());
             done.countDown();
         }
 
         @Override
         public void onComplete() {
-            record("onComplete");
+            note("onComplete");
             done.countDown();
         }
 
-        private void record(String signal) {
+        private void note(String signal) {
             if (done.getCount() == 0) {
                 followed.countDown();
             }

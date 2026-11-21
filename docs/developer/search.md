@@ -413,7 +413,8 @@ Testcontainers starts, so it needs Docker.
     still three hits in total.
 
 A write is in the index within the five seconds of `commitWithin`, so the tests search again every 100
-milliseconds until the number of hits is the one they expect, for at most 30 seconds (`await`).
+milliseconds until the number of hits is the one they expect, for at most 30 seconds (`awaitHits`, with
+Awaitility).
 
 The test documents are the JSON files in `src/test/resources`. The tests use three of the six. Each document
 gets the version `ZonedDateTime.now()`, so its `id` has the zone of the machine the tests run on.

@@ -1,5 +1,6 @@
 package io.descoped.lds.core.domain.managed;
 
+import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.json.JsonDocument;
 import io.descoped.lds.api.persistence.json.JsonTools;
@@ -200,7 +201,7 @@ public class ManagedResourceHandler implements HttpHandler {
                     String sourceId = ofNullable(exchange.getQueryParameters().get("sourceId")).map(Deque::peekFirst).orElse(null);
 
                     AdapterLoader adapterLoader = sagaRepository.getAdapterLoader();
-                    SagaInput sagaInput = new SagaInput(sec.generateTxId(), "PUT", "TODO", namespace, managedDomain, managedDocumentId, resourceContext.getTimestamp(), source, sourceId, requestData);
+                    SagaInput sagaInput = new SagaInput(sec.generateTxId(), "PUT", "TODO", new DocumentKey(namespace, managedDomain, managedDocumentId, resourceContext.getTimestamp()), source, sourceId, requestData);
                     SelectableFuture<SagaHandoffResult> handoff = sec.handoff(sync, adapterLoader, saga, sagaInput, SagaCommands.getSagaAdminParameterCommands(httpServerExchange));
                     SagaHandoffResult handoffResult = handoff.join();
 
@@ -240,7 +241,7 @@ public class ManagedResourceHandler implements HttpHandler {
         String sourceId = ofNullable(exchange.getQueryParameters().get("sourceId")).map(Deque::peekFirst).orElse(null);
 
         AdapterLoader adapterLoader = sagaRepository.getAdapterLoader();
-        SagaInput sagaInput = new SagaInput(sec.generateTxId(), "DELETE", "TODO", resourceContext.getNamespace(), managedDomain, topLevelElement.id(), resourceContext.getTimestamp(), source, sourceId, null);
+        SagaInput sagaInput = new SagaInput(sec.generateTxId(), "DELETE", "TODO", new DocumentKey(resourceContext.getNamespace(), managedDomain, topLevelElement.id(), resourceContext.getTimestamp()), source, sourceId, null);
         SelectableFuture<SagaHandoffResult> handoff = sec.handoff(sync, adapterLoader, saga, sagaInput, SagaCommands.getSagaAdminParameterCommands(exchange));
         SagaHandoffResult handoffResult = handoff.join();
 

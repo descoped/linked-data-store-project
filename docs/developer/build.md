@@ -362,6 +362,10 @@ A class that extends the shared suite (`PersistenceIntegrationTest`) or the Reac
 because those are. In core, a test that takes its server from `TestServerListener` is TestNG; a new test class
 that starts a server of its own is JUnit.
 
+A test that waits for something to happen waits with Awaitility (`org.awaitility:awaitility`, a test dependency
+of core, the Solr provider and the server): it asks again at an interval until the condition holds, for at most a
+given time, or it checks that a condition holds for a given time. No test calls `Thread.sleep`.
+
 ### On the class path
 
 `useModulePath` is `false` for Surefire and Failsafe in the root POM. The tests are in the same packages as the
