@@ -1,5 +1,13 @@
 #!/bin/bash
 
+# The demo sends its requests with HTTPie, which shows each request and its answer.
+if ! command -v http >/dev/null 2>&1; then
+  echo "The demo needs HTTPie (the command http), which is not installed. Install it with:" >&2
+  echo >&2
+  echo "  brew install httpie" >&2
+  exit 1
+fi
+
 read
 echo
 echo
