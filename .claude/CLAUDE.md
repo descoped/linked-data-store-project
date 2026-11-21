@@ -221,11 +221,13 @@ system property sets only a key that one of the files has).
 
 ## The server image
 
-`linked-data-store-server/Dockerfile` makes the image from what Maven has packaged (`target/lib` and the jar of
-the module) on `eclipse-temurin:27-jre-alpine`; the reactor is built first, and the context is the module
-directory. `compose.yaml` next to it is a whole LDS for development: the image, Neo4j, PostgreSQL (saga log and
-transaction log, the databases made by `postgres-init.sql`) and Solr, with the images the tests of the providers
-use. Keep these when changing them:
+`linked-data-store-server/Dockerfile` makes the image from what Maven has packaged (`target/lib` and the jar of the
+module) on `alpine:3.24`, with a Java runtime that `jlink` makes in a first stage from
+`eclipse-temurin:27-jdk-alpine`: only the JDK modules `jdeps` finds in the jars, and the few used only by name
+(`jdk.charsets`, `jdk.localedata`); musl in both stages. The reactor is built first, and the
+context is the module directory. `compose.yaml` next to it is a whole LDS for development: the image, Neo4j,
+PostgreSQL (saga log and transaction log, the databases made by `postgres-init.sql`) and Solr, with the images the
+tests of the providers use. Keep these when changing them:
 
 - **LDS runs on the class path**, as the tests do. On the module path the libraries Undertow is made of (Undertow,
   XNIO, WildFly client config, SmallRye common) cannot make their message loggers: jboss-logging has to read
@@ -240,7 +242,8 @@ use. Keep these when changing them:
   `/lds/schemas`. No image is published (see Invariants).
 - **Every port of the compose file is published on 127.0.0.1**, and can be moved (`LDS_PORT`, ...), which is how
   `ServerStackIT` runs next to a stack that is up. The passwords in it are development defaults.
-- **The JDK of the image is the baseline**: Renovate is told to keep `eclipse-temurin` at 27.
+- **The JDK of the image is the baseline**: Renovate is told to keep `eclipse-temurin` at 27. A JDK module that a
+  library uses only by name at run time is added to the `jlink` line by hand; `jdeps` does not see it.
 
 ## The documentation
 

@@ -12,10 +12,39 @@
 # http.prefix as it is: a port or a prefix that is set in the mounted file is one the health check does not know,
 # and the container is then said to be unhealthy while LDS runs.
 #
-# The JDK is the baseline of LDS and is raised by hand, together with java.version in the root POM.
-FROM eclipse-temurin:27-jre-alpine
+# The JDK is the baseline of LDS and is raised by hand, together with java.version in the root POM. Both stages are
+# Alpine (musl); the second may be of a newer release than the one the JDK image is built on, which runs its runtime.
+
+# The Java runtime of LDS: the modules of the JDK that LDS and its libraries use, and nothing else. jdeps finds
+# them in the jars of target/lib (the jar of this module uses nothing they do not, and leaving it out keeps the
+# runtime from being linked again when only it changes); jlink links them from the JDK itself (it has no jmods).
+# LDS runs on the class path, so the libraries do not have to be modules. Two modules are added that no class
+# names: jdk.charsets (character sets a client or a database may name that java.base lacks) and jdk.localedata.
+# The modules are not compressed by jlink: the layers of the image are, and a pull is then smaller (73 MB against
+# 82 MB) and the start quicker.
+FROM eclipse-temurin:27-jdk-alpine AS runtime
+
+COPY target/lib/ /lds/lib/
+
+# jdeps writes a warning for each package two jars share before the list of modules, its last line. pipefail and
+# the test make a failure of jdeps stop the build with its own message.
+RUN set -o pipefail \
+    && modules="$(jdeps --ignore-missing-deps --multi-release 27 --print-module-deps \
+            --module-path /lds/lib --class-path '/lds/lib/*' /lds/lib/*.jar | tail -n 1)" \
+    && echo "jdeps: ${modules}" \
+    && [ -n "${modules}" ] \
+    && jlink --add-modules "${modules},jdk.charsets,jdk.localedata" \
+            --strip-debug --no-man-pages --no-header-files --output /jre \
+    && /jre/bin/java --list-modules
+
+FROM alpine:3.24
+
+ENV JAVA_HOME=/opt/java
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
 RUN addgroup -S lds && adduser -S -D -H -G lds -h /lds lds
+
+COPY --from=runtime /jre ${JAVA_HOME}
 
 WORKDIR /lds
 

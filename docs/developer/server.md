@@ -339,9 +339,17 @@ The context of the build is the module directory. `.dockerignore` leaves everyth
 `target/lib/`, the jar of the module (not its `-sources` and `-javadoc` jars) and `schemas/`. The reactor is
 packaged first; the comment at the top of the Dockerfile gives the two commands.
 
+The image is built in two stages, both Alpine Linux (musl). The second may be of a newer release of Alpine than
+the one the JDK image is built on, which runs the runtime of the first.
+
 | Line | What it gives |
 |---|---|
-| `FROM eclipse-temurin:27-jre-alpine` | The JRE of the baseline JDK, on Alpine. |
+| `FROM eclipse-temurin:27-jdk-alpine AS runtime` | The first stage: the JDK of the baseline, on Alpine. Nothing of it is in the image but the runtime it makes. |
+| `COPY target/lib/ /lds/lib/` | The libraries, for `jdeps` to read. The jar of the module is left out: it uses nothing the libraries do not, and without it the runtime is not linked again when only that jar changes. |
+| `RUN set -o pipefail && ... jdeps ... jlink ...` | `jdeps --print-module-deps` lists the modules of the JDK that the jars use (its last line of output; the lines before it warn of packages that two jars share); a failure of `jdeps`, or an empty list, stops the build. `jlink` links those modules, and `jdk.charsets` and `jdk.localedata`, which no class names, into `/jre`, from the JDK itself (the image has no `jmods`), without debug information, man pages and header files, and not compressed. LDS stays on the class path, so its libraries need not be modules. |
+| `FROM alpine:3.24` | The second stage, the image: Alpine with nothing added. No locale is set: the default locale of musl is UTF-8, and Java takes `native.encoding`, `sun.jnu.encoding` and `stdout.encoding` as UTF-8 from it. |
+| `ENV JAVA_HOME=/opt/java`, `ENV PATH=...` | Where the runtime is, and `java` on the path. |
+| `COPY --from=runtime /jre ${JAVA_HOME}` | The runtime of the first stage. |
 | `RUN addgroup -S lds && adduser -S -D -H -G lds -h /lds lds` | A system group and a system user `lds`, without a password, with `/lds` as its home. `-H` says that `adduser` does not make the home; the next line makes `/lds`. |
 | `WORKDIR /lds` | The working directory. Relative paths of the configuration start here: `schemas/schema.graphql` is `/lds/schemas/schema.graphql`, and the file a user mounts is `/lds/conf/application.properties`. |
 | `COPY target/lib/ lib/`, `COPY target/linked-data-store-server-*.jar lib/` | Every jar in one folder, `/lds/lib`. |
@@ -526,8 +534,11 @@ These come from the rules of the project and from the comments in the files of t
   four variables.
 - **Secrets.** The only passwords in the module are the development defaults of the compose file (`lds`,
   `lds-development`).
-- **The JDK of the image is the baseline.** `java.version` in the root POM, the workflows and the `FROM` line
-  are raised together, by hand. `.github/renovate.json` keeps `eclipse-temurin` at 27 and `postgres` at 18.
+- **The JDK of the image is the baseline.** `java.version` in the root POM, the workflows and the first `FROM`
+  line are raised together, by hand. `.github/renovate.json` keeps `eclipse-temurin` at 27 and `postgres` at 18.
+- **The runtime holds only the modules LDS uses.** A library that starts to use another module of the JDK is
+  found by `jdeps` when the image is built. A module that is used only by name at run time (a character set, a
+  provider of a service of the JDK) is not, and is added to the `jlink` line by hand.
 - **Nothing is published.** No image goes to a registry; CI builds the image only to test it.
 - **Providers are found at run time.** `Server` names no provider. A provider is a dependency of scope `runtime`.
 - **Lint and Javadoc.** The module has no exception from `-Xlint:all -Werror` or from doclint. Keep it so.
