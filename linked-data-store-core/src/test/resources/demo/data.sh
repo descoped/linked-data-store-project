@@ -12,15 +12,15 @@ read
 echo
 echo
 echo
-echo "Create ProvisionAgreement Sirius"
+echo "Create ProvisionAgreement Pengebingen"
 echo
-http -p HBhb -j PUT localhost:9090/data/provisionagreement/2a41c < 1-sirius.json
+http -p HBhb -j PUT localhost:9090/data/provisionagreement/2a41c < 1-pengebingen.json
 
 read
 echo
 echo
 echo
-echo "Get Sirius"
+echo "Get Pengebingen"
 echo
 http -p HBhb localhost:9090/data/provisionagreement/2a41c
 
@@ -28,15 +28,15 @@ read
 echo
 echo
 echo
-echo "Add Address to Sirius"
+echo "Add Address to Pengebingen"
 echo
-http -p HBhb -j PUT localhost:9090/data/provisionagreement/2a41c/address < 2-sirius-address.json
+http -p HBhb -j PUT localhost:9090/data/provisionagreement/2a41c/address < 2-pengebingen-address.json
 
 read
 echo
 echo
 echo
-echo "Get Sirius"
+echo "Get Pengebingen"
 echo
 http -p HBhb localhost:9090/data/provisionagreement/2a41c
 
@@ -76,7 +76,7 @@ read
 echo
 echo
 echo
-echo "Add Skrue to Sirius contacts"
+echo "Add Skrue to Pengebingen contacts"
 echo
 http -p HBhb -j PUT localhost:9090/data/provisionagreement/2a41c/contacts/contact/4b2ef
 
@@ -84,7 +84,7 @@ read
 echo
 echo
 echo
-echo "Get Sirius"
+echo "Get Pengebingen"
 echo
 http -p HBhb localhost:9090/data/provisionagreement/2a41c
 
@@ -92,7 +92,7 @@ read
 echo
 echo
 echo
-echo "Add Donald to Sirius contacts"
+echo "Add Donald to Pengebingen contacts"
 echo
 http -p HBhb -j PUT localhost:9090/data/provisionagreement/2a41c/contacts/contact/821aa
 
@@ -100,7 +100,7 @@ read
 echo
 echo
 echo
-echo "Get Sirius"
+echo "Get Pengebingen"
 echo
 http -p HBhb localhost:9090/data/provisionagreement/2a41c
 
@@ -108,7 +108,7 @@ read
 echo
 echo
 echo
-echo "Delete Skrue from Sirius contacts"
+echo "Delete Skrue from Pengebingen contacts"
 echo
 http -p HBhb DELETE localhost:9090/data/provisionagreement/2a41c/contacts/contact/4b2ef
 
@@ -116,6 +116,6 @@ read
 echo
 echo
 echo
-echo "Get Sirius"
+echo "Get Pengebingen"
 echo
 http -p HBhb localhost:9090/data/provisionagreement/2a41c

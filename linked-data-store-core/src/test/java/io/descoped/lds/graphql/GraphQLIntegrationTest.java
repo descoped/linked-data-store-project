@@ -100,16 +100,16 @@ public class GraphQLIntegrationTest {
     })
     public void thatNestedSeachWorks() {
         // setup demo data
-        putResource("/data/provisionagreement/2a41c", "demo/1-sirius.json");
-        putResource("/data/provisionagreement/2a41c/address", "demo/2-sirius-address.json");
+        putResource("/data/provisionagreement/2a41c", "demo/1-pengebingen.json");
+        putResource("/data/provisionagreement/2a41c/address", "demo/2-pengebingen-address.json");
 
         JsonNode result = executeGraphQLQuery("spec/demo/graphql/search_address.json", "Andeby");
         assertNoErrors(result);
         Assert.assertEquals(result.get("data").get("Search").get("edges").size(), 1);
-        Assert.assertEquals(JsonTools.text(result.get("data").get("Search").get("edges").get(0).get("node").get("name")), "Sirius");
+        Assert.assertEquals(JsonTools.text(result.get("data").get("Search").get("edges").get(0).get("node").get("name")), "Pengebingen");
         // Check that the entity index is updated
         client.put("/data/provisionagreement/2a41c", readFileOrClasspathResource(
-                "demo/1-sirius.json").replace("Sirius", "Jupiter"));
+                "demo/1-pengebingen.json").replace("Pengebingen", "Jupiter"));
         result = executeGraphQLQuery("spec/demo/graphql/search_address.json", "Jupiter");
         assertNoErrors(result);
         Assert.assertEquals(result.get("data").get("Search").get("edges").size(), 1);
@@ -122,8 +122,8 @@ public class GraphQLIntegrationTest {
     })
     public void thatLinkingQueryWorks() {
         // setup demo data
-        putResource("/data/provisionagreement/2a41c", "demo/1-sirius.json");
-        putResource("/data/provisionagreement/2a41c/address", "demo/2-sirius-address.json");
+        putResource("/data/provisionagreement/2a41c", "demo/1-pengebingen.json");
+        putResource("/data/provisionagreement/2a41c/address", "demo/2-pengebingen-address.json");
         putResource("/data/contact/4b2ef", "demo/3-skrue.json");
         putResource("/data/contact/821aa", "demo/4-donald.json");
         client.put("/data/provisionagreement/2a41c/contacts/contact/4b2ef");
