@@ -190,6 +190,9 @@ importers:
       '@krantho/ui-react':
         specifier: ^1.1.1
         version: 1.1.1(react@19.3.1)
+      '@plausible-analytics/tracker':
+        specifier: ^0.4.7
+        version: 0.4.7
       github-slugger:
         specifier: ^2.0.0
         version: 2.0.0
@@ -541,6 +544,9 @@ packages:
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [win32]
+
+  '@plausible-analytics/tracker@0.4.7':
+    resolution: {integrity: sha512-majmq1uion4uLo88Tr0eMCMfi7TY00okp3I0Vql9egFaAz6DYCW4bJaV3t5LB3BfcvW5exJpmqzROU0a1b6nAA==}
 
   '@shikijs/core@4.6.0':
     resolution: {integrity: sha512-bfd4OKgvoyXYiYmMRuleA656P4V7M/Du9lcTl38Ngm6KszMj7bq4J1IGZwSYR4c95Tv5UQALtYNWUwaI9UT3xw==}
@@ -1630,6 +1636,8 @@ snapshots:
 
   '@next/swc-win32-x64-msvc@16.4.6':
     optional: true
+
+  '@plausible-analytics/tracker@0.4.7': {}
 
   '@shikijs/core@4.6.0':
     dependencies:

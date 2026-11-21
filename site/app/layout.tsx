@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import Link from 'next/link'
+import { Analytics } from '../components/analytics'
 import { GitHubLink, Logo } from '../components/brand'
 import { MenuButton } from '../components/menu-button'
 import { ThemeSwitch, themeScript } from '../components/theme-switch'
@@ -67,6 +68,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }):
             </span>
           </div>
         </footer>
+        <Analytics />
       </body>
     </html>
   )

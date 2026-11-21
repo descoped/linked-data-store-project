@@ -43,6 +43,13 @@ group). The `# Title` of the file is the heading of the page.
   "On this page" marks that heading (`components/section-hash.tsx`, from krantho's own site). The address is
   replaced, never added, so Back leaves the page.
 
+## Visits
+
+Page views are counted with [Plausible](https://plausible.io), which sets no cookies (`components/analytics.tsx`).
+The tracker is part of the site's own script, and it starts only at `lds.descoped.io`, so a local build is not
+counted. It sends each view to `https://e.descoped.io/e`, a relay on Descoped's own domain that forwards it to
+Plausible, so blockers that refuse third-party requests or know Plausible's address let it through.
+
 ## Look
 
 The tokens of colour, type and space are in `app/globals.css`, once for light and once for dark. The theme follows
