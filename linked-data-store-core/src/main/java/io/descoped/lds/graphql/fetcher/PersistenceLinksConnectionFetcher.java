@@ -18,6 +18,7 @@ import io.descoped.lds.api.json.JsonNavigationPath;
 import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.json.JsonDocument;
+import io.descoped.lds.api.persistence.reactivex.LinkQuery;
 import io.descoped.lds.api.persistence.reactivex.Range;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.reactivex.rxjava3.core.Flowable;
@@ -97,8 +98,10 @@ public class PersistenceLinksConnectionFetcher extends ConnectionFetcher<Map<Str
             List<GraphQLNamedOutputType> concreteTypes = getConcreteTypes(environment.getGraphQLSchema(), targetEntityName);
             Flowable<JsonDocument> documents = Flowable.empty();
             for (GraphQLNamedOutputType concreteType : concreteTypes) {
+                LinkQuery concreteQuery = new LinkQuery(nameSpace, sourceEntityName, sourceId, relationPath,
+                        concreteType.getName());
                 Flowable<JsonDocument> concreteDocuments = persistence.readTargetDocuments(tx, parameters.getSnapshot(),
-                        nameSpace, sourceEntityName, sourceId, relationPath, concreteType.getName(), parameters.getRange());
+                        concreteQuery, parameters.getRange());
                 documents = Flowable.merge(documents, concreteDocuments);
             }
             // Limit the flow.
@@ -124,17 +127,19 @@ public class PersistenceLinksConnectionFetcher extends ConnectionFetcher<Map<Str
             Edge<Map<String, Object>> firstEdge = edges.get(0);
             Edge<Map<String, Object>> lastEdge = edges.get(edges.size() - 1);
 
+            LinkQuery query = new LinkQuery(nameSpace, sourceEntityName, sourceId, relationPath, targetEntityName);
+
             boolean hasPrevious = true;
             if (environment.getSelectionSet().contains("pageInfo/hasPreviousPage")) {
-                hasPrevious = persistence.readTargetDocuments(tx, parameters.getSnapshot(), nameSpace, sourceEntityName,
-                        sourceId, relationPath, targetEntityName, Range.lastBefore(1, firstEdge.getCursor().getValue())
+                hasPrevious = persistence.readTargetDocuments(tx, parameters.getSnapshot(), query,
+                        Range.lastBefore(1, firstEdge.getCursor().getValue())
                 ).isEmpty().map(wasEmpty -> !wasEmpty).blockingGet();
             }
 
             boolean hasNext = true;
             if (environment.getSelectionSet().contains("pageInfo/hasNextPage")) {
-                hasNext = persistence.readTargetDocuments(tx, parameters.getSnapshot(), nameSpace, sourceEntityName,
-                        sourceId, relationPath, targetEntityName, Range.firstAfter(1, lastEdge.getCursor().getValue())
+                hasNext = persistence.readTargetDocuments(tx, parameters.getSnapshot(), query,
+                        Range.firstAfter(1, lastEdge.getCursor().getValue())
                 ).isEmpty().map(wasEmpty -> !wasEmpty).blockingGet();
             }
 

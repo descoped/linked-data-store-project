@@ -1,5 +1,7 @@
 package io.descoped.lds.api.persistence.streaming;
 
+import io.descoped.lds.api.persistence.DocumentKey;
+
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.ZonedDateTime;
@@ -71,26 +73,39 @@ public class Fragment implements Comparable<Fragment> {
     private final long offset;
     private final byte[] value;
 
-    public Fragment(String namespace, String entity, String id, ZonedDateTime timestamp, String path, FragmentType fragmentType, final long offset, byte[] value) {
-        this.streamingControl = false;
-        this.controlCode = 0;
-        this.namespace = namespace;
-        this.entity = entity;
-        this.id = id;
-        this.timestamp = timestamp;
-        this.path = path;
-        this.fragmentType = fragmentType;
-        this.offset = offset;
-        this.value = value;
+    /**
+     * A fragment of a document: one leaf value, or a part of one, of one version of one document.
+     *
+     * @param key          the document and its version
+     * @param path         the path of the value in the document
+     * @param fragmentType the kind of the value
+     * @param offset       where in the value this part starts
+     * @param value        the bytes of the value, or of this part of it
+     */
+    public Fragment(DocumentKey key, String path, FragmentType fragmentType, long offset, byte[] value) {
+        this(false, (short) 0, key, path, fragmentType, offset, value);
     }
 
-    public Fragment(boolean streamingControl, short controlCode, String namespace, String entity, String id, ZonedDateTime timestamp, String path, FragmentType fragmentType, final long offset, byte[] value) {
+    /**
+     * A fragment that may be a streaming-control fragment, which carries a control code and no document.
+     *
+     * @param streamingControl whether this is a streaming-control fragment
+     * @param controlCode      the control code ({@link #LIMITED_CODE} or {@link #NOT_LIMITED_CODE}) of a
+     *                         streaming-control fragment
+     * @param key              the document and its version, or null for a streaming-control fragment
+     * @param path             the path of the value in the document
+     * @param fragmentType     the kind of the value
+     * @param offset           where in the value this part starts
+     * @param value            the bytes of the value, or of this part of it
+     */
+    public Fragment(boolean streamingControl, short controlCode, DocumentKey key, String path, FragmentType fragmentType,
+                    long offset, byte[] value) {
         this.streamingControl = streamingControl;
         this.controlCode = controlCode;
-        this.namespace = namespace;
-        this.entity = entity;
-        this.id = id;
-        this.timestamp = timestamp;
+        this.namespace = key == null ? null : key.namespace();
+        this.entity = key == null ? null : key.entity();
+        this.id = key == null ? null : key.id();
+        this.timestamp = key == null ? null : key.timestamp();
         this.path = path;
         this.fragmentType = fragmentType;
         this.offset = offset;

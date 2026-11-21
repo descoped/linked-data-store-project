@@ -194,11 +194,13 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
     }
 
     @Override
-    public Flowable<JsonDocument> readTargetDocuments(Transaction tx, ZonedDateTime snapshot, String ns,
-                                                      String entityName, String id, JsonNavigationPath jsonNavigationPath,
-                                                      String targetEntityName, Range<String> range) {
+    public Flowable<JsonDocument> readTargetDocuments(Transaction tx, ZonedDateTime snapshot, LinkQuery query,
+                                                      Range<String> range) {
+        String ns = query.namespace();
+        JsonNavigationPath jsonNavigationPath = query.relationPath();
+        String targetEntityName = query.otherEntity();
         // The whole source document is read from RxPersistence, not only what is at the path.
-        return readDocument(tx, snapshot, ns, entityName, id)
+        return readDocument(tx, snapshot, ns, query.entity(), query.id())
                 .flattenAsFlowable(document -> {
                     List<String> links = new ArrayList<>();
                     document.traverseField(jsonNavigationPath, (node, path) -> {
@@ -224,13 +226,12 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
     }
 
     @Override
-    public Flowable<JsonDocument> readSourceDocuments(Transaction tx, ZonedDateTime snapshot, String ns,
-                                                      String entityName, String id, JsonNavigationPath parentPath,
-                                                      String parentEntityName, Range<String> range) {
+    public Flowable<JsonDocument> readSourceDocuments(Transaction tx, ZonedDateTime snapshot, LinkQuery query,
+                                                      Range<String> range) {
         // Uses find to implement back links.
-        byte[] idValue = String.format("/%s/%s", entityName, id).getBytes();
-        Flowable<Fragment> fragments = persistence.find(tx, snapshot, ns, parentEntityName, parentPath.serialize(),
-                idValue, range);
+        byte[] idValue = String.format("/%s/%s", query.entity(), query.id()).getBytes();
+        Flowable<Fragment> fragments = persistence.find(tx, snapshot, query.namespace(), query.otherEntity(),
+                query.relationPath().serialize(), idValue, range);
 
         // Resort.
         fragments = range.isBackward()

@@ -1,6 +1,7 @@
 package io.descoped.lds.core.saga;
 
 import io.descoped.config.DynamicConfiguration;
+import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.core.UndertowApplication;
 import io.descoped.lds.test.server.TestServer;
@@ -387,8 +388,9 @@ class ApplicationStopTest {
 
         /** Starts the saga and returns its completion. */
         CompletableFuture<SagaHandoffResult> start() {
-            SagaInput input = new SagaInput(sec.generateTxId(), "PUT", "application-stop-test", "ns", "SomeEntity", "held",
-                    ZonedDateTime.now(), null, null, JsonTools.mapper.createObjectNode());
+            SagaInput input = new SagaInput(sec.generateTxId(), "PUT", "application-stop-test",
+                    new DocumentKey("ns", "SomeEntity", "held", ZonedDateTime.now()), null, null,
+                    JsonTools.mapper.createObjectNode());
             return sec.handoff(true, sec.sagaRepository.getAdapterLoader(), saga, input, Collections.emptyMap());
         }
     }

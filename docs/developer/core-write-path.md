@@ -117,7 +117,9 @@ saga log does not say that it ended.
 
 ### The saga input
 
-`SagaInput` wraps one JSON object. A handler makes it with the constructor that takes every field.
+`SagaInput` wraps one JSON object. A handler makes it with the constructor that takes the transaction id, the
+method, the schema, the `DocumentKey` of the version (namespace, entity type, id and valid time), `source`,
+`sourceId` and the document; the fields below are made from them in this order.
 
 | Field | Value |
 |---|---|

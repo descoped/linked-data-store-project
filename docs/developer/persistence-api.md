@@ -29,7 +29,7 @@ The module has no code that talks to a database and no configuration of its own.
 | Package | What is in it |
 |---|---|
 | `io.descoped.lds.api.persistence` | `PersistenceInitializer` and `@ProviderName` (how a provider is found), `Transaction`, `TransactionFactory`, `TransactionStatistics`, `DocumentKey`, `PersistenceDeletePolicy`, `PersistenceException`. |
-| `io.descoped.lds.api.persistence.reactivex` | `RxJsonPersistence` (documents), `RxPersistence` ([fragments](../glossary.md#fragment)), `RxJsonPersistenceBridge` (documents on top of fragments), `RxGroupByTools` (cuts an ordered stream into groups), `Range` (bounds and limit of a list). |
+| `io.descoped.lds.api.persistence.reactivex` | `RxJsonPersistence` (documents), `RxPersistence` ([fragments](../glossary.md#fragment)), `RxJsonPersistenceBridge` (documents on top of fragments), `RxGroupByTools` (cuts an ordered stream into groups), `Range` (bounds and limit of a list), `LinkQuery` (what a read along a link starts from). |
 | `io.descoped.lds.api.persistence.streaming` | `Fragment` and `FragmentType`: one stored piece of one value. |
 | `io.descoped.lds.api.persistence.flattened` | `FlattenedDocument` (a document as leaves by path), `FlattenedDocumentLeafNode` (one leaf, cut into fragments), `PathComparator` (the order of paths). |
 | `io.descoped.lds.api.persistence.json` | `JsonDocument` (a key and a Jackson tree), `JsonToFlattenedDocument` and `FlattenedDocumentToJson` (between a tree and leaves), `JsonTools` (the shared `ObjectMapper` and small conversions). |
@@ -70,7 +70,8 @@ Who uses what:
 
 - **Fragment.**
   `Fragment`: one stored piece of one leaf. A text that is longer than the fragment capacity of the provider is cut
-  into several fragments; every other leaf is one fragment.
+  into several fragments; every other leaf is one fragment. A fragment is made from the `DocumentKey` of its
+  version, the path of the leaf, its `FragmentType`, the offset of the piece in the value and the bytes.
 
 - **Flattened document.**
   `FlattenedDocument`: the leaves of one version, by path.
@@ -86,8 +87,8 @@ Who uses what:
 | `readDocument(tx, snapshot, ns, entity, id)` gives `Maybe<JsonDocument>` | The version of the document that is valid at `snapshot`. Empty when the document has no version at or before `snapshot`, and when the version valid then is a tombstone. |
 | `readDocuments(tx, snapshot, ns, entity, range)` gives `Flowable<JsonDocument>` | Every document of the entity type as it is at `snapshot`, one for each id, ordered by id. A document that is marked as deleted at `snapshot` is left out. `after` and `before` of the range are ids, both exclusive. The limit counts documents. A backward range gives descending ids. |
 | `readDocumentVersions(tx, ns, entity, id, range)` gives `Flowable<JsonDocument>` | Every version of one document, oldest first, or newest first for a backward range. A tombstone is one of the versions and comes as an empty document. `after` and `before` of the range are valid times, both exclusive. |
-| `readTargetDocuments(tx, snapshot, ns, sourceEntity, sourceId, relationPath, targetEntity, range)` | The documents of `targetEntity` that the source document, as it is at `snapshot`, links to at `relationPath`. Each target is read as it is at `snapshot`; a target that is not there then is left out. |
-| `readSourceDocuments(tx, snapshot, ns, targetEntity, targetId, relationPath, sourceEntity, range)` | The documents of `sourceEntity` that, as they are at `snapshot`, hold a link to the target at `relationPath`. The range is on the ids of the sources. The target does not have to exist. |
+| `readTargetDocuments(tx, snapshot, query, range)`, with `query` a `LinkQuery(ns, sourceEntity, sourceId, relationPath, targetEntity)` | The documents of `targetEntity` that the source document, as it is at `snapshot`, links to at `relationPath`. Each target is read as it is at `snapshot`; a target that is not there then is left out. |
+| `readSourceDocuments(tx, snapshot, query, range)`, with `query` a `LinkQuery(ns, targetEntity, targetId, relationPath, sourceEntity)` | The documents of `sourceEntity` that, as they are at `snapshot`, hold a link to the target at `relationPath`. The range is on the ids of the sources. The target does not have to exist. |
 | `findDocument(tx, snapshot, ns, entity, path, value, range)` | The documents of the entity type that, as they are at `snapshot`, hold the text `value` at `path`. `[]` in the path means any element of an array. |
 | `createOrOverwrite(tx, document, specification)` and the same with a `Flowable<JsonDocument>` | Writes versions. A version that is there with the same key is replaced as a whole, and so is a tombstone at the same valid time. Other versions are not touched. The documents of one call may be versions of one document in any order of time. |
 | `markDocumentDeleted(tx, ns, entity, id, version, policy)` | Writes a tombstone at the valid time `version` (see [Deletion markers](#deletion-markers)). |

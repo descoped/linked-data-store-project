@@ -829,8 +829,8 @@ document they are in, and the type resolvers need it to name the entity type.
 | `PersistenceLinkFetcher` | `readDocument`, with the entity type and the id taken from the link by the pattern `/(?<type>TARGET)/(?<id>.*)` | yes |
 | `PersistenceLinksFetcher` | `readDocument` for each link that matches `/TARGET/(?<id>.*)` | no |
 | `PersistenceRootConnectionFetcher` | `readDocuments(tx, snapshot, namespace, entity, range)`, then `hasPrevious` and `hasNext` with the ids of the first and the last edge | yes |
-| `PersistenceLinksConnectionFetcher` | `readTargetDocuments` once for every concrete type of the target (the members of a union, the implementations of an interface), merged with `Flowable.merge` | yes |
-| `PersistenceReverseLinksConnectionFetcher` | `readSourceDocuments` with the id of the document, the `mappedBy` path and the entity type of the nodes | yes |
+| `PersistenceLinksConnectionFetcher` | `readTargetDocuments` with a `LinkQuery` of the document, the path of the link field and a target entity type, once for every concrete type of the target (the members of a union, the implementations of an interface), merged with `Flowable.merge` | yes |
+| `PersistenceReverseLinksConnectionFetcher` | `readSourceDocuments` with a `LinkQuery` of the document, the `mappedBy` path and the entity type of the nodes | yes |
 | `QueryConnectionFetcher` | `SearchIndex.search(query, filter, from, size)`, then `readDocument` for every hit | yes |
 
 The namespace is the one the builder was made with, `namespace.default`. `QueryConnectionFetcher` reads a hit
