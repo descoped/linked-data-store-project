@@ -578,9 +578,6 @@ Not finished: the health check of the image asks `/ping`, which answers 200 when
 core), and its comments say that the search index and the logs are not checked yet. The health check also
 does not follow `http.prefix` or a port from a mounted file.
 
-Not finished: `Server.main` has a commented-out call, `application.triggerRecoveryOfIncompleteSagas()`. No
-such method exists in `UndertowApplication`. Recovery is started by `UndertowApplication.start`.
-
 Not finished: the log level cannot be set with a key. `logback.xml` is fixed at `INFO`.
 
 Not finished: nothing says whether the profiles of dynamic-configuration are meant to be used. They work:
