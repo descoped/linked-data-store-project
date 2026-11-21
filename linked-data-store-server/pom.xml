@@ -180,6 +180,22 @@
              provider). SonarCloud reads it (sonar.coverage.jacoco.xmlReportPaths in the root POM). -->
         <profile>
             <id>coverage</id>
+            <!-- report-aggregate takes only the modules named here. The two API modules come in through core, so
+                 they are named again, with the scope they have through core: the jars are the same as without
+                 the profile. A module the server gets only through another one is named here too, or its
+                 coverage drops out of the report. -->
+            <dependencies>
+                <dependency>
+                    <groupId>io.descoped.lds</groupId>
+                    <artifactId>linked-data-store-persistence-provider-api</artifactId>
+                    <version>${project.version}</version>
+                </dependency>
+                <dependency>
+                    <groupId>io.descoped.lds</groupId>
+                    <artifactId>linked-data-store-search-provider-api</artifactId>
+                    <version>${project.version}</version>
+                </dependency>
+            </dependencies>
             <build>
                 <plugins>
                     <plugin>
