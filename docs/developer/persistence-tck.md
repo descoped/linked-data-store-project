@@ -423,7 +423,7 @@ The suite runs with the tests of a provider module. The command for one module a
 
 For PostgreSQL and Neo4j, give `linked-data-store-persistence-provider-postgres` or
 `linked-data-store-persistence-provider-neo4j` as the module. Those two need Docker. The whole build
-(`./mvnw verify javadoc:javadoc`) runs the suite for all three.
+(`./mvnw -T 1C clean verify`) runs the suite for all three.
 
 Surefire reports the suite under the name of the subclass, for example `MemoryPersistenceIntegrationTest`, with
 32 tests.

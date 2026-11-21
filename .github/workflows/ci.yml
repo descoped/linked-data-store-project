@@ -1,7 +1,8 @@
 name: CI
 
 # One job on JDK 27, the baseline: Linked Data Store is a product and is built, tested and run on one JDK. Every
-# run: build, tests and Javadoc of every module; the tests start PostgreSQL 18, Neo4j and Solr in Docker through
+# run: build, tests and Javadoc of every module, the modules that do not depend on each other at the same time
+# (-T 1C); the tests start PostgreSQL 18, Neo4j and Solr in Docker through
 # Testcontainers, build the image of the server and start its compose file with the docker command. Pushes to
 # master and release tags, and pull requests from this repository, add coverage and the SonarCloud analysis (not
 # gating; pull requests from forks get no token). CI publishes nothing, neither to Maven Central nor to an image
@@ -49,6 +50,11 @@ jobs:
     env:
       # Coverage and SonarCloud: pushes, and pull requests from this repository (a fork's gets no secrets).
       ANALYSE: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository }}
+      # The build cache (.mvn/maven-build-cache-config.xml): a pull request takes a module that has not changed, and
+      # whose dependencies have not, from the cache without testing it again. A push (master, a tag) and a start by
+      # hand look nothing up and build and test every module, so every engine is tested at every merge, and fill
+      # the cache the pull requests read.
+      CACHE: ${{ github.event_name == 'pull_request' && '-Dmaven.build.cache.skipCache=false' || '-Dmaven.build.cache.skipCache=true' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -62,13 +68,20 @@ jobs:
           distribution: temurin
           cache: maven
 
+      # One entry for every run. A pull request starts from the newest entry of its own branch, else of master.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.m2/build-cache
+          key: build-cache-${{ github.sha }}
+          restore-keys: build-cache-
+
       - name: Build, test and Javadoc
         if: env.ANALYSE != 'true'
-        run: ./mvnw --batch-mode --no-transfer-progress verify javadoc:javadoc
+        run: ./mvnw --batch-mode --no-transfer-progress -T 1C clean verify $CACHE
 
       - name: Build, test, Javadoc and coverage
         if: env.ANALYSE == 'true'
-        run: ./mvnw --batch-mode --no-transfer-progress verify javadoc:javadoc -P coverage
+        run: ./mvnw --batch-mode --no-transfer-progress -T 1C clean verify -P coverage $CACHE
 
       # Analysis only: a SonarCloud outage or token problem must not fail the build, so this step does not gate.
       # On a pull request the scanner reads the pull request number, branch and base from GitHub Actions itself.
@@ -77,5 +90,5 @@ jobs:
         continue-on-error: true
         env:
           SONAR_TOKEN: ${{ secrets.SONARCLOUD_TOKEN }}
-        run: ./mvnw --batch-mode --no-transfer-progress -P sonar org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
+        run: ./mvnw --batch-mode --no-transfer-progress -Dmaven.build.cache.enabled=false -P sonar org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
 
