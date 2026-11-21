@@ -54,9 +54,9 @@ class FileAndClasspathReaderUtilsTest {
 
     @Test
     void bytesThatAreNotUtf8AreAnError() throws Exception {
-        Path file = Files.write(dir.resolve("latin1.txt"), new byte[]{'b', (byte) 0xE5, 'r'});
+        String file = Files.write(dir.resolve("latin1.txt"), new byte[]{'b', (byte) 0xE5, 'r'}).toString();
 
-        assertThatThrownBy(() -> FileAndClasspathReaderUtils.readFileAsUtf8(file.toString()))
+        assertThatThrownBy(() -> FileAndClasspathReaderUtils.readFileAsUtf8(file))
                 .isInstanceOf(RuntimeException.class)
                 .hasCauseInstanceOf(MalformedInputException.class);
     }
@@ -65,7 +65,6 @@ class FileAndClasspathReaderUtilsTest {
     void theCurrentPathIsAbsoluteAndNormalized() {
         Path current = FileAndClasspathReaderUtils.currentPath();
 
-        assertThat(current.isAbsolute()).isTrue();
-        assertThat(current).isEqualTo(current.normalize());
+        assertThat(current).isAbsolute().isEqualTo(current.normalize());
     }
 }

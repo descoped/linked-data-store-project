@@ -353,6 +353,10 @@ Only a build that starts with `clean` is kept (`mandatoryClean`): a build withou
 up to date from what an earlier build left in `target`, as the Javadoc plugin does, and a success kept from it
 would not be one. A build that also names `javadoc:javadoc` on the command line keeps nothing.
 
+A result is used again only for a build that asks for the same tests (`executionControl` in the settings): one
+kept from a build limited with `-Dtest` or `-Dit.test` is not taken for a build that runs them all, which builds
+the module again. A build that skips the tests (`-DskipTests`) may take any result.
+
 `-Dmaven.build.cache.skipCache=true` builds everything without looking the cache up, and keeps the result;
 `-Dmaven.build.cache.enabled=false` builds without the cache.
 

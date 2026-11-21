@@ -8,6 +8,7 @@ import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -55,22 +56,26 @@ class FragmentOrderTest {
         List<Fragment> reversed = new ArrayList<>(expected);
         Collections.reverse(reversed);
 
-        Collections.sort(reversed);
+        reversed.sort(Comparator.naturalOrder());
 
         assertThat(reversed).containsExactlyElementsOf(expected);
-        assertThat(limited.compareTo(limited)).isZero();
-        assertThat(a().compareTo(a())).isZero();
+        assertThat(limited).isEqualByComparingTo(limited);
+        assertThat(a()).isEqualByComparingTo(a());
     }
 
     @Test
     void equalFragmentsHaveTheSameKeyPathOffsetAndValue() {
         Fragment a = a();
 
-        assertThat(a).isEqualTo(a).isEqualTo(a()).hasSameHashCodeAs(a());
-        assertThat(a).isNotEqualTo(null).isNotEqualTo("a fragment");
-        assertThat(a).isNotEqualTo(fragment("ns", "E", "1", T1, "$.a", FragmentType.STRING, 0, "y"));
-        assertThat(a).isNotEqualTo(fragment("ns", "E", "1", T1, "$.a", FragmentType.STRING, 1, "x"));
-        assertThat(a).isNotEqualTo(fragment("ns", "E", "1", T1, "$.b", FragmentType.STRING, 0, "x"));
+        assertThat(a)
+                .isEqualTo(a)
+                .isEqualTo(a())
+                .hasSameHashCodeAs(a())
+                .isNotEqualTo(null)
+                .isNotEqualTo("a fragment")
+                .isNotEqualTo(fragment("ns", "E", "1", T1, "$.a", FragmentType.STRING, 0, "y"))
+                .isNotEqualTo(fragment("ns", "E", "1", T1, "$.a", FragmentType.STRING, 1, "x"))
+                .isNotEqualTo(fragment("ns", "E", "1", T1, "$.b", FragmentType.STRING, 0, "x"));
     }
 
     @Test
@@ -79,7 +84,7 @@ class FragmentOrderTest {
         Fragment numeric = fragment("ns", "E", "1", T1, "$.a", FragmentType.NUMERIC, 0, "x");
 
         assertThat(string).isEqualTo(numeric);
-        assertThat(string.compareTo(numeric)).isNotZero();
+        assertThat(string).isNotEqualByComparingTo(numeric);
     }
 
     @Test
