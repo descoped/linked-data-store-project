@@ -52,12 +52,12 @@ class FragmentOrderTest {
                 fragment("ns", "E", "1", T2, "$.a", FragmentType.STRING, 0, "x"),
                 limited,
                 notLimited);
-        List<Fragment> shuffled = new ArrayList<>(expected);
-        Collections.reverse(shuffled);
+        List<Fragment> reversed = new ArrayList<>(expected);
+        Collections.reverse(reversed);
 
-        Collections.sort(shuffled);
+        Collections.sort(reversed);
 
-        assertThat(shuffled).containsExactlyElementsOf(expected);
+        assertThat(reversed).containsExactlyElementsOf(expected);
         assertThat(limited.compareTo(limited)).isZero();
         assertThat(a().compareTo(a())).isZero();
     }

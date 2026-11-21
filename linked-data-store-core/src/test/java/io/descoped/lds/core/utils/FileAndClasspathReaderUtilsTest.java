@@ -14,8 +14,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * A file or a resource of the class path read as text: a file is preferred to a resource of the same name, a missing
- * resource is null, a missing file is an error, and bytes that are not UTF-8 are an error.
+ * A file or a resource of the class path read as text: a name that is a file is read as the file and any other name
+ * from the class path, a missing resource is null, a missing file is an error, and bytes that are not UTF-8 are an
+ * error.
  */
 class FileAndClasspathReaderUtilsTest {
 

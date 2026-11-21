@@ -33,10 +33,11 @@ class CORSHandlerRulesTest {
     void start() {
         HttpHandler next = exchange -> exchange.setStatusCode(200).getResponseSender().send("next");
         HttpHandler fail = exchange -> exchange.setStatusCode(403).getResponseSender().send("fail");
-        server = Undertow.builder()
-                .addHttpListener(0, "127.0.0.1")
-                .setHandler(new CORSHandler(next, fail, List.of(Pattern.compile(Pattern.quote(ALLOWED))), true))
-                .build();
+        start(new CORSHandler(next, fail, List.of(Pattern.compile(Pattern.quote(ALLOWED))), true));
+    }
+
+    private void start(CORSHandler cors) {
+        server = Undertow.builder().addHttpListener(0, "127.0.0.1").setHandler(cors).build();
         server.start();
         address = "http://127.0.0.1:" + ((InetSocketAddress) server.getListenerInfo().getFirst().getAddress()).getPort();
         client = HttpClient.newHttpClient();
@@ -124,15 +125,10 @@ class CORSHandlerRulesTest {
 
     @Test
     void theShortConstructorSendsARequestThatIsNotAllowedOnAsItIs() throws Exception {
+        // The server of this test replaces the one started before it; @AfterEach stops it
         stop();
         HttpHandler next = exchange -> exchange.getResponseSender().send("next");
-        server = Undertow.builder()
-                .addHttpListener(0, "127.0.0.1")
-                .setHandler(new CORSHandler(next, List.of(Pattern.compile(Pattern.quote(ALLOWED)))))
-                .build();
-        server.start();
-        address = "http://127.0.0.1:" + ((InetSocketAddress) server.getListenerInfo().getFirst().getAddress()).getPort();
-        client = HttpClient.newHttpClient();
+        start(new CORSHandler(next, List.of(Pattern.compile(Pattern.quote(ALLOWED)))));
 
         HttpResponse<String> response = send(get().header("Origin", "https://other.example"));
 
