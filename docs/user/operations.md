@@ -59,7 +59,7 @@ docker run --rm -p 127.0.0.1:9090:9090 lds-server
 What is in the image:
 
 - A Java runtime, version 27, with only the parts of Java that LDS uses, made from the JDK of the image
-  `eclipse-temurin:27-jdk-alpine`, on Alpine Linux 3.24. Alpine uses the C library musl.
+  `eclipse-temurin:27-jdk-alpine`, on Alpine Linux (`alpine:3.24`). Alpine uses the C library musl.
 - LDS in the directory `/lds`: its jar files in `/lds/lib`, and the example model in
   `/lds/schemas/schema.graphql`.
 - No script. The Java program is the process of the container.

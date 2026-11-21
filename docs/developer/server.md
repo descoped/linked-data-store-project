@@ -339,15 +339,15 @@ The context of the build is the module directory. `.dockerignore` leaves everyth
 `target/lib/`, the jar of the module (not its `-sources` and `-javadoc` jars) and `schemas/`. The reactor is
 packaged first; the comment at the top of the Dockerfile gives the two commands.
 
-The image is built in two stages. Both are Alpine Linux (musl) of the same release, 3.24, the one the JDK image is
-built on.
+The image is built in two stages, both Alpine Linux (musl). The second may be of a newer release of Alpine than
+the one the JDK image is built on, which runs the runtime of the first.
 
 | Line | What it gives |
 |---|---|
 | `FROM eclipse-temurin:27-jdk-alpine AS runtime` | The first stage: the JDK of the baseline, on Alpine. Nothing of it is in the image but the runtime it makes. |
-| `COPY target/lib/ /lds/lib/`, `COPY target/linked-data-store-server-*.jar /lds/lib/` | The jars, for `jdeps` to read. |
-| `RUN ... jdeps ... jlink ...` | `jdeps --print-module-deps` lists the modules of the JDK that the jars use (its last line of output; the lines before it warn of packages that two jars share). `jlink` links those modules, and `jdk.charsets`, `jdk.crypto.ec` and `jdk.localedata`, which no class names, into `/jre`, from the JDK itself (the image has no `jmods`), without debug information, man pages and header files, and not compressed. LDS stays on the class path, so its libraries need not be modules. |
-| `FROM alpine:3.24` | The second stage, the image: Alpine with nothing added. |
+| `COPY target/lib/ /lds/lib/` | The libraries, for `jdeps` to read. The jar of the module is left out: it uses nothing the libraries do not, and without it the runtime is not linked again when only that jar changes. |
+| `RUN set -o pipefail && ... jdeps ... jlink ...` | `jdeps --print-module-deps` lists the modules of the JDK that the jars use (its last line of output; the lines before it warn of packages that two jars share); a failure of `jdeps`, or an empty list, stops the build. `jlink` links those modules, and `jdk.charsets` and `jdk.localedata`, which no class names, into `/jre`, from the JDK itself (the image has no `jmods`), without debug information, man pages and header files, and not compressed. LDS stays on the class path, so its libraries need not be modules. |
+| `FROM alpine:3.24` | The second stage, the image: Alpine with nothing added. No locale is set: the default locale of musl is UTF-8, and Java takes `native.encoding`, `sun.jnu.encoding` and `stdout.encoding` as UTF-8 from it. |
 | `ENV JAVA_HOME=/opt/java`, `ENV PATH=...` | Where the runtime is, and `java` on the path. |
 | `COPY --from=runtime /jre ${JAVA_HOME}` | The runtime of the first stage. |
 | `RUN addgroup -S lds && adduser -S -D -H -G lds -h /lds lds` | A system group and a system user `lds`, without a password, with `/lds` as its home. `-H` says that `adduser` does not make the home; the next line makes `/lds`. |

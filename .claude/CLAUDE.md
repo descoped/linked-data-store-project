@@ -224,7 +224,7 @@ system property sets only a key that one of the files has).
 `linked-data-store-server/Dockerfile` makes the image from what Maven has packaged (`target/lib` and the jar of the
 module) on `alpine:3.24`, with a Java runtime that `jlink` makes in a first stage from
 `eclipse-temurin:27-jdk-alpine`: only the JDK modules `jdeps` finds in the jars, and the few used only by name
-(`jdk.charsets`, `jdk.crypto.ec`, `jdk.localedata`); musl in both stages. The reactor is built first, and the
+(`jdk.charsets`, `jdk.localedata`); musl in both stages. The reactor is built first, and the
 context is the module directory. `compose.yaml` next to it is a whole LDS for development: the image, Neo4j,
 PostgreSQL (saga log and transaction log, the databases made by `postgres-init.sql`) and Solr, with the images the
 tests of the providers use. Keep these when changing them:
