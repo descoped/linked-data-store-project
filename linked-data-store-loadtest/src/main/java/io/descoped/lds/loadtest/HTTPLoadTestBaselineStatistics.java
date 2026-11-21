@@ -120,12 +120,12 @@ public final class HTTPLoadTestBaselineStatistics {
                 }
                 while (jParser.nextToken() == JsonToken.START_OBJECT) {
                     // one request at a time: a file of a run holds tens of megabytes
-                    record(jParser.readValueAsTree());
+                    addSample(jParser.readValueAsTree());
                 }
             }
         }
 
-        private void record(JsonNode node) {
+        private void addSample(JsonNode node) {
             double duration = node.get("test_duration").asDouble();
             boolean success = node.get("test_success").asBoolean();
             boolean deviation = node.get("test_deviation_flag").asBoolean();
