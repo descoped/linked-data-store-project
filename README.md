@@ -1,4 +1,4 @@
-[![CI](https://github.com/descoped/linked-data-store-project/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/descoped/linked-data-store-project/actions/workflows/ci.yml) [![Quality gate status](https://sonarcloud.io/api/project_badges/measure?project=descoped_linked-data-store-project&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=descoped_linked-data-store-project) [![Reliability rating](https://sonarcloud.io/api/project_badges/measure?project=descoped_linked-data-store-project&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=descoped_linked-data-store-project) [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=descoped_linked-data-store-project&metric=coverage)](https://sonarcloud.io/component_measures?id=descoped_linked-data-store-project&metric=coverage) [![Project status: WIP](https://www.repostatus.org/badges/latest/wip.svg)](https://www.repostatus.org/#wip) [![License](https://img.shields.io/github/license/descoped/linked-data-store-project)](LICENSE)
+[![CI](https://github.com/descoped/linked-data-store-project/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/descoped/linked-data-store-project/actions/workflows/ci.yml) [![Quality gate status](https://sonarcloud.io/api/project_badges/measure?project=descoped_linked-data-store-project&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=descoped_linked-data-store-project) [![Reliability rating](https://sonarcloud.io/api/project_badges/measure?project=descoped_linked-data-store-project&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=descoped_linked-data-store-project) [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=descoped_linked-data-store-project&metric=coverage)](https://sonarcloud.io/component_measures?id=descoped_linked-data-store-project&metric=coverage) [![Project status: Active](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active) [![Docker Hub](https://img.shields.io/docker/v/descoped/lds?sort=semver&label=docker%20hub)](https://hub.docker.com/r/descoped/lds) [![License](https://img.shields.io/github/license/descoped/linked-data-store-project)](LICENSE)
 
 # Linked Data Store
 
@@ -8,10 +8,11 @@ data.
 Every document version has a "valid from" time, and a read returns the document as it was at the time asked for.
 Persistence and search are pluggable.
 
-**Status: 3.0.0 is in development and not released.** Its milestones are tags of the source with release notes,
-and nothing is published: the first is [3.0.0-M1](RELEASE-NOTES.md#300-m1). This repository was put together in
-November 2026 from the 14 repositories LDS used to live in, with their full history. The modules are being revised
-one by one; until that is done, treat the code as work in progress.
+**Status: 3.0.0 is released** as images of the server on Docker Hub,
+[`descoped/lds`](https://hub.docker.com/r/descoped/lds), for Linux on amd64 and arm64; see the
+[release notes](RELEASE-NOTES.md#300). This repository was put together in
+November 2026 from the 14 repositories LDS used to live in, with their full history. What 3.0.0 does not have yet
+is said in the release notes and in the documentation, in paragraphs that start with "Not finished:".
 
 ## Modules
 
@@ -45,8 +46,14 @@ and Solr 10 in containers, build the image of the server and start the whole sta
 
 ## Run
 
-Build first, then start LDS in one of three ways. As it comes, LDS keeps everything in memory and has an example
-model (`linked-data-store-server/schemas/schema.graphql`, a person and a company); it answers on port 9090.
+The quickest way is the image on Docker Hub. As it comes, LDS keeps everything in memory and has an example model
+(`linked-data-store-server/schemas/schema.graphql`, a person and a company); it answers on port 9090.
+
+```sh
+docker run --rm -p 127.0.0.1:9090:9090 descoped/lds:3.0.0
+```
+
+From the repository, build first, then start LDS in one of three ways.
 
 ```sh
 ./mvnw package -DskipTests
@@ -107,7 +114,8 @@ The configuration is read with dynamic-configuration 3, which has these rules:
 In the image, the model is read from `/lds/schemas` (mount your own there), options of the JVM are given in
 `JAVA_TOOL_OPTIONS`, and LDS runs as the user `lds`. Its health check asks `/ping` on the port of `LDS_HTTP_PORT`,
 so move the port with that variable and not in a mounted file, and leave `http.prefix` as it is. The image is
-built here and is not published anywhere.
+published on Docker Hub as `descoped/lds` in three variants: the regular image with a shell (`3.0.0`), one without
+(`3.0.0-distroless`) and one with the tools of the JDK for diagnostics (`3.0.0-debug`).
 
 Search finds a document by the texts of its fields named `languageText`, which is what the Solr provider indexes.
 

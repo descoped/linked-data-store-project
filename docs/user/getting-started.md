@@ -18,26 +18,31 @@ shows this at work; [Concepts](concepts.md) explains the ideas.
 
 ## What is needed
 
-- A copy of the LDS repository. LDS 3.0 is in development and 3.0.0 is not released: there is no image and no
-  program to fetch. You build LDS from the repository.
-- JDK 27, to build LDS and to start it on the JDK.
-- Docker with `docker compose`, only for the two ways to start LDS that use containers.
+- Docker, to run the image of LDS from Docker Hub. That is all the quickest way needs.
+- To build LDS yourself: a copy of the LDS repository and JDK 27, and `docker compose` for the whole stack.
 - `curl`, or another program that sends HTTP requests. The examples use `curl`.
+
+## Start LDS
+
+The quickest way is the image on Docker Hub:
+
+```sh
+docker run --rm -p 127.0.0.1:9090:9090 descoped/lds:3.0.0
+```
+
+As it comes, that is with no configuration of your own, LDS keeps everything in memory, has an example
+[model](../glossary.md#model) and answers on port 9090. [Operations](operations.md#the-image) tells the three
+variants of the image apart.
 
 ## Build LDS
 
-In the root of the repository:
+To build LDS from the repository, in its root:
 
 ```sh
 ./mvnw package -DskipTests
 ```
 
-`./mvnw` is in the repository and fetches Maven itself.
-
-## Start LDS
-
-There are three ways. Choose one. As it comes, that is with no configuration of your own, LDS keeps everything in
-memory, has an example [model](../glossary.md#model) and answers on port 9090.
+`./mvnw` is in the repository and fetches Maven itself. A built LDS can be started in three ways, each as it comes.
 
 ### In a container
 
@@ -46,7 +51,7 @@ docker build -t lds-server linked-data-store-server
 docker run --rm -p 127.0.0.1:9090:9090 lds-server
 ```
 
-This is LDS as it comes, in an image that is built on your machine.
+This is the regular image, built on your machine.
 
 ### The whole stack with compose
 

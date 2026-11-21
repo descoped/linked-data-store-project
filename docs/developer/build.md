@@ -16,8 +16,9 @@ The build makes every module of LDS from one repository, with one version, on on
 as named modules with compiler warnings as errors, runs the tests against the real engines in containers, checks
 the Javadoc, and puts together the jars the server image is made of.
 
-The build publishes nothing. No artifact and no image leaves the machine that builds. Between milestones the
-version is `3.0.0-SNAPSHOT`, and 3.0.0 is not released (see [How a release is made](#how-a-release-is-made)).
+The build publishes nothing. No artifact and no image leaves the machine that builds. A release is the one thing
+that publishes, by a workflow the owner starts by hand: the images of the server on Docker Hub, a tag and a release
+on GitHub (see [How a release is made](#how-a-release-is-made)). No jar is published.
 
 ## Where things are
 
@@ -168,9 +169,8 @@ in the POMs. Keep them when changing the build.
 ### One reactor, one version
 
 Every module has the root POM as its parent and takes its version from it. A module depends on another LDS module
-with `${project.version}`. The release plugin is told to give every module the same version
-(`autoVersionSubmodules`). Do not give a module a version of its own: the modules are made to be released
-together.
+with `${project.version}`. Do not give a module a version of its own: the modules are released together, and
+`versions:set` (below) sets the version of every module at once.
 
 The modules also share the address of the project. The root POM switches off Maven's habit of adding the
 `artifactId` of a module to the inherited `url` and `scm` (`child.project.url.inherit.append.path="false"` and
@@ -203,7 +203,7 @@ LDS is built, tested and run on JDK 27. The number is written in these places, a
 | root `pom.xml`, `java.version` | Gives `maven.compiler.release`, so the class files are for Java 27 (class file version 71), and the version the enforcer rule `requireJavaVersion` asks for. |
 | `.github/workflows/ci.yml` | `actions/setup-java` with `java-version: '27'`, distribution `temurin`. |
 | `.github/workflows/claude.yml` | The same, in the job `respond`, which may run the build. |
-| `linked-data-store-server/Dockerfile` | `FROM eclipse-temurin:27-jdk-alpine AS runtime`, the stage that links the runtime of the image. |
+| `linked-data-store-server/Dockerfile` | `FROM eclipse-temurin:27-jdk AS runtime`, the stage that links the runtime of the image. |
 | `.github/renovate.json` | Two rules that stop Renovate from raising the JDK of the workflows and of the image. |
 
 The enforcer rule gives the lowest JDK: a newer JDK passes it too, and the compiler then still writes class files
@@ -312,7 +312,8 @@ POM.
 - Always the latest stable version of every library, plugin, action, image and engine. Renovate moves them, and
   CI is the gate (see [Renovate](#renovate)).
 - No secret but the documented development defaults of the tests and the compose file.
-- CI publishes nothing, and a release is made by hand (see [How a release is made](#how-a-release-is-made)).
+- CI publishes nothing. A release is started by hand, with the owner's go-ahead (see
+  [How a release is made](#how-a-release-is-made)).
 
 ## The profiles
 
@@ -598,30 +599,56 @@ The push of a milestone's tag does not start CI: its tags are of the form `1.2.3
 
 ### A release
 
-Not finished: no release has been made with the command below, and the repository has no tag of the form `1.2.3`,
-which is the form the release plugin is told to use. It is the command the comment in the root POM gives.
+A release, such as `3.0.0`, is three images of the server on Docker Hub (`descoped/lds`), for linux/amd64 and
+linux/arm64, a tag of the version and a release on GitHub with its notes. No jar is published: the profiles
+`central` and `sign` are kept for the day the owner decides to put the modules outside users build on (the
+persistence API, its suite of tests, the search API) on Maven Central, and are not used by a release. It is made
+with two pull requests and a start of the release workflow by hand:
 
-```sh
-./mvnw release:prepare release:perform
-```
+1. The first pull request sets the version of every POM to the release, sets `project.build.outputTimestamp` in
+   the root POM to the time of the release, and adds the release's notes to `RELEASE-NOTES.md` in a section
+   `## <version>`, with links that are whole addresses. `versions:set` sets the version of every module, and the
+   time with it:
 
-- The release plugin gives every module the same version, tags the commit with the version alone (`3.0.0`), and
-  runs `deploy` with the profiles `central` and `sign`.
-- The comment in the root POM says that `release:prepare` sets `project.build.outputTimestamp` to the time of
-  the release.
-- The upload goes to the Central Portal and stays there, validated and unpublished. It is published by hand in
-  the Portal.
-- The server `central` in `~/.m2/settings.xml` holds the token of the Portal. The comment in the root POM says
-  that for Maven 3.10 it also lists `https://central.sonatype.com` in `repositoryOrigins`.
-- SNAPSHOT versions are not published.
-- The push of the tag starts CI, which builds and tests and publishes nothing.
-- `.gitignore` has the files an interrupted release leaves (`release.properties`, `pom.xml.releaseBackup`, ...).
+   ```sh
+   ./mvnw versions:set -DnewVersion=3.0.0 -DgenerateBackupPoms=false -DprocessAllModules=true
+   ```
 
-Nothing in the repository publishes the image of the server.
+   CI builds and tests it, as any pull request that changes code, and again on `master` when it is merged.
+2. The owner starts the release on `master`:
+
+   ```sh
+   gh workflow run release.yml -f version=3.0.0
+   ```
+
+   `.github/workflows/release.yml` runs in the environment `release`, which waits for the owner's approval and
+   allows `master` only. It logs in to Docker Hub with the secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` of the
+   organisation `descoped`, given to this repository. It checks first, and publishes
+   nothing when a check fails: the version has the form `1.2.3`, the POMs on `master` have it, its tag does not
+   exist, `RELEASE-NOTES.md` has its section, and CI (`Build (JDK 27)`) passed on the commit. It then packages the
+   jars without testing them again, builds the three images of the Dockerfile for both platforms with an SBOM and
+   provenance, pushes them, signs each by its digest with cosign (keyless, by the identity of the workflow on
+   GitHub), and at the end tags the commit with the version alone and makes the release on GitHub from the notes.
+3. The second pull request sets the versions to the next SNAPSHOT. The site (its landing page, and
+   `softwareVersion` in `site/krantho.config.ts`) is changed for the release then, when the images are there: a
+   change of `site/` is published at once.
+
+| Image | Tags | Target of the Dockerfile |
+|---|---|---|
+| regular | `3.0.0`, `3.0`, `3`, `latest` | `regular` |
+| distroless | `3.0.0-distroless`, `3.0-distroless`, `3-distroless`, `distroless` | `distroless` |
+| debug | `3.0.0-debug`, `3.0-debug`, `3-debug`, `debug` | `debug` |
+
+A run can be repeated until the tag is made. The jars of one commit are the same bytes in every build
+(`project.build.outputTimestamp`), and so are the images: every image the Dockerfile starts from is named by its
+digest, and the workflow sets the time of every file and layer to the time of the commit (`SOURCE_DATE_EPOCH`,
+`rewrite-timestamp`). Two builds of one commit without a cache gave the same digest. A run again after a failure
+pushes the same images. The signatures, the SBOM and the provenance are made again.
+
+The tags `3.0`, `3` and `latest` move to every release, so a release of an older line moves them backwards.
 
 ## Not finished
 
-- 3.0.0 is not released, and nothing is published.
 - The TCK is not a named module.
 - Six modules have an exception from the Javadoc rule and five from the lint rule; some of the lint categories that are
   switched off give no warning any more (see [Every compiler warning is an error](#every-compiler-warning-is-an-error)).

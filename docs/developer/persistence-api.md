@@ -725,8 +725,8 @@ Not finished: `JsonNavigationPath` does not refuse every malformed path. `from("
   initializer with `provides` and in `META-INF/services`.
 
 - **Clean break.**
-  3.0.0 is not released, and a milestone promises no compatibility, so there is nothing to stay compatible with:
-  no deprecated aliases, no shims, no code for older data.
+  Nothing of LDS 3 was released before 3.0.0, so 3.0.0 has nothing to stay compatible with: no deprecated aliases,
+  no shims, no code for older data.
 
 - **JSON.**
   Jackson 3, as a tree. No classes are bound.

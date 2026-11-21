@@ -1,0 +1,199 @@
+name: Release
+
+# Publishes a release of LDS: the images of the server on Docker Hub (descoped/lds), a tag of the version and a
+# release on GitHub with its notes. It runs only when the owner starts it by hand, with the owner's go-ahead for the
+# release (see .claude/CLAUDE.md); nothing else in the repository publishes anything:
+#
+#   gh workflow run release.yml -f version=3.0.0
+#
+# A run is safe to repeat until the tag is made: the jars (project.build.outputTimestamp) and the images
+# (SOURCE_DATE_EPOCH, base images by digest) of one commit are the same in every run, so a run again after a failure
+# pushes the same images again.
+#
+# What is released is master as it is: its POMs must already have the version, RELEASE-NOTES.md a section for it,
+# and CI must have passed on the commit (the release builds the jars again, but does not test them again). The tag
+# must not exist. Three images, each for linux/amd64 and linux/arm64, with an SBOM and the provenance of the build,
+# and signed with cosign (keyless, by this workflow's identity on GitHub):
+#
+#   descoped/lds:3.0.0, 3.0, 3, latest                    the regular image, with a shell (busybox)
+#   descoped/lds:3.0.0-distroless, ..., distroless        no shell, no program but java
+#   descoped/lds:3.0.0-debug, ..., debug                  with the tools of the JDK for diagnostics
+#
+# The job runs in the environment `release`, which waits for the owner's approval and allows master only. It logs in
+# to Docker Hub with the secrets DOCKERHUB_USERNAME and DOCKERHUB_TOKEN (a token that may push to descoped/lds), which
+# are secrets of the organisation descoped, given to this repository.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'The version to release, of the form 1.2.3; the POMs on master must have it.'
+        required: true
+        type: string
+
+permissions:
+  contents: write  # the tag and the release on GitHub
+  id-token: write  # cosign's keyless signature
+  checks: read     # that CI passed on the commit
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release ${{ inputs.version }}
+    # Only from master: it is started on master (gh workflow run starts it on the default branch).
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: release
+    env:
+      VERSION: ${{ inputs.version }}
+      IMAGE: descoped/lds
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880  # v6.3.0
+        with:
+          distribution: temurin
+          java-version: '27'
+          cache: maven
+
+      # Everything that can be found wrong is found before anything is published.
+      - name: Check what is released
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::$VERSION is not of the form 1.2.3"; exit 1; }
+          pom="$(./mvnw --batch-mode --quiet help:evaluate -Dexpression=project.version -DforceStdout)"
+          [ "$pom" = "$VERSION" ] || { echo "::error::The POMs on master have $pom, not $VERSION"; exit 1; }
+          ! git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null || { echo "::error::The tag $VERSION exists"; exit 1; }
+          grep -qx "## $VERSION" RELEASE-NOTES.md || { echo "::error::RELEASE-NOTES.md has no section ## $VERSION"; exit 1; }
+          ci="$(gh api "repos/$GITHUB_REPOSITORY/commits/$(git rev-parse HEAD)/check-runs" \
+              --jq '[.check_runs[] | select(.name == "Build (JDK 27)") | .conclusion] | first')"
+          [ "$ci" = "success" ] || { echo "::error::CI on $(git rev-parse HEAD) is '$ci', not success"; exit 1; }
+          {
+            echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)"
+            echo "MINOR=${VERSION%.*}"
+            echo "MAJOR=${VERSION%%.*}"
+            echo "CREATED=$(git log -1 --format=%cI)"
+          } >> "$GITHUB_ENV"
+
+      - name: Package
+        run: ./mvnw --batch-mode --no-transfer-progress -T 1C package -DskipTests -Dmaven.build.cache.enabled=false
+
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1  # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550  # v4.8.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # The three images share every stage but their last, so the builder builds the runtimes once.
+      - name: The regular image
+        id: regular
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
+        with:
+          context: linked-data-store-server
+          target: regular
+          platforms: linux/amd64,linux/arm64
+          # Pushed with the time of every file and layer set to the time of the commit (SOURCE_DATE_EPOCH), so a run
+          # again for the same commit pushes the same images.
+          outputs: type=image,push=true,rewrite-timestamp=true
+          sbom: true
+          provenance: mode=max
+          tags: |
+            ${{ env.IMAGE }}:${{ env.VERSION }}
+            ${{ env.IMAGE }}:${{ env.MINOR }}
+            ${{ env.IMAGE }}:${{ env.MAJOR }}
+            ${{ env.IMAGE }}:latest
+          labels: &labels |
+            org.opencontainers.image.title=Linked Data Store
+            org.opencontainers.image.description=REST and GraphQL access to versioned, linked JSON documents
+            org.opencontainers.image.version=${{ env.VERSION }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ env.CREATED }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.url=https://lds.descoped.io/
+            org.opencontainers.image.licenses=Apache-2.0
+            org.opencontainers.image.vendor=Descoped
+
+      - name: The distroless image
+        id: distroless
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
+        with:
+          context: linked-data-store-server
+          target: distroless
+          platforms: linux/amd64,linux/arm64
+          # Pushed with the time of every file and layer set to the time of the commit (SOURCE_DATE_EPOCH), so a run
+          # again for the same commit pushes the same images.
+          outputs: type=image,push=true,rewrite-timestamp=true
+          sbom: true
+          provenance: mode=max
+          tags: |
+            ${{ env.IMAGE }}:${{ env.VERSION }}-distroless
+            ${{ env.IMAGE }}:${{ env.MINOR }}-distroless
+            ${{ env.IMAGE }}:${{ env.MAJOR }}-distroless
+            ${{ env.IMAGE }}:distroless
+          labels: *labels
+
+      - name: The debug image
+        id: debug
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
+        with:
+          context: linked-data-store-server
+          target: debug
+          platforms: linux/amd64,linux/arm64
+          # Pushed with the time of every file and layer set to the time of the commit (SOURCE_DATE_EPOCH), so a run
+          # again for the same commit pushes the same images.
+          outputs: type=image,push=true,rewrite-timestamp=true
+          sbom: true
+          provenance: mode=max
+          tags: |
+            ${{ env.IMAGE }}:${{ env.VERSION }}-debug
+            ${{ env.IMAGE }}:${{ env.MINOR }}-debug
+            ${{ env.IMAGE }}:${{ env.MAJOR }}-debug
+            ${{ env.IMAGE }}:debug
+          labels: *labels
+
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532  # v4.1.3
+
+      # Signed by digest, so every tag of an image carries the signature.
+      - name: Sign
+        env:
+          REGULAR: ${{ steps.regular.outputs.digest }}
+          DISTROLESS: ${{ steps.distroless.outputs.digest }}
+          DEBUG: ${{ steps.debug.outputs.digest }}
+        run: |
+          for digest in "$REGULAR" "$DISTROLESS" "$DEBUG"; do
+            cosign sign --yes "$IMAGE@$digest"
+          done
+
+      - name: Tag and release on GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$VERSION" -m "$VERSION"
+          git push origin "$VERSION"
+          awk -v v="## $VERSION" '$0 == v {f=1; next} /^## /{f=0} f' RELEASE-NOTES.md > notes.md
+          gh release create "$VERSION" --title "LDS $VERSION" --notes-file notes.md --latest
+
+      - name: Summary
+        env:
+          REGULAR: ${{ steps.regular.outputs.digest }}
+          DISTROLESS: ${{ steps.distroless.outputs.digest }}
+          DEBUG: ${{ steps.debug.outputs.digest }}
+        run: |
+          {
+            echo "## LDS $VERSION"
+            echo
+            echo "| Image | Digest |"
+            echo "|---|---|"
+            echo "| \`$IMAGE:$VERSION\` | \`$REGULAR\` |"
+            echo "| \`$IMAGE:$VERSION-distroless\` | \`$DISTROLESS\` |"
+            echo "| \`$IMAGE:$VERSION-debug\` | \`$DEBUG\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
