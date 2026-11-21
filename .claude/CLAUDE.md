@@ -221,13 +221,14 @@ system property sets only a key that one of the files has).
 
 ## The server image
 
-`linked-data-store-server/Dockerfile` makes the image from what Maven has packaged (`target/lib` and the jar of the
-module) on `alpine:3.24`, with a Java runtime that `jlink` makes in a first stage from
-`eclipse-temurin:27-jdk-alpine`: only the JDK modules `jdeps` finds in the jars, and the few used only by name
-(`jdk.charsets`, `jdk.localedata`); musl in both stages. The reactor is built first, and the
-context is the module directory. `compose.yaml` next to it is a whole LDS for development: the image, Neo4j,
-PostgreSQL (saga log and transaction log, the databases made by `postgres-init.sql`) and Solr, with the images the
-tests of the providers use. Keep these when changing them:
+`linked-data-store-server/Dockerfile` makes the image from what Maven has packaged (`target/lib`, the jar of the
+module and the class `HealthCheck`) on the distroless `gcr.io/distroless/base-nossl-debian13` (glibc, CA
+certificates, time zones; no shell), pinned by digest, with a Java runtime that `jlink` makes in a stage from
+`eclipse-temurin:27-jdk`: only the JDK modules `jdeps` finds in the jars, and the few used only by name
+(`jdk.charsets`, `jdk.localedata`), with the class data sharing archive of the default settings of the JVM. The
+reactor is built first, and the context is the module directory. `compose.yaml` next to it is a whole LDS for
+development: the image, Neo4j, PostgreSQL (saga log and transaction log, the databases made by `postgres-init.sql`)
+and Solr, with the images the tests of the providers use. Keep these when changing them:
 
 - **LDS runs on the class path**, as the tests do. On the module path the libraries Undertow is made of (Undertow,
   XNIO, WildFly client config, SmallRye common) cannot make their message loggers: jboss-logging has to read
@@ -238,6 +239,9 @@ tests of the providers use. Keep these when changing them:
 - **The image is configured from outside by environment variables**, which set only keys a file has. So
   `application-server-defaults.properties` has the keys of every provider, with LDS in memory as the default and
   no password. A key is added there when the image needs to be given it.
+- **The image is distroless**: `java` is its one program. Nothing is installed in it; the health check is a class
+  of the server module (`HealthCheck`, only `java.base`) run by `java` in exec form, and the user `lds` is added to
+  `/etc/passwd` in the build stage.
 - **The image runs as the user `lds`**, has a health check on `/ping`, and has the example model in
   `/lds/schemas`. No image is published (see Invariants).
 - **Every port of the compose file is published on 127.0.0.1**, and can be moved (`LDS_PORT`, ...), which is how

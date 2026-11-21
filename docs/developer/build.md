@@ -203,7 +203,7 @@ LDS is built, tested and run on JDK 27. The number is written in these places, a
 | root `pom.xml`, `java.version` | Gives `maven.compiler.release`, so the class files are for Java 27 (class file version 71), and the version the enforcer rule `requireJavaVersion` asks for. |
 | `.github/workflows/ci.yml` | `actions/setup-java` with `java-version: '27'`, distribution `temurin`. |
 | `.github/workflows/claude.yml` | The same, in the job `respond`, which may run the build. |
-| `linked-data-store-server/Dockerfile` | `FROM eclipse-temurin:27-jdk-alpine AS runtime`, the stage that links the runtime of the image. |
+| `linked-data-store-server/Dockerfile` | `FROM eclipse-temurin:27-jdk AS runtime`, the stage that links the runtime of the image. |
 | `.github/renovate.json` | Two rules that stop Renovate from raising the JDK of the workflows and of the image. |
 
 The enforcer rule gives the lowest JDK: a newer JDK passes it too, and the compiler then still writes class files

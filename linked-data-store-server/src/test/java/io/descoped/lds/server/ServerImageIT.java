@@ -4,6 +4,7 @@ import com.github.dockerjava.api.command.InspectContainerResponse;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.testcontainers.containers.Container.ExecResult;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 
@@ -104,9 +105,28 @@ class ServerImageIT {
         assertThat(schema.body()).contains("\"$schema\":\"https://json-schema.org/draft/2020-12/schema\"", "\"$ref\":\"#/$defs/Company\"", "languageText");
     }
 
+    /**
+     * The image has no program but {@code java} to ask, so the user is read from what the image says it runs as and
+     * from its {@code /etc/passwd}.
+     */
     @Test
-    void ldsDoesNotRunAsRoot() throws Exception {
-        assertThat(container.execInContainer("id", "-un").getStdout().strip()).isEqualTo("lds");
+    void ldsDoesNotRunAsRoot() {
+        String user = container.getDockerClient().inspectContainerCmd(container.getContainerId()).exec().getConfig().getUser();
+        String passwd = container.copyFileFromContainer("/etc/passwd", in -> new String(in.readAllBytes(), StandardCharsets.UTF_8));
+
+        assertThat(user).isEqualTo("lds");
+        assertThat(passwd.lines()).contains("lds:x:1000:1000:lds:/lds:/sbin/nologin");
+    }
+
+    /**
+     * The image is distroless: there is no shell to run.
+     */
+    @Test
+    void theImageHasNoShell() throws Exception {
+        ExecResult result = container.execInContainer("sh", "-c", "true");
+
+        assertThat(result.getExitCode()).isNotZero();
+        assertThat(result.getStdout() + result.getStderr()).contains("executable file not found");
     }
 
     /**

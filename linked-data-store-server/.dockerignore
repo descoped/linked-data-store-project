@@ -1,7 +1,9 @@
-# The image is made of the jars Maven has built and the example model, and nothing else.
+# The image is made of the jars Maven has built, the class of the health check and the example model, and nothing
+# else.
 *
 !target/lib/
 !target/linked-data-store-server-*.jar
 target/linked-data-store-server-*-sources.jar
 target/linked-data-store-server-*-javadoc.jar
+!target/classes/io/descoped/lds/server/HealthCheck.class
 !schemas/

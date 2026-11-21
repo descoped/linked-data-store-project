@@ -336,33 +336,46 @@ with scope `runtime` and add its keys to `application-server-defaults.properties
 ### The Dockerfile
 
 The context of the build is the module directory. `.dockerignore` leaves everything out of the context but
-`target/lib/`, the jar of the module (not its `-sources` and `-javadoc` jars) and `schemas/`. The reactor is
-packaged first; the comment at the top of the Dockerfile gives the two commands.
+`target/lib/`, the jar of the module (not its `-sources` and `-javadoc` jars), the class of the health check
+(`target/classes/io/descoped/lds/server/HealthCheck.class`) and `schemas/`. The reactor is packaged first; the
+comment at the top of the Dockerfile gives the two commands.
 
-The image is built in two stages, both Alpine Linux (musl). The second may be of a newer release of Alpine than
-the one the JDK image is built on, which runs the runtime of the first.
+The image is distroless: `gcr.io/distroless/base-nossl-debian13`, which holds glibc, CA certificates, time zones
+and the files `/etc/passwd` and `/etc/group`, from the packages of Debian 13, and no shell, package manager or other
+program. The image adds the Java runtime and LDS, so `java` is the one program in it. It is built in three stages.
 
 | Line | What it gives |
 |---|---|
-| `FROM eclipse-temurin:27-jdk-alpine AS runtime` | The first stage: the JDK of the baseline, on Alpine. Nothing of it is in the image but the runtime it makes. |
+| `FROM gcr.io/distroless/base-nossl-debian13:latest@sha256:... AS base` | The base of the image, by the digest of its `latest`. The base has no version of its own; Renovate moves the digest. |
+| `FROM eclipse-temurin:27-jdk AS runtime` | The stage that makes the runtime: the JDK of the baseline, on Ubuntu, built for glibc as the base is. Nothing of it is in the image but the runtime and the two files of users it makes. |
 | `COPY target/lib/ /lds/lib/` | The libraries, for `jdeps` to read. The jar of the module is left out: it uses nothing the libraries do not, and without it the runtime is not linked again when only that jar changes. |
 | `RUN set -o pipefail && ... jdeps ... jlink ...` | `jdeps --print-module-deps` lists the modules of the JDK that the jars use (its last line of output; the lines before it warn of packages that two jars share); a failure of `jdeps`, or an empty list, stops the build. `jlink` links those modules, and `jdk.charsets` and `jdk.localedata`, which no class names, into `/jre`, from the JDK itself (the image has no `jmods`), without debug information, man pages and header files, and not compressed. LDS stays on the class path, so its libraries need not be modules. |
-| `FROM alpine:3.24` | The second stage, the image: Alpine with nothing added. No locale is set: the default locale of musl is UTF-8, and Java takes `native.encoding`, `sun.jnu.encoding` and `stdout.encoding` as UTF-8 from it. |
+| `--generate-cds-archive`, `rm /jre/lib/server/classes_no*.jsa` | `jlink` writes an archive of the classes of the JDK (class data sharing) for each of four settings of the JVM. Only `classes.jsa`, the one of the default settings, is kept: with it a JVM starts in half the time (18 against 36 milliseconds for the health check), for 14 MB. The three others (42 MB) are for heaps of more than 32 GB and for object headers that are not compact; a JVM with those settings starts without an archive. `java -Xshare:on` checks that the archive is used. |
+| `COPY --from=base /etc/passwd /etc/group /users/`, `RUN echo 'lds:x:1000:1000:...' >> ...` | The users and groups of the base, and the user and group `lds` (1000), without a password and with no shell to log in to. The image has no `adduser`, so the files are made here. |
+| `FROM base` | The image. |
 | `ENV JAVA_HOME=/opt/java`, `ENV PATH=...` | Where the runtime is, and `java` on the path. |
-| `COPY --from=runtime /jre ${JAVA_HOME}` | The runtime of the first stage. |
-| `RUN addgroup -S lds && adduser -S -D -H -G lds -h /lds lds` | A system group and a system user `lds`, without a password, with `/lds` as its home. `-H` says that `adduser` does not make the home; the next line makes `/lds`. |
+| `COPY --from=runtime /users/passwd /users/group /etc/` | The users with `lds`. |
+| `COPY --from=runtime /jre ${JAVA_HOME}` | The runtime. |
 | `WORKDIR /lds` | The working directory. Relative paths of the configuration start here: `schemas/schema.graphql` is `/lds/schemas/schema.graphql`, and the file a user mounts is `/lds/conf/application.properties`. |
 | `COPY target/lib/ lib/`, `COPY target/linked-data-store-server-*.jar lib/` | Every jar in one folder, `/lds/lib`. |
+| `COPY target/classes/.../HealthCheck.class health/...` | The class of the health check, on a class path of its own, `/lds/health`. |
 | `COPY schemas/ schemas/` | The example model, `/lds/schemas/schema.graphql`. |
-| `USER lds` | LDS does not run as root. No `COPY` line has `--chown`, and `/lds` is made before this line: nothing in the Dockerfile gives a file or a folder to the user `lds`. |
+| `USER lds` | LDS does not run as root. No `COPY` line has `--chown`: nothing in the Dockerfile gives a file or a folder to the user `lds`. |
 | `EXPOSE 9090` | The port of `http.port` as it is by default. |
 | `HEALTHCHECK` | See below. |
 | `ENTRYPOINT ["java", "-cp", "/lds/lib/*", "io.descoped.lds.server.Server"]` | See below. |
 
-**The health check** runs `wget` against `http://127.0.0.1:${LDS_HTTP_PORT:-9090}/ping` inside the container.
-For the first 60 seconds it asks every second (`--start-period=60s --start-interval=1s`), after that every 10
-seconds, with 3 seconds for an answer; three failures in a row make the container unhealthy. `/ping` answers
-200 as soon as the HTTP server is up, without asking a store.
+**The health check** is the class `HealthCheck`, run in exec form by the `java` of the image: the image has no
+shell and no HTTP client. It asks `GET /ping` of `127.0.0.1` on the port of the variable `LDS_HTTP_PORT` (9090
+without it, or when it is not a number), over a plain socket, and ends with 0 when the status line of the answer
+says 200 and with 1 otherwise, also when nothing answers within 2 seconds. It uses only `java.base` and starts no
+thread. The JVM that runs it is told to start quickly and to use little memory (`-XX:TieredStopAtLevel=1
+-XX:+UseSerialGC -XX:-UsePerfData -Xms8m -Xmx8m`); these options come after those of `JAVA_TOOL_OPTIONS`, which the
+JVM of the check reads too, and win. A check takes about 35 milliseconds.
+
+For the first 60 seconds the check is run every second (`--start-period=60s --start-interval=1s`), after that
+every 10 seconds, with 3 seconds for an answer; three failures in a row make the container unhealthy. `/ping`
+answers 200 as soon as the HTTP server is up, without asking a store.
 
 The health check knows the port only from the variable `LDS_HTTP_PORT`, and knows no prefix. A port set in a
 mounted `conf/application.properties`, or any `http.prefix` but `/`, makes the container unhealthy while LDS
@@ -451,7 +464,7 @@ directory.
 
 | Test | What it promises |
 |---|---|
-| `ServerImageIT` | Builds the image with a tag of its own (`lds-server-it:<uuid>`), starts it with no configuration and waits for the health check, two minutes at most. Then: a `Company` and a `Person` are written (201) and the person is read back (200); a link is followed both ways with GraphQL (`employer`, and the reverse `employees`); a document with a number as `name` is refused with 400 and `Schema validation error: [$.name: integer found, string expected]`, and is not stored (404); `/ns/Company?schema` is JSON Schema 2020-12 and has `languageText`; `id -un` in the container says `lds`; a second container that is stopped ends with 143 and has logged `ShutdownHook triggered` and `Leaving.. Bye!`. The container and the image are removed afterwards. |
+| `ServerImageIT` | Builds the image with a tag of its own (`lds-server-it:<uuid>`), starts it with no configuration and waits for the health check, two minutes at most. Then: a `Company` and a `Person` are written (201) and the person is read back (200); a link is followed both ways with GraphQL (`employer`, and the reverse `employees`); a document with a number as `name` is refused with 400 and `Schema validation error: [$.name: integer found, string expected]`, and is not stored (404); `/ns/Company?schema` is JSON Schema 2020-12 and has `languageText`; the image runs as the user `lds`, which its `/etc/passwd` gives as 1000; the container has no `sh` to run; a second container that is stopped ends with 143 and has logged `ShutdownHook triggered` and `Leaving.. Bye!`. The container and the image are removed afterwards. |
 | `ServerStackIT` | Starts `compose.yaml` with `LDS_PORT`, `NEO4J_HTTP_PORT`, `NEO4J_BOLT_PORT` and `SOLR_PORT` set to `0`, so Docker picks the ports and the test runs next to a stack that is up. It builds the image (`withBuild`), waits for the health check of `lds`, five minutes at most, and removes the images it built (`RemoveImages.LOCAL`). Then: the log of the server names all four providers (`Using persistence provider: neo4j`, the saga log class of PostgreSQL, `Using transaction-log provider: postgres`, `Search index provider configured: solr`); a document is written, read back and its link followed both ways; a `Company` with a `languageText` is found by `Search(query: "fjord")`, asked again for up to 30 seconds. |
 
 `LoopbackPorts` is this module's own copy of a class that every module with containers has. Testcontainers
@@ -534,8 +547,12 @@ These come from the rules of the project and from the comments in the files of t
   four variables.
 - **Secrets.** The only passwords in the module are the development defaults of the compose file (`lds`,
   `lds-development`).
-- **The JDK of the image is the baseline.** `java.version` in the root POM, the workflows and the first `FROM`
-  line are raised together, by hand. `.github/renovate.json` keeps `eclipse-temurin` at 27 and `postgres` at 18.
+- **The JDK of the image is the baseline.** `java.version` in the root POM, the workflows and the `FROM` line of
+  the stage `runtime` are raised together, by hand. `.github/renovate.json` keeps `eclipse-temurin` at 27 and
+  `postgres` at 18.
+- **The image is distroless.** It holds no program but `java`: nothing is installed in it, and what a check or a
+  tool needs is done in Java (the health check) or in the stage `runtime` (the users). `ServerImageIT` checks that
+  it has no shell.
 - **The runtime holds only the modules LDS uses.** A library that starts to use another module of the JDK is
   found by `jdeps` when the image is built. A module that is used only by name at run time (a character set, a
   provider of a service of the JDK) is not, and is added to the `jlink` line by hand.

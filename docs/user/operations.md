@@ -59,7 +59,10 @@ docker run --rm -p 127.0.0.1:9090:9090 lds-server
 What is in the image:
 
 - A Java runtime, version 27, with only the parts of Java that LDS uses, made from the JDK of the image
-  `eclipse-temurin:27-jdk-alpine`, on Alpine Linux (`alpine:3.24`). Alpine uses the C library musl.
+  `eclipse-temurin:27-jdk`.
+- The C library glibc, CA certificates and time zones, from Debian 13 (the distroless image
+  `gcr.io/distroless/base-nossl-debian13`), and nothing else: no shell, no package manager, no other program.
+  `docker exec` can run `java` in the container and nothing more.
 - LDS in the directory `/lds`: its jar files in `/lds/lib`, and the example model in
   `/lds/schemas/schema.graphql`.
 - No script. The Java program is the process of the container.
@@ -81,8 +84,9 @@ How it is given a model and a configuration:
   `/lds/conf/application.properties`. [Configuration](configuration.md) has the keys and the rules.
 - Options of the JVM are given in the variable `JAVA_TOOL_OPTIONS`.
 
-The health check of the image asks `/ping` inside the container: once a second in the first 60 seconds, then
-every 10 seconds. An answer must come within 3 seconds, and after 3 checks that fail the container is called
+The health check of the image is a small Java program that asks `/ping` inside the container (a `java` of its
+own, which also reads `JAVA_TOOL_OPTIONS` but keeps its own memory settings): once a second in the first 60
+seconds, then every 10 seconds. An answer must come within 3 seconds, and after 3 checks that fail the container is called
 unhealthy. Three things follow:
 
 - The check knows the port from the variable `LDS_HTTP_PORT`, and uses 9090 without it. Move the port in the
