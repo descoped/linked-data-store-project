@@ -66,14 +66,14 @@ class ModelAtStartTest {
     void aNamespaceOverItsLimitStopsTheStart() {
         assertThatThrownBy(() -> UndertowApplication.checkNames("n".repeat(65), Set.of("Person")))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessage("The namespace is at most 64 bytes in UTF-8: " + "n".repeat(65) + "...");
+                .hasMessage("The namespace is at most 64 bytes in UTF-8: " + "n".repeat(65));
         refusedAtOnce(DynamicConfiguration.builder()
                         .classpath(UndertowApplication.DEFAULT_CONFIGURATION_RESOURCE_PATH)
                         .classpath("application_test.properties")
                         .values(Map.of("namespace.default", "日".repeat(22),
                                 "persistence.initialization.max-wait-seconds", "60"))
                         .build(),
-                "The namespace is at most 64 bytes in UTF-8: " + "日".repeat(22) + "...");
+                "The namespace is at most 64 bytes in UTF-8: " + "日".repeat(22));
     }
 
     @Test

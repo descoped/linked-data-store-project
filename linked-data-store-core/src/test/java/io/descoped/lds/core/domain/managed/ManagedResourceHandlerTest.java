@@ -146,11 +146,16 @@ public class ManagedResourceHandlerTest {
 
         String longLink = "{\"name\":\"link\",\"contacts\":[\"/contact/" + "c".repeat(1025) + "\"]}";
         assertEquals(client.put("/data/provisionagreement/limits3?sync=true", longLink).expect400BadRequest().body(),
-                "Schema validation error: A link names an id of at most 1024 bytes in UTF-8. Navigation: contacts");
+                "Schema validation error: A link names an id that is not valid: An id is at most 1024 bytes in UTF-8. Navigation: contacts");
 
         String halfLink = "{\"name\":\"half\",\"contacts\":[\"/contact/a\\ud800\"]}";
         assertEquals(client.put("/data/provisionagreement/limits4?sync=true", halfLink).expect400BadRequest().body(),
-                "Schema validation error: A link names an id that holds half of a character (an unpaired surrogate). Navigation: contacts");
+                "Schema validation error: A link names an id that is not valid: An id cannot hold half of a character (an unpaired surrogate). Navigation: contacts");
+
+        // what REST refuses in an id is refused in a link, so every document a link names can be read through REST
+        String controlLink = "{\"name\":\"control\",\"contacts\":[\"/contact/a\\u0001b\"]}";
+        assertEquals(client.put("/data/provisionagreement/limits5?sync=true", controlLink).expect400BadRequest().body(),
+                "Schema validation error: A link names an id that is not valid: An id cannot hold a control character. Navigation: contacts");
     }
 
     @Test

@@ -1,5 +1,6 @@
 package io.descoped.lds.core.domain.resource;
 
+import io.descoped.lds.api.persistence.IdOrder;
 import io.descoped.lds.api.persistence.Limits;
 import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.api.specification.Specification;
@@ -119,19 +120,35 @@ public class ResourceContext {
         this.timestamp = timestamp;
     }
 
-    /**
-     * An id is at most {@link Limits#ID_BYTES} bytes in UTF-8, and has no {@code /} and no control character.
-     */
     private static void checkId(String id) {
+        String wrong = whatIsWrongWithId(id);
+        if (wrong != null) {
+            throw new ResourceException(wrong);
+        }
+    }
+
+    /**
+     * What is wrong with an id, or null when nothing is: an id is at most {@link Limits#ID_BYTES} bytes in UTF-8, and
+     * has no {@code /}, no control character and no half of a character (an unpaired surrogate). The same for the id
+     * in a REST path and the id a link names, so every document a link names can be read through REST.
+     *
+     * @param id the id
+     * @return what is wrong, or null
+     */
+    public static String whatIsWrongWithId(String id) {
         if (Limits.utf8Length(id) > Limits.ID_BYTES) {
-            throw new ResourceException("An id is at most " + Limits.ID_BYTES + " bytes in UTF-8");
+            return "An id is at most " + Limits.ID_BYTES + " bytes in UTF-8";
         }
         if (id.indexOf('/') >= 0) {
-            throw new ResourceException("An id cannot hold a '/': \"" + id + "\"");
+            return "An id cannot hold a '/': \"" + id + "\"";
         }
         if (id.codePoints().anyMatch(Character::isISOControl)) {
-            throw new ResourceException("An id cannot hold a control character");
+            return "An id cannot hold a control character";
         }
+        if (!IdOrder.isWellFormed(id)) {
+            return "An id cannot hold half of a character (an unpaired surrogate)";
+        }
+        return null;
     }
 
     /**

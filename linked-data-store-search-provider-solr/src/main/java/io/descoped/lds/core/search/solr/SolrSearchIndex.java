@@ -88,7 +88,8 @@ public class SolrSearchIndex implements SearchIndex {
     }
 
     /**
-     * The number of documents whose update or delete did not reach Solr since the index was made.
+     * The number of documents whose update or delete did not reach Solr since the index was made, a request counted
+     * as one when Solr's client does not say which documents it held.
      */
     long failedUpdates() {
         return failedUpdates.count();
@@ -169,8 +170,9 @@ public class SolrSearchIndex implements SearchIndex {
     }
 
     /**
-     * Counts and logs the documents whose update did not reach Solr. The update client calls it from its own
-     * threads, after the write that queued the update has completed.
+     * Counts and logs the documents whose update did not reach Solr, or the request, as one, when the update client
+     * does not say which documents it held. The update client calls it from its own threads, after the write that
+     * queued the update has completed.
      */
     static final class FailedUpdates implements ConcurrentUpdateBaseSolrClient.UpdateErrorHandler {
 

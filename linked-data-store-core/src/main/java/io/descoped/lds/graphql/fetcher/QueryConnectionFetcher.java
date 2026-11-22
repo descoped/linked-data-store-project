@@ -142,21 +142,20 @@ public class QueryConnectionFetcher extends ConnectionFetcher<Map<String, Object
             readDocument(result.getDocumentKey(), snapshot).ifPresent(document -> edges.add(toEdge(document, cursor)));
         }
 
-        if (edges.isEmpty()) {
+        if (place == settings.from) {
             LOG.debug("Search query resulted in 0 documents.");
             PageInfo pageInfo = new DefaultPageInfo(null, null, false, false);
             return new DefaultConnection<>(Collections.emptyList(), pageInfo);
         }
 
-        Edge<Map<String, Object>> firstEdge = edges.get(0);
-        Edge<Map<String, Object>> lastEdge = edges.get(edges.size() - 1);
-
         boolean hasPrevious = settings.from > 0;
         boolean hasNext = settings.from + settings.size < response.getTotalHits();
 
+        // When every result of the page is gone at the snapshot, the cursors are the places of the page in the index,
+        // so that the page after it can still be asked for.
         PageInfo pageInfo = new DefaultPageInfo(
-                firstEdge.getCursor(),
-                lastEdge.getCursor(),
+                edges.isEmpty() ? new QueryConnectionCursor(settings.from) : edges.getFirst().getCursor(),
+                edges.isEmpty() ? new QueryConnectionCursor(place - 1) : edges.getLast().getCursor(),
                 hasPrevious,
                 hasNext
         );

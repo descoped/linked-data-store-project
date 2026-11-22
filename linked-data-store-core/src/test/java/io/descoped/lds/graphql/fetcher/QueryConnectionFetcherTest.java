@@ -116,6 +116,25 @@ class QueryConnectionFetcherTest {
                 .containsExactly(0L, 2L, 3L);
     }
 
+    @Test
+    void aPageWhoseResultsAreAllLeftOutStillLeadsToTheNextPage() {
+        QueryConnectionFetcher fetcher = new QueryConnectionFetcher(index(4), persistence(Set.of("d0", "d1")), "ns", "Search");
+
+        Connection<Map<String, Object>> page = fetcher.search("text", null, SNAPSHOT, Range.first(2));
+
+        assertThat(page.getEdges()).isEmpty();
+        assertThat(page.getPageInfo().isHasNextPage()).isTrue();
+        assertThat(page.getPageInfo().isHasPreviousPage()).isFalse();
+        String endCursor = page.getPageInfo().getEndCursor().getValue();
+        assertThat(QueryConnectionCursor.fromValue(endCursor).getIndex()).isEqualTo(1L);
+        assertThat(ids(fetcher.search("text", null, SNAPSHOT, Range.firstAfter(2, endCursor)))).containsExactly("d2", "d3");
+        // past the end of the result there is no page
+        Connection<Map<String, Object>> beyond = fetcher.search("text", null, SNAPSHOT, Range.firstAfter(2,
+                new QueryConnectionCursor(3).getValue()));
+        assertThat(beyond.getEdges()).isEmpty();
+        assertThat(beyond.getPageInfo().isHasNextPage()).isFalse();
+    }
+
     private static List<String> ids(Connection<Map<String, Object>> connection) {
         return connection.getEdges().stream().map(Edge::getNode)
                 .map(node -> ((DocumentKey) node.get("__graphql_internal_document_key")).id()).toList();

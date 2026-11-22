@@ -411,14 +411,21 @@ public class UndertowApplication {
     static void checkNames(String namespace, Set<String> entityTypes) {
         if (Limits.utf8Length(namespace) > Limits.NAMESPACE_BYTES) {
             throw new IllegalStateException("The namespace is at most " + Limits.NAMESPACE_BYTES + " bytes in UTF-8: "
-                    + namespace.substring(0, Math.min(namespace.length(), 80)) + "...");
+                    + shown(namespace));
         }
         for (String entityType : new TreeSet<>(entityTypes)) {
             if (Limits.utf8Length(entityType) > Limits.ENTITY_BYTES) {
                 throw new IllegalStateException("The name of an entity type is at most " + Limits.ENTITY_BYTES
-                        + " bytes in UTF-8: " + entityType.substring(0, Math.min(entityType.length(), 80)) + "...");
+                        + " bytes in UTF-8: " + shown(entityType));
             }
         }
+    }
+
+    /*
+     * A name as a message shows it: whole, or its first 80 characters and "..." when it is longer.
+     */
+    private static String shown(String name) {
+        return name.length() <= 80 ? name : name.substring(0, 80) + "...";
     }
 
     public static RawdataClient configureTxLogRawdataClient(DynamicConfiguration configuration) {
