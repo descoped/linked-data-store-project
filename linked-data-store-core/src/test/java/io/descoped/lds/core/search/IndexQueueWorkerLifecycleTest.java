@@ -44,7 +44,7 @@ class IndexQueueWorkerLifecycleTest {
     /**
      * An index that answers on a thread of its own, as Solr's client does, and can be held before it answers.
      */
-    static final class HeldIndex implements SearchIndex {
+    static class HeldIndex implements SearchIndex {
         final List<String> taken = new CopyOnWriteArrayList<>();
         final CountDownLatch sending = new CountDownLatch(1);
         volatile CountDownLatch hold = new CountDownLatch(0);
@@ -251,5 +251,37 @@ class IndexQueueWorkerLifecycleTest {
 
         await().atMost(Duration.ofSeconds(5)).until(() -> index.taken.contains("later"));
         assertThat(queue.failures.get()).isNegative();
+    }
+
+    @Test
+    void theDeletesOfARoundAreSentSideBySideAtMostEightAtATime() {
+        AtomicInteger inFlight = new AtomicInteger();
+        AtomicInteger most = new AtomicInteger();
+        List<String> deleted = new CopyOnWriteArrayList<>();
+        SearchIndex slowDeletes = new HeldIndex() {
+            @Override
+            public Completable delete(JsonDocument document) {
+                return Completable.defer(() -> {
+                    most.accumulateAndGet(inFlight.incrementAndGet(), Math::max);
+                    return Completable.timer(50, TimeUnit.MILLISECONDS)
+                            .doOnComplete(() -> {
+                                // done before the merge is told, which then starts the next
+                                inFlight.decrementAndGet();
+                                deleted.add(document.key().id());
+                            });
+                });
+            }
+        };
+        MemoryIndexQueue queue = new MemoryIndexQueue();
+        for (int i = 0; i < 20; i++) {
+            queue.add(new IndexUpdate("ns", "Person", "d" + i, VERSION, IndexUpdate.Operation.DELETE)).blockingAwait();
+        }
+        worker = new IndexQueueWorker(queue, slowDeletes, persistence, POLL);
+
+        assertThat(worker.round().blockingGet()).isTrue();
+
+        assertThat(deleted).hasSize(20);
+        assertThat(most.get()).isEqualTo(IndexQueueWorker.CONCURRENT_DELETES);
+        assertThat(inQueue(queue)).isZero();
     }
 }

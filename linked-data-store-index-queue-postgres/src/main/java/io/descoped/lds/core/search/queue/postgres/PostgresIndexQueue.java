@@ -4,6 +4,7 @@ import com.zaxxer.hikari.HikariDataSource;
 import io.descoped.lds.api.search.IndexQueue;
 import io.descoped.lds.api.search.IndexUpdate;
 import io.reactivex.rxjava3.core.Completable;
+import io.reactivex.rxjava3.core.Scheduler;
 import io.reactivex.rxjava3.core.Single;
 import io.reactivex.rxjava3.schedulers.Schedulers;
 
@@ -20,10 +21,12 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * The index queue in the table {@code lds_index_queue}. Each call is one statement in a transaction of its own, run on
- * a thread for blocking work, as JDBC blocks. Taking marks the rows it takes with {@code FOR UPDATE SKIP LOCKED}, so
+ * a virtual thread of its own, as JDBC blocks; the pool of connections bounds how many reach the database at once. Taking marks the rows it takes with {@code FOR UPDATE SKIP LOCKED}, so
  * that several LDS on one database take different rows; the times are the database's.
  */
 final class PostgresIndexQueue implements IndexQueue {
@@ -42,6 +45,8 @@ final class PostgresIndexQueue implements IndexQueue {
     private static final String LAG = "SELECT count(*), min(added) FROM lds_index_queue";
 
     private final HikariDataSource dataSource;
+    private final ExecutorService statements = Executors.newVirtualThreadPerTaskExecutor();
+    private final Scheduler scheduler = Schedulers.from(statements);
 
     PostgresIndexQueue(HikariDataSource dataSource) {
         this.dataSource = dataSource;
@@ -53,7 +58,7 @@ final class PostgresIndexQueue implements IndexQueue {
     }
 
     /*
-     * Runs the work in a transaction of its own, on a thread for blocking work, and commits it.
+     * Runs the work in a transaction of its own, on a virtual thread, and commits it.
      */
     private <T> Single<T> inTransaction(Work<T> work) {
         return Single.fromCallable(() -> {
@@ -67,7 +72,7 @@ final class PostgresIndexQueue implements IndexQueue {
                     throw e;
                 }
             }
-        }).subscribeOn(Schedulers.io());
+        }).subscribeOn(scheduler);
     }
 
     @Override
@@ -150,6 +155,7 @@ final class PostgresIndexQueue implements IndexQueue {
 
     @Override
     public void close() {
+        statements.close(); // waits for the statements that run
         dataSource.close();
     }
 

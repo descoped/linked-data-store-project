@@ -31,7 +31,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Sends the updates of the index queue to the search index. In rounds: it takes a batch of updates, reads each
- * written document from storage at its version, sends the batch, and removes the updates when the index has taken
+ * written document from storage at its version (one after another: a transaction is one connection or session of the
+ * store), sends the batch (its deletes side by side), and removes the updates when the index has taken
  * them. An update the index does not take is put off and tried again, later each time, up to a minute; when a batch
  * fails, each of its updates is tried alone, so one update the index refuses does not hold back the others. A round
  * follows at once when the last one took updates, and after a short wait when there were none.
@@ -48,6 +49,7 @@ public final class IndexQueueWorker {
     private static final AtomicInteger WORKERS = new AtomicInteger();
 
     static final int BATCH = 100;
+    static final int CONCURRENT_DELETES = 8;
     static final Duration LEASE = Duration.ofMinutes(2);
     static final Duration FIRST_DELAY = Duration.ofSeconds(1);
     static final Duration LONGEST_DELAY = Duration.ofMinutes(1);
@@ -232,7 +234,8 @@ public final class IndexQueueWorker {
                             deletes.add(Completable.defer(() -> index.delete(new JsonDocument(key(entry.update()), (JsonNode) null))));
                         }
                     }
-                    return written.andThen(Completable.concat(deletes));
+                    // the deletes are of different versions, so they are sent side by side over the index's client
+                    return written.andThen(Completable.merge(Flowable.fromIterable(deletes), CONCURRENT_DELETES));
                 });
     }
 
