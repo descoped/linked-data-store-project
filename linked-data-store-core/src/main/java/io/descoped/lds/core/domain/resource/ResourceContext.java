@@ -1,5 +1,6 @@
 package io.descoped.lds.core.domain.resource;
 
+import io.descoped.lds.api.persistence.Limits;
 import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.api.specification.SpecificationElement;
@@ -23,11 +24,6 @@ import static java.util.Optional.ofNullable;
  * The resource a request path names. A path does not navigate into the elements of a json array.
  */
 public class ResourceContext {
-
-    /**
-     * The longest id of a document, in characters.
-     */
-    public static final int MAX_ID_LENGTH = 512;
 
     /**
      * The resource a path names.
@@ -124,11 +120,11 @@ public class ResourceContext {
     }
 
     /**
-     * An id is at most {@link #MAX_ID_LENGTH} characters, and has no {@code /} and no control character.
+     * An id is at most {@link Limits#ID_BYTES} bytes in UTF-8, and has no {@code /} and no control character.
      */
     private static void checkId(String id) {
-        if (id.codePointCount(0, id.length()) > MAX_ID_LENGTH) {
-            throw new ResourceException("An id is at most " + MAX_ID_LENGTH + " characters");
+        if (Limits.utf8Length(id) > Limits.ID_BYTES) {
+            throw new ResourceException("An id is at most " + Limits.ID_BYTES + " bytes in UTF-8");
         }
         if (id.indexOf('/') >= 0) {
             throw new ResourceException("An id cannot hold a '/': \"" + id + "\"");

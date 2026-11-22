@@ -11,7 +11,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * The id in a path: decoded once, and refused when it is longer than 512 characters, holds a '/' or a control
+ * The id in a path: decoded once, and refused when it is longer than 1024 bytes in UTF-8, holds a '/' or a control
  * character.
  */
 class ResourceIdTest {
@@ -66,10 +66,16 @@ class ResourceIdTest {
     }
 
     @Test
-    void anIdIsAtMost512Characters() {
-        assertThat(id("/ns/contact/" + "日".repeat(512))).hasSize(512);
-        assertThatThrownBy(() -> context("/ns/contact/" + "a".repeat(513))).isInstanceOf(ResourceException.class)
-                .hasMessage("An id is at most 512 characters");
+    void anIdIsAtMost1024BytesInUtf8() {
+        String message = "An id is at most 1024 bytes in UTF-8";
+        assertThat(id("/ns/contact/" + "a".repeat(1024))).hasSize(1024);
+        assertThatThrownBy(() -> context("/ns/contact/" + "a".repeat(1025))).isInstanceOf(ResourceException.class)
+                .hasMessage(message);
+        // ø takes two bytes, 日 three, 😀 four
+        assertThat(id("/ns/contact/" + "%C3%B8".repeat(512))).hasSize(512);
+        assertThatThrownBy(() -> context("/ns/contact/" + "%C3%B8".repeat(512) + "a")).hasMessage(message);
+        assertThat(id("/ns/contact/" + "日".repeat(341) + "a")).hasSize(342);
+        assertThatThrownBy(() -> context("/ns/contact/" + "日".repeat(342))).hasMessage(message);
     }
 
     @Test
@@ -78,17 +84,20 @@ class ResourceIdTest {
                 .isEqualTo("/contact/a+b");
         assertThatThrownBy(() -> context("/ns/provisionagreement/p1/contacts/contact/a%2Fb"))
                 .isInstanceOf(ResourceException.class);
+        assertThatThrownBy(() -> context("/ns/provisionagreement/p1/contacts/contact/" + "a".repeat(1025)))
+                .isInstanceOf(ResourceException.class).hasMessage("An id is at most 1024 bytes in UTF-8");
     }
 
     @Test
-    void aCharacterAboveTheBasicPlaneIsOneCharacter() {
+    void aCharacterAboveTheBasicPlaneIsOneCharacterOfFourBytes() {
         assertThat(id("/ns/contact/a😀b")).isEqualTo("a😀b");
         assertThat(id("/ns/contact/%F0%9F%98%80")).isEqualTo("😀");
-        assertThat(id("/ns/contact/" + "😀".repeat(512))).hasSize(1024);
-        assertThatThrownBy(() -> context("/ns/contact/" + "😀".repeat(513))).isInstanceOf(ResourceException.class)
-                .hasMessage("An id is at most 512 characters");
-        assertThatThrownBy(() -> context("/ns/contact/" + "%F0%9F%98%80".repeat(513)))
-                .isInstanceOf(ResourceException.class).hasMessage("An id is at most 512 characters");
+        assertThat(id("/ns/contact/" + "😀".repeat(256))).hasSize(512);
+        assertThat(id("/ns/contact/" + "%F0%9F%98%80".repeat(256))).hasSize(512);
+        assertThatThrownBy(() -> context("/ns/contact/" + "😀".repeat(256) + "a")).isInstanceOf(ResourceException.class)
+                .hasMessage("An id is at most 1024 bytes in UTF-8");
+        assertThatThrownBy(() -> context("/ns/contact/" + "%F0%9F%98%80".repeat(257)))
+                .isInstanceOf(ResourceException.class).hasMessage("An id is at most 1024 bytes in UTF-8");
     }
 
     @Test

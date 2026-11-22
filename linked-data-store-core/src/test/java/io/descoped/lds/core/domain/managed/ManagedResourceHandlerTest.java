@@ -125,10 +125,28 @@ public class ManagedResourceHandlerTest {
     public void thatAnIdLDSDoesNotTakeIsRefusedWith400() throws IOException {
         assertEquals(client.get("/data/provisionagreement/a%2Fb").expect400BadRequest().body(), "An id cannot hold a '/': \"a/b\"");
         assertEquals(client.get("/data/provisionagreement/a%0Ab").expect400BadRequest().body(), "An id cannot hold a control character");
-        assertEquals(client.get("/data/provisionagreement/" + "a".repeat(513)).expect400BadRequest().body(), "An id is at most 512 characters");
+        assertEquals(client.get("/data/provisionagreement/" + "a".repeat(1025)).expect400BadRequest().body(), "An id is at most 1024 bytes in UTF-8");
         // Undertow refuses an escape that is not one, and a byte outside ASCII, before LDS sees the request
         assertEquals(rawGet("/data/provisionagreement/100%".getBytes(StandardCharsets.US_ASCII))[0], "HTTP/1.1 400 Bad Request");
         assertEquals(rawGet("/data/provisionagreement/øl".getBytes(StandardCharsets.UTF_8))[0], "HTTP/1.1 400 Bad Request");
+    }
+
+    @Test
+    public void thatADocumentOverTheLimitsOfTheStoresIsRefusedWith400AndNotWritten() {
+        String longField = "f".repeat(1100);
+        String body = "{\"name\":\"too long\",\"contacts\":[],\"" + longField + "\":1}";
+        assertEquals(client.put("/data/provisionagreement/limits1?sync=true", body).expect400BadRequest().body(),
+                "The path of a value is at most 1024 bytes in UTF-8: $." + "f".repeat(78) + "...");
+        client.get("/data/provisionagreement/limits1").expect404NotFound();
+
+        String deep = "[".repeat(33) + "1" + "]".repeat(33);
+        String deepBody = "{\"name\":\"deep\",\"contacts\":[],\"x\":" + deep + "}";
+        assertTrue(client.put("/data/provisionagreement/limits2?sync=true", deepBody).expect400BadRequest().body()
+                .startsWith("A value is in at most 32 arrays: $.x[][]"));
+
+        String longLink = "{\"name\":\"link\",\"contacts\":[\"/contact/" + "c".repeat(1025) + "\"]}";
+        assertEquals(client.put("/data/provisionagreement/limits3?sync=true", longLink).expect400BadRequest().body(),
+                "Schema validation error: A link names an id of at most 1024 bytes in UTF-8. Navigation: contacts");
     }
 
     @Test

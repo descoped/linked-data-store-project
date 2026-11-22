@@ -1,5 +1,6 @@
 package io.descoped.lds.core.validation;
 
+import io.descoped.lds.api.persistence.Limits;
 import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.api.specification.SpecificationElement;
 import io.descoped.lds.api.specification.SpecificationElementType;
@@ -109,6 +110,10 @@ public class LinkedDocumentValidator {
         String linkedDomain = m.group(1);
         if (!te.getRefTypes().contains(linkedDomain)) {
             throw new LinkedDocumentValidationException(String.format("Illegal linked-domain: \"%s\". Navigation: %s: \"%s\"", linkedDomain, printNavigationPath(ancestors, te), link));
+        }
+        if (Limits.utf8Length(m.group(2)) > Limits.ID_BYTES) {
+            throw new LinkedDocumentValidationException(String.format("A link names an id of at most %d bytes in UTF-8. Navigation: %s",
+                    Limits.ID_BYTES, printNavigationPath(ancestors, te)));
         }
     }
 

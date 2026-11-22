@@ -1,6 +1,7 @@
 package io.descoped.lds.core.domain.managed;
 
 import io.descoped.lds.api.persistence.DocumentKey;
+import io.descoped.lds.api.persistence.Limits;
 import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.json.JsonDocument;
 import io.descoped.lds.api.persistence.json.JsonTools;
@@ -186,6 +187,14 @@ public class ManagedResourceHandler implements HttpHandler {
 
                     if (LOG.isTraceEnabled()) {
                         LOG.trace("{} {}\n{}", exchange.getRequestMethod(), exchange.getRequestPath(), requestBody);
+                    }
+
+                    String overLimit = Limits.overLimit(requestData);
+                    if (overLimit != null) {
+                        exchange.setStatusCode(400);
+                        exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, TEXT_PLAIN);
+                        exchange.getResponseSender().send(overLimit);
+                        return;
                     }
 
                     try {

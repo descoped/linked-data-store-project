@@ -2,6 +2,7 @@ package io.descoped.lds.core.persistence.test;
 
 import io.descoped.lds.api.json.JsonNavigationPath;
 import io.descoped.lds.api.persistence.DocumentKey;
+import io.descoped.lds.api.persistence.Limits;
 import io.descoped.lds.api.persistence.PersistenceDeletePolicy;
 import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.json.JsonDocument;
@@ -26,6 +27,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Random;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -91,8 +93,16 @@ public abstract class PersistenceIntegrationTest {
         return address;
     }
 
+    /**
+     * An entity type whose name is of the longest length LDS takes, in letters drawn at random.
+     */
+    protected static final String LONGEST_ENTITY = "E" + asciiLetters(new Random(128), Limits.ENTITY_BYTES - 1);
+
     protected Specification buildSpecification() {
         return SpecificationBuilder.createSpecificationAndRoot(Set.of(
+                objectNode(SpecificationElementType.MANAGED, LONGEST_ENTITY, Set.of(
+                        stringNode("name")
+                )),
                 objectNode(SpecificationElementType.MANAGED, "Person", Set.of(
                         stringNode("firstname"),
                         stringNode("lastname"),
@@ -581,26 +591,65 @@ public abstract class PersistenceIntegrationTest {
     }
 
     /**
-     * LDS takes an id of at most 512 characters; every provider keeps one of that length, also of characters that
-     * take three and four bytes each in UTF-8 (2048 bytes).
+     * Every provider keeps a document at every limit LDS sets at once (Limits): a namespace, an entity type, an id and
+     * the path of a value of the longest length, the path through the most arrays. The names and ids are letters
+     * drawn at random, which a store cannot compress to fit, and take three or four bytes each in UTF-8.
      */
     @Test
-    public void thatAnIdOfTheLongestLengthIsKept() throws JSONException {
-        ZonedDateTime oct18 = of(2018, 10, 7, 19, 49, 26, (int) TimeUnit.MILLISECONDS.toNanos(307), ZoneId.of("Etc/UTC"));
-        for (String id : new String[]{"a".repeat(512), "日".repeat(512), "😀".repeat(512)}) {
-            try (Transaction transaction = persistence.createTransaction(false)) {
-                persistence.deleteAllDocumentVersions(transaction, namespace, "Person", id, PersistenceDeletePolicy.FAIL_IF_INCOMING_LINKS).blockingAwait();
-                JsonDocument input = toDocument(namespace, "Person", id, createPerson("John", "Smith"), oct18);
-                persistence.createOrOverwrite(transaction, input, specification).blockingAwait();
+    public void thatADocumentAtEveryLimitIsKept() throws JSONException {
+        Random random = new Random(20261122);
+        String longestNamespace = asciiLetters(random, Limits.NAMESPACE_BYTES);
+        String id = letters(random, 0x20000, 0x2A6DF, Limits.ID_BYTES / 4);
 
-                JsonDocument output = persistence.readDocument(transaction, oct18, namespace, "Person", id).blockingGet();
-                assertNotNull(output, id.substring(0, 1));
-                assertEquals(output.key().id(), id);
-                JSONAssert.assertEquals(JsonTools.toJson(output.jackson()), JsonTools.toJson(input.jackson()), true);
-
-                persistence.deleteAllDocumentVersions(transaction, namespace, "Person", id, PersistenceDeletePolicy.FAIL_IF_INCOMING_LINKS).blockingAwait();
-            }
+        // $, then 32 times .name[] and then .xy: 1 + 32 * 3 + 3 * 308 + 3 = 1024 bytes
+        ObjectNode leaf = mapper.createObjectNode();
+        leaf.put("xy", letters(random, 0x4E00, 0x9FFF, 2000));
+        StringBuilder path = new StringBuilder();
+        JsonNode node = leaf;
+        for (int level = Limits.ARRAY_LEVELS; level >= 1; level--) {
+            String name = letters(random, 0x4E00, 0x9FFF, level <= 20 ? 10 : 9);
+            path.insert(0, "." + name + "[]");
+            ObjectNode parent = mapper.createObjectNode();
+            parent.putArray(name).add(node);
+            node = parent;
         }
+        ObjectNode document = (ObjectNode) node;
+        path.insert(0, "$").append(".xy");
+        assertThat(Limits.utf8Length(id)).isEqualTo(Limits.ID_BYTES);
+        assertThat(Limits.utf8Length(path)).isEqualTo(Limits.PATH_BYTES);
+        assertThat(Limits.overLimit(document)).isNull();
+
+        ZonedDateTime timestamp = parse("2026-11-22T12:00:00.000Z");
+        try (Transaction transaction = persistence.createTransaction(false)) {
+            JsonDocument input = toDocument(longestNamespace, LONGEST_ENTITY, id, document, timestamp);
+            persistence.createOrOverwrite(transaction, input, specification).blockingAwait();
+
+            JsonDocument output = persistence.readDocument(transaction, timestamp, longestNamespace, LONGEST_ENTITY, id).blockingGet();
+            assertNotNull(output);
+            assertEquals(output.key().id(), id);
+            JSONAssert.assertEquals(JsonTools.toJson(output.jackson()), JsonTools.toJson(document), true);
+            assertThat(ids(persistence.readDocuments(transaction, timestamp, longestNamespace, LONGEST_ENTITY, Range.unbounded())))
+                    .containsExactly(id);
+
+            persistence.deleteAllDocumentVersions(transaction, longestNamespace, LONGEST_ENTITY, id, PersistenceDeletePolicy.FAIL_IF_INCOMING_LINKS).blockingAwait();
+            assertThat(persistence.readDocument(transaction, timestamp, longestNamespace, LONGEST_ENTITY, id).blockingGet()).isNull();
+        }
+    }
+
+    private static String asciiLetters(Random random, int count) {
+        StringBuilder letters = new StringBuilder();
+        for (int i = 0; i < count; i++) {
+            letters.append((char) ('a' + random.nextInt(26)));
+        }
+        return letters.toString();
+    }
+
+    private static String letters(Random random, int first, int last, int count) {
+        StringBuilder letters = new StringBuilder();
+        for (int i = 0; i < count; i++) {
+            letters.appendCodePoint(first + random.nextInt(last - first + 1));
+        }
+        return letters.toString();
     }
 
     /**

@@ -120,6 +120,12 @@ which validates the Jackson tree of the document). A schema that at its root say
   (`PersistenceIntegrationTest`) against the real engine (a container), not a substitute.
 - **No spliced identifiers.** Entity, field, namespace and topic names and user search text are validated and never
   concatenated into SQL, Cypher, Solr queries, keys or file paths.
+- **Limits.** One set of limits for every provider, constants in bytes of UTF-8 (`Limits` in the persistence API):
+  namespace 64, entity type 128, id 1024, path of a value 1024, 32 arrays on a path. They are set by the store
+  with the least room, PostgreSQL (one primary key entry of at most 2,704 bytes holds all of them), not by
+  configuration. Core refuses what goes past them (400 on a write, no start for names), and the shared suite
+  keeps a document at every limit on every provider (`thatADocumentAtEveryLimitIsKept`). A limit is raised only
+  when every provider keeps the new one.
 - **Time.** Document versions are stored and compared as UTC instants.
 - **Transactions** commit only when asked and roll back otherwise.
 - **Always the latest stable version** of every library, plugin, action, image and engine (Neo4j 2026, Solr 10).

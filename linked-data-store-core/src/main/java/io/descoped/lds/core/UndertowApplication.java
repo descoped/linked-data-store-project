@@ -5,6 +5,7 @@ import graphql.schema.GraphQLSchema;
 import graphql.schema.idl.SchemaParser;
 import graphql.schema.idl.TypeDefinitionRegistry;
 import io.descoped.config.DynamicConfiguration;
+import io.descoped.lds.api.persistence.Limits;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.api.search.SearchIndex;
 import io.descoped.lds.api.specification.Specification;
@@ -52,6 +53,7 @@ import java.util.SequencedMap;
 import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -253,6 +255,7 @@ public class UndertowApplication {
                             ? "No model is given: set graphql.schema or specification.schema"
                             : "The model " + configuration.get("specification.schema") + " has no entity type"));
         }
+        checkNames(configuration.find("namespace.default").orElse(""), specification.getManagedDomains());
 
         LOG.info("Initializing primary persistence ...");
 
@@ -397,6 +400,23 @@ public class UndertowApplication {
                 } else {
                     throw e;
                 }
+            }
+        }
+    }
+
+    /*
+     * The namespace and the names of the entity types are parts of every key a store keeps, and are checked once, at
+     * start, against the room the stores have (Limits).
+     */
+    static void checkNames(String namespace, Set<String> entityTypes) {
+        if (Limits.utf8Length(namespace) > Limits.NAMESPACE_BYTES) {
+            throw new IllegalStateException("The namespace is at most " + Limits.NAMESPACE_BYTES + " bytes in UTF-8: "
+                    + namespace.substring(0, Math.min(namespace.length(), 80)) + "...");
+        }
+        for (String entityType : new TreeSet<>(entityTypes)) {
+            if (Limits.utf8Length(entityType) > Limits.ENTITY_BYTES) {
+                throw new IllegalStateException("The name of an entity type is at most " + Limits.ENTITY_BYTES
+                        + " bytes in UTF-8: " + entityType.substring(0, Math.min(entityType.length(), 80)) + "...");
             }
         }
     }

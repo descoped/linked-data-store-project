@@ -1,6 +1,7 @@
 package io.descoped.lds.core.domain.embedded;
 
 import io.descoped.lds.api.persistence.DocumentKey;
+import io.descoped.lds.api.persistence.Limits;
 import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.json.JsonDocument;
 import io.descoped.lds.api.persistence.json.JsonTools;
@@ -142,6 +143,14 @@ public class EmbeddedResourceHandler implements HttpHandler {
                     }
 
                     mergeJson(resourceContext, managedDocument, embeddedJson);
+
+                    String overLimit = Limits.overLimit(managedDocument);
+                    if (overLimit != null) {
+                        exchange.setStatusCode(400);
+                        exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, TEXT_PLAIN);
+                        exchange.getResponseSender().send(overLimit);
+                        return;
+                    }
 
                     try {
                         LinkedDocumentValidator validator = new LinkedDocumentValidator(specification, schemaRepository);

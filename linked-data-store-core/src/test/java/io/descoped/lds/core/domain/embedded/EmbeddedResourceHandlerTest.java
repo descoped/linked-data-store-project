@@ -72,6 +72,17 @@ public class EmbeddedResourceHandlerTest {
     }
 
     @Test
+    public void thatAPartThatTakesTheDocumentOverTheLimitsIsRefusedAndNothingIsWritten() throws JSONException {
+        String document = "{\"id\":\"e-limits\",\"name\":\"pa-test-name\",\"contacts\":[],\"address\":{\"street\":\"Storgata 1\"}}";
+        createTestResource("provisionagreement", "e-limits", document);
+        // the path is counted in the whole document: $.address. and the name of the field
+        String part = "{\"" + "s".repeat(1100) + "\":\"x\"}";
+        assertEquals(client.put("/data/provisionagreement/e-limits/address?sync=true", part).expect400BadRequest().body(),
+                "The path of a value is at most 1024 bytes in UTF-8: $.address." + "s".repeat(70) + "...");
+        JSONAssert.assertEquals(document, client.get("/data/provisionagreement/e-limits").expect200Ok().body(), true);
+    }
+
+    @Test
     public void thatPutEmbeddedArrayResourceUpdatesSubDocument() throws JSONException {
         createTestResource("provisionagreement", "e4", "{\"id\":\"e4\",\"name\":\"pa-test-name\",\"contacts\":[\"/contact/c1\",\"/contact/c2\"]}");
         client.put("/data/provisionagreement/e4/contacts?sync=true", "[\"/contact/truls\",\"/contact/hans\"]").expect200Ok();
