@@ -114,7 +114,7 @@ GraphQLObjectType Person
     @link
       pagination: Boolean value=Boolean:false default=null
       reverseName: String value=null default=null
-    fetcher=PersistenceLinksFetcher{{field=pets, namespace=ns, pattern=pattern:/Pet/(?<id>.*), persistence=persistence, target=Pet}}
+    fetcher=PersistenceLinksFetcher{{field=pets, namespace=ns, pattern=pattern:/(?<type>Pet)/(?<id>.*), persistence=persistence}}
   field reversePersonFriends: PersonConnection description=null deprecated=null
     arg after: String default=null description=null
     arg before: String default=null description=null

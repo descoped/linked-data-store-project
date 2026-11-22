@@ -76,15 +76,44 @@ class PersistenceLinksFetcherTest {
 
         List<Map<String, Object>> pets = fetcher.get(environment(source));
 
-        // a link to a document that is not there gives null, and a link to another entity is left out
-        assertThat(pets).hasSize(3);
-        assertThat(pets.get(0)).containsEntry("name", "pet p1");
-        assertThat(pets.get(1)).isNull();
-        assertThat(pets.get(2)).containsEntry("name", "pet p2");
+        // a link to a document that is not there and a link to another entity are left out
+        assertThat(pets).extracting(pet -> pet.get("name")).containsExactly("pet p1", "pet p2");
+        assertThat(pets).extracting(pet -> ((DocumentKey) pet.get("__graphql_internal_document_key")).id())
+                .containsExactly("p1", "p2");
         assertThat(read).containsExactly(
                 "ns/Pet/p1@" + SNAPSHOT,
                 "ns/Pet/gone@" + SNAPSHOT,
                 "ns/Pet/p2@" + SNAPSHOT);
+    }
+
+    @Test
+    void theDocumentsOfAUnionAreReadAsTheEntityTypesTheLinksName() {
+        PersistenceLinksFetcher fetcher = new PersistenceLinksFetcher(persistence(), "ns", "pets", "(Pet|Cat)");
+        Map<String, Object> source = Map.of("pets", List.of("/Cat/p3", "/Pet/p1", "/House/h1"));
+
+        List<Map<String, Object>> pets = fetcher.get(environment(source));
+
+        assertThat(pets).extracting(pet -> ((DocumentKey) pet.get("__graphql_internal_document_key")).entity())
+                .containsExactly("Cat", "Pet");
+        assertThat(read).containsExactly("ns/Cat/p3@" + SNAPSHOT, "ns/Pet/p1@" + SNAPSHOT);
+    }
+
+    @Test
+    void anItemThatIsNotATextIsLeftOut() {
+        PersistenceLinksFetcher fetcher = new PersistenceLinksFetcher(persistence(), "ns", "pets", "Pet");
+        List<Object> links = new ArrayList<>(List.of("/Pet/p1", 42));
+        links.add(null);
+        Map<String, Object> source = Map.of("pets", links);
+
+        assertThat(fetcher.get(environment(source))).extracting(pet -> pet.get("name")).containsExactly("pet p1");
+    }
+
+    @Test
+    void aFieldThatIsNotAListHasNoLinks() {
+        PersistenceLinksFetcher fetcher = new PersistenceLinksFetcher(persistence(), "ns", "pets", "Pet");
+
+        assertThat(fetcher.get(environment(Map.of("pets", "/Pet/p1")))).isNull();
+        assertThat(read).isEmpty();
     }
 
     @Test

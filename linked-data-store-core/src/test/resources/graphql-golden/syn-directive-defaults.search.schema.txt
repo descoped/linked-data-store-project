@@ -16,7 +16,7 @@ GraphQLObjectType A
     @link
       pagination: Boolean value=Boolean:false default=Boolean:false
       reverseName: String value="dflt" default="dflt"
-    fetcher=PersistenceLinksFetcher{{field=b, namespace=ns, pattern=pattern:/B/(?<id>.*), persistence=persistence, target=B}}
+    fetcher=PersistenceLinksFetcher{{field=b, namespace=ns, pattern=pattern:/(?<type>B)/(?<id>.*), persistence=persistence}}
   field c: BConnection description=null deprecated=null
     arg after: String default=null description=null
     arg before: String default=null description=null
@@ -35,7 +35,7 @@ GraphQLObjectType A
     @link
       pagination: Boolean value=Boolean:false default=Boolean:false
       reverseName: String value="y" default="dflt"
-    fetcher=PersistenceLinksFetcher{{field=e, namespace=ns, pattern=pattern:/B/(?<id>.*), persistence=persistence, target=B}}
+    fetcher=PersistenceLinksFetcher{{field=e, namespace=ns, pattern=pattern:/(?<type>B)/(?<id>.*), persistence=persistence}}
 GraphQLObjectType AConnection
   description=null
   interfaces=[]

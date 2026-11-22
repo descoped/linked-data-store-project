@@ -19,45 +19,50 @@ import java.util.regex.Pattern;
 public class PersistenceLinksFetcher implements DataFetcher<List<Map<String, Object>>> {
 
     private final String field;
-    private final String target;
     private final RxJsonPersistence persistence;
     private final Pattern pattern;
     private final String namespace;
 
     public PersistenceLinksFetcher(RxJsonPersistence persistence, String namespace, String field, String target) {
         this.field = Objects.requireNonNull(field);
-        this.target = Objects.requireNonNull(target);
         this.persistence = Objects.requireNonNull(persistence);
-        this.pattern = Pattern.compile("/" + Objects.requireNonNull(target) + "/(?<id>.*)");
+        this.pattern = Pattern.compile("/(?<type>" + Objects.requireNonNull(target) + ")/(?<id>.*)");
         this.namespace = Objects.requireNonNull(namespace);
     }
 
     @Override
     public List<Map<String, Object>> get(DataFetchingEnvironment environment) {
         Map<String, Object> source = environment.getSource();
-        // a field of links holds a list of texts; the source of GraphQL is not typed
-        @SuppressWarnings("unchecked")
-        List<String> links = (List<String>) source.get(field);
-        List<Map<String, Object>> results = new ArrayList<>();
-        if (links == null) {
+        if (!(source.get(field) instanceof List<?> links)) {
             return null;
         }
-        for (String link : links) {
+        List<Map<String, Object>> results = new ArrayList<>();
+        for (Object item : links) {
+            // An item that is not a text, a link that does not name the target, and a link to a document that does
+            // not exist at the snapshot are left out.
+            if (!(item instanceof String link)) {
+                continue;
+            }
             Matcher matcher = pattern.matcher(link);
-            // A link that does not name the target is left out.
             if (matcher.matches()) {
+                // the entity type is the one the link names: the target can be the members of a union, (Cat|Dog)
+                String type = matcher.group("type");
                 String id = matcher.group("id");
                 GraphQLContext context = environment.getGraphQlContext().get(GraphQLContext.class);
-                JsonDocument document = readDocument(id, context.getSnapshot());
-                results.add(document != null ? document.toMap() : null);
+                JsonDocument document = readDocument(type, id, context.getSnapshot());
+                if (document != null) {
+                    Map<String, Object> asMap = document.toMap();
+                    asMap.put("__graphql_internal_document_key", document.key());
+                    results.add(asMap);
+                }
             }
         }
         return results;
     }
 
-    private JsonDocument readDocument(String id, ZonedDateTime snapshot) {
+    private JsonDocument readDocument(String type, String id, ZonedDateTime snapshot) {
         try (Transaction tx = persistence.createTransaction(true)) {
-            Maybe<JsonDocument> jsonDocumentMaybe = persistence.readDocument(tx, snapshot, namespace, target, id);
+            Maybe<JsonDocument> jsonDocumentMaybe = persistence.readDocument(tx, snapshot, namespace, type, id);
             return jsonDocumentMaybe.blockingGet();
         }
     }

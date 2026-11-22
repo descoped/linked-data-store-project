@@ -1,0 +1,27 @@
+# Lists of links without pages (pagination: false), to an entity type and to a union
+directive @domain on OBJECT
+directive @link(pagination: Boolean, reverseName: String) on FIELD_DEFINITION
+
+union Pet = Cat | Dog
+
+type Cat @domain {
+  name: String
+}
+
+type Dog @domain {
+  name: String
+}
+
+type Car @domain {
+  plate: String
+}
+
+type Owner @domain {
+  name: String
+  pets: [Pet] @link(pagination: false)
+  cars: [Car] @link(pagination: false)
+}
+
+type Query {
+  OwnerById: [Owner]
+}

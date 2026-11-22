@@ -11,6 +11,8 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 import javax.inject.Inject;
+import java.util.ArrayList;
+import java.util.List;
 
 import static io.descoped.lds.core.utils.FileAndClasspathReaderUtils.readFileOrClasspathResource;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -130,6 +132,81 @@ public class GraphQLIntegrationTest {
         client.put("/data/provisionagreement/2a41c/contacts/contact/821aa");
 
         assertNoErrors(executeGraphQLQuery("spec/demo/graphql/basic_query.json"));
+    }
+
+    @Test
+    @ConfigurationOverride({
+            "graphql.enabled", "true",
+            "graphql.search.enabled", "false",
+            "specification.schema", "src/test/resources/spec/abstract/jsonschemas",
+            "graphql.schema", "src/test/resources/spec/abstract/graphqlschemas/schema.graphql"
+    })
+    public void thatALinkThatIsAbsentOrLeadsNowhereIsNull() {
+        client.put("/data/Owner/nofavorite?sync=true", "{\"name\": \"none\", \"email\": \"none@example.com\"}");
+        client.put("/data/Owner/dangling?sync=true",
+                "{\"name\": \"dangling\", \"email\": \"dangling@example.com\", \"favorite\": \"/Cat/not-yet\"}");
+
+        JsonNode byId = JsonTools.toJsonNode(client.postJson("/graphql",
+                "{\"query\": \"{ none: OwnerById(id: \\\"nofavorite\\\") { name favorite { __typename } } "
+                        + "dangling: OwnerById(id: \\\"dangling\\\") { name favorite { __typename } } }\"}")
+                .expect200Ok().body());
+        assertNoErrors(byId);
+        assertThat(byId.at("/data/none/name").asString()).isEqualTo("none");
+        assertThat(byId.at("/data/none/favorite").isNull()).isTrue();
+        assertThat(byId.at("/data/dangling/favorite").isNull()).isTrue();
+
+        JsonNode list = JsonTools.toJsonNode(client.postJson("/graphql",
+                "{\"query\": \"{ Owner { edges { node { name favorite { __typename } } } } }\"}")
+                .expect200Ok().body());
+        assertNoErrors(list);
+        // the server is shared with the other tests of the class, so only these two owners are looked at
+        List<JsonNode> mine = new ArrayList<>();
+        list.at("/data/Owner/edges").forEach(edge -> {
+            if (List.of("none", "dangling").contains(edge.at("/node/name").asString())) {
+                mine.add(edge.at("/node"));
+            }
+        });
+        assertThat(mine).hasSize(2).allSatisfy(owner -> assertThat(owner.get("favorite").isNull()).isTrue());
+    }
+
+    @Test
+    @ConfigurationOverride({
+            "graphql.enabled", "true",
+            "graphql.search.enabled", "false",
+            "graphql.schema", "src/test/resources/spec/plain-links/schema.graphql"
+    })
+    public void thatAPlainListOfLinksToAUnionHasTheDocumentsTheLinksName() {
+        client.put("/data/Cat/tom?sync=true", "{\"name\": \"Tom\"}");
+        client.put("/data/Dog/rex?sync=true", "{\"name\": \"Rex\"}");
+        client.put("/data/Owner/eva?sync=true",
+                "{\"name\": \"Eva\", \"pets\": [\"/Dog/rex\", \"/Cat/gone\", \"/Cat/tom\"]}");
+
+        JsonNode result = JsonTools.toJsonNode(client.postJson("/graphql",
+                "{\"query\": \"{ OwnerById(id: \\\"eva\\\") { pets { __typename ... on Cat { name } ... on Dog { name } } } }\"}")
+                .expect200Ok().body());
+
+        assertNoErrors(result);
+        List<String> pets = new ArrayList<>();
+        result.at("/data/OwnerById/pets").forEach(pet -> pets.add(pet.get("__typename").asString() + " " + pet.get("name").asString()));
+        assertThat(pets).containsExactly("Dog Rex", "Cat Tom");
+    }
+
+    @Test
+    @ConfigurationOverride({
+            "graphql.enabled", "true",
+            "graphql.search.enabled", "false",
+            "graphql.schema", "src/test/resources/spec/plain-links/schema.graphql"
+    })
+    public void thatADocumentOfAPlainListOfLinksCanBeAskedForItsConnections() {
+        client.put("/data/Car/ab123?sync=true", "{\"plate\": \"AB 123\"}");
+        client.put("/data/Owner/ola?sync=true", "{\"name\": \"Ola\", \"cars\": [\"/Car/ab123\"]}");
+
+        JsonNode result = JsonTools.toJsonNode(client.postJson("/graphql",
+                "{\"query\": \"{ OwnerById(id: \\\"ola\\\") { cars { plate reverseOwnerCars { edges { node { name } } } } } }\"}")
+                .expect200Ok().body());
+
+        assertNoErrors(result);
+        assertThat(result.at("/data/OwnerById/cars/0/reverseOwnerCars/edges/0/node/name").asString()).isEqualTo("Ola");
     }
 
     private void putResource(String path, String resourceFilePath) {
