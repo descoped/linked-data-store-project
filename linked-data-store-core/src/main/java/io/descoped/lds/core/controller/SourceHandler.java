@@ -7,6 +7,7 @@ import io.descoped.rawdata.api.RawdataMessage;
 import io.undertow.server.HttpHandler;
 import io.undertow.server.HttpServerExchange;
 import io.undertow.util.Headers;
+import io.undertow.util.StatusCodes;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.NullNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -42,6 +43,13 @@ public class SourceHandler implements HttpHandler {
                 return;
             }
 
+            if (!txLogPool.keepsMessages()) {
+                exchange.setStatusCode(StatusCodes.CONFLICT);
+                exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "text/plain");
+                exchange.getResponseSender().send("No transaction log is kept (txlog.rawdata.provider=discard), so the "
+                        + "last source id of a source is not known");
+                return;
+            }
             String source = exchange.getRequestPath().substring("/source/".length());
             RawdataMessage lastMessage = txLogPool.getLastMessage(source);
             if (lastMessage == null) {

@@ -279,7 +279,10 @@ public class UndertowApplication {
         boolean splitSources = configuration.getBoolean("txlog.split.sources", false);
         String defaultSource = configuration.find("txlog.default-source").filter(s -> !s.isBlank()).orElse("default");
         String txLogTopicPrefix = configuration.find("txlog.rawdata.topic-prefix").map(String::trim).orElse("");
-        TxlogRawdataPool txlogRawdataPool = new TxlogRawdataPool(txLogClient, splitSources, defaultSource, txLogTopicPrefix);
+        // The provider discard keeps nothing: its client is not exported by rawdata-client-api, so the name tells.
+        boolean keepsMessages = !"discard".equals(configuration.find("txlog.rawdata.provider").orElse(null));
+        TxlogRawdataPool txlogRawdataPool = new TxlogRawdataPool(txLogClient, splitSources, defaultSource, txLogTopicPrefix,
+                keepsMessages);
         sagaRepositoryBuilder.txLogRawdataPool(txlogRawdataPool);
 
         LOG.info("Initializing saga repository ...");
