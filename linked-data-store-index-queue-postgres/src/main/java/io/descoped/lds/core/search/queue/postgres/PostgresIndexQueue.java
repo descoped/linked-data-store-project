@@ -42,7 +42,15 @@ final class PostgresIndexQueue implements IndexQueue {
     private static final String REMOVE = "DELETE FROM lds_index_queue WHERE sequence = ANY (?)";
     private static final String POSTPONE = "UPDATE lds_index_queue SET available_at = now() + make_interval(secs => ?), "
             + "attempts = attempts + 1 WHERE sequence = ANY (?)";
-    private static final String LAG = "SELECT count(*), min(added) FROM lds_index_queue";
+    /* The most updates the lag counts: a count of a queue a rebuild has filled would otherwise read every row. */
+    static final int LAG_COUNT_LIMIT = 100_000;
+
+    /*
+     * The lag reads at most LAG_COUNT_LIMIT rows and the first row of the primary key: the oldest update is the one
+     * with the lowest sequence, as both rise as rows are added.
+     */
+    private static final String LAG = "SELECT (SELECT count(*) FROM (SELECT 1 FROM lds_index_queue LIMIT "
+            + LAG_COUNT_LIMIT + ") counted), (SELECT added FROM lds_index_queue ORDER BY sequence LIMIT 1)";
 
     private final HikariDataSource dataSource;
     private final ExecutorService statements = Executors.newVirtualThreadPerTaskExecutor();

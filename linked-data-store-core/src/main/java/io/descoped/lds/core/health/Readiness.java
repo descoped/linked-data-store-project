@@ -11,6 +11,8 @@ import io.reactivex.rxjava3.core.Scheduler;
 import io.reactivex.rxjava3.core.Single;
 import io.reactivex.rxjava3.schedulers.Schedulers;
 import no.cantara.sagalog.SagaLogPool;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -36,6 +38,8 @@ import java.util.concurrent.TimeoutException;
  */
 public final class Readiness implements AutoCloseable {
 
+    private static final Logger LOG = LoggerFactory.getLogger(Readiness.class);
+
     /**
      * How long a part is given to answer.
      */
@@ -50,7 +54,8 @@ public final class Readiness implements AutoCloseable {
     private final List<ReadinessCheck> checks = new ArrayList<>();
     private final Duration timeout;
     private final ExecutorService blockingExecutor = Executors.newVirtualThreadPerTaskExecutor();
-    private final Scheduler blocking = Schedulers.from(blockingExecutor);
+    // interrupts a check that is given up, so that the thread of a hung store or database ends
+    private final Scheduler blocking = Schedulers.from(blockingExecutor, true);
 
     /**
      * A readiness with no check yet, each check given {@link #CHECK_TIMEOUT}.
@@ -170,12 +175,22 @@ public final class Readiness implements AutoCloseable {
             return check.probe()
                     .timeout(timeout.toMillis(), TimeUnit.MILLISECONDS)
                     .onErrorReturn(error -> new ReadinessCheck.Result(check.whenItFails(),
-                            Map.of("error", error instanceof TimeoutException
-                                    ? "no answer within " + timeout.toMillis() + " ms"
-                                    : String.valueOf(error.getMessage()))))
+                            Map.of("error", error(check, error))))
                     .map(result -> new Entry(check.name(), result,
                             TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)));
         });
+    }
+
+    /*
+     * What the answer says of a failure: that the part did not answer in time, or the kind of error. Anyone may ask
+     * the readiness, and the message of an error can name hosts, ports and databases, so it goes to the log only.
+     */
+    private String error(ReadinessCheck check, Throwable error) {
+        if (error instanceof TimeoutException) {
+            return "no answer within " + timeout.toMillis() + " ms";
+        }
+        LOG.warn("The readiness check {} failed: {}", check.name(), error.toString());
+        return error.getClass().getSimpleName();
     }
 
     /**

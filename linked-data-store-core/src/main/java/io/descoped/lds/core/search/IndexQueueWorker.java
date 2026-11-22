@@ -16,6 +16,7 @@ import io.reactivex.rxjava3.disposables.Disposable;
 import io.reactivex.rxjava3.schedulers.Schedulers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.event.Level;
 import tools.jackson.databind.JsonNode;
 
 import java.time.Duration;
@@ -37,8 +38,13 @@ import java.util.concurrent.atomic.AtomicInteger;
  * fails, each of its updates is tried alone, so one update the index refuses does not hold back the others. A round
  * follows at once when the last one took updates, and after a short wait when there were none.
  * <p>
- * A document that storage does not have at the version of its update was replaced since, or its write did not
- * complete, and is not sent: the index is told what storage holds.
+ * Storage holds the version of every update: the saga of a write adds it to the queue only after its storage step,
+ * and never undoes that step, and a rebuild adds what it read from storage. Storage is read as of the version, so the
+ * index is told what storage holds; a document storage does not have at all is not sent.
+ * <p>
+ * An update the index keeps refusing is tried again for as long as LDS runs, a minute apart: an update is never
+ * dropped (decided by the owner, D1 and D2). From its tenth attempt each refusal is logged as an error, and the
+ * update, the oldest in the queue, makes the readiness DEGRADED once it has waited over a minute.
  */
 public final class IndexQueueWorker {
 
@@ -192,11 +198,16 @@ public final class IndexQueueWorker {
                 });
     }
 
+    /* From this attempt on, a refused update is logged as an error: the index has refused it for minutes. */
+    static final int ATTEMPTS_LOGGED_AS_ERROR = 10;
+
     private Completable putOff(IndexQueue.Entry entry, Throwable error) {
         Duration delay = delay(entry.attempts());
-        LOG.warn("The search index did not take the update of {}/{}/{} at {} (attempt {}); tried again in {}: {}",
+        int attempt = entry.attempts() + 1;
+        LOG.atLevel(attempt >= ATTEMPTS_LOGGED_AS_ERROR ? Level.ERROR : Level.WARN).log(
+                "The search index did not take the update of {}/{}/{} at {} (attempt {}); tried again in {}: {}",
                 entry.update().namespace(), entry.update().entity(), entry.update().id(), entry.update().version(),
-                entry.attempts() + 1, delay, error.toString());
+                attempt, delay, error.toString());
         return queue.postpone(List.of(entry), delay);
     }
 

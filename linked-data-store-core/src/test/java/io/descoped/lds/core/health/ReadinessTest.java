@@ -22,6 +22,7 @@ import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -99,7 +100,8 @@ class ReadinessTest {
 
         assertThat(report.health()).isEqualTo(Health.DOWN);
         assertThat(report.entries().getFirst().result().health()).isEqualTo(Health.DOWN);
-        assertThat(report.entries().getFirst().result().details()).containsEntry("error", "persistence does not answer");
+        // the kind of the error; its message, which may name hosts and databases, goes to the log
+        assertThat(report.entries().getFirst().result().details()).containsEntry("error", "IllegalStateException");
     }
 
     @Test
@@ -162,7 +164,32 @@ class ReadinessTest {
         Readiness.Report report = report();
 
         assertThat(report.health()).isEqualTo(Health.DOWN);
-        assertThat(report.entries().getFirst().result().details()).containsEntry("error", "connection refused");
+        assertThat(report.entries().getFirst().result().details()).containsEntry("error", "PersistenceException");
+    }
+
+    /**
+     * A check that is given up has its thread interrupted, so that a store that hangs does not keep a thread for each
+     * time the readiness is asked.
+     */
+    @Test
+    void theThreadOfACheckThatIsGivenUpIsInterrupted() throws InterruptedException {
+        CountDownLatch interrupted = new CountDownLatch(1);
+        RxJsonPersistence hanging = (RxJsonPersistence) Proxy.newProxyInstance(RxJsonPersistence.class.getClassLoader(),
+                new Class<?>[]{RxJsonPersistence.class}, (proxy, method, arguments) -> {
+                    if (method.getName().equals("createTransaction")) {
+                        try {
+                            Thread.sleep(Duration.ofMinutes(5));
+                        } catch (InterruptedException e) {
+                            interrupted.countDown();
+                            throw new PersistenceException("interrupted");
+                        }
+                    }
+                    throw new UnsupportedOperationException(method.getName());
+                });
+        readiness.persistence(hanging, "ns", "Person");
+
+        assertThat(report().health()).isEqualTo(Health.DOWN);
+        assertThat(interrupted.await(5, TimeUnit.SECONDS)).as("the check's thread was interrupted").isTrue();
     }
 
     @Test

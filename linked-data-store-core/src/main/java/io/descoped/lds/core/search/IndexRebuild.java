@@ -93,6 +93,8 @@ public final class IndexRebuild {
                 return;
             }
             LOG.info("Rebuilding the search index from storage: {} in the namespace {}", entities, namespace);
+            LOG.warn("search.index.rebuild is on: every start of every LDS with it rebuilds the search index. It is"
+                    + " meant for one start of one LDS; turn it off when the rebuild is done");
             running = rebuild().subscribe(
                     added -> LOG.info("The search index is rebuilt from storage: {} versions added to the index queue",
                             added),

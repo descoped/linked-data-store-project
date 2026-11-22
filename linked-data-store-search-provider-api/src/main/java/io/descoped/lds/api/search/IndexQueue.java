@@ -86,7 +86,8 @@ public interface IndexQueue extends AutoCloseable {
     /**
      * How far the index is behind.
      *
-     * @param updates the number of updates in the queue
+     * @param updates the number of updates in the queue, counted up to a limit the queue may set, so that a queue a
+     *                rebuild has filled is not read whole to answer
      * @param oldest  when the oldest of them was added, or null when there are none
      */
     record Lag(long updates, Instant oldest) {

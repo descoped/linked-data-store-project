@@ -160,6 +160,27 @@ class PostgresIndexQueueTest {
         assertThat(lag.oldest()).isAfter(before);
     }
 
+    /**
+     * A queue a rebuild has filled is not read whole to answer the lag: the count stops at its limit, and the oldest
+     * update is the first of the primary key.
+     */
+    @Test
+    void theLagOfAFullQueueCountsUpToItsLimit() throws Exception {
+        queue.add(update("first", IndexUpdate.Operation.CREATE_OR_OVERWRITE)).blockingAwait();
+        Instant firstAdded = queue.lag().blockingGet().oldest();
+        try (Connection connection = POSTGRES.createConnection("");
+             Statement statement = connection.createStatement()) {
+            statement.execute("INSERT INTO lds_index_queue (namespace, entity, id, version, operation)"
+                    + " SELECT 'ns', 'Person', 'p' || n, '2026-01-01T00:00Z', 'CREATE_OR_OVERWRITE'"
+                    + " FROM generate_series(1, " + PostgresIndexQueue.LAG_COUNT_LIMIT + ") n");
+        }
+
+        IndexQueue.Lag lag = queue.lag().blockingGet();
+
+        assertThat(lag.updates()).isEqualTo(PostgresIndexQueue.LAG_COUNT_LIMIT);
+        assertThat(lag.oldest()).isEqualTo(firstAdded);
+    }
+
     @Test
     void theQueueIsKeptWhenLdsStopsAndTheTableIsMadeOnlyOnce() {
         queue.add(update("kept", IndexUpdate.Operation.CREATE_OR_OVERWRITE)).blockingAwait();

@@ -95,7 +95,8 @@ public final class MemoryIndexQueue implements IndexQueue {
     public Single<Lag> lag() {
         return Single.fromCallable(() -> {
             synchronized (this) {
-                Instant oldest = slots.values().stream().map(Slot::added).min(Instant::compareTo).orElse(null);
+                // the slots are in the order of their sequence, and an update is added later than those before it
+                Instant oldest = slots.isEmpty() ? null : slots.firstEntry().getValue().added();
                 return new Lag(slots.size(), oldest);
             }
         });

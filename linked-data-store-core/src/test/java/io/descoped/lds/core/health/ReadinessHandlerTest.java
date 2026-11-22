@@ -69,7 +69,7 @@ class ReadinessHandlerTest {
         JsonNode body = JsonTools.mapper.readTree(response.body());
         assertThat(body.get("status").asString()).isEqualTo("DEGRADED");
         assertThat(body.get("checks").get("search").get("status").asString()).isEqualTo("DEGRADED");
-        assertThat(body.get("checks").get("search").get("error").asString()).isEqualTo("Connection refused");
+        assertThat(body.get("checks").get("search").get("error").asString()).isEqualTo("IllegalStateException");
     }
 
     @Test

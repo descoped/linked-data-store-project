@@ -130,10 +130,6 @@ public class SolrSearchIndex implements SearchIndex {
     }
 
     /*
-     * Sends a request and completes with Solr's answer: an error that Solr answers, or that the client meets on the
-     * way, is the error of the Completable, as SolrJ gives it (RemoteSolrException, SolrServerException, ...).
-     */
-    /*
      * A query of no rows on the core, which Solr answers when the core is loaded and can search. Solr's ping of a core
      * (/admin/ping) is deprecated in Solr 10.1, and its health check (/admin/info/health) is of the node, not the core.
      */
@@ -142,6 +138,10 @@ public class SolrSearchIndex implements SearchIndex {
         return send(new QueryRequest(new SolrQuery("*:*").setRows(0)));
     }
 
+    /*
+     * Sends a request and completes with Solr's answer: an error that Solr answers, or that the client meets on the
+     * way, is the error of the Completable, as SolrJ gives it (RemoteSolrException, SolrServerException, ...).
+     */
     private Completable send(SolrRequest<?> request) {
         return Completable.fromCompletionStage(solrClient.requestAsync(request))
                 .onErrorResumeNext(error -> Completable.error(error instanceof CompletionException && error.getCause() != null
