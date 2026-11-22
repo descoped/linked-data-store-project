@@ -21,7 +21,7 @@ public class DevServer {
                         "persistence.fragment.capacity", "8192",
                         "specification.schema", "spec/demo/contact.json,spec/demo/provisionagreement.json"))
                 .classpath("conf/application.properties").file(Path.of("conf/application.properties"))
-                .environment("LDS_")
+                .strictEnvironment("LDS_")
                 .systemProperties()
                 .build();
 
