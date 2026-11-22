@@ -196,7 +196,8 @@ class ServerImageIT {
             assertThat(ended).as("LDS stopped by itself: %s", Files.readString(output)).isTrue();
             assertThat(process.exitValue()).isEqualTo(1);
             assertThat(Files.readString(output))
-                    .contains("No configuration key for the environment variables [LDS_NAMESPACE_DEFALT]")
+                    .contains("environment variable(s) LDS_NAMESPACE_DEFALT match no configuration key")
+                    .doesNotContain("LDS_HTTP_PORT")
                     .doesNotContain("Server started");
         } finally {
             Files.deleteIfExists(output);

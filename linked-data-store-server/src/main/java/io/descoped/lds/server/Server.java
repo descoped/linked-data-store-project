@@ -6,11 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
 
 /**
  * The LDS server: reads the configuration, starts the application and keeps it running until the process is
@@ -23,30 +19,6 @@ public class Server {
     static final String VARIABLE_PREFIX = "LDS_";
 
     private Server() {
-    }
-
-    /**
-     * The variables that start with {@code LDS_} and set no key. A variable sets a key when its name is the prefix
-     * followed by the key as it is, by the key with each character that is not a letter or a digit replaced by
-     * {@code _}, or by that in upper case: the names dynamic-configuration 3 looks for
-     * ({@code io.descoped.config.internal.EnvironmentNames}, the MicroProfile Config mapping).
-     *
-     * @param environment the environment variables
-     * @param keys        the keys of the configuration
-     * @return the names of the variables that set no key, sorted
-     */
-    static List<String> unknownVariables(Map<String, String> environment, Set<String> keys) {
-        Set<String> known = new HashSet<>();
-        for (String key : keys) {
-            String sanitized = key.replaceAll("[^A-Za-z0-9]", "_");
-            known.add(VARIABLE_PREFIX + key);
-            known.add(VARIABLE_PREFIX + sanitized);
-            known.add(VARIABLE_PREFIX + sanitized.toUpperCase(Locale.ROOT));
-        }
-        return environment.keySet().stream()
-                .filter(name -> name.startsWith(VARIABLE_PREFIX) && !known.contains(name))
-                .sorted()
-                .toList();
     }
 
     /**
@@ -70,17 +42,10 @@ public class Server {
             builder.classpath(name).file(Path.of(name));
         }
         DynamicConfiguration configuration = builder
-                .environment(VARIABLE_PREFIX)
+                // a variable that names no key, a misspelled one, stops the start: it would be a setting that is not
+                .strictEnvironment(VARIABLE_PREFIX)
                 .systemProperties()
                 .build();
-
-        // The configuration ignores a variable that names no key; a misspelled one would be a setting that is not.
-        List<String> unknown = unknownVariables(System.getenv(), configuration.asMap().keySet());
-        if (!unknown.isEmpty()) {
-            throw new IllegalStateException("No configuration key for the environment variables " + unknown
-                    + ". A variable " + VARIABLE_PREFIX + "<KEY> sets a key that a file has, with each character of the key"
-                    + " that is not a letter or a digit written as _ (LDS_HTTP_PORT sets http.port)");
-        }
 
         UndertowApplication application = UndertowApplication.initializeUndertowApplication(configuration);
 
