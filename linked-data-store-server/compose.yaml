@@ -18,7 +18,7 @@ services:
     # LDS can need 30 seconds or more to stop in order while a write is held up; Docker's 10 would cut it short.
     stop_grace_period: 60s
     ports:
-      - "127.0.0.1:${LDS_PORT:-9090}:9090"
+      - "127.0.0.1:${SERVER_PORT:-9090}:9090"
     environment:
       LDS_PERSISTENCE_PROVIDER: neo4j
       LDS_NEO4J_DRIVER_URL: bolt://neo4j:7687

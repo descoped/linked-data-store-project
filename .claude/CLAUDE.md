@@ -266,8 +266,10 @@ changing them:
   port would clash). The user `lds` is added to `/etc/passwd` in the build stage.
 - **The images run as the user `lds`**, have a health check on `/ping`, and have the example model in
   `/lds/schemas`. They are published only by the release workflow (see Invariants).
-- **Every port of the compose file is published on 127.0.0.1**, and can be moved (`LDS_PORT`, ...), which is how
-  `ServerStackIT` runs next to a stack that is up. The passwords in it are development defaults.
+- **Every port of the compose file is published on 127.0.0.1**, and can be moved (`SERVER_PORT`, ...), which is how
+  `ServerStackIT` runs next to a stack that is up. No variable of the compose file starts with `LDS_`, the prefix
+  of the server's own variables, which a server started on the machine would refuse. The passwords in it are
+  development defaults.
 - **The JDK of the image is the baseline**: Renovate is told to keep `eclipse-temurin` at 27. A JDK module that a
   library uses only by name at run time is added to the `jlink` line by hand; `jdeps` does not see it.
 
