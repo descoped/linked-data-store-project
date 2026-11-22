@@ -86,17 +86,71 @@ class SolrSearchIndexTest {
         assertThat(secondPage.getResults()).hasSize(1);
     }
 
+    @Test
+    void aWriteAfterSolrHasClosedTheIdleConnectionStillReachesTheIndex() throws InterruptedException {
+        searchIndex.createOrOverwrite(text("UnitDataSet", "first", "before the pause")).blockingAwait();
+        awaitHits(() -> searchIndex.search("pause", null, 0, 10).blockingGet(), 1);
+
+        Thread.sleep(Solr10.IDLE_TIMEOUT.multipliedBy(2).toMillis());
+
+        searchIndex.createOrOverwrite(text("UnitDataSet", "second", "after the pause")).blockingAwait();
+        assertThat(awaitHits(() -> searchIndex.search("pause", null, 0, 10).blockingGet(), 2).getResults())
+                .extracting(result -> result.getDocumentKey().id()).containsExactlyInAnyOrder("first", "second");
+        assertThat(((SolrSearchIndex) searchIndex).failedUpdates()).isZero();
+    }
+
+    @Test
+    void theOperatorsOfTheTextDoNotLoosenTheEntityFilter() {
+        searchIndex.createOrOverwrite(List.of(
+                text("UnitDataSet", "plural", "memories"),
+                text("UnitDataSet", "singular", "memory"),
+                text("LogicalRecord", "other", "memory")
+        )).blockingAwait();
+        awaitHits(() -> searchIndex.search("memories OR memory", null, 0, 10).blockingGet(), 3);
+
+        SearchResponse dataSets = searchIndex.search("memories OR memory", Set.of("UnitDataSet"), 0, 10).blockingGet();
+
+        assertThat(dataSets.getResults()).extracting(result -> result.getDocumentKey().id())
+                .containsExactlyInAnyOrder("plural", "singular");
+    }
+
+    @Test
+    void aFieldNamedInTheTextDoesNotWidenTheEntityFilter() {
+        searchIndex.createOrOverwrite(List.of(
+                text("UnitDataSet", "brewery", "a brewery"),
+                text("LogicalRecord", "record", "a record")
+        )).blockingAwait();
+        awaitHits(() -> searchIndex.search("*:*", null, 0, 10).blockingGet(), 2);
+
+        SearchResponse dataSets = searchIndex.search("brewery OR entity:LogicalRecord", Set.of("UnitDataSet"), 0, 10)
+                .blockingGet();
+
+        assertThat(dataSets.getResults()).extracting(result -> result.getDocumentKey().entity()).containsOnly("UnitDataSet");
+        assertThat(dataSets.getTotalHits()).isEqualTo(1);
+    }
+
     /**
      * Searches until the index has the number of hits the test expects, and fails when the time a commit may take is
-     * over first.
+     * over first. A search fails until the first commit after Solr starts, which makes the field it searches in
+     * (the core is schemaless), so a failure counts as not found yet.
      */
     private static SearchResponse awaitHits(Supplier<SearchResponse> search, long hits) {
         AtomicReference<SearchResponse> response = new AtomicReference<>();
-        await().atMost(COMMIT_WAIT).pollDelay(Duration.ZERO).pollInterval(Duration.ofMillis(100)).untilAsserted(() -> {
+        await().atMost(COMMIT_WAIT).pollDelay(Duration.ZERO).pollInterval(Duration.ofMillis(100)).ignoreExceptions()
+                .untilAsserted(() -> {
             response.set(search.get());
             assertThat(response.get().getTotalHits()).as("hits").isEqualTo(hits);
         });
         return response.get();
+    }
+
+    /**
+     * A document whose one searched text is the given one.
+     */
+    private static JsonDocument text(String entity, String id, String text) {
+        JsonNode json = JsonTools.toJsonNode("""
+                {"id": "%s", "name": [{"languageCode": "en", "languageText": "%s"}]}""".formatted(id, text));
+        return new JsonDocument(new DocumentKey("ns", entity, id, ZonedDateTime.now()), json);
     }
 
     private static JsonDocument document(String entity, String resource) throws IOException {
