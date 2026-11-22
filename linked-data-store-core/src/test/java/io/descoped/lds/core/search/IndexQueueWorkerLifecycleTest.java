@@ -79,6 +79,11 @@ class IndexQueueWorkerLifecycleTest {
         }
 
         @Override
+        public Completable health() {
+            return Completable.complete();
+        }
+
+        @Override
         public Single<SearchResponse> search(String query, Set<String> typeFilter, long from, long size) {
             throw new UnsupportedOperationException();
         }

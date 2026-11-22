@@ -20,7 +20,6 @@ public class HealthCheckHandler implements HttpHandler {
 
     public static final String PING_PATH = "/ping";
     public static final String HEALTH_ALIVE_PATH = "/health/alive";
-    public static final String HEALTH_READY_PATH = "/health/ready";
     private final RxJsonPersistence persistence;
 
     public HealthCheckHandler(RxJsonPersistence persistence) {

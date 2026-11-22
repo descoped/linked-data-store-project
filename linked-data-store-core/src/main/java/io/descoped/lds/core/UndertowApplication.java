@@ -12,6 +12,8 @@ import io.descoped.lds.api.search.SearchIndex;
 import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.core.controller.CORSHandler;
 import io.descoped.lds.core.controller.HealthCheckHandler;
+import io.descoped.lds.core.health.Readiness;
+import io.descoped.lds.core.health.ReadinessHandler;
 import io.descoped.lds.core.controller.NamespaceController;
 import io.descoped.lds.core.persistence.PersistenceConfigurator;
 import io.descoped.lds.core.saga.SagaExecutionCoordinator;
@@ -51,6 +53,7 @@ import java.net.URL;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.time.Clock;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Optional;
@@ -93,6 +96,7 @@ public class UndertowApplication {
     private final SagaRecoveryTrigger sagaRecoveryTrigger;
     private final TxlogRawdataPool txlogRawdataPool;
     private final Indexing indexing;
+    private final Readiness readiness;
 
     /**
      * The parts of the write path the application runs and stops.
@@ -178,9 +182,15 @@ public class UndertowApplication {
 
         HealthCheckHandler healthHandler = new HealthCheckHandler(persistence);
         pathHandler.addExactPath(HealthCheckHandler.HEALTH_ALIVE_PATH, healthHandler);
-        ResponseCodeHandler aliveHandler = new ResponseCodeHandler(StatusCodes.OK);
-        pathHandler.addExactPath(HealthCheckHandler.HEALTH_READY_PATH, aliveHandler);
-        pathHandler.addExactPath(HealthCheckHandler.PING_PATH, aliveHandler);
+        this.readiness = new Readiness()
+                .persistence(persistence, namespace, new TreeSet<>(specification.getManagedDomains()).first())
+                .sagaLog(sagaLogPool)
+                .transactionLog(txlogRawdataPool);
+        if (indexing != null) {
+            readiness.search(indexing.index()).indexQueue(indexing.queue(), Clock.systemUTC());
+        }
+        pathHandler.addExactPath(ReadinessHandler.PATH, new ReadinessHandler(readiness));
+        pathHandler.addExactPath(HealthCheckHandler.PING_PATH, new ResponseCodeHandler(StatusCodes.OK));
         pathHandler.addPrefixPath("/", namespaceController);
 
         HttpHandler httpHandler;
@@ -593,6 +603,7 @@ public class UndertowApplication {
             }
         });
         stop("Undertow", server::stop);
+        stop("Readiness checks", readiness::close);
         if (sagaRecoveryTrigger != null) {
             stop("SagaRecoveryTrigger", sagaRecoveryTrigger::stop); // shuts the recovery thread-pool down as well
         } else {

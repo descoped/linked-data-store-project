@@ -150,6 +150,27 @@ class SolrSearchIndexTest {
                 .isInstanceOf(RemoteSolrException.class).hasMessageContaining("404");
     }
 
+    /**
+     * The health of the index is that of its core: an empty core answers, a core Solr does not have and a Solr that
+     * cannot be reached do not.
+     */
+    @Test
+    void theIndexIsHealthyWhenItsCoreAnswers() throws IOException {
+        searchIndex.health().blockingAwait();
+
+        SolrSearchIndex missingCore = new SolrSearchIndex(Solr10.url().replace("/lds-index", "/no-such-core"));
+        assertThatThrownBy(() -> missingCore.health().blockingAwait())
+                .isInstanceOf(RemoteSolrException.class).hasMessageContaining("404");
+
+        int closedPort;
+        try (ServerSocket socket = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            closedPort = socket.getLocalPort();
+        }
+        SolrSearchIndex unreachable = new SolrSearchIndex("http://127.0.0.1:" + closedPort + "/solr/lds-index");
+        assertThatThrownBy(() -> unreachable.health().blockingAwait())
+                .hasRootCauseInstanceOf(java.net.ConnectException.class);
+    }
+
     @Test
     void anUpdateThatCannotReachSolrFailsForItsCaller() throws IOException {
         int closedPort;

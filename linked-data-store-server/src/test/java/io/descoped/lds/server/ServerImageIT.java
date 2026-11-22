@@ -174,6 +174,19 @@ class ServerImageIT {
     }
 
     /**
+     * In memory, LDS is ready when the store, the saga log and the transaction log answer; there is no search.
+     */
+    @Test
+    void ldsInMemoryIsReady() throws Exception {
+        HttpResponse<String> ready = lds.get("/health/ready");
+
+        assertThat(ready.statusCode()).isEqualTo(200);
+        assertThat(ready.body()).startsWith("{\"status\":\"UP\",\"checks\":{\"persistence\":{\"status\":\"UP\"")
+                .contains("\"sagaLog\":{\"status\":\"UP\"", "\"transactionLog\":{\"status\":\"UP\"")
+                .doesNotContain("search", "indexQueue");
+    }
+
+    /**
      * {@code /ping} is under the prefix and on the port LDS is given, here by its variables.
      */
     @Test

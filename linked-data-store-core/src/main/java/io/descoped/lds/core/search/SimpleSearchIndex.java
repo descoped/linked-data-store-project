@@ -51,6 +51,11 @@ public class SimpleSearchIndex implements SearchIndex {
     }
 
     @Override
+    public Completable health() {
+        return Completable.complete();
+    }
+
+    @Override
     public Single<SearchResponse> search(String query, Set<String> filter, long from, long size) {
         return Flowable.fromIterable(index.entrySet().stream()
                         .filter(entry -> entry.getValue() != null)

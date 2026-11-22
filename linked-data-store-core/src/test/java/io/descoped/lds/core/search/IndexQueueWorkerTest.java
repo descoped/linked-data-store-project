@@ -82,6 +82,11 @@ class IndexQueueWorkerTest {
         }
 
         @Override
+        public Completable health() {
+            return down ? Completable.error(new IllegalStateException("the index does not answer")) : Completable.complete();
+        }
+
+        @Override
         public Single<SearchResponse> search(String query, Set<String> typeFilter, long from, long size) {
             throw new UnsupportedOperationException();
         }

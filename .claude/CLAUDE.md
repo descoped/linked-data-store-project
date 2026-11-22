@@ -82,6 +82,16 @@ held by the shared suite), is added to the queue, a deletion as a delete and the
 the worker sends them. The index is never cleared, so search answers during a rebuild. Storage is read only as fast
 as the queue takes, and each read transaction is opened and closed on the rebuild's own thread.
 
+## Readiness
+
+`/health/ready` (decided by the owner, D4) asks every part a write needs, side by side, each within 2 s
+(`Readiness`, package `core.health`): the store (a read of one document), the saga log (its logs, from its
+database), the transaction log (the last message of its topic), and with search the index (`SearchIndex.health()`,
+a query of no rows on the core) and the index queue (its lag). The answer is a JSON body with the state of LDS and
+an entry for each check: 503 when one that writes need fails (DOWN), 200 when only search fails or the oldest
+update in the queue has waited over a minute (DEGRADED). A client that blocks (JDBC) is asked on a virtual thread of
+its own, and the read transaction is opened and closed there. `/ping` answers 200 whenever the process does.
+
 ## The GraphQL schema
 
 Core builds its GraphQL schema from the schema file with a chain of visitors (`GraphQLSchemaBuilder`), on
@@ -288,9 +298,9 @@ changing them:
 - **Three images, one LDS**: they differ only in base and runtime; the rest (`app` stage, user, entry point) is
   the same in each and is kept so. Nothing is installed in an image. The distroless image has `java` as its one
   program. The user `lds` is added to `/etc/passwd` in the build stage.
-- **No image declares a health check.** LDS answers `/ping` under `http.prefix`, and whoever runs it asks there,
-  at the port and prefix it gave LDS (`compose.yaml` and the load test's compose file have a `healthcheck`,
-  Kubernetes a probe). Only LDS reads its configuration: nothing in the image reads an `LDS_` variable or starts a
+- **No image declares a health check.** LDS answers `/ping` (the process answers) and `/health/ready` under
+  `http.prefix`, and whoever runs it asks there, at the port and prefix it gave LDS (`compose.yaml` asks
+  `/health/ready`, the load test's compose file `/ping`, Kubernetes a probe). Only LDS reads its configuration: nothing in the image reads an `LDS_` variable or starts a
   second JVM, which would read `JAVA_TOOL_OPTIONS` and clash with a JMX or JDWP port.
 - **The images run as the user `lds`** and have the example model in
   `/lds/schemas`. They are published only by the release workflow (see Invariants).
