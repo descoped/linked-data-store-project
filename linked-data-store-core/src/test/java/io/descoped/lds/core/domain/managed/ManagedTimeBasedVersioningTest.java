@@ -15,7 +15,6 @@ public class ManagedTimeBasedVersioningTest {
     @Inject
     private TestClient client;
 
-
     @Test
     public void thatCorrectVersionIsReturned() throws JSONException {
         String body2016 = "{\"name\":\"version2016\"}";

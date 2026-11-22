@@ -6,7 +6,6 @@ public class LinkedDocumentValidationException extends RuntimeException {
     @Serial
     private static final long serialVersionUID = 1L;
 
-
     LinkedDocumentValidationException(String message) {
         super(message);
     }

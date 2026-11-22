@@ -21,7 +21,6 @@ public class SourceTest {
     @Inject
     private TestClient client;
 
-
     @Test
     @ConfigurationOverride({
             "txlog.split.sources", "true",

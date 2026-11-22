@@ -3,7 +3,6 @@ package io.descoped.lds.test.server;
 import io.descoped.config.DynamicConfiguration;
 import io.descoped.lds.core.UndertowApplication;
 
-
 public class TestServer implements TestUriResolver {
 
     final DynamicConfiguration configuration;
