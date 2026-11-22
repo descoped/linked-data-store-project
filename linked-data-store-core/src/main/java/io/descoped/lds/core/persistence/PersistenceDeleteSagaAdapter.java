@@ -1,7 +1,6 @@
 package io.descoped.lds.core.persistence;
 
 import io.descoped.lds.api.persistence.PersistenceDeletePolicy;
-import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import no.cantara.saga.api.SagaNode;
@@ -28,16 +27,14 @@ public class PersistenceDeleteSagaAdapter extends Adapter<JsonNode> {
         JsonNode input = (JsonNode) sagaInput;
         String versionStr = JsonTools.text(input.get("version"));
         ZonedDateTime version = ZonedDateTime.parse(versionStr, DateTimeFormatter.ISO_ZONED_DATE_TIME);
-        try (Transaction tx = persistence.createTransaction(false)) {
-            persistence.markDocumentDeleted(
-                    tx,
-                    JsonTools.text(input.get("namespace")),
-                    JsonTools.text(input.get("entity")),
-                    JsonTools.text(input.get("id")),
-                    version,
-                    PersistenceDeletePolicy.FAIL_IF_INCOMING_LINKS
-            ).blockingAwait();
-        }
+        WriteTransaction.run(persistence, tx -> persistence.markDocumentDeleted(
+                tx,
+                JsonTools.text(input.get("namespace")),
+                JsonTools.text(input.get("entity")),
+                JsonTools.text(input.get("id")),
+                version,
+                PersistenceDeletePolicy.FAIL_IF_INCOMING_LINKS
+        ));
         return null;
     }
 }

@@ -580,6 +580,29 @@ public abstract class PersistenceIntegrationTest {
         }
     }
 
+    /**
+     * LDS takes an id of at most 512 characters; every provider keeps one of that length, also of characters that
+     * take three and four bytes each in UTF-8 (2048 bytes).
+     */
+    @Test
+    public void thatAnIdOfTheLongestLengthIsKept() throws JSONException {
+        ZonedDateTime oct18 = of(2018, 10, 7, 19, 49, 26, (int) TimeUnit.MILLISECONDS.toNanos(307), ZoneId.of("Etc/UTC"));
+        for (String id : new String[]{"a".repeat(512), "日".repeat(512), "😀".repeat(512)}) {
+            try (Transaction transaction = persistence.createTransaction(false)) {
+                persistence.deleteAllDocumentVersions(transaction, namespace, "Person", id, PersistenceDeletePolicy.FAIL_IF_INCOMING_LINKS).blockingAwait();
+                JsonDocument input = toDocument(namespace, "Person", id, createPerson("John", "Smith"), oct18);
+                persistence.createOrOverwrite(transaction, input, specification).blockingAwait();
+
+                JsonDocument output = persistence.readDocument(transaction, oct18, namespace, "Person", id).blockingGet();
+                assertNotNull(output, id.substring(0, 1));
+                assertEquals(output.key().id(), id);
+                JSONAssert.assertEquals(JsonTools.toJson(output.jackson()), JsonTools.toJson(input.jackson()), true);
+
+                persistence.deleteAllDocumentVersions(transaction, namespace, "Person", id, PersistenceDeletePolicy.FAIL_IF_INCOMING_LINKS).blockingAwait();
+            }
+        }
+    }
+
     @Test
     public void thatCreateWithSameVersionDoesOverwriteInsteadOfCreatingDuplicateVersions() {
         try (Transaction transaction = persistence.createTransaction(false)) {

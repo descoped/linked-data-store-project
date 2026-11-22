@@ -1,7 +1,6 @@
 package io.descoped.lds.core.persistence;
 
 import io.descoped.lds.api.persistence.DocumentKey;
-import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.json.JsonDocument;
 import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
@@ -33,8 +32,8 @@ public class PersistenceCreateOrOverwriteSagaAdapter extends Adapter<JsonNode> {
         JsonNode input = (JsonNode) sagaInput;
         String versionStr = JsonTools.text(input.get("version"));
         ZonedDateTime version = ZonedDateTime.parse(versionStr, DateTimeFormatter.ISO_ZONED_DATE_TIME);
-        try (Transaction tx = persistence.createTransaction(false)) {
-            persistence.createOrOverwrite(tx, new JsonDocument(new DocumentKey(JsonTools.text(input.get("namespace")), JsonTools.text(input.get("entity")), JsonTools.text(input.get("id")), version), input.get("data")), specification).blockingAwait();
+        try {
+            WriteTransaction.run(persistence, tx -> persistence.createOrOverwrite(tx, new JsonDocument(new DocumentKey(JsonTools.text(input.get("namespace")), JsonTools.text(input.get("entity")), JsonTools.text(input.get("id")), version), input.get("data")), specification));
         } catch (Throwable t) {
             throw new AbortSagaException("Unable to write data using persistence.", t);
         }

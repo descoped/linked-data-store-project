@@ -34,7 +34,6 @@ public class MemoryRxPersistence implements RxPersistence {
 
     static final byte[] EMPTY_BYTE_ARRAY = new byte[0];
     static final ZoneId ZONE_ID_UTC = ZoneId.of("Etc/UTC");
-    static final int MAX_DESIRED_KEY_LENGTH = 256;
 
     public static final String PRIMARY_INDEX = "Primary";
     public static final String PATH_VALUE_INDEX = "PathValueIndex";
@@ -133,9 +132,6 @@ public class MemoryRxPersistence implements RxPersistence {
                             Tuple.of(arrayIndices)
                     );
                     byte[] binaryValueIndexKey = index.pack(valueIndexKey);
-                    if (binaryValueIndexKey.length > MAX_DESIRED_KEY_LENGTH) {
-                        throw new IllegalArgumentException("Document fragment key is too big for index, at most " + MAX_DESIRED_KEY_LENGTH + " bytes allowed. Was: " + binaryValueIndexKey.length + " bytes.");
-                    }
                     transaction.set(binaryValueIndexKey, EMPTY_BYTE_ARRAY, PATH_VALUE_INDEX);
                     return Completable.complete();
                 });
