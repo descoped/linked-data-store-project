@@ -35,6 +35,7 @@ public class GraphqlHttpHandlerTest {
     private Undertow server;
     private HttpClient client;
     private UriTemplate uriTemplate;
+    private String base;
 
     @BeforeMethod
     public void setUp() {
@@ -77,7 +78,8 @@ public class GraphqlHttpHandlerTest {
         int port = ((InetSocketAddress) server.getListenerInfo().get(0).getAddress()).getPort();
 
         // Template for the client.
-        uriTemplate = UriTemplate.buildFromTemplate("http://localhost:" + port)
+        base = "http://localhost:" + port;
+        uriTemplate = UriTemplate.buildFromTemplate(base)
                 .query("query", "operationName", "variables").build();
     }
 
@@ -241,7 +243,7 @@ public class GraphqlHttpHandlerTest {
     }
 
     private HttpResponse<String> get(String query, String variables) throws IOException, InterruptedException {
-        UriTemplate template = UriTemplate.fromTemplate(uriTemplate).build();
+        UriTemplate template = UriTemplate.buildFromTemplate(base).query("query", "variables").build();
         if (query != null) {
             template.set("query", query);
         }

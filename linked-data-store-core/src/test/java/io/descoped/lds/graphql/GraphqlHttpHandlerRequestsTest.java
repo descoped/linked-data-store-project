@@ -24,8 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * The requests the GraphQL endpoint answers: a query in a GraphQL body, and one in a JSON body with variables and
  * the name of an operation; OPTIONS names the methods; another method and another content type are refused. A
- * parameter given twice and a GET without a query are answered 500, as the user documentation says under "Not
- * finished".
+ * parameter given twice and a GET without a query are answered 400 with an error.
  */
 class GraphqlHttpHandlerRequestsTest {
 
@@ -117,21 +116,29 @@ class GraphqlHttpHandlerRequestsTest {
     }
 
     @Test
-    void aQueryParameterGivenTwiceIsAnErrorOfTheServer() throws Exception {
+    void aQueryParameterGivenTwiceIsAnErrorOfTheCaller() throws Exception {
         String query = URLEncoder.encode("{ greeting }", StandardCharsets.UTF_8);
 
         HttpResponse<String> response = send(HttpRequest.newBuilder(
                 URI.create(address + "/?query=" + query + "&query=" + query)));
 
-        assertThat(response.statusCode()).isEqualTo(500);
-        assertThat(response.body()).isEmpty();
+        assertThat(response.statusCode()).isEqualTo(400);
+        assertThat(response.body()).isEqualTo("{\"errors\":[{\"message\":\"more than one \\\"query\\\" parameter\"}]}");
     }
 
     @Test
-    void aGetWithoutAQueryIsAnErrorOfTheServerWithoutABody() throws Exception {
+    void aGetWithoutAQueryIsAnErrorOfTheCaller() throws Exception {
         HttpResponse<String> response = send(HttpRequest.newBuilder(URI.create(address)));
 
-        assertThat(response.statusCode()).isEqualTo(500);
-        assertThat(response.body()).isEmpty();
+        assertThat(response.statusCode()).isEqualTo(400);
+        assertThat(response.body()).isEqualTo("{\"errors\":[{\"message\":\"The request has no \\\"query\\\" parameter\"}]}");
+    }
+
+    @Test
+    void variablesThatAreNotAnObjectAreAnErrorOfTheCaller() throws Exception {
+        HttpResponse<String> response = send(post("application/json", "{\"query\": \"{ greeting }\", \"variables\": [1]}"));
+
+        assertThat(response.statusCode()).isEqualTo(400);
+        assertThat(response.body()).isEqualTo("{\"errors\":[{\"message\":\"The variables are not a JSON object\"}]}");
     }
 }

@@ -104,6 +104,13 @@ public class GraphqlHttpHandler implements HttpHandler {
         }
     }
 
+    private static JsonNode variables(JsonNode variables) {
+        if (!variables.isObject()) {
+            throw new BadRequest("The variables are not a JSON object");
+        }
+        return variables;
+    }
+
     private static JsonNode toJson(HttpServerExchange exchange) throws IOException {
         JsonNode json = readJson("body", toString(exchange));
         if (!json.isObject()) {
@@ -139,7 +146,7 @@ public class GraphqlHttpHandler implements HttpHandler {
             }
             executionInput.query(query);
             if (json.has(VARIABLES) && !json.get(VARIABLES).isNull()) {
-                executionInput.variables(JsonTools.toMap(json.get(VARIABLES)));
+                executionInput.variables(JsonTools.toMap(variables(json.get(VARIABLES))));
             }
             if (json.has(OPERATION_NAME)) {
                 executionInput.operationName(JsonTools.text(json.get(OPERATION_NAME)));
@@ -164,7 +171,7 @@ public class GraphqlHttpHandler implements HttpHandler {
 
         Optional<String> variables = extractParam(parameters, VARIABLES);
         variables.map(text -> readJson("parameter \"variables\"", text))
-                .map(JsonTools::toMap).ifPresent(executionInput::variables);
+                .map(GraphqlHttpHandler::variables).map(JsonTools::toMap).ifPresent(executionInput::variables);
     }
 
     private static void sendError(HttpServerExchange exchange, int status, String message) {
