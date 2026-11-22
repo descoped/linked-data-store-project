@@ -244,6 +244,15 @@ public class UndertowApplication {
             LOG.info("Creating specification using json-schema: {}", schemaConfigStr);
             specification = JsonSchemaBasedSpecification.create(specificationSchema);
         }
+        // Checked here, before the persistence provider is started and given time to come up: a model with no entity
+        // type is a fault of the configuration, and waiting does not change it.
+        if (specification == null || specification.getManagedDomains().isEmpty()) {
+            throw new IllegalStateException(graphQLSchemaPath
+                    .map(path -> "The model " + path + " has no entity type: a GraphQL schema needs a type with @domain")
+                    .orElseGet(() -> configuration.get("specification.schema").isEmpty()
+                            ? "No model is given: set graphql.schema or specification.schema"
+                            : "The model " + configuration.get("specification.schema") + " has no entity type"));
+        }
 
         LOG.info("Initializing primary persistence ...");
 

@@ -30,12 +30,16 @@ public class PersistenceConfigurator {
         PersistenceInitializer initializer = findInitializer(providerId);
         Map<String, String> configurationByKey = configurationOf(initializer, configuration);
 
+        // Read before the attempts: only the start of the provider is tried again, never a fault of the model.
+        String namespace = configuration.find("namespace.default").orElse(null);
+        Set<String> managedDomains = specification.getManagedDomains();
+
         int maxWaitSeconds = configuration.getInt("persistence.initialization.max-wait-seconds");
         long start = System.currentTimeMillis();
         for (int i = 1; ; i++) {
             try {
                 LOG.info("Persistence provider initialization attempt # {}", i);
-                RxJsonPersistence persistence = initializer.initialize(configuration.find("namespace.default").orElse(null), configurationByKey, specification.getManagedDomains());
+                RxJsonPersistence persistence = initializer.initialize(namespace, configurationByKey, managedDomains);
                 LOG.info("Persistence service-provider configured");
                 return persistence;
             } catch (RuntimeException e) {
