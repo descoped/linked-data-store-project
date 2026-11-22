@@ -1,5 +1,6 @@
 package io.descoped.lds.core;
 
+import io.descoped.lds.core.utils.Jitter;
 import graphql.GraphQL;
 import graphql.schema.GraphQLSchema;
 import graphql.schema.idl.SchemaParser;
@@ -435,7 +436,7 @@ public class UndertowApplication {
                 long remainingMs = TimeUnit.SECONDS.toMillis(maxWaitSeconds) - durationMs;
                 if (remainingMs > 0) {
                     try {
-                        Thread.sleep(Math.min(retryIntervalSeconds * 1000L, remainingMs));
+                        Thread.sleep(Math.min(Jitter.around(retryIntervalSeconds * 1000L), remainingMs));
                     } catch (InterruptedException _) {
                         Thread.currentThread().interrupt();
                         throw new RuntimeException("Interrupted while attempting to sleep, interrupt status preserved.", e);
@@ -527,7 +528,7 @@ public class UndertowApplication {
                 long remainingMs = TimeUnit.SECONDS.toMillis(maxWaitSeconds) - durationMs;
                 if (remainingMs > 0) {
                     try {
-                        Thread.sleep(Math.min(retryIntervalSeconds * 1000L, remainingMs));
+                        Thread.sleep(Math.min(Jitter.around(retryIntervalSeconds * 1000L), remainingMs));
                     } catch (InterruptedException _) {
                         Thread.currentThread().interrupt();
                         throw new RuntimeException("Interrupted while attempting to sleep, interrupt status preserved.", e);

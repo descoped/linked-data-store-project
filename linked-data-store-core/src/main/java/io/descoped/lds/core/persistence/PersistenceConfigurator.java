@@ -1,5 +1,6 @@
 package io.descoped.lds.core.persistence;
 
+import io.descoped.lds.core.utils.Jitter;
 import io.descoped.config.DynamicConfiguration;
 import io.descoped.lds.api.persistence.PersistenceInitializer;
 import io.descoped.lds.api.persistence.ProviderName;
@@ -47,7 +48,7 @@ public class PersistenceConfigurator {
                 long remainingMs = TimeUnit.SECONDS.toMillis(maxWaitSeconds) - durationMs;
                 if (remainingMs > 0) {
                     try {
-                        Thread.sleep(Math.min(1000, remainingMs));
+                        Thread.sleep(Math.min(Jitter.around(1000), remainingMs));
                     } catch (InterruptedException _) {
                         Thread.currentThread().interrupt();
                         throw new RuntimeException("Interrupted while attempting to sleep, interrupt status preserved.", e);
