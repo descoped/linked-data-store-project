@@ -624,6 +624,7 @@ a {
 }
 
 .prose img {
+  height: auto;
   max-width: 100%;
 }
 

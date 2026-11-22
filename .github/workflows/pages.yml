@@ -43,6 +43,13 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - id: pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d  # v6.0.0
+      # The AVIF and WebP copies the build makes of the images in public/, kept from the last run: a copy is made
+      # again only for an image that is new or has changed
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: site/public/_krantho
+          key: krantho-images-${{ hashFiles('site/public/**/*.png', 'site/public/**/*.jpg', 'site/public/**/*.jpeg', 'site/public/**/*.webp', 'site/public/**/*.PNG', 'site/public/**/*.JPG', 'site/public/**/*.JPEG', 'site/public/**/*.WEBP') }}
+          restore-keys: krantho-images-
       # Where Pages serves the site (https://lds.descoped.io, the custom domain), which every page's canonical link,
       # the sitemap and robots.txt name; on the domain's root, so the pages have no path before them
       - run: KRANTHO_SITE_BASE_URL="https://${BASE_URL#*://}" pnpm run build

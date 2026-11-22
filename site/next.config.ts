@@ -1,6 +1,8 @@
 import { resolveConfig } from '@krantho/config'
 import { basePathOf } from '@krantho/static/base-path'
+import { prepareImages } from '@krantho/static/images'
 import type { NextConfig } from 'next'
+import { PHASE_DEVELOPMENT_SERVER, PHASE_PRODUCTION_BUILD } from 'next/constants'
 import kranthoConfig from './krantho.config'
 
 // `next build` writes the site to out/ as static files. They are served under
@@ -16,4 +18,12 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ['@krantho/static', '@krantho/server'],
 }
 
-export default nextConfig
+// Before a build or the development server, each image in public/ is copied to
+// AVIF and WebP at the widths of media.image (public/_krantho/images/), and the
+// pages show the copies as a <picture>. Copies that are up to date are kept.
+export default async function config(phase: string): Promise<NextConfig> {
+  if (phase === PHASE_PRODUCTION_BUILD || phase === PHASE_DEVELOPMENT_SERVER) {
+    await prepareImages({ config: kranthoConfig })
+  }
+  return nextConfig
+}

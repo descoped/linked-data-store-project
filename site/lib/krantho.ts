@@ -5,8 +5,14 @@ import { collections } from '../krantho.collections'
 
 // Pages read the markdown in ../docs through the site's loader. A link to another file of docs/
 // (concepts.md#what-a-field-holds) becomes that page's address, under the path the site is served under, so the files
-// read the same on GitHub and on the site.
-export const site = createStaticSite({ config, collections })
+// read the same on GitHub and on the site. An image with copies in public/_krantho/images/ is shown as a <picture>,
+// and `sizes` is how wide the page shows it: the width of the text (46rem) once the window has room for the sidebar
+// beside it, else the window's width.
+export const site = createStaticSite({
+  config,
+  collections,
+  images: { sizes: '(min-width: 65rem) 46rem, 100vw' },
+})
 initServerLoader(site.loader, site.rendering)
 
 /** The collections that hold documentation pages, in the order the sidebar shows them */
