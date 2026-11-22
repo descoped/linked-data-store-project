@@ -1,5 +1,6 @@
 package io.descoped.lds.core.validation;
 
+import io.descoped.lds.api.persistence.IdOrder;
 import io.descoped.lds.api.persistence.Limits;
 import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.api.specification.SpecificationElement;
@@ -110,6 +111,10 @@ public class LinkedDocumentValidator {
         String linkedDomain = m.group(1);
         if (!te.getRefTypes().contains(linkedDomain)) {
             throw new LinkedDocumentValidationException(String.format("Illegal linked-domain: \"%s\". Navigation: %s: \"%s\"", linkedDomain, printNavigationPath(ancestors, te), link));
+        }
+        if (!IdOrder.isWellFormed(m.group(2))) {
+            throw new LinkedDocumentValidationException(String.format("A link names an id that holds half of a character (an unpaired surrogate). Navigation: %s",
+                    printNavigationPath(ancestors, te)));
         }
         if (Limits.utf8Length(m.group(2)) > Limits.ID_BYTES) {
             throw new LinkedDocumentValidationException(String.format("A link names an id of at most %d bytes in UTF-8. Navigation: %s",

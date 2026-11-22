@@ -1,6 +1,7 @@
 package io.descoped.lds.api.persistence.streaming;
 
 import io.descoped.lds.api.persistence.DocumentKey;
+import io.descoped.lds.api.persistence.IdOrder;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -246,15 +247,15 @@ public class Fragment implements Comparable<Fragment> {
             return -1;
         }
         int cmp;
-        cmp = namespace.compareTo(o.namespace);
+        cmp = IdOrder.compare(namespace, o.namespace);
         if (cmp != 0) {
             return cmp;
         }
-        cmp = entity.compareTo(o.entity);
+        cmp = IdOrder.compare(entity, o.entity);
         if (cmp != 0) {
             return cmp;
         }
-        cmp = id.compareTo(o.id);
+        cmp = IdOrder.compare(id, o.id);
         if (cmp != 0) {
             return cmp;
         }
@@ -262,7 +263,7 @@ public class Fragment implements Comparable<Fragment> {
         if (cmp != 0) {
             return cmp;
         }
-        cmp = path.compareTo(o.path);
+        cmp = IdOrder.compare(path, o.path);
         if (cmp != 0) {
             return cmp;
         }

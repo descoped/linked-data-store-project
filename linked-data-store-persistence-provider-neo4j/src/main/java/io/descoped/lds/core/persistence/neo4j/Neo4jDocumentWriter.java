@@ -1,6 +1,7 @@
 package io.descoped.lds.core.persistence.neo4j;
 
 import io.descoped.lds.api.persistence.DocumentKey;
+import io.descoped.lds.api.persistence.IdOrder;
 import io.descoped.lds.api.persistence.json.JsonDocument;
 import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.api.specification.SpecificationElement;
@@ -132,6 +133,7 @@ final class Neo4jDocumentWriter {
         cypher.append("UNWIND $batch AS record\n");
         cypher.append("CALL (record) {\n");
         cypher.append("  MERGE (r:").append(document).append(" {namespace: record.namespace, id: record.id})\n");
+        cypher.append("  SET r.idOrder = record.idOrder\n");
         cypher.append("  WITH r, record\n");
         // The version that is overwritten goes with everything below it. Its root is matched on its own: a version
         // that holds nothing, or links only, has no node below the root.
@@ -171,6 +173,7 @@ final class Neo4jDocumentWriter {
             cypher.append("  CALL (nodes, record) {\n");
             cypher.append("    UNWIND record.links[").append(i).append("] AS link\n");
             cypher.append("    MERGE (target:").append(Cypher.label(linkTargets.get(i))).append(" {namespace: record.namespace, id: link.id})\n");
+            cypher.append("    SET target.idOrder = link.idOrder\n");
             cypher.append("    WITH nodes[link.parent] AS parent, link, target\n");
             cypher.append("    CREATE (parent)-[:REF {path: link.name, index: link.index}]->(target)\n");
             cypher.append("  }\n");
@@ -198,6 +201,7 @@ final class Neo4jDocumentWriter {
         Map<String, Object> parameters = new LinkedHashMap<>();
         parameters.put("namespace", key.namespace());
         parameters.put("id", key.id());
+        parameters.put("idOrder", IdOrder.key(key.id()));
         parameters.put("version", Neo4jPersistence.inUtc(key.timestamp()));
         parameters.put("nodes", rows.nodes);
         parameters.put("links", rows.links);
@@ -319,6 +323,7 @@ final class Neo4jDocumentWriter {
             row.put("index", index);
         }
         row.put("id", link.group(2));
+        row.put("idOrder", IdOrder.key(link.group(2)));
         rows.links.get(target).add(row);
         return true;
     }

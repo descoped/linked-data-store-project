@@ -683,13 +683,13 @@ public abstract class PersistenceIntegrationTest {
     }
 
     /**
-     * The ids of a list are in the order of Java's strings, by their UTF-16 code units, in every provider: a letter
-     * above U+FFFF (two code units from U+D800) comes before a letter of U+E000 to U+FFFF, where the order of code
-     * points would put it after. A bound, an id or a text that no id is, gives what is strictly after or before it in
-     * that order, and a range from the end is given from the end.
+     * The ids of a list are in the order of their code points (IdOrder), the order of their bytes in UTF-8, in every
+     * provider: a letter above U+FFFF (😀, 𠮷) comes after a letter of U+E000 to U+FFFF (ﬀ, a full-width Ａ), where
+     * Java's order of strings, by UTF-16, would put it before. A bound, an id or a text that no id is, gives what is
+     * strictly after or before it in that order, and a range from the end is given from the end.
      */
     @Test
-    public void thatAListIsInTheOrderOfUtf16AndItsBoundsAreStrict() {
+    public void thatAListIsInTheOrderOfCodePointsAndItsBoundsAreStrict() {
         ZonedDateTime timestamp = parse("2000-01-01T00:00:00.000Z");
         try (Transaction tx = persistence.createTransaction(false)) {
             persistence.deleteAllEntities(tx, namespace, "Person", specification).blockingAwait();
@@ -697,35 +697,42 @@ public abstract class PersistenceIntegrationTest {
             assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.firstAfter(10, "a"))))
                     .isEmpty();
 
-            for (String id : List.of("😀", "z", "ab", "\uFB00", "a", "aa", "a!")) {
+            for (String id : List.of("😀", "z", "ab", "\uFB00", "a", "𠮷", "aa", "\uFF21", "a!")) {
                 persistence.createOrOverwrite(tx, createPerson(id, timestamp), specification).blockingAwait();
             }
 
             assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.unbounded())))
-                    .containsExactly("a", "a!", "aa", "ab", "z", "😀", "\uFB00");
+                    .containsExactly("a", "a!", "aa", "ab", "z", "\uFB00", "\uFF21", "😀", "𠮷");
             assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.between("a", "aa"))))
                     .containsExactly("a!");
             assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.between("ab", "ab"))))
                     .isEmpty();
             assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.between("aa", "ab"))))
                     .isEmpty();
-            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.firstAfter(10, "\uFB00"))))
+            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.firstAfter(10, "𠮷"))))
                     .isEmpty();
-            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.firstAfter(10, "z"))))
-                    .containsExactly("😀", "\uFB00");
             assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.lastBefore(10, "a"))))
                     .isEmpty();
+            // the bounds where code points and UTF-16 differ
+            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.firstAfter(10, "z"))))
+                    .containsExactly("\uFB00", "\uFF21", "😀", "𠮷");
+            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.firstAfter(2, "\uFF21"))))
+                    .containsExactly("😀", "𠮷");
+            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.lastBefore(2, "😀"))))
+                    .containsExactly("\uFF21", "\uFB00");
+            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.lastBefore(3, "\uFB00"))))
+                    .containsExactly("z", "ab", "aa");
+            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.between("\uE000", "😀"))))
+                    .containsExactly("\uFB00", "\uFF21");
+            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.firstAfter(10, "\uD7FF"))))
+                    .containsExactly("\uFB00", "\uFF21", "😀", "𠮷");
             // bounds that are not ids
             assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.between("a ", "b"))))
                     .containsExactly("a!", "aa", "ab");
-            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.firstAfter(2, "\uE000"))))
-                    .containsExactly("\uFB00");
-            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.lastBefore(2, "z"))))
-                    .containsExactly("ab", "aa");
             assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.first(2))))
                     .containsExactly("a", "a!");
             assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.last(2))))
-                    .containsExactly("\uFB00", "😀");
+                    .containsExactly("𠮷", "😀");
 
             persistence.deleteAllEntities(tx, namespace, "Person", specification).blockingAwait();
         }

@@ -12,7 +12,8 @@ import java.util.Map;
  * entity type, the id, the version, the path of a value and the positions of the arrays on that path, at most 2,704
  * bytes in all. These limits use about 2,420 of them: 64 + 128 + 1,024 + 1,024, 4 bytes for each of at most 32 array
  * positions, and about 50 for the version and the headers. Neo4j 2026 holds about 8,150 bytes in each of its keys
- * (namespace and id; namespace, path and value), the memory provider has no limit.
+ * (namespace and id; namespace and the order key of the id, at most twice the id's bytes, {@link IdOrder#key}; namespace,
+ * path and value), the memory provider has no limit.
  */
 public final class Limits {
 

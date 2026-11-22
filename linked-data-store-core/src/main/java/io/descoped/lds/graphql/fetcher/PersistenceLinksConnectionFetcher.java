@@ -16,6 +16,7 @@ import graphql.schema.GraphQLType;
 import graphql.schema.GraphQLUnionType;
 import io.descoped.lds.api.json.JsonNavigationPath;
 import io.descoped.lds.api.persistence.DocumentKey;
+import io.descoped.lds.api.persistence.IdOrder;
 import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.json.JsonDocument;
 import io.descoped.lds.api.persistence.reactivex.LinkQuery;
@@ -47,7 +48,7 @@ public class PersistenceLinksConnectionFetcher extends ConnectionFetcher<Map<Str
     private final String nameSpace;
 
     private final RxJsonPersistence persistence;
-    public static final Comparator<JsonDocument> BY_ID = Comparator.comparing(a -> a.key().id());
+    public static final Comparator<JsonDocument> BY_ID = Comparator.comparing(a -> a.key().id(), IdOrder.CODE_POINTS);
 
     public PersistenceLinksConnectionFetcher(RxJsonPersistence persistence, String nameSpace, String sourceEntityName, JsonNavigationPath path, String targetEntityName) {
         this.persistence = Objects.requireNonNull(persistence);

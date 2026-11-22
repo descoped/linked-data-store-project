@@ -147,6 +147,10 @@ public class ManagedResourceHandlerTest {
         String longLink = "{\"name\":\"link\",\"contacts\":[\"/contact/" + "c".repeat(1025) + "\"]}";
         assertEquals(client.put("/data/provisionagreement/limits3?sync=true", longLink).expect400BadRequest().body(),
                 "Schema validation error: A link names an id of at most 1024 bytes in UTF-8. Navigation: contacts");
+
+        String halfLink = "{\"name\":\"half\",\"contacts\":[\"/contact/a\\ud800\"]}";
+        assertEquals(client.put("/data/provisionagreement/limits4?sync=true", halfLink).expect400BadRequest().body(),
+                "Schema validation error: A link names an id that holds half of a character (an unpaired surrogate). Navigation: contacts");
     }
 
     @Test

@@ -2,6 +2,7 @@ package io.descoped.lds.core.persistence.neo4j;
 
 import io.descoped.lds.api.json.JsonNavigationPath;
 import io.descoped.lds.api.persistence.DocumentKey;
+import io.descoped.lds.api.persistence.IdOrder;
 import io.descoped.lds.api.persistence.PersistenceDeletePolicy;
 import io.descoped.lds.api.persistence.PersistenceException;
 import io.descoped.lds.api.persistence.Transaction;
@@ -155,12 +156,12 @@ final class Neo4jPersistence implements RxJsonPersistence {
     private static String idConditions(Range<String> range, Map<String, Object> params) {
         StringBuilder conditions = new StringBuilder();
         if (range.hasAfter()) {
-            conditions.append(" AND $idAfter < r.id");
-            params.put("idAfter", range.getAfter());
+            conditions.append(" AND $idAfter < r.idOrder");
+            params.put("idAfter", IdOrder.key(range.getAfter()));
         }
         if (range.hasBefore()) {
-            conditions.append(" AND r.id < $idBefore");
-            params.put("idBefore", range.getBefore());
+            conditions.append(" AND r.idOrder < $idBefore");
+            params.put("idBefore", IdOrder.key(range.getBefore()));
         }
         return conditions.toString();
     }
@@ -215,7 +216,7 @@ final class Neo4jPersistence implements RxJsonPersistence {
         String cypher = "MATCH (e:" + Cypher.label(entityName + "_E") + " {namespace: $namespace, path: $path, hashOrValue: $value})<-[:EMBED*]-(m)<-[v:VERSION]-(r)\n" +
                 "WHERE v.from <= $snapshot AND $snapshot < v.to" + idConditions(range, params) + "\n" +
                 // DISTINCT: an array that holds the value more than once is one document
-                "WITH DISTINCT r, v, m" + orderAndLimit(range, "r.id", params) + "\n" +
+                "WITH DISTINCT r, v, m" + orderAndLimit(range, "r.idOrder", params) + "\n" +
                 RETURN_DOCUMENT;
         return documents(tx, cypher, params, namespace, entityName);
     }
@@ -238,7 +239,7 @@ final class Neo4jPersistence implements RxJsonPersistence {
         params.put(SNAPSHOT, inUtc(snapshot));
         String cypher = MATCH_DOCUMENT + Cypher.label(entityName) + " {namespace: $namespace})-[v:VERSION]->(m)\n" +
                 "WHERE " + VALID_AT_SNAPSHOT + idConditions(range, params) + "\n" +
-                "WITH r, v, m" + orderAndLimit(range, "r.id", params) + "\n" +
+                "WITH r, v, m" + orderAndLimit(range, "r.idOrder", params) + "\n" +
                 RETURN_DOCUMENT;
         return documents(tx, cypher, params, ns, entityName);
     }
@@ -294,7 +295,7 @@ final class Neo4jPersistence implements RxJsonPersistence {
                     "WITH DISTINCT r\n" +
                     // a link may point at a document that is not written (yet): the limit counts those that are
                     "MATCH (r)-[v:VERSION]->(m) WHERE " + VALID_AT_SNAPSHOT + "\n" +
-                    "WITH r, v, m" + orderAndLimit(range, "r.id", params) + "\n" +
+                    "WITH r, v, m" + orderAndLimit(range, "r.idOrder", params) + "\n" +
                     RETURN_DOCUMENT;
             return documents(tx, cypher, params, ns, targetEntityName);
         });
@@ -322,7 +323,7 @@ final class Neo4jPersistence implements RxJsonPersistence {
                     "<-[v:VERSION]-(r:" + Cypher.label(sourceEntityName) + ")\n" +
                     "WHERE v.from <= $snapshot AND $snapshot < v.to" + idConditions(range, params) + "\n" +
                     // DISTINCT: an array that links to the document more than once is one source
-                    "WITH DISTINCT r, v, m" + orderAndLimit(range, "r.id", params) + "\n" +
+                    "WITH DISTINCT r, v, m" + orderAndLimit(range, "r.idOrder", params) + "\n" +
                     RETURN_DOCUMENT;
             return documents(tx, cypher, params, ns, sourceEntityName);
         });
@@ -357,14 +358,14 @@ final class Neo4jPersistence implements RxJsonPersistence {
     @Override
     public Completable markDocumentDeleted(Transaction transaction, String ns, String entityName, String id, ZonedDateTime version, PersistenceDeletePolicy policy) {
         String label = Cypher.label(entityName);
-        String cypher = "MERGE (r:" + label + " {namespace: $namespace, id: $rid}) WITH r\n" +
+        String cypher = "MERGE (r:" + label + " {namespace: $namespace, id: $rid}) SET r.idOrder = $ridOrder WITH r\n" +
                 // a version written at this time is replaced, as a write of a document replaces it
                 "OPTIONAL MATCH (r)-[:VERSION {from: $version}]->(old) OPTIONAL MATCH (old)-[:EMBED*]->(e) DETACH DELETE old, e WITH DISTINCT r\n" +
                 "OPTIONAL MATCH (r)-[v:VERSION]->() WHERE v.from <= $version AND $version < v.to WITH r, v AS prevVersion\n" +
                 "OPTIONAL MATCH (r)-[v:VERSION]->() WHERE v.from > $version WITH r, prevVersion, min(v.from) AS nextVersionFrom\n" +
                 "CREATE (r)-[:VERSION {from: $version, to: coalesce(prevVersion.to, nextVersionFrom, datetime('9999-01-01T00:00:00.0Z[Etc/UTC]'))}]->(:" + Cypher.label(entityName + "_E") + " {type:'map', path:'$', deleted: true})\n" +
                 "SET prevVersion.to = $version";
-        return run(transaction, cypher, Map.of(NAMESPACE, ns, "rid", id, "version", inUtc(version)));
+        return run(transaction, cypher, Map.of(NAMESPACE, ns, "rid", id, "ridOrder", IdOrder.key(id), "version", inUtc(version)));
     }
 
     @Override

@@ -126,6 +126,11 @@ which validates the Jackson tree of the document). A schema that at its root say
   configuration. Core refuses what goes past them (400 on a write, no start for names), and the shared suite
   keeps a document at every limit on every provider (`thatADocumentAtEveryLimitIsKept`). A limit is raised only
   when every provider keeps the new one.
+- **The order of ids** is the order of their Unicode code points (the order of their UTF-8 bytes), in every
+  provider and in core: `IdOrder` in the persistence API. Memory and PostgreSQL (`COLLATE "POSIX"`) compare the
+  bytes; the bridge and core compare with `IdOrder.CODE_POINTS`, never `String.compareTo` (UTF-16, which puts a
+  letter above U+FFFF before one of U+E000 to U+FFFF); Neo4j orders and bounds by the property `idOrder`
+  (`IdOrder.key`, indexed with the namespace) of every document node. An id is whole text, no unpaired surrogate.
 - **Time.** Document versions are stored and compared as UTC instants.
 - **Transactions** commit only when asked and roll back otherwise.
 - **Always the latest stable version** of every library, plugin, action, image and engine (Neo4j 2026, Solr 10).
