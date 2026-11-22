@@ -10,6 +10,7 @@ import io.undertow.util.StatusCodes;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.Serial;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
@@ -104,6 +105,9 @@ public class CORSHandler implements HttpHandler {
     }
 
     private static final class OutOfScopeException extends Exception {
+        @Serial
+        private static final long serialVersionUID = 1L;
+
         public OutOfScopeException(String message) {
             super(message);
         }

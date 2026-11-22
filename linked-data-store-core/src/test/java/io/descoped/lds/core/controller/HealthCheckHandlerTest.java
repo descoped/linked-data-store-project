@@ -51,7 +51,7 @@ class HealthCheckHandlerTest {
     private static int statusWith(Supplier<Transaction> transactions) throws Exception {
         RxJsonPersistence persistence = (RxJsonPersistence) Proxy.newProxyInstance(
                 HealthCheckHandlerTest.class.getClassLoader(), new Class<?>[]{RxJsonPersistence.class},
-                (proxy, method, args) -> switch (method.getName()) {
+                (_, method, _) -> switch (method.getName()) {
                     case "createTransaction" -> transactions.get();
                     case "toString" -> "a store";
                     default -> throw new UnsupportedOperationException(method.getName());

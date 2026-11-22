@@ -48,6 +48,7 @@ public class SagaLogPostgresTest {
     private PostgreSQLContainer postgres;
 
     @BeforeClass
+    @SuppressWarnings("resource") // the container is kept in a field and stopped after the class
     public void startPostgres() {
         postgres = new PostgreSQLContainer("postgres:18-alpine")
                 .withDatabaseName("sagalog")

@@ -29,6 +29,7 @@ class ServerStackIT {
     private static Lds lds;
 
     @BeforeAll
+    @SuppressWarnings("resource") // the stack is kept in a field and stopped after all tests
     static void start() {
         stack = new ComposeContainer(new File("compose.yaml"))
                 .withBuild(true)

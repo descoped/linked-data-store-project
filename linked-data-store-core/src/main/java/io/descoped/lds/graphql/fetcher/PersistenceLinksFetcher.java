@@ -35,6 +35,8 @@ public class PersistenceLinksFetcher implements DataFetcher<List<Map<String, Obj
     @Override
     public List<Map<String, Object>> get(DataFetchingEnvironment environment) {
         Map<String, Object> source = environment.getSource();
+        // a field of links holds a list of texts; the source of GraphQL is not typed
+        @SuppressWarnings("unchecked")
         List<String> links = (List<String>) source.get(field);
         List<Map<String, Object>> results = new ArrayList<>();
         if (links == null) {

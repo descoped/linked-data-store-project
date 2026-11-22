@@ -145,7 +145,7 @@ public class EmbeddedResourceHandler implements HttpHandler {
                         return;
                     }
 
-                    boolean sync = exchange.getQueryParameters().getOrDefault("sync", new LinkedList()).stream().anyMatch(s -> "true".equalsIgnoreCase((String) s));
+                    boolean sync = exchange.getQueryParameters().getOrDefault("sync", new LinkedList<>()).stream().anyMatch(s -> "true".equalsIgnoreCase(s));
 
                     Saga saga = sagaRepository.get(SagaRepository.SAGA_CREATE_OR_UPDATE_MANAGED_RESOURCE);
 
@@ -161,7 +161,7 @@ public class EmbeddedResourceHandler implements HttpHandler {
                     exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, APPLICATION_JSON);
                     exchange.getResponseSender().send("{\"saga-execution-id\":\"" + handoffResult.getExecutionId() + "\"}");
                 },
-                (exchange1, e) -> {
+                (_, e) -> {
                     exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, TEXT_PLAIN);
                     exchange.getResponseSender().send("Error putting embedded resource: " + e.getMessage());
                     LOG.warn("", e);
@@ -171,7 +171,7 @@ public class EmbeddedResourceHandler implements HttpHandler {
 
     private void deleteEmbedded(HttpServerExchange exchange) {
         exchange.getRequestReceiver().receiveFullString(
-                (httpServerExchange, message) -> {
+                (httpServerExchange, _) -> {
                     ResourceElement topLevelElement = resourceContext.getFirstElement();
                     String namespace = resourceContext.getNamespace();
                     String managedDomain = topLevelElement.name();
@@ -190,7 +190,7 @@ public class EmbeddedResourceHandler implements HttpHandler {
 
                     mergeJson(resourceContext, rootNode, null);
 
-                    boolean sync = exchange.getQueryParameters().getOrDefault("sync", new LinkedList()).stream().anyMatch(s -> "true".equalsIgnoreCase((String) s));
+                    boolean sync = exchange.getQueryParameters().getOrDefault("sync", new LinkedList<>()).stream().anyMatch(s -> "true".equalsIgnoreCase(s));
 
                     Saga saga = sagaRepository.get(SagaRepository.SAGA_CREATE_OR_UPDATE_MANAGED_RESOURCE);
 
@@ -206,7 +206,7 @@ public class EmbeddedResourceHandler implements HttpHandler {
                     exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, APPLICATION_JSON);
                     exchange.getResponseSender().send("{\"saga-execution-id\":\"" + handoffResult.getExecutionId() + "\"}");
                 },
-                (exchange1, e) -> {
+                (_, e) -> {
                     exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, TEXT_PLAIN);
                     exchange.getResponseSender().send("Error deleting embedded resource: " + e.getMessage());
                     LOG.warn("", e);

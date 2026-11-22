@@ -74,8 +74,8 @@ public class SagaExecutionCoordinatorTest {
         SagaLogOwner owner = new SagaLogOwner("core-sec-test");
         SagaLog sagaLog = pool.tryAcquire(owner);
         try {
-            assertTrue(sagaLog.readIncompleteSagas().anyMatch(e -> true)); // check that saga-log is not empty
-            assertFalse(deadSagaLog.readIncompleteSagas().anyMatch(e -> true)); // check that dead-saga-log is empty
+            assertTrue(sagaLog.readIncompleteSagas().anyMatch(_ -> true)); // check that saga-log is not empty
+            assertFalse(deadSagaLog.readIncompleteSagas().anyMatch(_ -> true)); // check that dead-saga-log is empty
         } finally {
             pool.releaseOwnership(owner, sagaLog.id());
         }
@@ -84,8 +84,8 @@ public class SagaExecutionCoordinatorTest {
 
         pool.tryTakeOwnership(owner, sagaLog.id());
         try {
-            assertFalse(sagaLog.readIncompleteSagas().anyMatch(e -> true)); // check that saga-log is empty
-            assertFalse(deadSagaLog.readIncompleteSagas().anyMatch(e -> true)); // check that dead-saga-log is empty
+            assertFalse(sagaLog.readIncompleteSagas().anyMatch(_ -> true)); // check that saga-log is empty
+            assertFalse(deadSagaLog.readIncompleteSagas().anyMatch(_ -> true)); // check that dead-saga-log is empty
         } finally {
             pool.releaseOwnership(owner, sagaLog.id());
         }
@@ -111,8 +111,8 @@ public class SagaExecutionCoordinatorTest {
             SagaLogOwner owner = new SagaLogOwner("core-sec-test");
             SagaLog sagaLog = pool.tryAcquire(owner);
             try {
-                assertTrue(sagaLog.readIncompleteSagas().anyMatch(e -> true)); // check that saga-log is not empty
-                assertFalse(deadSagaLog.readIncompleteSagas().anyMatch(e -> true)); // check that dead-saga-log is empty
+                assertTrue(sagaLog.readIncompleteSagas().anyMatch(_ -> true)); // check that saga-log is not empty
+                assertFalse(deadSagaLog.readIncompleteSagas().anyMatch(_ -> true)); // check that dead-saga-log is empty
             } finally {
                 pool.releaseOwnership(owner, sagaLog.id());
             }
@@ -122,8 +122,8 @@ public class SagaExecutionCoordinatorTest {
                 Assert.assertEquals(otherSagaLog.sagaLog(), sagaLog);
                 sagaLog = otherSagaLog.sagaLog();
 
-                assertFalse(sagaLog.readIncompleteSagas().anyMatch(e -> true)); // check that saga-log is empty
-                assertTrue(deadSagaLog.readIncompleteSagas().anyMatch(e -> true)); // check that dead-saga-log is not empty
+                assertFalse(sagaLog.readIncompleteSagas().anyMatch(_ -> true)); // check that saga-log is empty
+                assertTrue(deadSagaLog.readIncompleteSagas().anyMatch(_ -> true)); // check that dead-saga-log is not empty
             } finally {
                 pool.releaseOwnership(otherSagaLog.owner(), otherSagaLog.id());
             }
@@ -166,8 +166,8 @@ public class SagaExecutionCoordinatorTest {
         SagaLog sagaLog = pool.tryAcquire(owner, 10, TimeUnit.SECONDS);
         try {
             Assert.assertEquals(SlowTruncateSagaLogInitializer.ACQUIRED_WITH_ENTRIES.get(), 0, "saga logs handed out with entries in them");
-            assertFalse(sagaLog.readIncompleteSagas().anyMatch(e -> true)); // released, so truncated
-            assertFalse(pool.connect(sec.deadSagaLogId).readIncompleteSagas().anyMatch(e -> true));
+            assertFalse(sagaLog.readIncompleteSagas().anyMatch(_ -> true)); // released, so truncated
+            assertFalse(pool.connect(sec.deadSagaLogId).readIncompleteSagas().anyMatch(_ -> true));
             assertTrue(sec.executionIdBySagaLogId.isEmpty());
         } finally {
             pool.releaseOwnership(owner, sagaLog.id());
@@ -391,7 +391,7 @@ public class SagaExecutionCoordinatorTest {
     }
 
     private Consumer<SagaExecutionTraversalContext> nopAction() {
-        return c -> {
+        return _ -> {
         };
     }
 }

@@ -3,9 +3,6 @@ package io.descoped.lds.test.server;
 import io.descoped.config.DynamicConfiguration;
 import io.descoped.lds.core.UndertowApplication;
 
-import java.net.MalformedURLException;
-import java.net.URL;
-
 public class TestServer implements TestUriResolver {
 
     final DynamicConfiguration configuration;
@@ -26,12 +23,7 @@ public class TestServer implements TestUriResolver {
 
     @Override
     public String testURL(String uri) {
-        try {
-            URL url = new URL("http", application.getHost(), application.getPort(), uri);
-            return url.toExternalForm();
-        } catch (MalformedURLException e) {
-            throw new RuntimeException(e);
-        }
+        return "http://" + application.getHost() + ":" + application.getPort() + uri;
     }
 
     public DynamicConfiguration getConfiguration() {

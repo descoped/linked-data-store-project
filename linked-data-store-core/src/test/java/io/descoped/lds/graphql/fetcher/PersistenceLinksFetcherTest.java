@@ -35,9 +35,9 @@ class PersistenceLinksFetcherTest {
      */
     private RxJsonPersistence persistence() {
         Transaction transaction = (Transaction) Proxy.newProxyInstance(getClass().getClassLoader(),
-                new Class<?>[]{Transaction.class}, (proxy, method, args) -> null);
+                new Class<?>[]{Transaction.class}, (_, _, _) -> null);
         return (RxJsonPersistence) Proxy.newProxyInstance(getClass().getClassLoader(),
-                new Class<?>[]{RxJsonPersistence.class}, (proxy, method, args) -> switch (method.getName()) {
+                new Class<?>[]{RxJsonPersistence.class}, (_, method, args) -> switch (method.getName()) {
                     case "createTransaction" -> transaction;
                     case "readDocument" -> {
                         String entity = (String) args[3];

@@ -71,7 +71,7 @@ public class SagaExecutionCoordinatorWatchdogTest {
              * Configure a dummy slow node before saga fan-out in order to provoke deadlock.
              */
             final ObjectNode empty = mapper.createObjectNode();
-            sec.sagaRepository.getAdapterLoader().register(new Adapter<>(JsonNode.class, "SlowNodeAdapter", (i, d) -> {
+            sec.sagaRepository.getAdapterLoader().register(new Adapter<>(JsonNode.class, "SlowNodeAdapter", (_, _) -> {
                 try {
                     releaseSlowNodes.await(60, TimeUnit.SECONDS);
                 } catch (InterruptedException _) {
@@ -79,7 +79,7 @@ public class SagaExecutionCoordinatorWatchdogTest {
                 }
                 return empty;
             }));
-            sec.sagaRepository.getAdapterLoader().register(new Adapter<>(JsonNode.class, "search", (i, d) -> empty));
+            sec.sagaRepository.getAdapterLoader().register(new Adapter<>(JsonNode.class, "search", (_, _) -> empty));
             sec.sagaRepository.register(Saga
                     .start(SagaRepository.SAGA_CREATE_OR_UPDATE_MANAGED_RESOURCE).linkTo("slownode", "search-index-update")
                     .id("slownode").adapter("SlowNodeAdapter").linkTo("persistence")

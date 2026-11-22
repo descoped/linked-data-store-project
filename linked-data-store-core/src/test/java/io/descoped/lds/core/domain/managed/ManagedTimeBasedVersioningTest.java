@@ -1,7 +1,6 @@
 package io.descoped.lds.core.domain.managed;
 
 import io.descoped.lds.test.client.TestClient;
-import io.descoped.lds.test.server.TestServer;
 import io.descoped.lds.test.server.TestServerListener;
 import org.json.JSONException;
 import org.skyscreamer.jsonassert.JSONAssert;
@@ -15,9 +14,6 @@ public class ManagedTimeBasedVersioningTest {
 
     @Inject
     private TestClient client;
-
-    @Inject
-    private TestServer server;
 
     @Test
     public void thatCorrectVersionIsReturned() throws JSONException {

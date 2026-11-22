@@ -96,7 +96,7 @@ public class GraphQLSchemaBuilder {
      * empty. An empty one is given a field here, in a copy of the registry.
      */
     private static TypeDefinitionRegistry withFieldInEmptyQuery(TypeDefinitionRegistry registry) {
-        Optional<ObjectTypeDefinition> query = registry.getType(QUERY_NAME, ObjectTypeDefinition.class);
+        Optional<ObjectTypeDefinition> query = Optional.ofNullable(registry.getTypeOrNull(QUERY_NAME, ObjectTypeDefinition.class));
         if (query.isEmpty() || !query.get().getFieldDefinitions().isEmpty()) {
             return registry;
         }

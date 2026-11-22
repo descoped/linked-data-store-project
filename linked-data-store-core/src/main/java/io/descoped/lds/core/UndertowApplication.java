@@ -465,7 +465,7 @@ public class UndertowApplication {
         if (sagaRecoveryTrigger != null) {
             LOG.info("Starting saga-recovery (instance-local) ...");
             // attempt to recover local saga-logs immediately, then attempt cluster wide recovery regularly
-            sec.completeLocalIncompleteSagas(sec.getRecoveryThreadPool()).handle((v, t) -> {
+            sec.completeLocalIncompleteSagas(sec.getRecoveryThreadPool()).handle((_, t) -> {
                 if (t != null) {
                     LOG.error("Error during initial local saga-logs recovery attempt", t);
                 }

@@ -9,7 +9,7 @@ public class TransactionStatistics {
     final Map<String, AtomicLong> statistics = new ConcurrentHashMap<>();
 
     public TransactionStatistics add(String statistic, int increment) {
-        statistics.computeIfAbsent(statistic, s -> new AtomicLong(0)).addAndGet(increment);
+        statistics.computeIfAbsent(statistic, _ -> new AtomicLong(0)).addAndGet(increment);
         return this;
     }
 

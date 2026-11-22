@@ -52,7 +52,7 @@ class TypeTraverserTest {
         private final Predicate<String> quitAt;
 
         Recorder() {
-            this(event -> false);
+            this(_ -> false);
         }
 
         Recorder(Predicate<String> quitAt) {

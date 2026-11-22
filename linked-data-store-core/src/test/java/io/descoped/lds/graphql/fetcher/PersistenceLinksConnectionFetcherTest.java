@@ -171,6 +171,7 @@ public class PersistenceLinksConnectionFetcherTest {
         }
 
         @Override
+        @SuppressWarnings("unchecked")
         public <T> T getSource() {
             return (T) source;
         }
@@ -186,11 +187,13 @@ public class PersistenceLinksConnectionFetcherTest {
         }
 
         @Override
+        @SuppressWarnings("unchecked")
         public <T> T getArgument(String name) {
             return (T) arguments.get(name);
         }
 
         @Override
+        @SuppressWarnings("unchecked")
         public <T> T getArgumentOrDefault(String name, T defaultValue) {
             return arguments.containsKey(name) ? (T) arguments.get(name) : defaultValue;
         }
@@ -201,6 +204,7 @@ public class PersistenceLinksConnectionFetcherTest {
         }
 
         @Override
+        @SuppressWarnings("unchecked")
         public <T> T getContext() {
             return (T) new GraphQLContext() {
 

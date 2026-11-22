@@ -105,7 +105,7 @@ public class TestServerListener implements ITestListener, IInvokedMethodListener
             timeStopProfilerMap.entrySet().stream()
                     .sorted(Map.Entry.comparingByValue())
                     .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue,
-                            (oldValue, newValue) -> oldValue, LinkedHashMap::new))
+                            (oldValue, _) -> oldValue, LinkedHashMap::new))
                     .forEach((k, v) -> {
                         sb.append(String.format("\t%s: %sms%n", shortName(k), v));
                     });

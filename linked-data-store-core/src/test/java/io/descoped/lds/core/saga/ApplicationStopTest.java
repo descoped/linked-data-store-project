@@ -142,7 +142,7 @@ class ApplicationStopTest {
                 .until(sec.getThreadPool()::isShutdown);
         // read when the saga has failed, on its own thread: the saga log pool is shut down after that thread ends
         List<SagaLogEntry> entries = new CopyOnWriteArrayList<>();
-        completion.whenComplete((result, failure) -> sagaLog.readIncompleteSagas().forEach(entries::add));
+        completion.whenComplete((_, _) -> sagaLog.readIncompleteSagas().forEach(entries::add));
         held.release.countDown();
         stop.get(30, TimeUnit.SECONDS);
 
@@ -187,7 +187,10 @@ class ApplicationStopTest {
 
             out.write(BODY_BYTES, HALF, BODY_BYTES.length - HALF);
             out.flush();
-            String statusLine = new BufferedReader(new InputStreamReader(inFlight.getInputStream(), StandardCharsets.US_ASCII)).readLine();
+            // the reader is not closed here: that would close the socket, which the try closes at the end
+            @SuppressWarnings("resource")
+            BufferedReader response = new BufferedReader(new InputStreamReader(inFlight.getInputStream(), StandardCharsets.US_ASCII));
+            String statusLine = response.readLine();
             assertThat(statusLine).startsWith("HTTP/1.1 201");
             stop.get(30, TimeUnit.SECONDS);
         }
@@ -364,7 +367,7 @@ class ApplicationStopTest {
         HeldSaga(SagaExecutionCoordinator sec) {
             this.sec = sec;
             sec.sagaRepository.getAdapterLoader()
-                    .register(new Adapter<>(String.class, "held", (input, dependees) -> {
+                    .register(new Adapter<>(String.class, "held", (_, _) -> {
                         entered.countDown();
                         try {
                             release.await();
@@ -374,7 +377,7 @@ class ApplicationStopTest {
                         }
                         return "a";
                     }))
-                    .register(new Adapter<>(String.class, "counted", (input, dependees) -> {
+                    .register(new Adapter<>(String.class, "counted", (_, _) -> {
                         laterSteps.incrementAndGet();
                         return "later";
                     }));

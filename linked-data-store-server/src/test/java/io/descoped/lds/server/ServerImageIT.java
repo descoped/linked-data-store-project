@@ -60,6 +60,7 @@ class ServerImageIT {
     /*
      * Started when the health check of the image says that LDS answers.
      */
+    @SuppressWarnings("resource") // the container is returned, and the caller stops it
     private static GenericContainer<?> start(String image) {
         GenericContainer<?> started = new GenericContainer<>(image)
                 .withExposedPorts(PORT)

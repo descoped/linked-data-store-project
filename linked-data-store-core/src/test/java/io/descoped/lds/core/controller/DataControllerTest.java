@@ -75,8 +75,8 @@ public class DataControllerTest {
                 .build();
 
         RequestBody body = RequestBody.create(
-                MediaType.get("application/json"),
-                readFileOrClasspathResource("demo/4-donald.json")
+                readFileOrClasspathResource("demo/4-donald.json"),
+                MediaType.get("application/json")
         );
 
         Request listContactRequest = request.url(putContact).put(body).build();

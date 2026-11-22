@@ -19,7 +19,7 @@ class MemoryDirectory {
     }
 
     CompletableFuture<Subspace> createOrOpen(Tuple key) {
-        Subspace subspace = subspaceByTuple.computeIfAbsent(key, k -> new Subspace(allocateUnusedShortPrefix()));
+        Subspace subspace = subspaceByTuple.computeIfAbsent(key, _ -> new Subspace(allocateUnusedShortPrefix()));
         return CompletableFuture.completedFuture(subspace);
     }
 

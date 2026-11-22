@@ -183,7 +183,7 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
         return doReadDocuments(fragments, range, fragmentSize).filter(document -> {
             // Post filter since fragment based implementation can return false positive.
             AtomicBoolean match = new AtomicBoolean(false);
-            document.traverseField(navigationPath, (node, path) -> {
+            document.traverseField(navigationPath, (node, _) -> {
                 // Only a text is matched, not a value of another type.
                 if (node.isString() && node.stringValue().equals(value)) {
                     match.set(true);
@@ -203,7 +203,7 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
         return readDocument(tx, snapshot, ns, query.entity(), query.id())
                 .flattenAsFlowable(document -> {
                     List<String> links = new ArrayList<>();
-                    document.traverseField(jsonNavigationPath, (node, path) -> {
+                    document.traverseField(jsonNavigationPath, (node, _) -> {
                         if (!node.isString()) {
                             // a link is a text
                             return;
@@ -269,7 +269,7 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
             specification) {
         List<String> paths = new ArrayList<>();
         SpecificationElement entityElement = JsonNavigationPath.from("$").toSpecificationElement(specification, entity);
-        SpecificationTraversal.depthFirstPreOrderFullTraversal(entityElement, (ancestors, element) -> paths.add(JsonNavigationPath.from(element).serialize()));
+        SpecificationTraversal.depthFirstPreOrderFullTraversal(entityElement, (_, element) -> paths.add(JsonNavigationPath.from(element).serialize()));
         return persistence.deleteAllEntities(tx, namespace, entity, paths);
     }
 

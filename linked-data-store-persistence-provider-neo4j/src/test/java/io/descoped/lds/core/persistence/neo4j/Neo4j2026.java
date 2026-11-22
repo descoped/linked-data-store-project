@@ -20,6 +20,7 @@ final class Neo4j2026 {
     private Neo4j2026() {
     }
 
+    @SuppressWarnings("resource") // the container is returned, and Testcontainers stops it when the JVM ends
     private static Neo4jContainer start() {
         Neo4jContainer container = new Neo4jContainer(IMAGE)
                 .withAdminPassword("lds-development");

@@ -3,7 +3,6 @@ package io.descoped.lds.core.domain.reference;
 import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.json.JsonDocument;
-import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.core.domain.resource.ResourceContext;
@@ -95,7 +94,7 @@ public class ReferenceResourceHandler implements HttpHandler {
         String managedDocumentId = topLevelElement.id();
 
         exchange.getRequestReceiver().receiveFullString(
-                (httpServerExchange, message) -> {
+                (httpServerExchange, _) -> {
                     JsonDocument jsonDocument;
                     try (Transaction tx = persistence.createTransaction(true)) {
                         jsonDocument = persistence.readDocument(tx, resourceContext.getTimestamp(), namespace, managedDomain, managedDocumentId).blockingGet();
@@ -127,7 +126,7 @@ public class ReferenceResourceHandler implements HttpHandler {
                         exchange.getResponseSender().send("{\"saga-execution-id\":\"" + sagaHandoffResult.getExecutionId() + "\"}");
                     }
                 },
-                (exchange1, e) -> {
+                (_, e) -> {
                     exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "text/plain");
                     exchange.getResponseSender().send("Error: " + e.getMessage());
                     LOG.warn("", e);
@@ -168,7 +167,7 @@ public class ReferenceResourceHandler implements HttpHandler {
 
         new ReferenceJsonHelper(specification, resourceContext.getFirstElement()).deleteReferenceJson(resourceContext, rootNode);
 
-        boolean sync = exchange.getQueryParameters().getOrDefault("sync", new LinkedList()).stream().anyMatch(s -> "true".equalsIgnoreCase((String) s));
+        boolean sync = exchange.getQueryParameters().getOrDefault("sync", new LinkedList<>()).stream().anyMatch(s -> "true".equalsIgnoreCase(s));
 
         Saga saga = sagaRepository.get(SagaRepository.SAGA_CREATE_OR_UPDATE_MANAGED_RESOURCE);
 

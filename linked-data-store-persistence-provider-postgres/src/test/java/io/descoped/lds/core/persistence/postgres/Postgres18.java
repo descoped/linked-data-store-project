@@ -20,6 +20,7 @@ final class Postgres18 {
     private Postgres18() {
     }
 
+    @SuppressWarnings("resource") // the container is returned, and Testcontainers stops it when the JVM ends
     private static PostgreSQLContainer start() {
         PostgreSQLContainer container = new PostgreSQLContainer(IMAGE)
                 .withDatabaseName("lds")
