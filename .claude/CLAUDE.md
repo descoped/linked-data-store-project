@@ -194,7 +194,8 @@ module makes that module meet them.
   pool, the saga log pool and the stores.
 - The server's tests are the tests of the image (`*IT`, run by Failsafe after the jars are made, so by `verify`
   and not by `test`). `ServerImageIT` builds the three images with `docker build` and starts each as it is: the
-  example model in memory, the health check, the user it runs as, that it stops when asked to, no shell in the
+  example model in memory, `/ping` under the prefix and on the port it is given, no health check declared, the
+  user it runs as, that it stops when asked to, no shell in the
   distroless image and the JDK tools in the debug image. `ServerStackIT` starts
   `compose.yaml` with `docker compose`, with ports that Docker picks, and writes, reads, follows links and
   searches through LDS with Neo4j, PostgreSQL and Solr. So **the build needs the `docker` command with compose**,
@@ -238,8 +239,8 @@ system property sets only a key that one of the files has).
 
 ## The server image
 
-`linked-data-store-server/Dockerfile` makes three images of the same LDS from what Maven has packaged (`target/lib`,
-the jar of the module and the class `HealthCheck`), each a target: `regular` (the default, tag `3.0.0`), on the
+`linked-data-store-server/Dockerfile` makes three images of the same LDS from what Maven has packaged (`target/lib` and
+the jar of the module), each a target: `regular` (the default, tag `3.0.0`), on the
 distroless base with busybox (`gcr.io/distroless/base-nossl-debian13:debug`); `distroless` (`3.0.0-distroless`), on
 the distroless base with no shell; `debug` (`3.0.0-debug`), as `regular` with the modules of the JDK for diagnostics
 (remote JMX, JDWP, `jcmd`, `jstack`, `jmap`, `jhsdb`, JFR) and debug information. The Java runtimes are made by
@@ -261,10 +262,12 @@ changing them:
   no password. A key is added there when the image needs to be given it.
 - **Three images, one LDS**: they differ only in base and runtime; the rest (`app` stage, user, entry point) is
   the same in each and is kept so. Nothing is installed in an image. The distroless image has `java` as its one
-  program; its health check is a class of the server module (`HealthCheck`, only `java.base`) run by `java` in exec
-  form. The two with a shell check with busybox `wget`, so no second JVM reads the options of the JVM (a JMX or JDWP
-  port would clash). The user `lds` is added to `/etc/passwd` in the build stage.
-- **The images run as the user `lds`**, have a health check on `/ping`, and have the example model in
+  program. The user `lds` is added to `/etc/passwd` in the build stage.
+- **No image declares a health check.** LDS answers `/ping` under `http.prefix`, and whoever runs it asks there,
+  at the port and prefix it gave LDS (`compose.yaml` and the load test's compose file have a `healthcheck`,
+  Kubernetes a probe). Only LDS reads its configuration: nothing in the image reads an `LDS_` variable or starts a
+  second JVM, which would read `JAVA_TOOL_OPTIONS` and clash with a JMX or JDWP port.
+- **The images run as the user `lds`** and have the example model in
   `/lds/schemas`. They are published only by the release workflow (see Invariants).
 - **Every port of the compose file is published on 127.0.0.1**, and can be moved (`SERVER_PORT`, ...), which is how
   `ServerStackIT` runs next to a stack that is up. No variable of the compose file starts with `LDS_`, the prefix

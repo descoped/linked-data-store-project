@@ -60,13 +60,13 @@ class ServerImageIT {
     }
 
     /*
-     * Started when the health check of the image says that LDS answers.
+     * Started when LDS answers /ping, as whoever runs it asks: the image declares no health check.
      */
     @SuppressWarnings("resource") // the container is returned, and the caller stops it
     private static GenericContainer<?> start(String image) {
         GenericContainer<?> started = new GenericContainer<>(image)
                 .withExposedPorts(PORT)
-                .waitingFor(Wait.forHealthcheck().withStartupTimeout(Duration.ofMinutes(2)));
+                .waitingFor(Wait.forHttp("/ping").forStatusCode(200).withStartupTimeout(Duration.ofMinutes(2)));
         started.start();
         LoopbackPorts.check(started);
         return started;
@@ -147,8 +147,7 @@ class ServerImageIT {
     }
 
     /**
-     * The distroless image answers as the regular one does, became healthy by its health check in Java, and has no
-     * shell to run.
+     * The distroless image answers as the regular one does, and has no shell to run.
      */
     @Test
     void theDistrolessImageAnswersAndHasNoShell() throws Exception {
@@ -160,6 +159,37 @@ class ServerImageIT {
 
         assertThat(result.getExitCode()).isNotZero();
         assertThat(result.getStdout() + result.getStderr()).contains("executable file not found");
+    }
+
+    /**
+     * No image declares a health check: only LDS reads its configuration, so only whoever runs it knows the port and
+     * the prefix of {@code /ping}.
+     */
+    @Test
+    void noImageDeclaresAHealthCheck() {
+        for (GenericContainer<?> started : List.of(container, distroless, debug)) {
+            assertThat(started.getDockerClient().inspectContainerCmd(started.getContainerId()).exec().getConfig()
+                    .getHealthcheck()).as(started.getDockerImageName()).isNull();
+        }
+    }
+
+    /**
+     * {@code /ping} is under the prefix and on the port LDS is given, here by its variables.
+     */
+    @Test
+    void pingIsUnderThePrefixOnThePortLdsIsGiven() throws Exception {
+        try (GenericContainer<?> prefixed = new GenericContainer<>(IMAGE)
+                .withEnv("LDS_HTTP_PREFIX", "/lds")
+                .withEnv("LDS_HTTP_PORT", "9191")
+                .withExposedPorts(9191)
+                .waitingFor(Wait.forHttp("/lds/ping").forStatusCode(200).withStartupTimeout(Duration.ofMinutes(2)))) {
+            prefixed.start();
+            LoopbackPorts.check(prefixed);
+            Lds other = new Lds(prefixed.getMappedPort(9191));
+
+            assertThat(other.get("/lds/ping").statusCode()).isEqualTo(200);
+            assertThat(other.get("/ping").statusCode()).isEqualTo(404);
+        }
     }
 
     /**
