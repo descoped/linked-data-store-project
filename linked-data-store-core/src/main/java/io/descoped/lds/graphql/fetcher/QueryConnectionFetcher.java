@@ -15,6 +15,7 @@ import io.descoped.lds.api.persistence.reactivex.Range;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.api.search.SearchIndex;
 import io.descoped.lds.api.search.SearchResponse;
+import io.descoped.lds.api.search.SearchResult;
 import io.descoped.lds.graphql.GraphQLContext;
 import io.reactivex.rxjava3.core.Maybe;
 import org.slf4j.Logger;
@@ -29,6 +30,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.StringJoiner;
+import java.util.function.LongSupplier;
 
 /**
  * ConnectionFetcher that gets the data from {@link SearchIndex}.
@@ -36,7 +38,17 @@ import java.util.StringJoiner;
 public class QueryConnectionFetcher extends ConnectionFetcher<Map<String, Object>> {
 
     private static final Logger LOG = LoggerFactory.getLogger(QueryConnectionFetcher.class);
-    private static final int MAX_SEARCH_LIMIT = 10;
+
+    /**
+     * The size of a page when the query gives neither {@code first} nor {@code last}.
+     */
+    static final int DEFAULT_PAGE_SIZE = 10;
+
+    /**
+     * The largest page: a larger {@code first} or {@code last} is taken as this.
+     */
+    static final int MAX_PAGE_SIZE = 100;
+
     private final SearchIndex searchIndex;
     private final RxJsonPersistence persistence;
     private final String nameSpace;
@@ -85,24 +97,26 @@ public class QueryConnectionFetcher extends ConnectionFetcher<Map<String, Object
         }
 
         /**
-         * Converts from a relay style range object to an index based pagination.
+         * Converts a relay style range to the places of the results to ask the index for. A cursor is the place of
+         * its result, and {@code after} and {@code before} leave their own result out. {@code first} and
+         * {@code last} are at most {@link #MAX_PAGE_SIZE}; with neither, a page is {@link #DEFAULT_PAGE_SIZE}.
          *
-         * @param range   the relay style range object
-         * @param maxSize maximum size of the edges (may or may not be used depending on the type of range).
-         * @return this class
+         * @param range the relay style range
+         * @param total the number of results in all, asked for only by {@code last} without {@code before}
+         * @return the place of the first result and the number of results
          */
-        static IndexBasedRange fromRange(Range<String> range, long maxSize) {
-            if (range.hasFirst()) {
-                return new IndexBasedRange(range.hasAfter() ? getIndex(range.getAfter()) : 0,
-                        range.getFirst());
-            } else if (range.hasLast()) {
-                long end = range.hasBefore() ? getIndex(range.getBefore()) : maxSize;
-                return new IndexBasedRange(end - range.getLast(), range.getLast());
-            } else {
-                long from = range.hasAfter() ? getIndex(range.getAfter()) : 0;
-                long to = range.hasBefore() ? getIndex(range.getBefore()) : maxSize;
-                return new IndexBasedRange(from, to - from);
+        static IndexBasedRange fromRange(Range<String> range, LongSupplier total) {
+            long start = range.hasAfter() ? getIndex(range.getAfter()) + 1 : 0;
+            if (range.hasLast()) {
+                long end = range.hasBefore() ? getIndex(range.getBefore()) : total.getAsLong();
+                long from = Math.max(start, end - Math.min(range.getLast(), MAX_PAGE_SIZE));
+                return new IndexBasedRange(from, Math.max(0, end - from));
             }
+            long size = range.hasFirst() ? Math.min(range.getFirst(), MAX_PAGE_SIZE) : DEFAULT_PAGE_SIZE;
+            if (range.hasBefore()) {
+                size = Math.min(size, Math.max(0, getIndex(range.getBefore()) - start));
+            }
+            return new IndexBasedRange(start, size);
         }
 
         static long getIndex(String cursorValue) {
@@ -111,20 +125,22 @@ public class QueryConnectionFetcher extends ConnectionFetcher<Map<String, Object
 
     }
 
-    private Connection<Map<String, Object>> search(String query, List<String> typeFilter,
+    Connection<Map<String, Object>> search(String query, List<String> typeFilter,
                                                    ZonedDateTime snapshot, Range<String> range) {
-        IndexBasedRange settings = IndexBasedRange.fromRange(range, MAX_SEARCH_LIMIT);
         HashSet<String> filter = typeFilter != null ? new HashSet<>(typeFilter) : null;
+        IndexBasedRange settings = IndexBasedRange.fromRange(range,
+                () -> searchIndex.search(query, filter, 0, 0).blockingGet().getTotalHits());
         SearchResponse response = searchIndex.search(query, filter, settings.from, settings.size).blockingGet();
 
         LOG.debug("Search query '{}' resulted in {} hits from search settings. Fetching results from {} to {}", query,
                 response.getTotalHits(), settings.from, settings.from + settings.size);
-        List<Edge<Map<String, Object>>> edges = response.getResults().stream()
-                .map(result -> readDocument(result.getDocumentKey(), snapshot))
-                .filter(jsonDocument -> jsonDocument.isPresent())
-                .collect(ArrayList::new, (list, document) ->
-                                list.add(toEdge(document.get(), new QueryConnectionCursor(settings.from + list.size()))),
-                        ArrayList::addAll);
+        // The cursor of an edge is the place of its result in the index, also when a result before it is left out
+        List<Edge<Map<String, Object>>> edges = new ArrayList<>();
+        long place = settings.from;
+        for (SearchResult result : response.getResults()) {
+            QueryConnectionCursor cursor = new QueryConnectionCursor(place++);
+            readDocument(result.getDocumentKey(), snapshot).ifPresent(document -> edges.add(toEdge(document, cursor)));
+        }
 
         if (edges.isEmpty()) {
             LOG.debug("Search query resulted in 0 documents.");
