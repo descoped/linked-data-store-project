@@ -56,6 +56,21 @@ public class ManagedResourceHandlerTest {
     }
 
     @Test
+    public void thatABodyLDSDoesNotReadIsAnsweredWithWhatToSend() {
+        ResponseHelper<String> notJson = client.putAs("/data/provisionagreement/body1?sync=true", "application/json", "{\"name\":");
+        assertEquals(notJson.response().statusCode(), 400);
+        assertEquals(notJson.response().headers().firstValue("Content-Type").orElse(null), "text/plain");
+        assertTrue(notJson.body().startsWith("The body cannot be read at line 1, column "), notJson.body());
+        assertTrue(notJson.body().endsWith(". Send the body as JSON, with Content-Type: application/json"), notJson.body());
+
+        ResponseHelper<String> form = client.putAs("/data/provisionagreement/body1?sync=true", "application/x-www-form-urlencoded", "{\"name\":\"x\"}");
+        assertEquals(form.response().statusCode(), 415);
+        assertEquals(form.body(), "Unsupported Content-Type: application/x-www-form-urlencoded. Send the body as JSON, with Content-Type: application/json");
+
+        client.get("/data/provisionagreement/body1").expect404NotFound();
+    }
+
+    @Test
     public void thatDELETEWithoutAnIdFailsWith400AndRemovesNothing() {
         createTestResource("provisionagreement", "m-kept", "{\"name\":\"pa-test-name\",\"contacts\":[]}");
         assertEquals(client.delete("/data/provisionagreement?sync=true").expect400BadRequest().body(), "Id was empty!");

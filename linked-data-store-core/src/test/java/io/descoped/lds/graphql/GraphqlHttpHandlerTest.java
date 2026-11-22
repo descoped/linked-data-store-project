@@ -231,34 +231,65 @@ public class GraphqlHttpHandlerTest {
 
     }
 
+    private HttpResponse<String> post(String contentType, String body) throws IOException, InterruptedException {
+        HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(uriTemplate.expand()))
+                .POST(HttpRequest.BodyPublishers.ofString(body));
+        if (contentType != null) {
+            request.header("Content-Type", contentType);
+        }
+        return client.send(request.build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    private HttpResponse<String> get(String query, String variables) throws IOException, InterruptedException {
+        UriTemplate template = UriTemplate.fromTemplate(uriTemplate).build();
+        if (query != null) {
+            template.set("query", query);
+        }
+        if (variables != null) {
+            template.set("variables", variables);
+        }
+        return client.send(HttpRequest.newBuilder(URI.create(template.expand())).build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    private static void assertError(HttpResponse<String> response, int status, String message) {
+        assertEquals(response.statusCode(), status, response.body());
+        assertEquals(response.headers().firstValue("Content-Type").orElse(null), "application/json");
+        assertEquals(response.body(), "{\"errors\":[{\"message\":" + JsonTools.toJson(mapper.stringNode(message)) + "}]}");
+    }
+
     /**
      * Jackson 2 read the first document of a body and ignored what came after it.
      */
     @Test
     public void testPostBodyWithSomethingAfterTheDocumentIsRefused() throws IOException, InterruptedException {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(uriTemplate.expand()))
-                .POST(HttpRequest.BodyPublishers.ofString("{\"query\":\"{me{name}}\"} and more"))
-                .header("Content-Type", "application/json")
-                .build();
+        HttpResponse<String> response = post("application/json", "{\"query\":\"{me{name}}\"} and more");
 
-        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-
-        // answered as every body that cannot be read is: an error, and no data
-        assertEquals(response.statusCode(), 500);
-        assertEquals(response.body(), "");
+        assertError(response, 400, "The body cannot be read as JSON at line 1, column 24: Unrecognized token 'and': was "
+                + "expecting (JSON String, Number, Array, Object or token 'null', 'true' or 'false')");
     }
 
     @Test
     public void testGetVariablesWithSomethingAfterTheDocumentAreRefused() throws IOException, InterruptedException {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(uriTemplate
-                .set("query", "{me{name}}")
-                .set("variables", "{\"foo\":true} and more")
-                .expand())).build();
+        HttpResponse<String> response = get("{me{name}}", "{\"foo\":true} and more");
 
-        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        assertError(response, 400, "The parameter \"variables\" cannot be read as JSON at line 1, column 14: Unrecognized "
+                + "token 'and': was expecting (JSON String, Number, Array, Object or token 'null', 'true' or 'false')");
+    }
 
-        // answered as every body that cannot be read is: an error, and no data
-        assertEquals(response.statusCode(), 500);
-        assertEquals(response.body(), "");
+    @Test
+    public void testABodyThatIsNotAGraphQLRequestIsRefused() throws IOException, InterruptedException {
+        assertError(post("application/json", ""), 400, "The body is empty");
+        assertError(post("application/json", "[1]"), 400, "The body is not a JSON object with the field \"query\"");
+        assertError(post("application/json", "{\"variables\": {}}"), 400, "The body has no \"query\" text");
+        assertError(post("application/json", "{\"query\": 7}"), 400, "The body has no \"query\" text");
+        assertError(post("application/graphql", " "), 400, "The body is empty");
+        assertError(get(null, null), 400, "The request has no \"query\" parameter");
+    }
+
+    @Test
+    public void testAnotherContentTypeIsRefused() throws IOException, InterruptedException {
+        assertError(post("text/plain", "{me{name}}"), 415, "Unsupported Content-Type: text/plain. Send application/json or application/graphql");
+        assertError(post("application/x-www-form-urlencoded", "{me{name}}"), 415,
+                "Unsupported Content-Type: application/x-www-form-urlencoded. Send application/json or application/graphql");
     }
 }

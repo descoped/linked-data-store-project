@@ -39,6 +39,17 @@ public class EmbeddedResourceHandlerTest {
     }
 
     @Test
+    public void thatAnEmptyBodyIsRefusedAndNothingIsWritten() {
+        createTestResource("provisionagreement", "e-empty", "{\"id\":\"e-empty\",\"name\":\"pa-test-name\",\"address\":{\"street\":\"Akersveien 26\"}}");
+
+        assertEquals(client.put("/data/provisionagreement/e-empty/address?sync=true", "").expect400BadRequest().body(), "Payload was empty!");
+        assertEquals(client.put("/data/provisionagreement/e-empty/name?sync=true", "").expect400BadRequest().body(), "Payload was empty!");
+        assertEquals(client.put("/data/provisionagreement/e-empty/name?sync=true", "\"x").expect400BadRequest().body().startsWith("The body cannot be read at line 1, column "), true);
+
+        assertEquals(client.get("/data/provisionagreement/e-empty/address").expect200Ok().body(), "{\"street\":\"Akersveien 26\"}");
+    }
+
+    @Test
     public void thatGetEmbeddedResourceNavigatesDocumentToArray() {
         createTestResource("provisionagreement", "e1", "{\"id\":\"e1\",\"name\":\"pa-test-name\",\"contacts\":[\"/contact/c1\",\"/contact/c2\"]}");
         String response = client.get("/data/provisionagreement/e1/contacts").expect200Ok().body();

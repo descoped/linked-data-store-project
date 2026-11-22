@@ -7,6 +7,7 @@ import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.api.persistence.reactivex.Range;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.api.specification.Specification;
+import io.descoped.lds.core.domain.BodyException;
 import io.descoped.lds.core.domain.BodyParser;
 import io.descoped.lds.core.domain.resource.ResourceContext;
 import io.descoped.lds.core.domain.resource.ResourceElement;
@@ -173,7 +174,15 @@ public class ManagedResourceHandler implements HttpHandler {
 
                     String contentType = ofNullable(exchange.getRequestHeaders().get(Headers.CONTENT_TYPE))
                             .map(HeaderValues::getFirst).orElse(APPLICATION_JSON);
-                    JsonNode requestData = bodyParser.deserializeBody(contentType, requestBody);
+                    JsonNode requestData;
+                    try {
+                        requestData = bodyParser.deserializeBody(contentType, requestBody);
+                    } catch (BodyException e) {
+                        exchange.setStatusCode(e.status());
+                        exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, TEXT_PLAIN);
+                        exchange.getResponseSender().send(e.getMessage());
+                        return;
+                    }
 
                     if (LOG.isTraceEnabled()) {
                         LOG.trace("{} {}\n{}", exchange.getRequestMethod(), exchange.getRequestPath(), requestBody);

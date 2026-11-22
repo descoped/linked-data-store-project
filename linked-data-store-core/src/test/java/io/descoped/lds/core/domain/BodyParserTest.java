@@ -1,17 +1,22 @@
 package io.descoped.lds.core.domain;
 
 import org.junit.jupiter.api.Test;
-import tools.jackson.core.JacksonException;
+
+import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * What the body of a request is read as.
+ * What the body of a request is read as, and the status a body LDS does not read is answered with.
  */
 class BodyParserTest {
 
     private final BodyParser parser = new BodyParser();
+
+    private static void refused(Runnable read, int status) {
+        assertThatThrownBy(read::run).isInstanceOfSatisfying(BodyException.class, e -> assertThat(e.status()).isEqualTo(status));
+    }
 
     @Test
     void aJsonBodyIsReadAsTheDocument() {
@@ -21,9 +26,24 @@ class BodyParserTest {
     }
 
     @Test
-    void aBodyThatIsNotJsonIsRefused() {
-        assertThatThrownBy(() -> parser.deserializeBody("application/json", "{\"a\":")).isInstanceOf(RuntimeException.class).hasCauseInstanceOf(JacksonException.class);
-        assertThatThrownBy(() -> parser.deserializeBody("application/json", "{'a':1}")).isInstanceOf(RuntimeException.class).hasCauseInstanceOf(JacksonException.class);
+    void aBodyThatIsNotJsonIsRefusedWith400() {
+        refused(() -> parser.deserializeBody("application/json", "{\"a\":"), 400);
+        refused(() -> parser.deserializeBody("application/json", "{'a':1}"), 400);
+        assertThatThrownBy(() -> parser.deserializeBody("application/json", "{\"name\":\"A\""))
+                .hasMessage("The body cannot be read at line 1, column 12: Unexpected end-of-input: expected close marker "
+                        + "for Object. Send the body as JSON, with Content-Type: application/json");
+        assertThatThrownBy(() -> parser.deserializeBody("application/json", "{\"name\":\"A\"} x"))
+                .hasMessage("The body cannot be read at line 1, column 14: Unrecognized token 'x': was expecting (JSON "
+                        + "String, Number, Array, Object or token 'null', 'true' or 'false'). Send the body as JSON, with "
+                        + "Content-Type: application/json");
+    }
+
+    @Test
+    void anEmptyBodyIsRefusedWith400() {
+        assertThatThrownBy(() -> parser.deserializeBody("application/json", "")).isInstanceOf(BodyException.class)
+                .hasMessage("Payload was empty!");
+        refused(() -> parser.deserializeBody("application/json", " \n"), 400);
+        refused(() -> parser.deserializeBody("application/json", null), 400);
     }
 
     /**
@@ -31,24 +51,28 @@ class BodyParserTest {
      */
     @Test
     void aBodyWithSomethingAfterTheDocumentIsRefused() {
-        assertThatThrownBy(() -> parser.deserializeBody("application/json", "{\"a\":1} and more")).isInstanceOf(RuntimeException.class).hasCauseInstanceOf(JacksonException.class);
-        assertThatThrownBy(() -> parser.deserializeBody("application/json", "{\"a\":1}{\"b\":2}")).isInstanceOf(RuntimeException.class).hasCauseInstanceOf(JacksonException.class);
+        refused(() -> parser.deserializeBody("application/json", "{\"a\":1} and more"), 400);
+        refused(() -> parser.deserializeBody("application/json", "{\"a\":1}{\"b\":2}"), 400);
     }
 
     @Test
-    void anotherContentTypeIsRefused() {
-        assertThatThrownBy(() -> parser.deserializeBody("text/plain", "{}")).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("text/plain");
+    void anotherContentTypeIsRefusedWith415() {
+        refused(() -> parser.deserializeBody("text/plain", "{}"), 415);
+        refused(() -> parser.deserializeBody("application/x-www-form-urlencoded", "{}"), 415);
+        refused(() -> parser.deserializeBody("not a type", "{}"), 415);
+        assertThatThrownBy(() -> parser.deserializeBody("text/plain", "{}"))
+                .hasMessage("Unsupported Content-Type: text/plain. Send the body as JSON, with Content-Type: application/json");
     }
 
     /**
      * As LDS is today: the body of a request reaches the parser as text, and MessagePack is not text, so a
-     * MessagePack body has never been read. It is refused, as it was with the earlier library.
+     * MessagePack body has never been read. It is refused as a body that cannot be read.
      */
     @Test
     void aMessagePackBodyIsRefusedBecauseItIsHandedOverAsText() {
-        String body = new String(new byte[]{(byte) 0x81, (byte) 0xa1, 'a', 1}, java.nio.charset.StandardCharsets.ISO_8859_1);
+        String body = new String(new byte[]{(byte) 0x81, (byte) 0xa1, 'a', 1}, StandardCharsets.ISO_8859_1);
 
-        assertThatThrownBy(() -> parser.deserializeBody("application/msgpack", body)).isInstanceOf(RuntimeException.class);
-        assertThatThrownBy(() -> parser.deserializeBody("application/x-msgpack", body)).isInstanceOf(RuntimeException.class);
+        refused(() -> parser.deserializeBody("application/msgpack", body), 400);
+        refused(() -> parser.deserializeBody("application/x-msgpack", body), 400);
     }
 }

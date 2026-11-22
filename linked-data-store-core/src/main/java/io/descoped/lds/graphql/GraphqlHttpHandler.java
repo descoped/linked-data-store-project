@@ -6,6 +6,7 @@ import graphql.ExecutionResult;
 import graphql.GraphQL;
 import graphql.GraphqlErrorBuilder;
 import io.descoped.lds.api.persistence.json.JsonTools;
+import io.descoped.lds.core.domain.BodyParser;
 import io.undertow.attribute.ExchangeAttributes;
 import io.undertow.predicate.Predicate;
 import io.undertow.predicate.Predicates;
@@ -15,12 +16,13 @@ import io.undertow.util.HeaderMap;
 import io.undertow.util.Headers;
 import io.undertow.util.HttpString;
 import io.undertow.util.StatusCodes;
+import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.Deque;
 import java.util.Map;
@@ -75,19 +77,39 @@ public class GraphqlHttpHandler implements HttpHandler {
         if (parameter != null && !parameter.isEmpty()) {
             String first = parameter.removeFirst();
             if (!parameter.isEmpty()) {
-                throw new IllegalArgumentException(
-                        String.format("more than one \"%s\" parameter", name)
-                );
+                throw new BadRequest(String.format("more than one \"%s\" parameter", name));
             }
             return Optional.of(first);
         }
         return Optional.empty();
     }
 
-    private static JsonNode toJson(HttpServerExchange exchange) throws IOException {
-        try (InputStream bi = new BufferedInputStream(exchange.getInputStream())) {
-            return mapper.readTree(new InputStreamReader(bi, StandardCharsets.UTF_8));
+    /**
+     * A request that is not a GraphQL request LDS can read: answered 400 with the message.
+     */
+    private static final class BadRequest extends RuntimeException {
+        BadRequest(String message) {
+            super(message);
         }
+    }
+
+    private static JsonNode readJson(String what, String text) {
+        if (text.isBlank()) {
+            throw new BadRequest("The " + what + " is empty");
+        }
+        try {
+            return mapper.readTree(text);
+        } catch (JacksonException e) {
+            throw new BadRequest("The " + what + " cannot be read as JSON" + BodyParser.describe(e));
+        }
+    }
+
+    private static JsonNode toJson(HttpServerExchange exchange) throws IOException {
+        JsonNode json = readJson("body", toString(exchange));
+        if (!json.isObject()) {
+            throw new BadRequest("The body is not a JSON object with the field \"query\"");
+        }
+        return json;
     }
 
     private static String toString(HttpServerExchange exchange) throws IOException {
@@ -104,10 +126,18 @@ public class GraphqlHttpHandler implements HttpHandler {
     private static boolean readBody(HttpServerExchange exchange, ExecutionInput.Builder executionInput)
             throws IOException {
         if (IS_GRAPHQL.resolve(exchange)) {
-            executionInput.query(toString(exchange));
+            String query = toString(exchange);
+            if (query.isBlank()) {
+                throw new BadRequest("The body is empty");
+            }
+            executionInput.query(query);
         } else if (IS_JSON.resolve(exchange)) {
             JsonNode json = toJson(exchange);
-            executionInput.query(JsonTools.text(json.get(QUERY)));
+            String query = JsonTools.text(json.path(QUERY));
+            if (query == null) {
+                throw new BadRequest("The body has no \"query\" text");
+            }
+            executionInput.query(query);
             if (json.has(VARIABLES) && !json.get(VARIABLES).isNull()) {
                 executionInput.variables(JsonTools.toMap(json.get(VARIABLES)));
             }
@@ -125,14 +155,24 @@ public class GraphqlHttpHandler implements HttpHandler {
      */
     private static void readQueryParameters(Map<String, Deque<String>> parameters,
                                             ExecutionInput.Builder executionInput) {
-        Optional<String> query = extractParam(parameters, QUERY);
-        query.ifPresent(executionInput::query);
+        String query = extractParam(parameters, QUERY)
+                .orElseThrow(() -> new BadRequest("The request has no \"query\" parameter"));
+        executionInput.query(query);
 
         Optional<String> operationName = extractParam(parameters, OPERATION_NAME);
         operationName.ifPresent(executionInput::operationName);
 
         Optional<String> variables = extractParam(parameters, VARIABLES);
-        variables.map(JsonTools::toJsonNode).map(JsonTools::toMap).ifPresent(executionInput::variables);
+        variables.map(text -> readJson("parameter \"variables\"", text))
+                .map(JsonTools::toMap).ifPresent(executionInput::variables);
+    }
+
+    private static void sendError(HttpServerExchange exchange, int status, String message) {
+        ObjectNode answer = mapper.createObjectNode();
+        answer.putArray("errors").addObject().put("message", message);
+        exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/json");
+        exchange.setStatusCode(status);
+        exchange.getResponseSender().send(JsonTools.toJson(answer));
     }
 
     @Override
@@ -154,15 +194,22 @@ public class GraphqlHttpHandler implements HttpHandler {
 
         exchange.startBlocking();
         ExecutionInput.Builder executionInput = ExecutionInput.newExecutionInput();
-        if (method.equals(POST)) {
-            if (!readBody(exchange, executionInput)) {
-                exchange.setStatusCode(StatusCodes.UNSUPPORTED_MEDIA_TYPE);
+        try {
+            if (method.equals(POST)) {
+                if (!readBody(exchange, executionInput)) {
+                    sendError(exchange, StatusCodes.UNSUPPORTED_MEDIA_TYPE, "Unsupported Content-Type: "
+                            + exchange.getRequestHeaders().getFirst(Headers.CONTENT_TYPE)
+                            + ". Send application/json or application/graphql");
+                    return;
+                }
+            } else if (method.equals(GET)) {
+                readQueryParameters(exchange.getQueryParameters(), executionInput);
+            } else {
+                exchange.setStatusCode(StatusCodes.METHOD_NOT_ALLOWED);
                 return;
             }
-        } else if (method.equals(GET)) {
-            readQueryParameters(exchange.getQueryParameters(), executionInput);
-        } else {
-            exchange.setStatusCode(StatusCodes.METHOD_NOT_ALLOWED);
+        } catch (BadRequest e) {
+            sendError(exchange, StatusCodes.BAD_REQUEST, e.getMessage());
             return;
         }
 

@@ -82,6 +82,22 @@ public final class TestClient {
         return put(uri, HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8), HttpResponse.BodyHandlers.ofString());
     }
 
+    /**
+     * A PUT with the body and the content type given.
+     */
+    public ResponseHelper<String> putAs(String uri, String contentType, String body) {
+        try {
+            HttpRequest request = HttpRequest.newBuilder(URI.create(server.testURL(uri)))
+                    .PUT(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
+                    .header("Content-Type", contentType)
+                    .build();
+            return new ResponseHelper<>(client.send(request, HttpResponse.BodyHandlers.ofString()));
+        } catch (Exception e) {
+            LOG.error("Error: {}", captureStackTrace(e));
+            throw new RuntimeException(e);
+        }
+    }
+
     public <R> ResponseHelper<R> put(String uri, HttpRequest.BodyPublisher bodyPublisher, HttpResponse.BodyHandler<R> bodyHandler) {
         try {
             HttpRequest request = HttpRequest.newBuilder(URI.create(server.testURL(uri)))
