@@ -603,6 +603,40 @@ public abstract class PersistenceIntegrationTest {
         }
     }
 
+    /**
+     * A list of documents holds every id, also one that starts with a character before or after the letters of ASCII,
+     * or outside ASCII, in the order of their code points, and after and before bound it at any id, without leaving
+     * out the ids next to the bound.
+     */
+    @Test
+    public void thatAListHoldsEveryId() {
+        ZonedDateTime timestamp = parse("2000-01-01T00:00:00.000Z");
+        try (Transaction tx = persistence.createTransaction(false)) {
+            persistence.deleteAllEntities(tx, namespace, "Person", specification).blockingAwait();
+            for (String id : List.of("~x", "øl", "日本", "!a", "m", "a", "a~x", "aø", "b")) {
+                persistence.createOrOverwrite(tx, createPerson(id, timestamp), specification).blockingAwait();
+            }
+
+            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.unbounded())))
+                    .containsExactly("!a", "a", "a~x", "aø", "b", "m", "~x", "øl", "日本");
+            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.firstAfter(10, "m"))))
+                    .containsExactly("~x", "øl", "日本");
+            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.between("m", "øl"))))
+                    .containsExactly("~x");
+            // the ids next to a bound are in the page
+            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.between("!a", "b"))))
+                    .containsExactly("a", "a~x", "aø");
+            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.firstAfter(10, "a"))))
+                    .startsWith("a~x", "aø", "b");
+
+            persistence.deleteAllEntities(tx, namespace, "Person", specification).blockingAwait();
+        }
+    }
+
+    private static List<String> ids(Flowable<JsonDocument> documents) {
+        return documents.map(document -> document.key().id()).toList().blockingGet();
+    }
+
     @Test
     public void thatCreateWithSameVersionDoesOverwriteInsteadOfCreatingDuplicateVersions() {
         try (Transaction transaction = persistence.createTransaction(false)) {

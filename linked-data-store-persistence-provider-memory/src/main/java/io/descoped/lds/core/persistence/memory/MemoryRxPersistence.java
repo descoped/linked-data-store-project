@@ -223,8 +223,14 @@ public class MemoryRxPersistence implements RxPersistence {
         return Single.defer(() -> getPrimary(namespace, entity))
                 .flatMapPublisher(primary -> Flowable.fromPublisher(
                                 new AsyncIterablePublisher<>(transaction.getRange(
-                                        KeySelector.firstGreaterOrEqual(primary.pack(Tuple.of(lexicoNext(ofNullable(range.getAfter()).orElse(" "))))),
-                                        KeySelector.firstGreaterOrEqual(primary.pack(Tuple.of(lexicoPrev(ofNullable(range.getBefore()).orElse("~"))))),
+                                        // from the key after every key of the id after, or the start of the entity
+                                        KeySelector.firstGreaterOrEqual(range.hasAfter()
+                                                ? primary.range(Tuple.of(range.getAfter())).end()
+                                                : primary.range().begin()),
+                                        // to the first key of the id before, or the end of the entity
+                                        KeySelector.firstGreaterOrEqual(range.hasBefore()
+                                                ? primary.pack(Tuple.of(range.getBefore()))
+                                                : primary.range().end()),
                                         PRIMARY_INDEX,
                                         ROW_LIMIT_UNLIMITED
                                 )))
@@ -347,7 +353,7 @@ public class MemoryRxPersistence implements RxPersistence {
 
         AsyncIterable<KeyValue> version = transaction.getRange(
                 KeySelector.firstGreaterOrEqual(primary.pack(Tuple.of(id, snapshot))),
-                KeySelector.firstGreaterOrEqual(primary.pack(Tuple.of(lexicoNext(id)))),
+                KeySelector.firstGreaterOrEqual(primary.range(Tuple.of(id)).end()),
                 PRIMARY_INDEX,
                 1
         );
@@ -513,12 +519,5 @@ public class MemoryRxPersistence implements RxPersistence {
         return Tuple.fromItems(tuple.items().subList(0, tuple.size() - 1));
     }
 
-    static String lexicoNext(String lexico) {
-        return lexico + " ";
-    }
-
-    static String lexicoPrev(String lexico) {
-        return lexico.substring(0, lexico.length() - 1) + (char) (lexico.charAt(lexico.length() - 1) - 1) + "~";
-    }
 
 }
