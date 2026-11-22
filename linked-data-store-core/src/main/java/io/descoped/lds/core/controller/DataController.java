@@ -17,7 +17,9 @@ import io.undertow.util.Headers;
 import io.undertow.util.StatusCodes;
 
 import java.time.ZonedDateTime;
+import java.util.Arrays;
 import java.util.Deque;
+import java.util.stream.Collectors;
 
 import static java.util.Optional.ofNullable;
 
@@ -55,7 +57,7 @@ class DataController implements HttpHandler {
                 exchange.getResponseSender().send("The 'timestamp' query-parameter must follow the ISO-8601 standard. Example of a valid formatted timestamp is '" + RequestTime.EXAMPLE + "'");
                 return;
             }
-            resourceContext = ResourceContext.createResourceContext(specification, exchange.getRelativePath(), timestamp);
+            resourceContext = ResourceContext.createResourceContext(specification, rawRelativePath(exchange), timestamp);
         } catch (ResourceException e) {
             exchange.setStatusCode(StatusCodes.BAD_REQUEST);
             exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, TEXT_PLAIN);
@@ -98,5 +100,31 @@ class DataController implements HttpHandler {
             return ZonedDateTime.now(RequestTime.UTC);
         }
         return RequestTime.parse(timestampParams.getLast());
+    }
+
+    /*
+     * The relative path as it was sent, not decoded, so that ResourceContext decodes it once. As Undertow 2.4 parses
+     * a request (RequestParser, URLUtils.decode), with the options LDS leaves at their defaults: the request URI is
+     * the path as sent; the relative path is it decoded, with an encoded '/' or '\' (%2F, %5C) left as it is and the
+     * path parameters (from ';' to the next '/') left out; and a byte outside ASCII or an escape that is not one is
+     * refused with 400 before a handler runs. So each segment of the relative path is one segment of the URI, and
+     * the relative path is the last segments of the URI, each without its path parameters.
+     */
+    static String rawRelativePath(HttpServerExchange exchange) {
+        String relative = exchange.getRelativePath();
+        String uri = exchange.getRequestURI();
+        int scheme = uri.indexOf("://");
+        if (scheme >= 0) {
+            int slash = uri.indexOf('/', scheme + 3);
+            uri = slash < 0 ? "/" : uri.substring(slash);
+        }
+        String[] uriSegments = uri.split("/", -1);
+        int count = relative.split("/", -1).length;
+        if (count > uriSegments.length) {
+            return relative;
+        }
+        return Arrays.stream(uriSegments, uriSegments.length - count, uriSegments.length)
+                .map(segment -> segment.indexOf(';') < 0 ? segment : segment.substring(0, segment.indexOf(';')))
+                .collect(Collectors.joining("/"));
     }
 }

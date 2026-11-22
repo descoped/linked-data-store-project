@@ -189,7 +189,7 @@ module makes that module meet them.
   searches through LDS with Neo4j, PostgreSQL and Solr. So **the build needs the `docker` command with compose**,
   not only the Docker engine.
 - Core's tests start the application in the JVM on a random port with the memory provider (`TestServerListener`).
-  13 of them are disabled in the source (`enabled = false`, `@Ignore`), several because they hang; they are
+  12 of them are disabled in the source (`enabled = false`, `@Ignore`), several because they hang; they are
   re-enabled or deleted with a reason when core is revised.
 - A change that switches tests on is run about ten times before it is pushed
   (`for n in $(seq 1 10); do ./mvnw -B -q verify || break; done`).

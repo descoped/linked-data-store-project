@@ -8,7 +8,10 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
-import java.net.URLDecoder;
+import java.io.ByteArrayOutputStream;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.time.ZonedDateTime;
 import java.util.function.Function;
@@ -21,6 +24,18 @@ import static java.util.Optional.ofNullable;
  */
 public class ResourceContext {
 
+    /**
+     * The longest id of a document, in characters.
+     */
+    public static final int MAX_ID_LENGTH = 512;
+
+    /**
+     * The resource a path names.
+     *
+     * @param requestPath the path as it was sent, not decoded: each segment is decoded once here, and a {@code +} is a
+     *                    plus
+     * @throws ResourceException when the path names no resource, or an id is not one LDS takes
+     */
     public static ResourceContext createResourceContext(Specification specification, String requestPath, ZonedDateTime timestamp) throws ResourceException {
         SpecificationElement specificationRootElement = specification.getRootElement();
         String[] pathParts = requestPath.substring(1).split("/");
@@ -38,6 +53,7 @@ public class ResourceContext {
             if (managedResourceId.trim().isEmpty()) {
                 throw new ResourceException("Managed resource id cannot be empty.");
             }
+            checkId(managedResourceId);
         }
         SpecificationElement managedSpecificationElement = specificationRootElement.getProperties().get(managedResourceName);
         ResourceElement secondElement = navigateSpecAndCreateResourceContext(managedSpecificationElement, 3, pathParts);
@@ -74,6 +90,7 @@ public class ResourceContext {
                 throw new ResourceException("Reference resource does not support link to managed-domain \"" + linkedManagedDomain + "\". Must be one of: " + matchedElement.getRefTypes());
             }
             String linkedResourceId = urlDecode(resourcePath[depth + 2]);
+            checkId(linkedResourceId);
             String referenceValue = "/" + linkedManagedDomain + "/" + linkedResourceId;
             return new ResourceElement(matchedElement, pathElement, referenceValue, null);
         }
@@ -106,8 +123,56 @@ public class ResourceContext {
         this.timestamp = timestamp;
     }
 
-    private static String urlDecode(String encoded) {
-        return URLDecoder.decode(encoded, StandardCharsets.UTF_8);
+    /**
+     * An id is at most {@link #MAX_ID_LENGTH} characters, and has no {@code /} and no control character.
+     */
+    private static void checkId(String id) {
+        if (id.codePointCount(0, id.length()) > MAX_ID_LENGTH) {
+            throw new ResourceException("An id is at most " + MAX_ID_LENGTH + " characters");
+        }
+        if (id.indexOf('/') >= 0) {
+            throw new ResourceException("An id cannot hold a '/': \"" + id + "\"");
+        }
+        if (id.codePoints().anyMatch(Character::isISOControl)) {
+            throw new ResourceException("An id cannot hold a control character");
+        }
+    }
+
+    /**
+     * A segment of the path, decoded once: each {@code %XX} is a byte of UTF-8, and every other character stands
+     * for itself, a {@code +} too.
+     */
+    static String urlDecode(String segment) {
+        if (segment.indexOf('%') < 0 && segment.chars().allMatch(c -> c < 0x80)) {
+            return segment;
+        }
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        for (int i = 0; i < segment.length(); i++) {
+            char c = segment.charAt(i);
+            if (c == '%') {
+                int high = i + 2 < segment.length() ? Character.digit(segment.charAt(i + 1), 16) : -1;
+                int low = high < 0 ? -1 : Character.digit(segment.charAt(i + 2), 16);
+                if (low < 0) {
+                    throw new ResourceException("Not a valid escape in the path: \"" + segment + "\". Write a '%' as %25");
+                }
+                bytes.write(high * 16 + low);
+                i += 2;
+            } else if (c < 0x80) {
+                bytes.write(c);
+            } else {
+                // not sent by HTTP, where the path is ASCII; a character given here in a test stands for itself
+                bytes.writeBytes(String.valueOf(c).getBytes(StandardCharsets.UTF_8));
+            }
+        }
+        try {
+            return StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(bytes.toByteArray()))
+                    .toString();
+        } catch (CharacterCodingException _) {
+            throw new ResourceException("Not UTF-8 in the path: \"" + segment + "\"");
+        }
     }
 
     public String getNamespace() {

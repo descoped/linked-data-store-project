@@ -16,6 +16,10 @@ import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 
 import javax.inject.Inject;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
@@ -68,6 +72,47 @@ public class ManagedResourceHandlerTest {
         assertEquals(form.body(), "Unsupported Content-Type: application/x-www-form-urlencoded. Send the body as JSON, with Content-Type: application/json");
 
         client.get("/data/provisionagreement/body1").expect404NotFound();
+    }
+
+    /**
+     * The status line and the body of a GET sent as these bytes, past the URI handling of an HTTP client.
+     */
+    private String[] rawGet(byte[] path) throws IOException {
+        try (Socket socket = new Socket("localhost", server.getTestServerServicePort())) {
+            OutputStream out = socket.getOutputStream();
+            out.write("GET ".getBytes(StandardCharsets.US_ASCII));
+            out.write(path);
+            out.write(" HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n".getBytes(StandardCharsets.US_ASCII));
+            out.flush();
+            String answer = new String(socket.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            return new String[]{answer.substring(0, answer.indexOf("\r\n")), answer.substring(answer.indexOf("\r\n\r\n") + 4)};
+        }
+    }
+
+    @Test
+    public void thatAnIdIsDecodedOnce() throws IOException {
+        String body = "{\"contacts\":[],\"name\":\"plus\"}";
+        client.put("/data/provisionagreement/a+b?sync=true", body).expect201Created();
+        assertEquals(client.get("/data/provisionagreement/a%2Bb").expect200Ok().body(), body);
+        client.get("/data/provisionagreement/a%20b").expect404NotFound();
+
+        client.put("/data/provisionagreement/100%25?sync=true", body).expect201Created();
+        assertEquals(client.get("/data/provisionagreement/100%25").expect200Ok().body(), body);
+
+        client.put("/data/provisionagreement/%C3%B8l?sync=true", body).expect201Created();
+        assertEquals(client.get("/data/provisionagreement/%C3%B8l").expect200Ok().body(), body);
+        // path parameters are not part of the id, as Undertow leaves them out of the path
+        assertEquals(rawGet("/data/provisionagreement/%C3%B8l;v=1".getBytes(StandardCharsets.US_ASCII))[0], "HTTP/1.1 200 OK");
+    }
+
+    @Test
+    public void thatAnIdLDSDoesNotTakeIsRefusedWith400() throws IOException {
+        assertEquals(client.get("/data/provisionagreement/a%2Fb").expect400BadRequest().body(), "An id cannot hold a '/': \"a/b\"");
+        assertEquals(client.get("/data/provisionagreement/a%0Ab").expect400BadRequest().body(), "An id cannot hold a control character");
+        assertEquals(client.get("/data/provisionagreement/" + "a".repeat(513)).expect400BadRequest().body(), "An id is at most 512 characters");
+        // Undertow refuses an escape that is not one, and a byte outside ASCII, before LDS sees the request
+        assertEquals(rawGet("/data/provisionagreement/100%".getBytes(StandardCharsets.US_ASCII))[0], "HTTP/1.1 400 Bad Request");
+        assertEquals(rawGet("/data/provisionagreement/øl".getBytes(StandardCharsets.UTF_8))[0], "HTTP/1.1 400 Bad Request");
     }
 
     @Test
