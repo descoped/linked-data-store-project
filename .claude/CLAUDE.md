@@ -6,8 +6,9 @@ Guidance for Claude Code in this repository.
 
 Linked Data Store (LDS), a product of Descoped: a server that gives REST and GraphQL access to versioned, linked
 JSON documents described by a model read at start (a GraphQL schema or JSON Schema 2020-12 files). Writes go
-through a saga (transaction log first, then persistence and the search index side by side). Persistence and
-search are pluggable. One Maven reactor, group `io.descoped.lds`.
+through a saga: the transaction log, then persistence, then, when there is search, the index queue, from which a
+worker sends each update to the search index (below). Persistence and search are pluggable. One Maven reactor,
+group `io.descoped.lds`.
 
 | Module | JPMS module | Role |
 |---|---|---|
@@ -19,7 +20,8 @@ search are pluggable. One Maven reactor, group `io.descoped.lds`.
 | `linked-data-store-persistence-provider-postgres` | `io.descoped.lds.persistence.postgres` | provider `postgres`, revised for 3.0: one table, `fragment`, created at start, holding every namespace; every read is one statement whose rows are fetched as they are asked for |
 | `linked-data-store-persistence-provider-neo4j` | `io.descoped.lds.persistence.neo4j` | provider `neo4j`, revised for 3.0 on Neo4j 2026 (community edition is enough): a document is a node with its entity as label and `namespace` and `id` as properties, unique together, so one database holds every namespace; a version is a `VERSION` relationship (`from`, `to`) to the root of a tree of `<entity>_E` nodes, one node for every object, array and value the document holds (`Neo4jDocumentWriter`); a link is a `REF` relationship to the document node it points at. The constraints and indexes are created at start |
 | `linked-data-store-search-provider-api` | `io.descoped.lds.search.api` | the search SPI (`SearchIndexProvider`, `SearchIndex`) |
-| `linked-data-store-search-provider-solr` | `io.descoped.lds.search.provider.solr` | provider `solr`, on the client of Solr 10 that uses the HTTP client of the JDK. It indexes into one core, named in `search.index.url` |
+| `linked-data-store-search-provider-solr` | `io.descoped.lds.search.provider.solr` | provider `solr`, on the client of Solr 10 that uses the HTTP client of the JDK. It indexes into one core, named in `search.index.url`; an update completes when Solr has answered it, and fails when Solr refuses it or cannot be reached |
+| `linked-data-store-index-queue-postgres` | `io.descoped.lds.index.queue.postgres` | the index queue `postgres`: the updates the search index has not taken, in the table `lds_index_queue` of the database of the transaction log (`txlog.config.postgres.*`), created at start. Several LDS share it (`FOR UPDATE SKIP LOCKED`) |
 | `linked-data-store-core` | `io.descoped.lds.core` | the application: `UndertowApplication`, REST (`NamespaceController`), GraphQL, sagas, transaction log |
 | `linked-data-store-server` | `io.descoped.lds.server` | `Server` (the main class), the defaults of the configuration, the example model (`schemas/`), the Dockerfile and the compose file (`compose.yaml`) |
 
@@ -60,6 +62,19 @@ fields are links. A link is the text `/Entity/id` in such a field, naming an ent
 other value there is the value it is and is not followed. The shared suite holds every provider to this. One
 thing differs, and LDS does not ask for it: memory and PostgreSQL also follow such a text in a field that the
 model does not call a link, when asked for that path; Neo4j does not.
+
+## The index queue
+
+Decided by the owner (D1, D2): a write does not wait for the search index, and no update of the index is lost.
+The last step of the saga adds the update (namespace, entity, id, version with its zone, written or deleted) to
+the index queue (`IndexQueue`, in the search API) and is done. `IndexQueueWorker` in core takes updates in
+batches of at most 100, reads each written document from persistence at its version, sends the batch and waits
+for the index's answer, then removes them; what the index does not take is put off (one second, doubled each
+attempt, a minute at most), and a batch that fails is tried one update at a time. The queue is kept where the
+transaction log is: `postgres` (its own module, found by the service loader under the name of the transaction log
+provider), or in memory when the transaction log is `discard` or `memory`, which LDS says at start. Keep these:
+the saga step only adds; the worker reads storage, so the index gets what storage holds at the version; a read
+transaction is opened and closed on the worker's thread (the memory store holds a lock of the thread).
 
 ## The GraphQL schema
 
@@ -179,10 +194,14 @@ module makes that module meet them.
 - The Solr provider's tests run on a real Solr 10 (`solr:10.1`) through Testcontainers, started as the compose
   file of the server starts it: the image as it is, with the core `lds-index` created from the configuration the
   image comes with. A write is in the index within the five seconds the provider gives Solr to commit it.
+- The index queue's tests (`PostgresIndexQueueTest`) run on a real PostgreSQL 18 through Testcontainers. Core's
+  `IndexQueueWorkerTest` runs the worker on the memory store with an index that can refuse, and
+  `MemoryIndexQueueTest` the queue in memory.
 - Every container of the tests is published on 127.0.0.1 only, the one Testcontainers starts itself (Ryuk)
   included: `LoopbackPorts`, which Testcontainers finds through `META-INF/services`, in each module that starts
-  a container (PostgreSQL, Neo4j, Solr, core, server). A module that starts containers needs its own. Without it Docker
-  Desktop on macOS can give a container a port that another program listens on at 127.0.0.1, and the build fails
+  a container (PostgreSQL, Neo4j, Solr, the index queue, core, server). A module that starts containers needs its
+  own. Without it Docker Desktop on macOS can give a container a port that another program listens on at
+  127.0.0.1, and the build fails
   with "Could not connect to Ryuk" or with an engine that never answers. The helper that starts a container
   checks it (`LoopbackPorts.check`).
 - The shared suite runs for every provider: memory, PostgreSQL and Neo4j. The memory provider also runs the

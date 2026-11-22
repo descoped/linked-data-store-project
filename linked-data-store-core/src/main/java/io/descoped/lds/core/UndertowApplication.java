@@ -7,6 +7,7 @@ import graphql.schema.idl.TypeDefinitionRegistry;
 import io.descoped.config.DynamicConfiguration;
 import io.descoped.lds.api.persistence.Limits;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
+import io.descoped.lds.api.search.IndexQueue;
 import io.descoped.lds.api.search.SearchIndex;
 import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.core.controller.CORSHandler;
@@ -19,6 +20,8 @@ import io.descoped.lds.core.saga.SagaRepository;
 import io.descoped.lds.core.saga.SagasObserver;
 import io.descoped.lds.core.schema.JsonSchema;
 import io.descoped.lds.core.schema.JsonSchemaBuilder;
+import io.descoped.lds.core.search.IndexQueueConfigurator;
+import io.descoped.lds.core.search.IndexQueueWorker;
 import io.descoped.lds.core.search.SearchIndexConfigurator;
 import io.descoped.lds.core.specification.JsonSchemaBasedSpecification;
 import io.descoped.lds.core.specification.SpecificationJsonSchemaBuilder;
@@ -44,6 +47,7 @@ import tools.jackson.databind.node.ObjectNode;
 
 import java.io.File;
 import java.net.URL;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -87,6 +91,7 @@ public class UndertowApplication {
     private final SelectableThreadPoolExecutor sagaThreadPool;
     private final SagaRecoveryTrigger sagaRecoveryTrigger;
     private final TxlogRawdataPool txlogRawdataPool;
+    private final Indexing indexing;
 
     /**
      * The parts of the write path the application runs and stops.
@@ -104,8 +109,21 @@ public class UndertowApplication {
                      TxlogRawdataPool txlogRawdataPool) {
     }
 
+    /**
+     * Search: the index, the queue of the updates it has not taken, and the worker that sends them.
+     *
+     * @param index  the search index
+     * @param queue  the index queue
+     * @param worker the worker
+     */
+    record Indexing(SearchIndex index, IndexQueue queue, IndexQueueWorker worker) {
+    }
+
+    /* How long the worker of the index queue waits for updates when there were none. */
+    static final Duration INDEX_QUEUE_POLL = Duration.ofMillis(200);
+
     UndertowApplication(Specification specification, RxJsonPersistence persistence, SagaParts sagas, int port,
-                        NamespaceController namespaceController, SearchIndex searchIndex,
+                        NamespaceController namespaceController, Indexing indexing,
                         DynamicConfiguration configuration) {
         this.specification = specification;
         this.sagaRecoveryTrigger = sagas.recoveryTrigger();
@@ -118,6 +136,8 @@ public class UndertowApplication {
         this.sagaLogPool = sagas.logPool();
         this.sagaThreadPool = sagas.threadPool();
         this.txlogRawdataPool = sagas.txlogRawdataPool();
+        this.indexing = indexing;
+        SearchIndex searchIndex = indexing == null ? null : indexing.index();
 
         LOG.info("Initializing Http handlers ...");
 
@@ -272,8 +292,13 @@ public class UndertowApplication {
         LOG.info("Initializing search-index ...");
 
         SearchIndex searchIndex = SearchIndexConfigurator.configureSearchIndex(configuration);
+        Indexing indexing = null;
         if (searchIndex != null) {
-            sagaRepositoryBuilder.indexer(searchIndex);
+            LOG.info("Initializing index queue ...");
+            IndexQueue indexQueue = IndexQueueConfigurator.configureIndexQueue(configuration);
+            sagaRepositoryBuilder.indexQueue(indexQueue);
+            indexing = new Indexing(searchIndex, indexQueue,
+                    new IndexQueueWorker(indexQueue, searchIndex, persistence, INDEX_QUEUE_POLL));
         }
 
         LOG.info("Initializing transaction-log ...");
@@ -356,7 +381,7 @@ public class UndertowApplication {
 
         SagaParts sagas = new SagaParts(sec, sagaRepository, sagasObserver, sagaRecoveryTrigger, sagaLogPool,
                 sagaThreadPool, txlogRawdataPool);
-        return new UndertowApplication(specification, persistence, sagas, port, namespaceController, searchIndex,
+        return new UndertowApplication(specification, persistence, sagas, port, namespaceController, indexing,
                 configuration);
     }
 
@@ -501,6 +526,10 @@ public class UndertowApplication {
     public void start() {
         LOG.info("Starting Undertow ...");
         server.start();
+        if (indexing != null) {
+            LOG.info("Starting the index queue ...");
+            indexing.worker().start();
+        }
         if (sagaRecoveryTrigger != null) {
             LOG.info("Starting saga-recovery (instance-local) ...");
             // attempt to recover local saga-logs immediately, then attempt cluster wide recovery regularly
@@ -572,6 +601,12 @@ public class UndertowApplication {
         stop("SagaObserver", sagasObserver::shutdown);
 
         stop("SagaLogPool", sagaLogPool::shutdown);
+
+        if (indexing != null) {
+            // after the sagas, which add to the queue, and before the store, which the worker reads
+            stop("Index queue worker", () -> indexing.worker().stop(timeout, unit));
+            stop("Index queue", indexing.queue()::close);
+        }
 
         stop("Persistence provider", persistence::close);
         stop("Transaction log (rawdata client)", () -> txlogRawdataPool.getClient().close());

@@ -26,6 +26,7 @@
         <module>linked-data-store-persistence-provider-postgres</module>
         <module>linked-data-store-search-provider-api</module>
         <module>linked-data-store-search-provider-solr</module>
+        <module>linked-data-store-index-queue-postgres</module>
         <module>linked-data-store-core</module>
         <module>linked-data-store-server</module>
         <module>linked-data-store-loadtest</module>

@@ -29,6 +29,7 @@ module io.descoped.lds.core {
     provides io.descoped.lds.api.search.SearchIndexProvider with io.descoped.lds.core.search.TestSearchIndex;
 
     uses io.descoped.lds.api.persistence.PersistenceInitializer;
+    uses io.descoped.lds.api.search.IndexQueueProvider;
     uses io.descoped.lds.api.search.SearchIndexProvider;
     uses no.cantara.sagalog.SagaLogInitializer;
 

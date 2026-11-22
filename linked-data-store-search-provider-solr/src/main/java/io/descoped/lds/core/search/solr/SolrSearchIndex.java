@@ -11,11 +11,11 @@ import io.descoped.lds.api.search.SearchResponse;
 import io.descoped.lds.api.search.SearchResult;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Single;
-import org.apache.solr.client.solrj.SolrClient;
-import org.apache.solr.client.solrj.impl.ConcurrentUpdateBaseSolrClient;
-import org.apache.solr.client.solrj.impl.ConcurrentUpdateJdkSolrClient;
+import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.impl.HttpJdkSolrClient;
+import org.apache.solr.client.solrj.request.AbstractUpdateRequest;
 import org.apache.solr.client.solrj.request.SolrQuery;
+import org.apache.solr.client.solrj.request.UpdateRequest;
 import org.apache.solr.client.solrj.util.ClientUtils;
 import org.apache.solr.common.SolrDocumentList;
 import org.apache.solr.common.SolrInputDocument;
@@ -32,8 +32,8 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 /**
@@ -42,9 +42,7 @@ import java.util.stream.Collectors;
  */
 public class SolrSearchIndex implements SearchIndex {
 
-    private final SolrClient solrUpdateClient;
-    private final SolrClient solrQueryClient;
-    private final FailedUpdates failedUpdates;
+    private final HttpJdkSolrClient solrClient;
     private static final Logger LOG = LoggerFactory.getLogger(SolrSearchIndex.class);
     private static final String DEFAULT_SEARCH_FIELD = "searchfield";
     private static final String ENTITY_FIELD = "entity";
@@ -52,29 +50,22 @@ public class SolrSearchIndex implements SearchIndex {
     private static final Duration CONNECTION_TIMEOUT = Duration.ofSeconds(10);
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(60);
 
-    public SolrSearchIndex(String urlString) {
-        this(client(urlString), new FailedUpdates());
-    }
-
-    /*
-     * Updates are queued and sent by threads of the update client, over the connection of the query client. A
-     * failed update is reported to the update client's error handler, not to the caller, who has already gone on.
+    /**
+     * The index of the Solr core at the address.
+     *
+     * @param urlString the address of the core, {@code http://solr:8983/solr/lds-index}
      */
-    private SolrSearchIndex(HttpJdkSolrClient solrQueryClient, FailedUpdates failedUpdates) {
-        this(new ConcurrentUpdateJdkSolrClient.Builder(solrQueryClient.getBaseURL(), solrQueryClient)
-                .withErrorHandler(failedUpdates)
-                .build(), solrQueryClient, failedUpdates);
+    public SolrSearchIndex(String urlString) {
+        this(client(urlString));
     }
 
-    SolrSearchIndex(SolrClient solrUpdateClient, SolrClient solrQueryClient, FailedUpdates failedUpdates) {
+    SolrSearchIndex(HttpJdkSolrClient solrClient) {
         LOG.info("Initializing SolrSearchIndex");
-        this.solrUpdateClient = solrUpdateClient;
-        this.solrQueryClient = solrQueryClient;
-        this.failedUpdates = failedUpdates;
+        this.solrClient = solrClient;
     }
 
     /*
-     * HTTP/1.1: over HTTP/2 without TLS, the JDK's client sends every update with a body as an empty request once
+     * One client for updates and queries. HTTP/1.1: over HTTP/2 without TLS, the JDK's client sends every update with a body as an empty request once
      * Solr has closed an idle connection (after 120 s, Solr's solr.jetty.http.idleTimeout) and a new one is opened,
      * and Solr refuses each of them. SolrJ falls back to HTTP/1.1 only when its first HEAD request fails, once.
      * The timeouts replace SolrJ's defaults of 60 s to connect and 10 minutes to answer.
@@ -87,22 +78,18 @@ public class SolrSearchIndex implements SearchIndex {
                 .build();
     }
 
-    /**
-     * The number of documents whose update or delete did not reach Solr since the index was made, a request counted
-     * as one when Solr's client does not say which documents it held.
-     */
-    long failedUpdates() {
-        return failedUpdates.count();
-    }
-
     @Override
     public Completable createOrOverwrite(JsonDocument jsonDocument) {
         return createOrOverwrite(Arrays.asList(jsonDocument));
     }
 
+    /*
+     * An update is complete when Solr has answered it, and fails when Solr refuses it or cannot be reached: the
+     * request is sent without blocking, and the Completable ends with Solr's answer.
+     */
     @Override
     public Completable createOrOverwrite(Collection<JsonDocument> jsonDocuments) {
-        return Completable.fromAction(() -> {
+        return Completable.defer(() -> {
             List<SolrInputDocument> updateDocs = new ArrayList<>();
             for (JsonDocument jsonDocument : jsonDocuments) {
                 final SolrInputDocument doc = new SolrInputDocument();
@@ -114,26 +101,50 @@ public class SolrSearchIndex implements SearchIndex {
                 doc.addField(ENTITY_FIELD, jsonDocument.key().entity());
                 updateDocs.add(doc);
             }
-            this.solrUpdateClient.add(updateDocs, COMMIT_WITHIN_MILLIS);
-            LOG.info("Queued {} documents for the index", jsonDocuments.size());
+            UpdateRequest request = new UpdateRequest();
+            request.add(updateDocs);
+            request.setCommitWithin(COMMIT_WITHIN_MILLIS);
+            return send(request).doOnComplete(() -> LOG.debug("Solr took {} documents", updateDocs.size()));
         });
     }
 
     @Override
     public Completable delete(JsonDocument jsonDocument) {
-        return Completable.fromAction(() -> {
-            final String idString = getIdString(jsonDocument.key());
-            this.solrUpdateClient.deleteById(idString, COMMIT_WITHIN_MILLIS);
-            LOG.info("Finished deleting : {}", idString);
+        return Completable.defer(() -> {
+            String idString = getIdString(jsonDocument.key());
+            UpdateRequest request = new UpdateRequest().deleteById(idString);
+            request.setCommitWithin(COMMIT_WITHIN_MILLIS);
+            return send(request).doOnComplete(() -> LOG.debug("Solr deleted {}", idString));
         });
     }
 
     @Override
     public Completable deleteAll() {
-        return Completable.fromAction(() -> {
-            this.solrUpdateClient.deleteByQuery("*:*");
-            this.solrUpdateClient.commit();
+        return Completable.defer(() -> {
+            UpdateRequest request = new UpdateRequest().deleteByQuery("*:*");
+            request.setAction(AbstractUpdateRequest.ACTION.COMMIT, true, true);
+            return send(request);
         });
+    }
+
+    /*
+     * Sends a request and completes with Solr's answer: an error that Solr answers, or that the client meets on the
+     * way, is the error of the Completable, as SolrJ gives it (RemoteSolrException, SolrServerException, ...).
+     */
+    private Completable send(UpdateRequest request) {
+        return Completable.fromCompletionStage(solrClient.requestAsync(request))
+                .onErrorResumeNext(error -> Completable.error(error instanceof CompletionException && error.getCause() != null
+                        ? unwrapped(error.getCause()) : error));
+    }
+
+    /*
+     * The client wraps a SolrServerException in a RuntimeException when it reads the answer.
+     */
+    private static Throwable unwrapped(Throwable error) {
+        if (error.getClass() == RuntimeException.class && error.getCause() instanceof SolrServerException cause) {
+            return cause;
+        }
+        return error;
     }
 
     @Override
@@ -147,7 +158,7 @@ public class SolrSearchIndex implements SearchIndex {
                 query.addFilterQuery(entityFilter(typeFilters));
             }
             LOG.info("Executing query: {}", query);
-            SolrDocumentList response = this.solrQueryClient.query(query).getResults();
+            SolrDocumentList response = this.solrClient.query(query).getResults();
             LOG.info("Number of hits: {}", response.getNumFound());
             List<SearchResult> results = response.stream()
                     .map(result -> new SearchResult(fromIdString(result.get("id").toString())))
@@ -167,32 +178,6 @@ public class SolrSearchIndex implements SearchIndex {
     private static String entityFilter(Set<String> typeFilters) {
         return ENTITY_FIELD + ":(" + typeFilters.stream().sorted().map(ClientUtils::escapeQueryChars)
                 .collect(Collectors.joining(" OR ")) + ")";
-    }
-
-    /**
-     * Counts and logs the documents whose update did not reach Solr, or the request, as one, when the update client
-     * does not say which documents it held. The update client calls it from its own threads, after the write that
-     * queued the update has completed.
-     */
-    static final class FailedUpdates implements ConcurrentUpdateBaseSolrClient.UpdateErrorHandler {
-
-        private final AtomicLong count = new AtomicLong();
-
-        @Override
-        public void onError(Throwable error, List<String> failedIds, String collection) {
-            count.addAndGet(failedIds.size());
-            LOG.error("{} documents did not reach the search index: {}", failedIds.size(), failedIds, error);
-        }
-
-        @Override
-        public void onError(Throwable error) {
-            count.incrementAndGet();
-            LOG.error("An update did not reach the search index", error);
-        }
-
-        long count() {
-            return count.get();
-        }
     }
 
     private void addFields(FlattenedDocument node, SolrInputDocument doc) {
