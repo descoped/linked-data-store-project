@@ -5,6 +5,7 @@ import io.descoped.lds.api.persistence.json.JsonDocument;
 import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.api.search.SearchIndex;
 import io.descoped.lds.api.search.SearchResponse;
+import org.apache.solr.client.solrj.RemoteSolrException;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -12,6 +13,8 @@ import tools.jackson.databind.JsonNode;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.InetAddress;
+import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.ZonedDateTime;
@@ -21,6 +24,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 
 /**
@@ -127,6 +131,63 @@ class SolrSearchIndexTest {
 
         assertThat(dataSets.getResults()).extracting(result -> result.getDocumentKey().entity()).containsOnly("UnitDataSet");
         assertThat(dataSets.getTotalHits()).isEqualTo(1);
+    }
+
+    @Test
+    void anUpdateSolrRefusesIsCountedForEachOfItsDocumentsAndTheWriteGoesOn() {
+        // Solr answers 404 for a core it does not have; SolrJ then names the documents of the update
+        SolrSearchIndex missingCore = new SolrSearchIndex(Solr10.url().replace("/lds-index", "/no-such-core"));
+
+        missingCore.createOrOverwrite(List.of(text("UnitDataSet", "a", "one"), text("UnitDataSet", "b", "two")))
+                .blockingAwait();
+
+        await().atMost(COMMIT_WAIT).until(() -> missingCore.failedUpdates() == 2);
+    }
+
+    @Test
+    void aDeleteSolrRefusesFailsForItsCaller() {
+        // SolrJ sends an update without documents at once rather than queue it (ConcurrentUpdateBaseSolrClient.request,
+        // streamDeletes false), so the caller gets Solr's answer and nothing is left to count
+        SolrSearchIndex missingCore = new SolrSearchIndex(Solr10.url().replace("/lds-index", "/no-such-core"));
+
+        assertThatThrownBy(() -> missingCore.delete(text("UnitDataSet", "a", "one")).blockingAwait())
+                .isInstanceOf(RemoteSolrException.class).hasMessageContaining("404");
+        assertThat(missingCore.failedUpdates()).isZero();
+    }
+
+    @Test
+    void anUpdateThatCannotReachSolrIsCounted() throws IOException {
+        int closedPort;
+        try (ServerSocket socket = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            closedPort = socket.getLocalPort();
+        }
+        SolrSearchIndex unreachable = new SolrSearchIndex("http://127.0.0.1:" + closedPort + "/solr/lds-index");
+
+        unreachable.createOrOverwrite(text("UnitDataSet", "a", "one")).blockingAwait();
+
+        await().atMost(COMMIT_WAIT).until(() -> unreachable.failedUpdates() >= 1);
+    }
+
+    @Test
+    void aSearchWithAnEmptySetOfEntitiesIsNotNarrowed() {
+        searchIndex.createOrOverwrite(List.of(
+                text("UnitDataSet", "one", "fjord"),
+                text("LogicalRecord", "two", "fjord")
+        )).blockingAwait();
+        awaitHits(() -> searchIndex.search("fjord", null, 0, 10).blockingGet(), 2);
+
+        assertThat(searchIndex.search("fjord", Set.of(), 0, 10).blockingGet().getTotalHits()).isEqualTo(2);
+    }
+
+    @Test
+    void anEntityNameWithTheSyntaxOfAQueryIsMatchedAsAName() {
+        // the names come from the enum TypeFilters of the GraphQL schema, so they have no space
+        searchIndex.createOrOverwrite(text("UnitDataSet", "one", "fjord")).blockingAwait();
+        awaitHits(() -> searchIndex.search("fjord", null, 0, 10).blockingGet(), 1);
+
+        assertThat(searchIndex.search("fjord", Set.of("*"), 0, 10).blockingGet().getTotalHits()).isZero();
+        assertThat(searchIndex.search("fjord", Set.of("Unit*"), 0, 10).blockingGet().getTotalHits()).isZero();
+        assertThat(searchIndex.search("fjord", Set.of("UnitDataSe?"), 0, 10).blockingGet().getTotalHits()).isZero();
     }
 
     /**

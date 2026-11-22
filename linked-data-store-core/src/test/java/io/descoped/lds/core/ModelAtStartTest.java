@@ -2,7 +2,9 @@ package io.descoped.lds.core;
 
 import io.descoped.config.DynamicConfiguration;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Map;
 
@@ -44,5 +46,10 @@ class ModelAtStartTest {
     @Test
     void noModelIsRefused() {
         refusedAtOnce(configuration("", ""), "No model is given: set graphql.schema or specification.schema");
+    }
+
+    @Test
+    void aFolderOfJsonSchemasWithoutAnyIsRefused(@TempDir Path folder) {
+        refusedAtOnce(configuration("", folder.toString()), "The model " + folder + " has no entity type");
     }
 }

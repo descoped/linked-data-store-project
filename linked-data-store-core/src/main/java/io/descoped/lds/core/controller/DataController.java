@@ -108,23 +108,27 @@ class DataController implements HttpHandler {
      * the path as sent; the relative path is it decoded, with an encoded '/' or '\' (%2F, %5C) left as it is and the
      * path parameters (from ';' to the next '/') left out; and a byte outside ASCII or an escape that is not one is
      * refused with 400 before a handler runs. So each segment of the relative path is one segment of the URI, and
-     * the relative path is the last segments of the URI, each without its path parameters.
+     * the relative path is the last segments of the URI, each without its path parameters. A request line in
+     * absolute form (GET http://host/path, as a proxy sends it) keeps the scheme and the host in the request URI
+     * (HttpServerExchange.isHostIncludedInRequestURI), and they are left out.
      */
     static String rawRelativePath(HttpServerExchange exchange) {
         String relative = exchange.getRelativePath();
         String uri = exchange.getRequestURI();
-        int scheme = uri.indexOf("://");
-        if (scheme >= 0) {
-            int slash = uri.indexOf('/', scheme + 3);
+        if (exchange.isHostIncludedInRequestURI()) {
+            int slash = uri.indexOf('/', uri.indexOf("://") + 3);
             uri = slash < 0 ? "/" : uri.substring(slash);
         }
+        // the segments after the '/' the relative path begins with; with a prefix the URI has more before them
+        boolean rooted = relative.startsWith("/");
+        int count = (rooted ? relative.substring(1) : relative).split("/", -1).length;
         String[] uriSegments = uri.split("/", -1);
-        int count = relative.split("/", -1).length;
         if (count > uriSegments.length) {
             return relative;
         }
-        return Arrays.stream(uriSegments, uriSegments.length - count, uriSegments.length)
+        String segments = Arrays.stream(uriSegments, uriSegments.length - count, uriSegments.length)
                 .map(segment -> segment.indexOf(';') < 0 ? segment : segment.substring(0, segment.indexOf(';')))
                 .collect(Collectors.joining("/"));
+        return rooted ? "/" + segments : segments;
     }
 }

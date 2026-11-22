@@ -8,6 +8,7 @@ import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.test.client.ResponseHelper;
 import io.descoped.lds.test.client.TestClient;
 import io.descoped.lds.test.server.TestServer;
+import io.descoped.lds.test.ConfigurationOverride;
 import io.descoped.lds.test.server.TestServerListener;
 import org.json.JSONException;
 import org.skyscreamer.jsonassert.JSONAssert;
@@ -103,6 +104,21 @@ public class ManagedResourceHandlerTest {
         assertEquals(client.get("/data/provisionagreement/%C3%B8l").expect200Ok().body(), body);
         // path parameters are not part of the id, as Undertow leaves them out of the path
         assertEquals(rawGet("/data/provisionagreement/%C3%B8l;v=1".getBytes(StandardCharsets.US_ASCII))[0], "HTTP/1.1 200 OK");
+        // a request line in absolute form, as a proxy sends it
+        String absolute = "http://localhost:" + server.getTestServerServicePort() + "/data/provisionagreement/a%2Bb";
+        String[] answer = rawGet(absolute.getBytes(StandardCharsets.US_ASCII));
+        assertEquals(answer[0], "HTTP/1.1 200 OK");
+        assertEquals(answer[1], body);
+    }
+
+    @Test
+    @ConfigurationOverride({"http.prefix", "/lds"})
+    public void thatAnIdIsDecodedOnceUnderAPrefix() throws IOException {
+        String body = "{\"contacts\":[],\"name\":\"prefixed\"}";
+        client.put("/lds/data/provisionagreement/p+1?sync=true", body).expect201Created();
+        assertEquals(client.get("/lds/data/provisionagreement/p%2B1").expect200Ok().body(), body);
+        assertEquals(rawGet("/lds/data/provisionagreement/p%2B1;v=1".getBytes(StandardCharsets.US_ASCII))[0], "HTTP/1.1 200 OK");
+        assertEquals(client.get("/lds/data/provisionagreement/a%2Fb").expect400BadRequest().body(), "An id cannot hold a '/': \"a/b\"");
     }
 
     @Test

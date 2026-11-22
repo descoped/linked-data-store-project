@@ -10,6 +10,8 @@ import org.testcontainers.containers.wait.strategy.Wait;
 
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
@@ -171,6 +173,34 @@ class ServerImageIT {
         assertThat(version.getExitCode()).as(version.getStderr()).isZero();
         assertThat(version.getStdout()).contains("JDK 27");
         assertThat(threads.getStdout()).contains("Full thread dump");
+    }
+
+    /**
+     * A variable that starts with LDS_ and sets no key is a name spelled wrong; LDS does not start with it, and says
+     * which. The output goes to a file and the wait is bounded, so a container that starts anyway is stopped.
+     */
+    @Test
+    void aVariableThatSetsNoKeyStopsTheStart() throws Exception {
+        String name = "lds-unknown-variable-" + ProcessHandle.current().pid();
+        Path output = Files.createTempFile("lds-unknown-variable", ".log");
+        try {
+            Process process = new ProcessBuilder("docker", "run", "--rm", "--name", name,
+                    "-e", "LDS_NAMESPACE_DEFALT=x", "-e", "LDS_HTTP_PORT=9090", IMAGE)
+                    .redirectErrorStream(true)
+                    .redirectOutput(output.toFile())
+                    .start();
+            boolean ended = process.waitFor(2, TimeUnit.MINUTES);
+            if (!ended) {
+                docker("rm", "--force", name);
+            }
+            assertThat(ended).as("LDS stopped by itself: %s", Files.readString(output)).isTrue();
+            assertThat(process.exitValue()).isEqualTo(1);
+            assertThat(Files.readString(output))
+                    .contains("No configuration key for the environment variables [LDS_NAMESPACE_DEFALT]")
+                    .doesNotContain("Server started");
+        } finally {
+            Files.deleteIfExists(output);
+        }
     }
 
     /**

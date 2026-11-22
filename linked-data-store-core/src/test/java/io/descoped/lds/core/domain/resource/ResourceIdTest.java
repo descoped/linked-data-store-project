@@ -79,4 +79,42 @@ class ResourceIdTest {
         assertThatThrownBy(() -> context("/ns/provisionagreement/p1/contacts/contact/a%2Fb"))
                 .isInstanceOf(ResourceException.class);
     }
+
+    @Test
+    void aCharacterAboveTheBasicPlaneIsOneCharacter() {
+        assertThat(id("/ns/contact/a😀b")).isEqualTo("a😀b");
+        assertThat(id("/ns/contact/%F0%9F%98%80")).isEqualTo("😀");
+        assertThat(id("/ns/contact/" + "😀".repeat(512))).hasSize(1024);
+        assertThatThrownBy(() -> context("/ns/contact/" + "😀".repeat(513))).isInstanceOf(ResourceException.class)
+                .hasMessage("An id is at most 512 characters");
+        assertThatThrownBy(() -> context("/ns/contact/" + "%F0%9F%98%80".repeat(513)))
+                .isInstanceOf(ResourceException.class).hasMessage("An id is at most 512 characters");
+    }
+
+    @Test
+    void bytesThatAreNotUtf8AreRefusedAndNeverDecodedToASlash() {
+        // an overlong '/', a surrogate written as UTF-8, a byte that never starts a character, a lone continuation
+        for (String escape : new String[]{"%C0%AF", "%E0%80%AF", "%ED%A0%80", "%FF", "%80", "a%C3"}) {
+            assertThatThrownBy(() -> context("/ns/contact/" + escape)).as(escape)
+                    .isInstanceOf(ResourceException.class).hasMessage("Not UTF-8 in the path: \"" + escape + "\"");
+        }
+    }
+
+    @Test
+    void everyControlCharacterIsRefused() {
+        for (String escape : new String[]{"%00", "%1F", "%7F", "%C2%80", "%C2%85", "%C2%9F"}) {
+            assertThatThrownBy(() -> context("/ns/contact/a" + escape)).as(escape)
+                    .isInstanceOf(ResourceException.class).hasMessage("An id cannot hold a control character");
+        }
+        assertThat(id("/ns/contact/a%C2%A0b")).isEqualTo("a\u00a0b");
+    }
+
+    @Test
+    void anEscapeIsReadInEitherCase() {
+        assertThat(id("/ns/contact/%c3%a5se")).isEqualTo("åse");
+        assertThatThrownBy(() -> context("/ns/contact/a%2fb")).isInstanceOf(ResourceException.class)
+                .hasMessage("An id cannot hold a '/': \"a/b\"");
+        assertThatThrownBy(() -> context("/ns/contact/a%4")).isInstanceOf(ResourceException.class)
+                .hasMessage("Not a valid escape in the path: \"a%4\". Write a '%' as %25");
+    }
 }

@@ -35,4 +35,26 @@ class UnknownVariablesTest {
     void aVariableWithoutThePrefixIsNotLookedAt() {
         assertThat(Server.unknownVariables(Map.of("PATH", "/bin", "LDSX", "1", "lds_http_port", "1"), KEYS)).isEmpty();
     }
+
+    @Test
+    void theNameIsOneOfTheThreeTheConfigurationLooksFor() {
+        // as it is, with _ for each character that is not a letter or a digit, and that in upper case; no other case
+        assertThat(Server.unknownVariables(Map.of(
+                "LDS_Http_Port", "1",
+                "LDS_HTTP.PORT", "1",
+                "LDS_http-port", "1",
+                "LDS_NAMESPACE__DEFAULT", "1"), KEYS))
+                .containsExactly("LDS_HTTP.PORT", "LDS_Http_Port", "LDS_NAMESPACE__DEFAULT", "LDS_http-port");
+    }
+
+    @Test
+    void thePrefixAloneSetsNoKey() {
+        assertThat(Server.unknownVariables(Map.of("LDS_", "1"), KEYS)).containsExactly("LDS_");
+    }
+
+    @Test
+    void withNoKeysEveryVariableWithThePrefixIsReported() {
+        assertThat(Server.unknownVariables(Map.of("LDS_HTTP_PORT", "1"), Set.of())).containsExactly("LDS_HTTP_PORT");
+        assertThat(Server.unknownVariables(Map.of(), KEYS)).isEmpty();
+    }
 }

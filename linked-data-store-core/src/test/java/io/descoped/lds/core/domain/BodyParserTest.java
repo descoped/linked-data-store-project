@@ -75,4 +75,35 @@ class BodyParserTest {
         refused(() -> parser.deserializeBody("application/msgpack", body), 400);
         refused(() -> parser.deserializeBody("application/x-msgpack", body), 400);
     }
+
+    @Test
+    void aBodyWithoutAContentTypeIsRefusedWith415() {
+        assertThatThrownBy(() -> parser.deserializeBody(null, "{}")).isInstanceOf(BodyException.class)
+                .hasMessage("Unsupported Content-Type: null. " + BodyParser.SEND_JSON)
+                .satisfies(e -> assertThat(((BodyException) e).status()).isEqualTo(415));
+    }
+
+    @Test
+    void theContentTypeIsReadAsHttpWritesIt() {
+        // a media type is case-insensitive, and its parameters may be written with or without spaces (RFC 9110)
+        assertThat(parser.deserializeBody("Application/JSON", "{\"a\":1}")).hasToString("{\"a\":1}");
+        assertThat(parser.deserializeBody("application/json;charset=UTF-8", "{\"a\":1}")).hasToString("{\"a\":1}");
+        assertThat(parser.deserializeBody(" application/json ; charset=utf-8", "{\"a\":1}")).hasToString("{\"a\":1}");
+        refused(() -> parser.deserializeBody("application/jsonx", "{}"), 415);
+        refused(() -> parser.deserializeBody("application/", "{}"), 415);
+        refused(() -> parser.deserializeBody("", "{}"), 415);
+    }
+
+    @Test
+    void aBodyThatIsJsonButNotAnObjectIsRead() {
+        // whether a document may be such a value is for the validation of the document to say, not the parser
+        assertThat(parser.deserializeBody("application/json", "[1,2]")).hasToString("[1,2]");
+        assertThat(parser.deserializeBody("application/json", "\"text\"")).hasToString("\"text\"");
+    }
+
+    @Test
+    void aBodyWithLettersOutsideAsciiIsReadWhole() {
+        assertThat(parser.deserializeBody("application/json", "{\"name\":\"øl 日本 😀\"}").get("name").asString())
+                .isEqualTo("øl 日本 😀");
+    }
 }

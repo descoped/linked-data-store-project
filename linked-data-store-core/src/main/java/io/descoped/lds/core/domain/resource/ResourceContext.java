@@ -160,8 +160,11 @@ public class ResourceContext {
             } else if (c < 0x80) {
                 bytes.write(c);
             } else {
-                // not sent by HTTP, where the path is ASCII; a character given here in a test stands for itself
-                bytes.writeBytes(String.valueOf(c).getBytes(StandardCharsets.UTF_8));
+                // not sent by HTTP, where the path is ASCII; a character given here stands for itself, also one of
+                // two chars (a code point above U+FFFF), which is taken whole
+                int codePoint = segment.codePointAt(i);
+                bytes.writeBytes(Character.toString(codePoint).getBytes(StandardCharsets.UTF_8));
+                i += Character.charCount(codePoint) - 1;
             }
         }
         try {
