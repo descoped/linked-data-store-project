@@ -192,7 +192,7 @@ final class Neo4jPersistence implements RxJsonPersistence {
         return documentFlowable.toList().flatMapCompletable(documents -> {
             Map<String, List<JsonDocument>> documentsByEntity = new LinkedHashMap<>();
             for (JsonDocument document : documents) {
-                documentsByEntity.computeIfAbsent(document.key().entity(), e -> new ArrayList<>()).add(document);
+                documentsByEntity.computeIfAbsent(document.key().entity(), _ -> new ArrayList<>()).add(document);
             }
             List<Completable> completables = new ArrayList<>();
             for (Map.Entry<String, List<JsonDocument>> entry : documentsByEntity.entrySet()) {

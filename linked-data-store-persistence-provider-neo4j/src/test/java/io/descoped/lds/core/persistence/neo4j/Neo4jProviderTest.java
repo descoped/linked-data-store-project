@@ -4,7 +4,6 @@ import io.descoped.lds.api.json.JsonNavigationPath;
 import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.json.JsonDocument;
-import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.api.persistence.reactivex.LinkQuery;
 import io.descoped.lds.api.persistence.reactivex.Range;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;

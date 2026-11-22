@@ -38,6 +38,7 @@ class Neo4jTransactionTest {
     }
 
     @Test
+    @SuppressWarnings("resource") // a transaction ends with commit or cancel, which is what these tests call
     void theSessionIsClosedWhenTheTransactionIsCommitted() {
         Session session = driver.session();
         Neo4jTransaction transaction = new Neo4jTransaction(session, false);
@@ -49,6 +50,7 @@ class Neo4jTransactionTest {
     }
 
     @Test
+    @SuppressWarnings("resource") // a transaction ends with commit or cancel, which is what these tests call
     void theSessionIsClosedWhenTheTransactionIsCancelled() {
         Session session = driver.session();
         Neo4jTransaction transaction = new Neo4jTransaction(session, false);
@@ -59,6 +61,7 @@ class Neo4jTransactionTest {
     }
 
     @Test
+    @SuppressWarnings("resource") // a transaction ends with commit or cancel, which is what these tests call
     void aStatementIsRunWhenItsStreamIsSubscribedTo() {
         Session session = driver.session();
         Neo4jTransaction transaction = new Neo4jTransaction(session, false);
@@ -76,6 +79,7 @@ class Neo4jTransactionTest {
     }
 
     @Test
+    @SuppressWarnings("resource") // a transaction ends with commit or cancel, which is what these tests call
     void aStatementThatFailsFailsItsStreamAndNothingElse() {
         List<Throwable> undeliverable = new CopyOnWriteArrayList<>();
         RxJavaPlugins.setErrorHandler(undeliverable::add);

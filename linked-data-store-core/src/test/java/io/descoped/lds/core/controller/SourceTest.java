@@ -3,7 +3,6 @@ package io.descoped.lds.core.controller;
 import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.test.ConfigurationOverride;
 import io.descoped.lds.test.client.TestClient;
-import io.descoped.lds.test.server.TestServer;
 import io.descoped.lds.test.server.TestServerListener;
 import org.testng.annotations.Listeners;
 import org.testng.annotations.Test;
@@ -22,8 +21,6 @@ public class SourceTest {
     @Inject
     private TestClient client;
 
-    @Inject
-    private TestServer server;
 
     @Test
     @ConfigurationOverride({

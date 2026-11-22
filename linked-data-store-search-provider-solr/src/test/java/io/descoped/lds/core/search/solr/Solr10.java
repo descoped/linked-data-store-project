@@ -21,6 +21,7 @@ final class Solr10 {
     private Solr10() {
     }
 
+    @SuppressWarnings("resource") // the container is returned, and Testcontainers stops it when the JVM ends
     private static GenericContainer<?> start() {
         GenericContainer<?> container = new GenericContainer<>(IMAGE)
                 .withCommand("solr-precreate", CORE)

@@ -49,7 +49,7 @@ class ResultSetPublisherSignalsTest {
     /* A result set that always has a next row; the publisher calls nothing else. */
     private static ResultSet rowsWithoutEnd() {
         return (ResultSet) Proxy.newProxyInstance(ResultSet.class.getClassLoader(), new Class<?>[]{ResultSet.class},
-                (proxy, method, arguments) -> {
+                (_, method, _) -> {
                     if ("next".equals(method.getName())) {
                         return true;
                     }

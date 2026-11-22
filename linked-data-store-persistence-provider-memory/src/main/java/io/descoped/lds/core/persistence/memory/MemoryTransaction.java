@@ -51,7 +51,7 @@ public class MemoryTransaction implements OrderedKeyValueTransaction {
         if (!locked.get()) {
             throw new IllegalStateException("Attempting to access database from within a closed transaction.");
         }
-        return mapByIndex.computeIfAbsent(index, k -> new ConcurrentSkipListMap<>(Arrays::compareUnsigned));
+        return mapByIndex.computeIfAbsent(index, _ -> new ConcurrentSkipListMap<>(Arrays::compareUnsigned));
     }
 
     /*

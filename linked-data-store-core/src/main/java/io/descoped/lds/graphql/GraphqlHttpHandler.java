@@ -24,7 +24,6 @@ import java.util.Deque;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Scanner;
 
 import static io.descoped.lds.api.persistence.json.JsonTools.mapper;
 import static io.undertow.util.Headers.ALLOW;
@@ -91,8 +90,7 @@ public class GraphqlHttpHandler implements HttpHandler {
 
     private static String toString(HttpServerExchange exchange) throws IOException {
         try (InputStream i = new BufferedInputStream(exchange.getInputStream())) {
-            Scanner scanner = new Scanner(i, Charset.forName(exchange.getRequestCharset())).useDelimiter("\\A");
-            return scanner.hasNext() ? scanner.next() : "";
+            return new String(i.readAllBytes(), Charset.forName(exchange.getRequestCharset()));
         }
     }
 

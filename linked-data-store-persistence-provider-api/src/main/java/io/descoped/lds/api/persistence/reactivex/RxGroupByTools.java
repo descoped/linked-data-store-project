@@ -46,14 +46,14 @@ public class RxGroupByTools {
 
         return upstream
                 .filter(item -> addToGroup(item, groupKeyFunction, groupKeyRef, itemsByGroup, groupCompleteItem))
-                .doOnSubscribe(subscription -> {
+                .doOnSubscribe(_ -> {
                     groupKeyRef.set(null);
                     itemsByGroup.clear();
                 })
                 .doOnComplete(() -> putInCurrentGroup(groupKeyRef, itemsByGroup, groupCompleteItem))
                 .doOnError(throwable -> putInCurrentGroup(groupKeyRef, itemsByGroup, new GroupedItemWrapper<>(throwable)))
                 .doOnCancel(() -> putInCurrentGroup(groupKeyRef, itemsByGroup, cancelledItem))
-                .map(item -> {
+                .map(_ -> {
                     final K groupKey = groupKeyRef.get();
                     final BlockingQueue<GroupedItemWrapper<T>> blockingQueue = itemsByGroup.get(groupKey);
                     final BiConsumer<BlockingQueue<GroupedItemWrapper<T>>, Emitter<T>> generator =
@@ -75,19 +75,19 @@ public class RxGroupByTools {
         if (groupKeyRef.get() == null) {
             // very first upstream item, add item to new group
             groupKeyRef.set(groupKey);
-            itemsByGroup.computeIfAbsent(groupKey, k -> new LinkedBlockingQueue<>()).add(new GroupedItemWrapper<>(item));
+            itemsByGroup.computeIfAbsent(groupKey, _ -> new LinkedBlockingQueue<>()).add(new GroupedItemWrapper<>(item));
             return true;
         }
         if (groupKey.equals(groupKeyRef.get())) {
             // group already exists, add item to existing group
-            itemsByGroup.computeIfAbsent(groupKey, k -> new LinkedBlockingQueue<>()).add(new GroupedItemWrapper<>(item));
+            itemsByGroup.computeIfAbsent(groupKey, _ -> new LinkedBlockingQueue<>()).add(new GroupedItemWrapper<>(item));
             return false;
         }
 
         // new group, signal completion of previous group and add item to new group
         itemsByGroup.get(groupKeyRef.get()).add(groupCompleteItem);
         groupKeyRef.set(groupKey);
-        itemsByGroup.computeIfAbsent(groupKey, k -> new LinkedBlockingQueue<>()).add(new GroupedItemWrapper<>(item));
+        itemsByGroup.computeIfAbsent(groupKey, _ -> new LinkedBlockingQueue<>()).add(new GroupedItemWrapper<>(item));
         return true;
     }
 

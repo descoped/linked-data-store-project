@@ -69,7 +69,7 @@ public class SpecificationJsonSchemaBuilderTest {
         AtomicInteger managedCounter = new AtomicInteger();
         AtomicInteger embeddedCounter = new AtomicInteger();
         AtomicInteger referenceCounter = new AtomicInteger();
-        SpecificationTraversal.depthFirstPreOrderFullTraversal(specification.getRootElement(), (ancestors, element) -> {
+        SpecificationTraversal.depthFirstPreOrderFullTraversal(specification.getRootElement(), (_, element) -> {
             switch (element.getSpecificationElementType()) {
                 case ROOT:
                     rootCounter.incrementAndGet();

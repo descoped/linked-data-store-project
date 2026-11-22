@@ -3,7 +3,6 @@ package io.descoped.lds.core.persistence.neo4j;
 import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.json.JsonDocument;
-import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.api.specification.SpecificationElementType;

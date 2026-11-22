@@ -29,7 +29,7 @@ public class GraphQLToJsonConverter {
         ParseObjectTypesVisitor parseObjectTypesVisitor = new ParseObjectTypesVisitor(jsonMap);
         TRAVERSER.depthFirst(parseObjectTypesVisitor, typeMap.values());
 
-        jsonMap.forEach((managedDomain, jsonObject) -> {
+        jsonMap.forEach((managedDomain, _) -> {
             sb.append(" /" + managedDomain);
         });
 

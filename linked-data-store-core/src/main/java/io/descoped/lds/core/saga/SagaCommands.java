@@ -29,7 +29,7 @@ public class SagaCommands {
             String command = parts[0];
             String nodeId = parts[1];
             List<String> args = new LinkedList<>(Arrays.asList(parts).subList(2, parts.length));
-            map.computeIfAbsent(nodeId, n -> new LinkedList<>()).add(new SagaCommand(nodeId, command, args));
+            map.computeIfAbsent(nodeId, _ -> new LinkedList<>()).add(new SagaCommand(nodeId, command, args));
         }
         return map;
     }

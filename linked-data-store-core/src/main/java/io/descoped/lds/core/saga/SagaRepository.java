@@ -36,8 +36,8 @@ public class SagaRepository {
         adapterLoader.register(new AppendTxLogAdapter(txLogPool));
         adapterLoader.register(new DeleteTxLogAdapter(txLogPool));
         if (indexer != null) {
-            adapterLoader.register(new UpdateIndexSagaAdapter(indexer, specification));
-            adapterLoader.register(new DeleteIndexSagaAdapter(indexer, specification));
+            adapterLoader.register(new UpdateIndexSagaAdapter(indexer));
+            adapterLoader.register(new DeleteIndexSagaAdapter(indexer));
         }
 
         register(buildCreateOrUpdateSaga(indexer));

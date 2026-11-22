@@ -95,7 +95,7 @@ class RxJsonPersistenceBridgeLinkTest {
     /** A store with {@code read} of one document and {@code find}, which gives every document of the entity type */
     private RxPersistence store() {
         return (RxPersistence) Proxy.newProxyInstance(getClass().getClassLoader(), new Class<?>[]{RxPersistence.class},
-                (proxy, method, args) -> switch (method.getName()) {
+                (_, method, args) -> switch (method.getName()) {
                     case "read" -> fragmentsOf(documents.containsKey(args[3] + "/" + args[4])
                             ? List.of(documents.get(args[3] + "/" + args[4])) : List.of());
                     case "find" -> {

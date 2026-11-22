@@ -43,7 +43,7 @@ public class SlowTruncateSagaLogInitializer implements SagaLogInitializer {
     @Override
     public SagaLogPool initialize(Map<String, String> configuration) {
         SagaLogPool pool = memory().initialize(configuration);
-        return proxy(SagaLogPool.class, (proxy, method, args) -> {
+        return proxy(SagaLogPool.class, (_, method, args) -> {
             Object result = call(pool, method, args);
             if (!(result instanceof SagaLog log)) {
                 return result;
@@ -61,9 +61,9 @@ public class SlowTruncateSagaLogInitializer implements SagaLogInitializer {
     }
 
     private SagaLog slow(SagaLog log) {
-        return proxy(SagaLog.class, (proxy, method, args) -> {
+        return proxy(SagaLog.class, (_, method, args) -> {
             if (method.getName().equals("truncate") && method.getParameterCount() == 0) {
-                return after(TRUNCATE_MILLIS).thenCompose(v -> {
+                return after(TRUNCATE_MILLIS).thenCompose(_ -> {
                     if (FAILING_TRUNCATES.getAndUpdate(n -> Math.max(0, n - 1)) > 0) {
                         return CompletableFuture.failedFuture(new IllegalStateException("truncate failed, as the test asked"));
                     }
@@ -71,7 +71,7 @@ public class SlowTruncateSagaLogInitializer implements SagaLogInitializer {
                 });
             }
             if (method.getName().equals("write")) {
-                return after(WRITE_MILLIS).thenCompose(v -> {
+                return after(WRITE_MILLIS).thenCompose(_ -> {
                     try {
                         return (CompletableFuture<?>) call(log, method, args);
                     } catch (Throwable t) {

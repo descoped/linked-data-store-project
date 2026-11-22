@@ -92,7 +92,7 @@ public class TypeTraverser {
                 return control == TraversalControl.QUIT ? TraversalControl.QUIT : TraversalControl.ABORT;
             }
             TraversalControl control = node.accept(context, delegate);
-            entered.computeIfAbsent(Wrapped.of(node), wrapped -> new ArrayList<>()).add(node);
+            entered.computeIfAbsent(Wrapped.of(node), _ -> new ArrayList<>()).add(node);
             return control;
         }
 

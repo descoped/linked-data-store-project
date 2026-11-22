@@ -4,7 +4,6 @@ import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.json.JsonDocument;
 import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.api.search.SearchIndex;
-import io.descoped.lds.api.specification.Specification;
 import no.cantara.saga.api.SagaNode;
 import no.cantara.saga.execution.adapter.Adapter;
 import tools.jackson.databind.JsonNode;
@@ -18,12 +17,10 @@ public class DeleteIndexSagaAdapter extends Adapter<JsonNode> {
     public static final String ADAPTER_NAME = "Persistence-Index-Delete";
 
     private final SearchIndex indexer;
-    private final Specification specification;
 
-    public DeleteIndexSagaAdapter(SearchIndex indexer, Specification specification) {
+    public DeleteIndexSagaAdapter(SearchIndex indexer) {
         super(JsonNode.class, ADAPTER_NAME);
         this.indexer = indexer;
-        this.specification = specification;
     }
 
     @Override

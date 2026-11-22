@@ -1120,30 +1120,30 @@ public abstract class PersistenceIntegrationTest {
                 String workAddressLink = links.get((2 * i + 1) % links.size());
 
                 relationsBySource
-                        .computeIfAbsent(personLink, k -> new LinkedHashMap<>())
-                        .computeIfAbsent("$.history.currentAddress", p -> new ArrayList<>())
+                        .computeIfAbsent(personLink, _ -> new LinkedHashMap<>())
+                        .computeIfAbsent("$.history.currentAddress", _ -> new ArrayList<>())
                         .add(currentAddressLink);
                 relationsBySource
-                        .computeIfAbsent(personLink, k -> new LinkedHashMap<>())
-                        .computeIfAbsent("$.history.workAddress", p -> new ArrayList<>())
+                        .computeIfAbsent(personLink, _ -> new LinkedHashMap<>())
+                        .computeIfAbsent("$.history.workAddress", _ -> new ArrayList<>())
                         .add(workAddressLink);
                 relationsBySource
-                        .computeIfAbsent(personLink, k -> new LinkedHashMap<>())
-                        .computeIfAbsent("$.history.previousAddresses[]", p -> new ArrayList<>())
+                        .computeIfAbsent(personLink, _ -> new LinkedHashMap<>())
+                        .computeIfAbsent("$.history.previousAddresses[]", _ -> new ArrayList<>())
                         .addAll(links);
 
                 relationsByTarget
-                        .computeIfAbsent(currentAddressLink, k -> new LinkedHashMap<>())
-                        .computeIfAbsent("$.history.currentAddress", p -> new ArrayList<>())
+                        .computeIfAbsent(currentAddressLink, _ -> new LinkedHashMap<>())
+                        .computeIfAbsent("$.history.currentAddress", _ -> new ArrayList<>())
                         .add(personLink);
                 relationsByTarget
-                        .computeIfAbsent(workAddressLink, k -> new LinkedHashMap<>())
-                        .computeIfAbsent("$.history.workAddress", p -> new ArrayList<>())
+                        .computeIfAbsent(workAddressLink, _ -> new LinkedHashMap<>())
+                        .computeIfAbsent("$.history.workAddress", _ -> new ArrayList<>())
                         .add(personLink);
                 for (String link : links) {
                     relationsByTarget
-                            .computeIfAbsent(link, k -> new LinkedHashMap<>())
-                            .computeIfAbsent("$.history.previousAddresses[]", p -> new ArrayList<>())
+                            .computeIfAbsent(link, _ -> new LinkedHashMap<>())
+                            .computeIfAbsent("$.history.previousAddresses[]", _ -> new ArrayList<>())
                             .add(personLink);
                 }
 

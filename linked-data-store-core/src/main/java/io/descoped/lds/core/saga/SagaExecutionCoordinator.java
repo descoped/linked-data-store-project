@@ -124,8 +124,8 @@ public class SagaExecutionCoordinator {
     public SelectableFuture<SagaHandoffResult> handoff(boolean sync, AdapterLoader adapterLoader, Saga saga, SagaInput sagaInput, Map<String, List<SagaCommand>> commandsByNodeId) {
         String executionId = sagaInput.txId();
 
-        OwnedSagaLog owned = acquireCleanSagaLog(c -> {
-        }, c -> {
+        OwnedSagaLog owned = acquireCleanSagaLog(_ -> {
+        }, _ -> {
         });
         SagaLog sagaLog = owned.sagaLog();
         AtomicBoolean sagaLogReleased = new AtomicBoolean(false);
@@ -172,7 +172,7 @@ public class SagaExecutionCoordinator {
     private void track(SagaHandoffControl handoffControl) {
         CompletableFuture<SagaHandoffResult> completion = handoffControl.getCompletionFuture();
         runningSagas.add(completion);
-        completion.whenComplete((r, t) -> runningSagas.remove(completion));
+        completion.whenComplete((_, _) -> runningSagas.remove(completion));
     }
 
     /**
@@ -227,7 +227,7 @@ public class SagaExecutionCoordinator {
             if (deadLetterSagaPattern.matcher(sagaLog.id().getLogName()).matches()) {
                 throw new IllegalStateException("Dead-letter-saga acquired unintentionally");
             }
-            if (sagaLog.readIncompleteSagas().noneMatch(e -> true)) {
+            if (sagaLog.readIncompleteSagas().noneMatch(_ -> true)) {
                 handedOver = true;
                 return owned; // sagaLog is empty, all is well
             }
@@ -302,7 +302,7 @@ public class SagaExecutionCoordinator {
                     .jsonData(entry.getJsonData());
             futures.add(to.write(deadLetterEntryBuilder));
         });
-        return CompletableFuture.allOf(futures.toArray(new CompletableFuture[futures.size()])).thenCompose(v -> from.truncate());
+        return CompletableFuture.allOf(futures.toArray(new CompletableFuture[futures.size()])).thenCompose(_ -> from.truncate());
     }
 
     /**
@@ -424,8 +424,8 @@ public class SagaExecutionCoordinator {
             return CompletableFuture.completedFuture(null);
         }
         try {
-            return doCompleteSagaLog(new OwnedSagaLog(sagaLog, owner), true, nonClusterLocalSagaLog, c -> {
-            }, c -> {
+            return doCompleteSagaLog(new OwnedSagaLog(sagaLog, owner), true, nonClusterLocalSagaLog, _ -> {
+            }, _ -> {
             });
         } catch (Throwable t) {
             LOG.warn("Error completing log {}", logId, t);

@@ -209,7 +209,7 @@ public class ManagedResourceHandler implements HttpHandler {
                     exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, APPLICATION_JSON);
                     exchange.getResponseSender().send("{\"saga-execution-id\":\"" + handoffResult.getExecutionId() + "\"}");
                 },
-                (exchange1, e) -> {
+                (_, e) -> {
                     exchange.setStatusCode(StatusCodes.INTERNAL_SERVER_ERROR);
                     exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, TEXT_PLAIN);
                     exchange.getResponseSender().send("Error: " + e.getMessage());
