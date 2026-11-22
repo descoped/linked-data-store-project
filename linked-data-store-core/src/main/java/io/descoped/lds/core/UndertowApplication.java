@@ -11,7 +11,6 @@ import io.descoped.lds.api.search.IndexQueue;
 import io.descoped.lds.api.search.SearchIndex;
 import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.core.controller.CORSHandler;
-import io.descoped.lds.core.controller.HealthCheckHandler;
 import io.descoped.lds.core.health.Readiness;
 import io.descoped.lds.core.health.ReadinessHandler;
 import io.descoped.lds.core.controller.NamespaceController;
@@ -180,8 +179,10 @@ public class UndertowApplication {
 
         LOG.info("Initializing health handlers ...");
 
-        HealthCheckHandler healthHandler = new HealthCheckHandler(persistence);
-        pathHandler.addExactPath(HealthCheckHandler.HEALTH_ALIVE_PATH, healthHandler);
+        // alive and ping: the process answers; whether LDS can take writes is the readiness, which asks every part
+        ResponseCodeHandler answers = new ResponseCodeHandler(StatusCodes.OK);
+        pathHandler.addExactPath(ReadinessHandler.ALIVE_PATH, answers);
+        pathHandler.addExactPath(ReadinessHandler.PING_PATH, answers);
         this.readiness = new Readiness()
                 .persistence(persistence, namespace, new TreeSet<>(specification.getManagedDomains()).first())
                 .sagaLog(sagaLogPool)
@@ -190,7 +191,6 @@ public class UndertowApplication {
             readiness.search(indexing.index()).indexQueue(indexing.queue(), Clock.systemUTC());
         }
         pathHandler.addExactPath(ReadinessHandler.PATH, new ReadinessHandler(readiness));
-        pathHandler.addExactPath(HealthCheckHandler.PING_PATH, new ResponseCodeHandler(StatusCodes.OK));
         pathHandler.addPrefixPath("/", namespaceController);
 
         HttpHandler httpHandler;

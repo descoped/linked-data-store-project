@@ -90,7 +90,8 @@ database), the transaction log (the last message of its topic), and with search 
 a query of no rows on the core) and the index queue (its lag). The answer is a JSON body with the state of LDS and
 an entry for each check: 503 when one that writes need fails (DOWN), 200 when only search fails or the oldest
 update in the queue has waited over a minute (DEGRADED). A client that blocks (JDBC) is asked on a virtual thread of
-its own, and the read transaction is opened and closed there. `/ping` answers 200 whenever the process does.
+its own, and the read transaction is opened and closed there. `/ping` and `/health/alive` answer 200 whenever the process does (a liveness probe asks `/health/alive`, a
+readiness probe `/health/ready`).
 
 ## The GraphQL schema
 

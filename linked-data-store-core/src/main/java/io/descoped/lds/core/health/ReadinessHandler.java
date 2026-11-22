@@ -28,6 +28,17 @@ public final class ReadinessHandler implements HttpHandler {
      */
     public static final String PATH = "/health/ready";
 
+    /**
+     * The path that answers 200 whenever the process does, for a liveness probe: a part of LDS that does not answer
+     * makes LDS not ready, and a restart of LDS would not bring it back.
+     */
+    public static final String ALIVE_PATH = "/health/alive";
+
+    /**
+     * The path that answers 200 whenever the process does.
+     */
+    public static final String PING_PATH = "/ping";
+
     private static final Logger LOG = LoggerFactory.getLogger(ReadinessHandler.class);
 
     private final Readiness readiness;

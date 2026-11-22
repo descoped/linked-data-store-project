@@ -174,6 +174,16 @@ class ServerImageIT {
     }
 
     /**
+     * {@code /ping} and {@code /health/alive} answer whenever the process does: whether LDS can take writes is the
+     * readiness.
+     */
+    @Test
+    void pingAndAliveAnswerWheneverTheProcessDoes() throws Exception {
+        assertThat(lds.get("/ping").statusCode()).isEqualTo(200);
+        assertThat(lds.get("/health/alive").statusCode()).isEqualTo(200);
+    }
+
+    /**
      * In memory, LDS is ready when the store, the saga log and the transaction log answer; there is no search.
      */
     @Test
