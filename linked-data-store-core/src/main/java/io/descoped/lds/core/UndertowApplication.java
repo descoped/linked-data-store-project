@@ -366,7 +366,7 @@ public class UndertowApplication {
         LOG.info("Initializing saga-recovery thread-pool ...");
 
         AtomicInteger executorThreadId = new AtomicInteger();
-        ScheduledExecutorService recoveryThreadPool = Executors.newScheduledThreadPool(10, runnable -> new Thread(runnable, "saga-recovery-" + executorThreadId.incrementAndGet()));
+        ScheduledExecutorService recoveryThreadPool = Executors.newScheduledThreadPool(SAGA_RECOVERY_THREADS, runnable -> new Thread(runnable, "saga-recovery-" + executorThreadId.incrementAndGet()));
 
         LOG.info("Initializing saga-execution-coordinator ...");
 
@@ -448,6 +448,12 @@ public class UndertowApplication {
     }
 
     /*
+     * The threads that recover sagas: each recovers one saga log at a time, and a log of another instance of the
+     * cluster is opened for it, and closed when it is done.
+     */
+    static final int SAGA_RECOVERY_THREADS = 10;
+
+    /*
      * The key of a saga log provider whose saga logs each hold a connection of a pool while they are open (PostgreSQL).
      */
     static final String SAGA_LOG_POOL_SIZE = "connection-pool.max-size";
@@ -455,8 +461,10 @@ public class UndertowApplication {
     /*
      * Each saga log of a provider with a pool of connections holds one connection while it is open, and a log is
      * opened when a write first takes it, so a pool too small for the logs shows only under load, as writes that
-     * wait and fail. It is refused at start: the pool must have a connection for each log and at least one more,
-     * for listing the logs and recovering sagas. The pool's size is the provider's key, or its default.
+     * wait and fail. It is refused at start: the pool must have a connection for each of its logs, which stay open
+     * once opened, one for each log of another instance that recovery opens at the same time (one for each recovery
+     * thread), and one for the pool's own queries (listing the logs). The pool's size is the provider's key, or its
+     * default. Whether the database has room for the pool, the provider checks when it makes it.
      */
     static void checkSagaLogPool(SagaLogInitializer initializer, Map<String, String> providerConfig, int numberOfLogs) {
         String poolSize = providerConfig.getOrDefault(SAGA_LOG_POOL_SIZE,
@@ -465,12 +473,13 @@ public class UndertowApplication {
             return; // the provider keeps its logs without a pool of connections
         }
         int connections = Integer.parseInt(poolSize.trim());
-        if (connections <= numberOfLogs) {
+        int needed = numberOfLogs + SAGA_RECOVERY_THREADS + 1;
+        if (connections < needed) {
             throw new IllegalStateException("The saga log has " + connections + " connections in its pool"
                     + " (sagalog.config." + SAGA_LOG_POOL_SIZE + ") for " + numberOfLogs + " saga logs"
-                    + " (saga.number-of-logs): each open saga log holds a connection, and one more is needed to list"
-                    + " and recover them. Give the pool at least " + (numberOfLogs + 1) + " connections, or use fewer"
-                    + " saga logs.");
+                    + " (saga.number-of-logs): each open saga log holds a connection, recovery opens up to "
+                    + SAGA_RECOVERY_THREADS + " logs of other instances at once, and the pool needs one for its own"
+                    + " queries. Give the pool at least " + needed + " connections, or use fewer saga logs.");
         }
     }
 

@@ -160,7 +160,8 @@ public class SagaLogPostgresTest {
                 "sagalog.config.postgres.driver.user", postgres.getUsername(),
                 "sagalog.config.postgres.driver.password", postgres.getPassword(),
                 "sagalog.config.postgres.driver.database", postgres.getDatabaseName(),
-                "sagalog.config.connection-pool.max-size", "10",
+                // five logs, ten that recovery may open at once, one for the pool's own queries
+                "sagalog.config.connection-pool.max-size", "16",
                 "saga.commands.enabled", "true"));
         values.addAll(List.of(overrides));
         DynamicConfiguration.Builder builder = DynamicConfiguration.builder()

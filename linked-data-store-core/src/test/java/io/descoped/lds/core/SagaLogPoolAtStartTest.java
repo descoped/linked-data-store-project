@@ -10,8 +10,8 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * A saga log whose pool cannot hold a connection for each of its logs and one more is refused at start, before a
- * connection is made; a saga log without a pool is not checked.
+ * A saga log whose pool cannot hold a connection for each of its logs, for each log recovery opens at once and one
+ * for its own queries is refused at start, before a connection is made; a saga log without a pool is not checked.
  */
 class SagaLogPoolAtStartTest {
 
@@ -25,22 +25,22 @@ class SagaLogPoolAtStartTest {
     }
 
     @Test
-    void aPoolWithAConnectionForEachLogAndOneMoreIsTaken() {
+    void aPoolWithRoomForTheLogsRecoveryAndItsOwnQueriesIsTaken() {
         assertThatCode(() -> UndertowApplication.checkSagaLogPool(POSTGRES,
                 Map.of("connection-pool.max-size", "50"), 30)).doesNotThrowAnyException();
         assertThatCode(() -> UndertowApplication.checkSagaLogPool(POSTGRES,
-                Map.of("connection-pool.max-size", " 31 "), 30)).doesNotThrowAnyException();
+                Map.of("connection-pool.max-size", " 41 "), 30)).doesNotThrowAnyException();
     }
 
     @Test
-    void aPoolWithNoMoreConnectionsThanLogsIsRefusedWithTheKeysToChange() {
+    void aPoolOneConnectionShortIsRefusedWithTheKeysToChange() {
         assertThatThrownBy(() -> UndertowApplication.checkSagaLogPool(POSTGRES,
-                Map.of("connection-pool.max-size", "30"), 30))
+                Map.of("connection-pool.max-size", "40"), 30))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessage("The saga log has 30 connections in its pool (sagalog.config.connection-pool.max-size) for"
-                        + " 30 saga logs (saga.number-of-logs): each open saga log holds a connection, and one more is"
-                        + " needed to list and recover them. Give the pool at least 31 connections, or use fewer saga"
-                        + " logs.");
+                .hasMessage("The saga log has 40 connections in its pool (sagalog.config.connection-pool.max-size) for"
+                        + " 30 saga logs (saga.number-of-logs): each open saga log holds a connection, recovery opens"
+                        + " up to 10 logs of other instances at once, and the pool needs one for its own queries. Give"
+                        + " the pool at least 41 connections, or use fewer saga logs.");
     }
 
     /**
@@ -50,9 +50,7 @@ class SagaLogPoolAtStartTest {
     void theDefaultOfTheProviderIsCheckedWhenThePoolIsNotConfigured() {
         int providerDefault = Integer.parseInt(POSTGRES.configurationOptionsAndDefaults().get("connection-pool.max-size"));
 
-        assertThatCode(() -> UndertowApplication.checkSagaLogPool(POSTGRES, Map.of(), providerDefault - 1))
-                .doesNotThrowAnyException();
-        assertThatThrownBy(() -> UndertowApplication.checkSagaLogPool(POSTGRES, Map.of(), providerDefault))
+        assertThatThrownBy(() -> UndertowApplication.checkSagaLogPool(POSTGRES, Map.of(), 1))
                 .hasMessageContaining("has " + providerDefault + " connections");
     }
 
