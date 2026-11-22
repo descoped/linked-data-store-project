@@ -27,6 +27,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Sends the updates of the index queue to the search index. In rounds: it takes a batch of updates, reads each
@@ -41,6 +42,10 @@ import java.util.concurrent.TimeoutException;
 public final class IndexQueueWorker {
 
     private static final Logger LOG = LoggerFactory.getLogger(IndexQueueWorker.class);
+
+    /* The name of the worker's thread, followed by the number of the worker in the JVM. */
+    static final String THREAD_NAME = "lds-index-queue-";
+    private static final AtomicInteger WORKERS = new AtomicInteger();
 
     static final int BATCH = 100;
     static final Duration LEASE = Duration.ofMinutes(2);
@@ -72,8 +77,9 @@ public final class IndexQueueWorker {
         this.index = index;
         this.persistence = persistence;
         this.poll = poll;
+        String threadName = THREAD_NAME + WORKERS.incrementAndGet();
         this.executor = Executors.newSingleThreadExecutor(runnable -> {
-            Thread thread = new Thread(runnable, "lds-index-queue");
+            Thread thread = new Thread(runnable, threadName);
             thread.setDaemon(true);
             return thread;
         });
@@ -113,30 +119,49 @@ public final class IndexQueueWorker {
             LOG.debug("The last round of the index queue failed", e);
         }
         executor.shutdownNow();
+        if (!executor.awaitTermination(timeout, unit)) {
+            LOG.warn("The thread of the index queue had not ended {} {} after it was stopped", timeout, unit);
+        }
     }
 
+    /**
+     * Whether the worker has stopped and its thread has ended.
+     *
+     * @return true after {@link #stop(long, TimeUnit)} when the thread has ended
+     */
+    boolean isTerminated() {
+        return executor.isTerminated();
+    }
+
+    /*
+     * The next round, after the delay. Stopping cancels a round that waits to start, never one that runs: a running
+     * round is let finish, so its updates are either taken by the index and removed, or left in the queue.
+     */
     private void schedule(Duration delay) {
         synchronized (lock) {
             if (stopped) {
                 return;
             }
-            CompletableFuture<Void> thisRound = new CompletableFuture<>();
-            next = Completable.timer(delay.toMillis(), TimeUnit.MILLISECONDS, scheduler)
-                    .doOnComplete(() -> {
-                        synchronized (lock) {
-                            round = thisRound;
-                        }
-                    })
-                    .andThen(Single.defer(this::round))
-                    .subscribe(tookUpdates -> {
-                        thisRound.complete(null);
-                        schedule(tookUpdates ? Duration.ZERO : poll);
-                    }, error -> {
-                        LOG.error("A round of the index queue failed", error);
-                        thisRound.complete(null);
-                        schedule(poll);
-                    });
+            next = scheduler.scheduleDirect(this::runRound, delay.toMillis(), TimeUnit.MILLISECONDS);
         }
+    }
+
+    private void runRound() {
+        CompletableFuture<Void> thisRound = new CompletableFuture<>();
+        synchronized (lock) {
+            if (stopped) {
+                return;
+            }
+            round = thisRound;
+        }
+        round().subscribe(tookUpdates -> {
+            thisRound.complete(null);
+            schedule(tookUpdates ? Duration.ZERO : poll);
+        }, error -> {
+            LOG.error("A round of the index queue failed", error);
+            thisRound.complete(null);
+            schedule(poll);
+        });
     }
 
     /**
