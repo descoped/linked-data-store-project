@@ -268,8 +268,11 @@ or package names there) and `docs/developer/` for those who change the code (`ar
 one document for each part of the code). `docs/README.md` is the index. Keep these when changing it:
 
 - **Only what the code does.** A statement is one found in the code, in a test or by running LDS, and every
-  request shown was run, with the answer that came. A change of behaviour changes the document in the same pull
-  request.
+  request shown was run, with the answer that came.
+- **The documents follow the release.** They describe the released version, and the site publishes them. A pull
+  request that changes behaviour changes code and tests, not `docs/`; what the documents must then say is kept
+  outside the repository, and they are brought up to date after the next release. The documents are not a
+  changelog.
 - **The code as it is, not its history.** LDS went through several designs. The documents describe the current
   code only: no commit ids, no dates of changes, no code or test models that were removed. Earlier code and the
   documents of earlier versions are read to understand the thinking behind the current code, and are not
@@ -317,7 +320,7 @@ changing it:
   users when they update the marketplace. A change of the plugin is never a reason for a release.
 - **Only what LDS does**, as the documentation: every command a skill shows was run against the released image, and
   a skill links the documentation of the site for depth instead of copying it. A change of behaviour that a skill
-  shows changes the skill in the same pull request.
+  shows changes the skill after the release that holds it, as the documents.
 - **Honest about the limits** where the user meets them: no authentication, a JSON Schema model gives no GraphQL
   API, one namespace, the model is read at start, search only of `languageText` fields, links not checked.
 - **A GraphQL schema is the model it makes first**, JSON Schema on request.
