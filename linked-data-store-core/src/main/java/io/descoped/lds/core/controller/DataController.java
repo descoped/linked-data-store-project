@@ -10,16 +10,13 @@ import io.descoped.lds.core.domain.resource.ResourceException;
 import io.descoped.lds.core.saga.SagaExecutionCoordinator;
 import io.descoped.lds.core.saga.SagaRepository;
 import io.descoped.lds.core.schema.SchemaRepository;
+import io.descoped.lds.core.utils.RequestTime;
 import io.undertow.server.HttpHandler;
 import io.undertow.server.HttpServerExchange;
 import io.undertow.util.Headers;
 import io.undertow.util.StatusCodes;
 
-import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
-import java.time.ZoneId;
 import java.time.ZonedDateTime;
-import java.time.format.DateTimeParseException;
 import java.util.Deque;
 
 import static java.util.Optional.ofNullable;
@@ -27,7 +24,6 @@ import static java.util.Optional.ofNullable;
 class DataController implements HttpHandler {
 
     private static final String TEXT_PLAIN = "text/plain";
-    private static final ZoneId UTC = ZoneId.of("Etc/UTC");
 
     final Specification specification;
     final SchemaRepository schemaRepository;
@@ -56,7 +52,7 @@ class DataController implements HttpHandler {
             if (timestamp == null) {
                 exchange.setStatusCode(StatusCodes.BAD_REQUEST);
                 exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, TEXT_PLAIN);
-                exchange.getResponseSender().send("The 'timestamp' query-parameter must follow the ISO-8601 standard. Example of a valid formatted timestamp is '2018-12-06T11:05:31.000+01:00'");
+                exchange.getResponseSender().send("The 'timestamp' query-parameter must follow the ISO-8601 standard. Example of a valid formatted timestamp is '" + RequestTime.EXAMPLE + "'");
                 return;
             }
             resourceContext = ResourceContext.createResourceContext(specification, exchange.getRelativePath(), timestamp);
@@ -93,36 +89,14 @@ class DataController implements HttpHandler {
 
     /*
      * The time of the request in UTC: the last timestamp (or t) query parameter, or now when there is none. Null
-     * when the parameter is not an ISO-8601 time, as it is or url-decoded.
+     * when the parameter is not an ISO-8601 time (RequestTime.parse).
      */
     private static ZonedDateTime timestamp(HttpServerExchange exchange) {
         Deque<String> timestampParams = ofNullable(exchange.getQueryParameters().get("timestamp")).orElseGet(() -> exchange.getQueryParameters().get("t"));
         if (timestampParams == null || timestampParams.isEmpty()) {
             // no timestamp given by client, use time now
-            return ZonedDateTime.now(UTC);
+            return ZonedDateTime.now(RequestTime.UTC);
         }
-        String timestampParam = timestampParams.getLast();
-        ZonedDateTime timestamp = parse(timestampParam);
-        if (timestamp == null) {
-            // attempt to url-decode query parameter even though this is already done by web-server
-            timestamp = parseUrlDecoded(timestampParam);
-        }
-        return timestamp == null ? null : timestamp.withZoneSameInstant(UTC);
-    }
-
-    private static ZonedDateTime parse(String timestampParam) {
-        try {
-            return ZonedDateTime.parse(timestampParam); // ISO-8601
-        } catch (DateTimeParseException _) {
-            return null;
-        }
-    }
-
-    private static ZonedDateTime parseUrlDecoded(String timestampParam) {
-        try {
-            return ZonedDateTime.parse(URLDecoder.decode(timestampParam, StandardCharsets.UTF_8)); // ISO-8601
-        } catch (IllegalArgumentException | DateTimeParseException _) {
-            return null;
-        }
+        return RequestTime.parse(timestampParams.getLast());
     }
 }

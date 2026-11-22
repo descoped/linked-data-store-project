@@ -22,6 +22,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 import static graphql.schema.idl.RuntimeWiring.newRuntimeWiring;
@@ -53,6 +54,7 @@ public class GraphqlHttpHandlerTest {
                 "}" +
                 "type Query{" +
                 "   me: User" +
+                "   echo(text: String): String" +
                 "}";
 
         SchemaParser schemaParser = new SchemaParser();
@@ -61,7 +63,7 @@ public class GraphqlHttpHandlerTest {
         RuntimeWiring runtimeWiring = newRuntimeWiring()
                 .type("Query", builder -> builder.dataFetcher("me", new StaticDataFetcher(
                         Map.of("name", "Hadrien", "address", Map.of("street", "rue de la paix"))
-                )))
+                )).dataFetcher("echo", environment -> environment.getArgument("text")))
                 .build();
 
         SchemaGenerator schemaGenerator = new SchemaGenerator();
@@ -82,6 +84,36 @@ public class GraphqlHttpHandlerTest {
     @AfterMethod
     public void tearDown() {
         server.stop();
+    }
+
+    @Test
+    public void testPostWithoutCharsetIsReadAsUtf8() throws IOException, InterruptedException {
+        for (String contentType : new String[]{"application/json", "application/graphql"}) {
+            String query = "{ echo(text: \"øl ☕\") }";
+            String body = contentType.equals("application/json") ? "{\"query\": \"{ echo(text: \\\"øl ☕\\\") }\"}" : query;
+            HttpRequest request = HttpRequest.newBuilder(URI.create(uriTemplate.expand()))
+                    .header("Content-Type", contentType)
+                    .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
+                    .build();
+
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+
+            assertEquals(response.statusCode(), 200, contentType);
+            assertEquals(response.body(), "{\"data\":{\"echo\":\"øl ☕\"}}", contentType);
+        }
+    }
+
+    @Test
+    public void testASnapshotThatIsNotATimeIsAnError() throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder(
+                URI.create(uriTemplate.set("query", "{me{name}}").expand() + "&snapshot=yesterday")).build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        assertEquals(response.statusCode(), 200);
+        assertEquals(response.body(), "{\"errors\":[{\"message\":\"The query parameter snapshot 'yesterday' is not an "
+                + "ISO-8601 time. Example of a valid formatted time is '2018-12-06T11:05:31.000+01:00'\","
+                + "\"locations\":[],\"extensions\":{\"classification\":\"ValidationError\"}}]}");
     }
 
     @Test

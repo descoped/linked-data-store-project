@@ -1,8 +1,10 @@
 package io.descoped.lds.graphql;
 
+import graphql.ErrorType;
 import graphql.ExecutionInput;
 import graphql.ExecutionResult;
 import graphql.GraphQL;
+import graphql.GraphqlErrorBuilder;
 import io.descoped.lds.api.persistence.json.JsonTools;
 import io.undertow.attribute.ExchangeAttributes;
 import io.undertow.predicate.Predicate;
@@ -19,7 +21,7 @@ import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.Deque;
 import java.util.Map;
 import java.util.Objects;
@@ -84,13 +86,13 @@ public class GraphqlHttpHandler implements HttpHandler {
 
     private static JsonNode toJson(HttpServerExchange exchange) throws IOException {
         try (InputStream bi = new BufferedInputStream(exchange.getInputStream())) {
-            return mapper.readTree(new InputStreamReader(bi, Charset.forName(exchange.getRequestCharset())));
+            return mapper.readTree(new InputStreamReader(bi, StandardCharsets.UTF_8));
         }
     }
 
     private static String toString(HttpServerExchange exchange) throws IOException {
         try (InputStream i = new BufferedInputStream(exchange.getInputStream())) {
-            return new String(i.readAllBytes(), Charset.forName(exchange.getRequestCharset()));
+            return new String(i.readAllBytes(), StandardCharsets.UTF_8);
         }
     }
 
@@ -164,11 +166,16 @@ public class GraphqlHttpHandler implements HttpHandler {
             return;
         }
 
-        // Add context.
-        executionInput.graphQLContext(Map.of(GraphQLContext.class, new GraphQLUndertowContext(exchange, executionInput.build())));
-
-        // Execute
-        ExecutionResult result = graphQl.execute(executionInput);
+        // Add context. A snapshot that cannot be read is answered as an error, and the query is not run.
+        ExecutionResult result;
+        try {
+            executionInput.graphQLContext(Map.of(GraphQLContext.class, new GraphQLUndertowContext(exchange, executionInput.build())));
+            result = graphQl.execute(executionInput);
+        } catch (IllegalArgumentException e) {
+            result = ExecutionResult.newExecutionResult()
+                    .addError(GraphqlErrorBuilder.newError().message(e.getMessage()).errorType(ErrorType.ValidationError).build())
+                    .build();
+        }
 
         // Serialize
         Map<String, Object> resultMap = result.toSpecification();
