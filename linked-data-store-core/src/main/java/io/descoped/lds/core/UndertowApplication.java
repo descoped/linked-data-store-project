@@ -419,6 +419,7 @@ public class UndertowApplication {
         ServiceLoader<SagaLogInitializer> loader = ServiceLoader.load(SagaLogInitializer.class);
         SagaLogInitializer initializer = loader.stream().filter(c -> providerClass.equals(c.type().getName())).findFirst().orElseThrow().get();
         Map<String, String> providerConfig = subMapFromPrefix(configuration.asMap(), "sagalog.config.");
+        checkSagaLogPool(initializer, providerConfig, configuration.getInt("saga.number-of-logs"));
 
         int retryIntervalSeconds = configuration.getInt("sagalog.provider.initialization.retry-interval-seconds");
         int maxWaitSeconds = configuration.getInt("sagalog.provider.initialization.max-wait-seconds");
@@ -443,6 +444,33 @@ public class UndertowApplication {
                     throw e;
                 }
             }
+        }
+    }
+
+    /*
+     * The key of a saga log provider whose saga logs each hold a connection of a pool while they are open (PostgreSQL).
+     */
+    static final String SAGA_LOG_POOL_SIZE = "connection-pool.max-size";
+
+    /*
+     * Each saga log of a provider with a pool of connections holds one connection while it is open, and a log is
+     * opened when a write first takes it, so a pool too small for the logs shows only under load, as writes that
+     * wait and fail. It is refused at start: the pool must have a connection for each log and at least one more,
+     * for listing the logs and recovering sagas. The pool's size is the provider's key, or its default.
+     */
+    static void checkSagaLogPool(SagaLogInitializer initializer, Map<String, String> providerConfig, int numberOfLogs) {
+        String poolSize = providerConfig.getOrDefault(SAGA_LOG_POOL_SIZE,
+                initializer.configurationOptionsAndDefaults().get(SAGA_LOG_POOL_SIZE));
+        if (poolSize == null) {
+            return; // the provider keeps its logs without a pool of connections
+        }
+        int connections = Integer.parseInt(poolSize.trim());
+        if (connections <= numberOfLogs) {
+            throw new IllegalStateException("The saga log has " + connections + " connections in its pool"
+                    + " (sagalog.config." + SAGA_LOG_POOL_SIZE + ") for " + numberOfLogs + " saga logs"
+                    + " (saga.number-of-logs): each open saga log holds a connection, and one more is needed to list"
+                    + " and recover them. Give the pool at least " + (numberOfLogs + 1) + " connections, or use fewer"
+                    + " saga logs.");
         }
     }
 

@@ -248,6 +248,37 @@ class ServerImageIT {
     }
 
     /**
+     * A saga log in PostgreSQL whose pool cannot hold a connection for each saga log and one more is refused at
+     * start, before LDS connects to the database, with the keys to change.
+     */
+    @Test
+    void aSagaLogPoolTooSmallForItsLogsStopsTheStart() throws Exception {
+        String name = "lds-small-pool-" + ProcessHandle.current().pid();
+        Path output = Files.createTempFile("lds-small-pool", ".log");
+        try {
+            Process process = new ProcessBuilder("docker", "run", "--rm", "--name", name,
+                    "-e", "LDS_SAGALOG_PROVIDER=no.cantara.sagalog.postgres.PostgresSagaLogInitializer",
+                    "-e", "LDS_SAGALOG_CONFIG_CONNECTION_POOL_MAX_SIZE=10", "-e", "LDS_SAGA_NUMBER_OF_LOGS=30", IMAGE)
+                    .redirectErrorStream(true)
+                    .redirectOutput(output.toFile())
+                    .start();
+            boolean ended = process.waitFor(2, TimeUnit.MINUTES);
+            if (!ended) {
+                docker("rm", "--force", name);
+            }
+            assertThat(ended).as("LDS stopped by itself: %s", Files.readString(output)).isTrue();
+            assertThat(process.exitValue()).isEqualTo(1);
+            assertThat(Files.readString(output))
+                    .contains("The saga log has 10 connections in its pool (sagalog.config.connection-pool.max-size)"
+                            + " for 30 saga logs (saga.number-of-logs)")
+                    .doesNotContain("SagaLogPool provider initialization attempt")
+                    .doesNotContain("Server started");
+        } finally {
+            Files.deleteIfExists(output);
+        }
+    }
+
+    /**
      * {@code docker stop} sends the signal to the JVM itself, which then stops the application in order and ends
      * with 143, the code of a process that ended by that signal.
      */
