@@ -22,6 +22,7 @@ import io.descoped.lds.core.schema.JsonSchema;
 import io.descoped.lds.core.schema.JsonSchemaBuilder;
 import io.descoped.lds.core.search.IndexQueueConfigurator;
 import io.descoped.lds.core.search.IndexQueueWorker;
+import io.descoped.lds.core.search.IndexRebuild;
 import io.descoped.lds.core.search.SearchIndexConfigurator;
 import io.descoped.lds.core.specification.JsonSchemaBasedSpecification;
 import io.descoped.lds.core.specification.SpecificationJsonSchemaBuilder;
@@ -110,13 +111,15 @@ public class UndertowApplication {
     }
 
     /**
-     * Search: the index, the queue of the updates it has not taken, and the worker that sends them.
+     * Search: the index, the queue of the updates it has not taken, the worker that sends them, and the rebuild of the
+     * index from storage when the start asks for it.
      *
-     * @param index  the search index
-     * @param queue  the index queue
-     * @param worker the worker
+     * @param index   the search index
+     * @param queue   the index queue
+     * @param worker  the worker
+     * @param rebuild the rebuild, or null
      */
-    record Indexing(SearchIndex index, IndexQueue queue, IndexQueueWorker worker) {
+    record Indexing(SearchIndex index, IndexQueue queue, IndexQueueWorker worker, IndexRebuild rebuild) {
     }
 
     /* How long the worker of the index queue waits for updates when there were none. */
@@ -297,8 +300,12 @@ public class UndertowApplication {
             LOG.info("Initializing index queue ...");
             IndexQueue indexQueue = IndexQueueConfigurator.configureIndexQueue(configuration);
             sagaRepositoryBuilder.indexQueue(indexQueue);
+            IndexRebuild rebuild = configuration.getBoolean("search.index.rebuild", false)
+                    ? new IndexRebuild(persistence, indexQueue, configuration.find("namespace.default").orElseThrow(),
+                    List.copyOf(specification.getManagedDomains()))
+                    : null;
             indexing = new Indexing(searchIndex, indexQueue,
-                    new IndexQueueWorker(indexQueue, searchIndex, persistence, INDEX_QUEUE_POLL));
+                    new IndexQueueWorker(indexQueue, searchIndex, persistence, INDEX_QUEUE_POLL), rebuild);
         }
 
         LOG.info("Initializing transaction-log ...");
@@ -529,6 +536,9 @@ public class UndertowApplication {
         if (indexing != null) {
             LOG.info("Starting the index queue ...");
             indexing.worker().start();
+            if (indexing.rebuild() != null) {
+                indexing.rebuild().start();
+            }
         }
         if (sagaRecoveryTrigger != null) {
             LOG.info("Starting saga-recovery (instance-local) ...");
@@ -604,6 +614,9 @@ public class UndertowApplication {
 
         if (indexing != null) {
             // after the sagas, which add to the queue, and before the store, which the worker reads
+            if (indexing.rebuild() != null) {
+                stop("Index rebuild", indexing.rebuild()::stop);
+            }
             stop("Index queue worker", () -> indexing.worker().stop(timeout, unit));
             stop("Index queue", indexing.queue()::close);
         }

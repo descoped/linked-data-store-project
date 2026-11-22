@@ -182,6 +182,19 @@ final class PostgresPersistence implements RxPersistence {
     }
 
     /**
+     * Every fragment of the entity, in the order of the primary key: by id, oldest version first, path. The rows are
+     * fetched as they are asked for.
+     */
+    @Override
+    public Flowable<Fragment> readAllVersions(Transaction transaction, String namespace, String entity) {
+        Query query = new Query();
+        query.sql(SELECT_COLUMNS).sql(" FROM fragment f WHERE f.namespace = ").value(namespace)
+                .sql(" AND f.entity = ").value(entity)
+                .sql(" ORDER BY f.id, f.version, f.path, f.indices");
+        return fragments(transaction, namespace, entity, query);
+    }
+
+    /**
      * The versions of one document, oldest first, or newest first for a backward range. {@code after} is not a
      * strict bound: the version that was valid at that time is the first one. {@code before} is exclusive. The
      * limit counts versions.

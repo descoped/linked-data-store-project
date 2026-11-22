@@ -683,6 +683,63 @@ public abstract class PersistenceIntegrationTest {
     }
 
     /**
+     * Every version of every document of an entity type is read, the versions of a deleted document and the marker
+     * of its deletion included (a deleted document, with no content), by id in the order of code points, the versions
+     * of an id together; nothing of another entity type or namespace. What a rebuild of the search index reads.
+     */
+    @Test
+    public void thatEveryVersionOfEveryDocumentIsReadTheDeletedOnesIncluded() {
+        ZonedDateTime jan = parse("2000-01-01T00:00:00.000Z");
+        ZonedDateTime feb = parse("2000-02-01T00:00:00.000Z");
+        ZonedDateTime mar = parse("2000-03-01T00:00:00.000Z");
+        try (Transaction tx = persistence.createTransaction(false)) {
+            try {
+                persistence.deleteAllEntities(tx, namespace, "Person", specification).blockingAwait();
+                persistence.deleteAllEntities(tx, namespace, "Address", specification).blockingAwait();
+                assertThat(persistence.readAllDocumentVersions(tx, namespace, "Person").toList().blockingGet()).isEmpty();
+
+                for (String id : List.of("😀", "b", "\uFB00", "a")) {
+                    persistence.createOrOverwrite(tx, createPerson(id, jan), specification).blockingAwait();
+                }
+                persistence.createOrOverwrite(tx, createPerson("a", feb), specification).blockingAwait();
+                persistence.createOrOverwrite(tx, createPerson("b", feb), specification).blockingAwait();
+                persistence.markDocumentDeleted(tx, namespace, "Person", "b", mar, PersistenceDeletePolicy.FAIL_IF_INCOMING_LINKS)
+                        .blockingAwait();
+                persistence.createOrOverwrite(tx, toDocument(namespace, "Address", "elsewhere",
+                        createAddress("Oslo", "", "Norway"), jan), specification).blockingAwait();
+
+                List<JsonDocument> versions = persistence.readAllDocumentVersions(tx, namespace, "Person").toList().blockingGet();
+
+                assertThat(versions.stream().map(document -> document.key().id()).distinct().toList())
+                        .as("by id, in the order of code points, the versions of an id together")
+                        .containsExactly("a", "b", "\uFB00", "😀");
+                assertThat(versions.stream().map(document -> document.key().id()).toList())
+                        .containsExactly("a", "a", "b", "b", "b", "\uFB00", "😀");
+                assertThat(versions).filteredOn(document -> document.key().id().equals("a"))
+                        .extracting(document -> document.key().timestamp().toInstant())
+                        .containsExactlyInAnyOrder(jan.toInstant(), feb.toInstant());
+                assertThat(versions).filteredOn(document -> document.key().id().equals("b"))
+                        .extracting(document -> document.key().timestamp().toInstant(), JsonDocument::deleted)
+                        .containsExactlyInAnyOrder(org.assertj.core.groups.Tuple.tuple(jan.toInstant(), false),
+                                org.assertj.core.groups.Tuple.tuple(feb.toInstant(), false),
+                                org.assertj.core.groups.Tuple.tuple(mar.toInstant(), true));
+                JsonDocument aInFebruary = versions.stream().filter(document -> document.key().id().equals("a")
+                        && document.key().timestamp().toInstant().equals(feb.toInstant())).findFirst().orElseThrow();
+                assertThat(JsonTools.text(aInFebruary.jackson().get("lastname"))).isEqualTo("Smith (" + feb + ")");
+                assertThat(versions).allMatch(document -> document.key().namespace().equals(namespace)
+                        && document.key().entity().equals("Person"));
+                // one document is read without the rest being taken from the store first
+                assertThat(persistence.readAllDocumentVersions(tx, namespace, "Person").firstElement().blockingGet().key().id())
+                        .isEqualTo("a");
+
+            } finally {
+                persistence.deleteAllEntities(tx, namespace, "Person", specification).blockingAwait();
+                persistence.deleteAllEntities(tx, namespace, "Address", specification).blockingAwait();
+            }
+        }
+    }
+
+    /**
      * The ids of a list are in the order of their code points (IdOrder), the order of their bytes in UTF-8, in every
      * provider: a letter above U+FFFF (😀, 𠮷) comes after a letter of U+E000 to U+FFFF (ﬀ, a full-width Ａ), where
      * Java's order of strings, by UTF-16, would put it before. A bound, an id or a text that no id is, gives what is

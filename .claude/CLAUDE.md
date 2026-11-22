@@ -76,6 +76,12 @@ provider), or in memory when the transaction log is `discard` or `memory`, which
 the saga step only adds; the worker reads storage, so the index gets what storage holds at the version; a read
 transaction is opened and closed on the worker's thread (the memory store holds a lock of the thread).
 
+The start option `search.index.rebuild` rebuilds the index from storage (`IndexRebuild`, decided by the owner, D3):
+every version of every document of every entity type, read with `readAllDocumentVersions` (the persistence API,
+held by the shared suite), is added to the queue, a deletion as a delete and the versions before it as writes, and
+the worker sends them. The index is never cleared, so search answers during a rebuild. Storage is read only as fast
+as the queue takes, and each read transaction is opened and closed on the rebuild's own thread.
+
 ## The GraphQL schema
 
 Core builds its GraphQL schema from the schema file with a chain of visitors (`GraphQLSchemaBuilder`), on
