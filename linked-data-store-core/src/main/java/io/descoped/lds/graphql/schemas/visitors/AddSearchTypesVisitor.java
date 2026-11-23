@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 
+import static graphql.Scalars.GraphQLBoolean;
 import static graphql.Scalars.GraphQLString;
 import static graphql.schema.GraphQLArgument.newArgument;
 import static graphql.schema.GraphQLList.list;
@@ -102,6 +103,11 @@ public class AddSearchTypesVisitor extends GraphQLTypeVisitorStub {
                         .type(nonNull(GraphQLString)))
                 .argument(newArgument().name("filter")
                         .type(list(typeFilters))
+                        .build())
+                .argument(newArgument().name("history")
+                        .description("Every version up to the snapshot that matches, and not only the one valid at it")
+                        .type(GraphQLBoolean)
+                        .defaultValueProgrammatic(false)
                         .build())
                 .type(nonNull(list(nonNull(searchResult))));
 

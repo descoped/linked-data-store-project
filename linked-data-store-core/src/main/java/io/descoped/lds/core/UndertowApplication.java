@@ -23,6 +23,7 @@ import io.descoped.lds.core.saga.SagasObserver;
 import io.descoped.lds.core.schema.JsonSchema;
 import io.descoped.lds.core.schema.JsonSchemaBuilder;
 import io.descoped.lds.core.search.IndexQueueConfigurator;
+import io.descoped.lds.core.search.IndexEntries;
 import io.descoped.lds.core.search.IndexQueueWorker;
 import io.descoped.lds.core.search.IndexRebuild;
 import io.descoped.lds.core.search.SearchIndexConfigurator;
@@ -31,6 +32,7 @@ import io.descoped.lds.core.specification.SpecificationJsonSchemaBuilder;
 import io.descoped.lds.core.txlog.TxlogRawdataPool;
 import io.descoped.lds.graphql.GraphqlHttpHandler;
 import io.descoped.lds.graphql.jsonschema.GraphQLToJsonConverter;
+import io.descoped.lds.graphql.directives.DomainDirective;
 import io.descoped.lds.graphql.schemas.GraphQLSchemaBuilder;
 import io.descoped.rawdata.api.RawdataClient;
 import io.undertow.Handlers;
@@ -258,6 +260,7 @@ public class UndertowApplication {
         LOG.info("Initializing specification ...");
 
         JsonSchemaBasedSpecification specification;
+        Set<String> notSearched = Set.of();
 
         Optional<String> graphQLSchemaPath = configuration.find("graphql.schema")
                 .map(path -> path.isEmpty() ? null : path);
@@ -268,6 +271,7 @@ public class UndertowApplication {
             TypeDefinitionRegistry definitionRegistry = parseSchemaFile(graphQLFile);
 
             GraphQLSchema schema = GraphQLSchemaBuilder.parseSchema(definitionRegistry);
+            notSearched = DomainDirective.notSearched(schema);
             GraphQLToJsonConverter graphQLToJsonConverter = new GraphQLToJsonConverter(schema);
             SequencedMap<String, ObjectNode> jsonMap = graphQLToJsonConverter.createSpecification(schema);
 
@@ -316,7 +320,8 @@ public class UndertowApplication {
                     List.copyOf(specification.getManagedDomains()))
                     : null;
             indexing = new Indexing(searchIndex, indexQueue,
-                    new IndexQueueWorker(indexQueue, searchIndex, persistence, INDEX_QUEUE_POLL), rebuild);
+                    new IndexQueueWorker(indexQueue, searchIndex, persistence,
+                            new IndexEntries(specification, notSearched), INDEX_QUEUE_POLL), rebuild);
         }
 
         LOG.info("Initializing transaction-log ...");

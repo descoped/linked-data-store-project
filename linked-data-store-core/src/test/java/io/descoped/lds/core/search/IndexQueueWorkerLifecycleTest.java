@@ -8,7 +8,9 @@ import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.api.search.IndexQueue;
 import io.descoped.lds.api.search.IndexUpdate;
 import io.descoped.lds.api.search.SearchIndex;
-import io.descoped.lds.api.search.SearchResponse;
+import io.descoped.lds.api.search.IndexEntry;
+import io.descoped.lds.api.search.SearchPage;
+import io.descoped.lds.api.search.SearchQuery;
 import io.descoped.lds.core.persistence.memory.MemoryInitializer;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Single;
@@ -50,17 +52,12 @@ class IndexQueueWorkerLifecycleTest {
         volatile CountDownLatch hold = new CountDownLatch(0);
 
         @Override
-        public Completable createOrOverwrite(JsonDocument document) {
-            return createOrOverwrite(List.of(document));
-        }
-
-        @Override
-        public Completable createOrOverwrite(Collection<JsonDocument> documents) {
+        public Completable put(List<IndexEntry> entries) {
             return Completable.create(emitter -> Thread.ofPlatform().start(() -> {
                 sending.countDown();
                 try {
                     hold.await();
-                    documents.forEach(document -> taken.add(document.key().id()));
+                    entries.stream().filter(entry -> !entry.deleted()).forEach(entry -> taken.add(entry.id()));
                     emitter.onComplete();
                 } catch (InterruptedException e) {
                     emitter.onError(e);
@@ -69,22 +66,12 @@ class IndexQueueWorkerLifecycleTest {
         }
 
         @Override
-        public Completable delete(JsonDocument document) {
-            return Completable.complete();
-        }
-
-        @Override
-        public Completable deleteAll() {
-            return Completable.complete();
-        }
-
-        @Override
         public Completable health() {
             return Completable.complete();
         }
 
         @Override
-        public Single<SearchResponse> search(String query, Set<String> typeFilter, long from, long size) {
+        public Single<SearchPage> search(SearchQuery query) {
             throw new UnsupportedOperationException();
         }
     }
@@ -151,7 +138,7 @@ class IndexQueueWorkerLifecycleTest {
     }
 
     private IndexQueueWorker worker(IndexQueue queue) {
-        worker = new IndexQueueWorker(queue, index, persistence, POLL);
+        worker = new IndexQueueWorker(queue, index, persistence, IndexEntriesTest.withoutAModel(), POLL);
         return worker;
     }
 
@@ -256,37 +243,5 @@ class IndexQueueWorkerLifecycleTest {
 
         await().atMost(Duration.ofSeconds(5)).until(() -> index.taken.contains("later"));
         assertThat(queue.failures.get()).isNegative();
-    }
-
-    @Test
-    void theDeletesOfARoundAreSentSideBySideAtMostEightAtATime() {
-        AtomicInteger inFlight = new AtomicInteger();
-        AtomicInteger most = new AtomicInteger();
-        List<String> deleted = new CopyOnWriteArrayList<>();
-        SearchIndex slowDeletes = new HeldIndex() {
-            @Override
-            public Completable delete(JsonDocument document) {
-                return Completable.defer(() -> {
-                    most.accumulateAndGet(inFlight.incrementAndGet(), Math::max);
-                    return Completable.timer(50, TimeUnit.MILLISECONDS)
-                            .doOnComplete(() -> {
-                                // done before the merge is told, which then starts the next
-                                inFlight.decrementAndGet();
-                                deleted.add(document.key().id());
-                            });
-                });
-            }
-        };
-        MemoryIndexQueue queue = new MemoryIndexQueue();
-        for (int i = 0; i < 20; i++) {
-            queue.add(new IndexUpdate("ns", "Person", "d" + i, VERSION, IndexUpdate.Operation.DELETE)).blockingAwait();
-        }
-        worker = new IndexQueueWorker(queue, slowDeletes, persistence, POLL);
-
-        assertThat(worker.round().blockingGet()).isTrue();
-
-        assertThat(deleted).hasSize(20);
-        assertThat(most.get()).isEqualTo(IndexQueueWorker.CONCURRENT_DELETES);
-        assertThat(inQueue(queue)).isZero();
     }
 }

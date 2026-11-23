@@ -8,13 +8,17 @@ import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.api.search.IndexQueue;
 import io.descoped.lds.api.search.IndexUpdate;
 import io.descoped.lds.api.search.SearchIndex;
-import io.descoped.lds.api.search.SearchResponse;
+import io.descoped.lds.api.search.IndexEntry;
+import io.descoped.lds.api.search.Language;
+import io.descoped.lds.api.search.SearchPage;
+import io.descoped.lds.api.search.SearchQuery;
 import io.descoped.lds.core.persistence.memory.MemoryInitializer;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Single;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.Collection;
 import java.util.List;
@@ -46,39 +50,24 @@ class IndexQueueWorkerTest {
         volatile String refusedId;
 
         @Override
-        public Completable createOrOverwrite(JsonDocument document) {
-            return createOrOverwrite(List.of(document));
-        }
-
-        @Override
-        public Completable createOrOverwrite(Collection<JsonDocument> documents) {
+        public Completable put(List<IndexEntry> entries) {
             return Completable.defer(() -> {
-                if (down || documents.stream().anyMatch(document -> document.key().id().equals(refusedId))) {
+                if (down || entries.stream().anyMatch(entry -> entry.id().equals(refusedId))) {
                     return Completable.error(new IllegalStateException("the index refuses"));
                 }
-                batches.add(documents.size());
-                documents.forEach(document -> {
-                    written.add(document.key());
-                    writtenNames.add(JsonTools.text(document.jackson().get("name")));
+                batches.add(entries.size());
+                entries.forEach(entry -> {
+                    DocumentKey key = new DocumentKey(entry.namespace(), entry.entity(), entry.id(),
+                            entry.version().withZoneSameInstant(ZoneOffset.UTC));
+                    if (entry.deleted()) {
+                        deleted.add(key);
+                    } else {
+                        written.add(key);
+                        writtenNames.add(entry.texts().get(Language.NONE).getFirst());
+                    }
                 });
                 return Completable.complete();
             });
-        }
-
-        @Override
-        public Completable delete(JsonDocument document) {
-            return Completable.defer(() -> {
-                if (down) {
-                    return Completable.error(new IllegalStateException("the index is down"));
-                }
-                deleted.add(document.key());
-                return Completable.complete();
-            });
-        }
-
-        @Override
-        public Completable deleteAll() {
-            return Completable.complete();
         }
 
         @Override
@@ -87,7 +76,7 @@ class IndexQueueWorkerTest {
         }
 
         @Override
-        public Single<SearchResponse> search(String query, Set<String> typeFilter, long from, long size) {
+        public Single<SearchPage> search(SearchQuery query) {
             throw new UnsupportedOperationException();
         }
     }
@@ -96,7 +85,12 @@ class IndexQueueWorkerTest {
     private final MemoryIndexQueue queue = new MemoryIndexQueue(clock);
     private final FakeIndex index = new FakeIndex();
     private final RxJsonPersistence persistence = new MemoryInitializer().initialize("ns", Map.of(), Set.of("Person"));
-    private final IndexQueueWorker worker = new IndexQueueWorker(queue, index, persistence, Duration.ofMillis(20));
+    private final IndexQueueWorker worker = new IndexQueueWorker(queue, index, persistence,
+            IndexEntriesTest.withoutAModel(), Duration.ofMillis(20));
+
+    private static ZonedDateTime utc(ZonedDateTime version) {
+        return version.withZoneSameInstant(ZoneOffset.UTC);
+    }
 
     private void store(String id, ZonedDateTime version, String name) {
         try (Transaction tx = persistence.createTransaction(false)) {
@@ -117,8 +111,7 @@ class IndexQueueWorkerTest {
 
         assertThat(worker.round().blockingGet()).isTrue();
 
-        assertThat(index.written).containsExactly(new DocumentKey("ns", "Person", "ola", VERSION));
-        assertThat(index.written.getFirst().timestamp().getZone()).isEqualTo(VERSION.getZone());
+        assertThat(index.written).containsExactly(new DocumentKey("ns", "Person", "ola", utc(VERSION)));
         assertThat(index.writtenNames).containsExactly("Ola");
         assertThat(queue.lag().blockingGet().updates()).isZero();
         assertThat(worker.round().blockingGet()).isFalse();
@@ -147,7 +140,7 @@ class IndexQueueWorkerTest {
 
         worker.round().blockingGet();
 
-        assertThat(index.deleted).containsExactly(new DocumentKey("ns", "Person", "gone", VERSION));
+        assertThat(index.deleted).containsExactly(new DocumentKey("ns", "Person", "gone", utc(VERSION)));
         assertThat(index.written).isEmpty();
         assertThat(queue.lag().blockingGet().updates()).isZero();
     }

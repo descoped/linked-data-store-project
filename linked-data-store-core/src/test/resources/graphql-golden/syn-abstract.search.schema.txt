@@ -288,6 +288,7 @@ GraphQLObjectType Query
     arg before: String default=null description=null
     arg filter: [TypeFilters] default=null description=null
     arg first: Int default=null description=null
+    arg history: Boolean default=Boolean:false description="Every version up to the snapshot that matches, and not only the one valid at it"
     arg last: Int default=null description=null
     arg query: String! default=null description=null
     @search

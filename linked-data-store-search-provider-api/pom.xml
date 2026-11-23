@@ -15,32 +15,6 @@
     <name>Linked Data Store Search Provider API</name>
     <description>The service provider interface a search index implements.</description>
 
-    <build>
-        <plugins>
-            <!-- Pre-3.0 code: these lint categories are not clean yet. Every other warning fails the build, and
-                 this override goes when the module is revised. -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <configuration>
-                    <compilerArgs combine.self="override">
-                        <arg>-Xlint:all,-requires-automatic,-exports</arg>
-                        <arg>-Werror</arg>
-                    </compilerArgs>
-                </configuration>
-            </plugin>
-            <!-- Pre-3.0 code has little Javadoc. Doclint checks what is there; missing Javadoc becomes an
-                 error again when the module is revised. -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-javadoc-plugin</artifactId>
-                <configuration>
-                    <doclint>all,-missing</doclint>
-                </configuration>
-            </plugin>
-        </plugins>
-    </build>
-
     <dependencies>
         <dependency>
             <groupId>io.descoped.lds</groupId>

@@ -20,7 +20,7 @@ group `io.descoped.lds`.
 | `linked-data-store-persistence-provider-postgres` | `io.descoped.lds.persistence.postgres` | provider `postgres`, revised for 3.0: one table, `fragment`, created at start, holding every namespace; every read is one statement whose rows are fetched as they are asked for |
 | `linked-data-store-persistence-provider-neo4j` | `io.descoped.lds.persistence.neo4j` | provider `neo4j`, revised for 3.0 on Neo4j 2026 (community edition is enough): a document is a node with its entity as label and `namespace` and `id` as properties, unique together, so one database holds every namespace; a version is a `VERSION` relationship (`from`, `to`) to the root of a tree of `<entity>_E` nodes, one node for every object, array and value the document holds (`Neo4jDocumentWriter`); a link is a `REF` relationship to the document node it points at. The constraints and indexes are created at start |
 | `linked-data-store-search-provider-api` | `io.descoped.lds.search.api` | the search SPI (`SearchIndexProvider`, `SearchIndex`) |
-| `linked-data-store-search-provider-solr` | `io.descoped.lds.search.provider.solr` | provider `solr`, on the client of Solr 10 that uses the HTTP client of the JDK. It indexes into one core, named in `search.index.url`; an update completes when Solr has answered it, and fails when Solr refuses it or cannot be reached |
+| `linked-data-store-search-provider-solr` | `io.descoped.lds.search.provider.solr` | provider `solr`, on the client of Solr 10 that uses the HTTP client of the JDK. It indexes into one core, named in `search.index.url`, whose schema it puts in itself (`SolrSchema`, the same for every model); an update completes when Solr has answered it, and fails when Solr refuses it or cannot be reached |
 | `linked-data-store-index-queue-postgres` | `io.descoped.lds.index.queue.postgres` | the index queue `postgres`: the updates the search index has not taken, in the table `lds_index_queue` of the database of the transaction log (`txlog.config.postgres.*`), created at start. Several LDS share it (`FOR UPDATE SKIP LOCKED`) |
 | `linked-data-store-core` | `io.descoped.lds.core` | the application: `UndertowApplication`, REST (`NamespaceController`), GraphQL, sagas, transaction log |
 | `linked-data-store-server` | `io.descoped.lds.server` | `Server` (the main class), the defaults of the configuration, the example model (`schemas/`), the Dockerfile and the compose file (`compose.yaml`) |
@@ -195,7 +195,7 @@ which validates the Jackson tree of the document). A schema that at its root say
 - **SonarCloud**: one project, `descoped_linked-data-store-project`, for the whole reactor.
 
 Several of these describe where 3.0.0 is going and are not true of the pre-3.0 code yet (UTC instants in the
-memory provider, `Transaction.close()` committing, the search text going into the Solr query as it is). One is met
+memory provider, `Transaction.close()` committing). One is met
 in another way than it is worded: the Neo4j provider writes the name of an entity into Cypher as a quoted label
 (`Cypher.label`), and does not validate it; a label as a parameter costs Neo4j its indexes for lists, and a
 constraint cannot be created with one.
@@ -220,7 +220,8 @@ module makes that module meet them.
   and its parameters, without Neo4j.
 - The Solr provider's tests run on a real Solr 10 (`solr:10.1`) through Testcontainers, started as the compose
   file of the server starts it: the image as it is, with the core `lds-index` created from the configuration the
-  image comes with. A write is in the index within the five seconds the provider gives Solr to commit it.
+  image comes with; the provider puts its schema in. A write is in the index within the five seconds the provider
+  gives Solr to commit it. Each test writes in a namespace of its own.
 - The index queue's tests (`PostgresIndexQueueTest`) run on a real PostgreSQL 18 through Testcontainers. Core's
   `IndexQueueWorkerTest` runs the worker on the memory store with an index that can refuse, and
   `MemoryIndexQueueTest` the queue in memory.
@@ -406,5 +407,17 @@ steps, the same load (80 reads to 20 writes, 1 to 50 threads, ten seconds each),
 - What the owner wants the load test to become is not decided. Until it is, it is changed only to keep it
   running.
 
-The Solr provider indexes the texts of the fields named `languageText` and nothing else, which is from the model
-LDS was first written for. The example model has such a field (`Company.about`) so that search can be tried.
+## Search
+
+Decided by the owner (the design of 2026-11-23 in the dossier): the search index holds one entry for each version of
+each document, written or deleted, never changed, with the texts of the version (`IndexEntry`, made by
+`IndexEntries` in core with the model). A text in an object with a `languageCode` and a `languageText` is searched in
+the language of the code, with that language's stemmer (`Language`: Norwegian bokmål and nynorsk, Swedish, English,
+German, French); every other text word for word. A link, a date, a time, a number and a boolean are not text, and an
+entity type marked `@domain(searchable: false)` has no entries. A search is at a moment (`SearchQuery`): of each
+document the newest entry up to it, tested for the words only then, so a word only an older version had does not
+find the document; `history` gives every matching version. The Solr schema is LDS's own and does not depend on the
+model (`SolrSchema`), so a model that changes needs nothing of Solr; what was indexed under an earlier model stays
+until the index is rebuilt. Keep these: an entry is never updated in place; the words are a parameter that edismax
+reads in the text fields with `uf=-*`, never part of the query; the collapse to the newest version comes before the
+test of the words. Fields for each path (filters, facets, where a word matched) are left out until there is a need.

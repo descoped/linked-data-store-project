@@ -94,6 +94,33 @@ public class GraphQLIntegrationTest {
         searchUntil("spec/demo/graphql/search_contact.json", "Duck", 0);
     }
 
+    /**
+     * A search finds a document by the words of its version valid now: a name it had before is not found, unless the
+     * search asks for history, which finds the version that had it.
+     */
+    @Test
+    @ConfigurationOverride({
+            "graphql.enabled", "true",
+            "specification.schema", "spec/demo/contact.json"
+    })
+    public void thatAWordOnlyAnOlderVersionHadIsFoundOnlyWithHistory() {
+        putResource("/data/contact/821ab", "demo/4-donald.json");
+        searchUntil("spec/demo/graphql/search_contact.json", "Duck", 1);
+        client.put("/data/contact/821ab?sync=true", readFileOrClasspathResource("demo/4-donald.json")
+                .replace("Donald Duck", "Fethry Duck").replace("donald@", "fethry@"));
+        searchUntil("spec/demo/graphql/search_contact.json", "Fethry", 1);
+
+        JsonNode now = executeGraphQLQuery("spec/demo/graphql/search_contact_history.json", "Donald", "false");
+        JsonNode history = executeGraphQLQuery("spec/demo/graphql/search_contact_history.json", "Donald", "true");
+
+        assertNoErrors(now);
+        assertNoErrors(history);
+        assertThat(now.get("data").get("Search").get("edges").size()).isZero();
+        assertThat(history.get("data").get("Search").get("edges").size()).isEqualTo(1);
+        assertThat(JsonTools.text(history.get("data").get("Search").get("edges").get(0).get("node").get("name")))
+                .isEqualTo("Donald Duck");
+    }
+
     @Test
     @ConfigurationOverride({
             "graphql.enabled", "true",

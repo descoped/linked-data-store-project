@@ -2,11 +2,17 @@ package io.descoped.lds.graphql.directives;
 
 import graphql.schema.GraphQLArgument;
 import graphql.schema.GraphQLDirective;
+import graphql.schema.GraphQLAppliedDirective;
+import graphql.schema.GraphQLAppliedDirectiveArgument;
 import graphql.schema.GraphQLDirectiveContainer;
+import graphql.schema.GraphQLObjectType;
+import graphql.schema.GraphQLSchema;
 import io.descoped.lds.graphql.schemas.SchemaElements;
 
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 
 import static graphql.Scalars.GraphQLBoolean;
 import static graphql.introspection.Introspection.DirectiveLocation;
@@ -88,6 +94,26 @@ public class DomainDirective {
             return (Boolean) value;
         }
         return (Boolean) SchemaElements.defaultValue(argument);
+    }
+
+    /**
+     * The entity types of a schema that are marked as not searched: {@code @domain(searchable: false)}. A type whose
+     * directive does not say is searched.
+     *
+     * @param schema the schema
+     * @return the names of the types
+     */
+    public static Set<String> notSearched(GraphQLSchema schema) {
+        Set<String> names = new TreeSet<>();
+        for (GraphQLObjectType type : schema.getAllTypesAsList().stream()
+                .filter(GraphQLObjectType.class::isInstance).map(GraphQLObjectType.class::cast).toList()) {
+            GraphQLAppliedDirective domain = type.getAppliedDirective(NAME);
+            GraphQLAppliedDirectiveArgument searchable = domain == null ? null : domain.getArgument(SEARCHABLE_NAME);
+            if (searchable != null && Boolean.FALSE.equals(searchable.getValue())) {
+                names.add(type.getName());
+            }
+        }
+        return names;
     }
 
 }

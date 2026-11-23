@@ -1,25 +1,31 @@
 package io.descoped.lds.core.search.solr;
 
-import io.descoped.lds.api.persistence.DocumentKey;
-import io.descoped.lds.api.persistence.json.JsonDocument;
-import io.descoped.lds.api.persistence.json.JsonTools;
+import io.descoped.lds.api.search.IndexEntry;
+import io.descoped.lds.api.search.Language;
+import io.descoped.lds.api.search.SearchHit;
 import io.descoped.lds.api.search.SearchIndex;
-import io.descoped.lds.api.search.SearchResponse;
+import io.descoped.lds.api.search.SearchPage;
+import io.descoped.lds.api.search.SearchQuery;
 import org.apache.solr.client.solrj.RemoteSolrException;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import tools.jackson.databind.JsonNode;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.ServerSocket;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
@@ -28,14 +34,18 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 
 /**
- * The Solr provider on a real Solr 10, reached over HTTP as LDS reaches it. A write is in the index within the
- * five seconds the provider gives Solr to commit it, so the tests wait for what they search for.
+ * The Solr provider on a real Solr 10, reached over HTTP as LDS reaches it. An entry is in the index within the five
+ * seconds the provider gives Solr to commit it, so the tests wait for what they search for. Each test writes in a
+ * namespace of its own, which no other test searches.
  */
 class SolrSearchIndexTest {
 
     private static final Duration COMMIT_WAIT = Duration.ofSeconds(30);
+    private static final ZonedDateTime T0 = ZonedDateTime.of(2026, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC);
 
     private static SearchIndex searchIndex;
+
+    private String namespace;
 
     @BeforeAll
     static void start() {
@@ -43,93 +53,216 @@ class SolrSearchIndexTest {
     }
 
     @BeforeEach
-    void emptyTheIndex() {
-        searchIndex.deleteAll().blockingAwait();
+    void aNamespaceOfItsOwn() {
+        namespace = "ns" + UUID.randomUUID().toString().replace("-", "");
+    }
+
+    /**
+     * The versions of the design of search, at the moments it was tried at: of each document the version valid at
+     * the moment is the one searched, so a word that only an older version has does not find the document, and a
+     * document deleted before the moment is not found.
+     */
+    @Test
+    void aDocumentIsFoundByTheWordsOfItsVersionValidAtTheMoment() {
+        searchIndex.put(List.of(
+                text("Topic", "d1", 1000, "apple banana"),
+                text("Topic", "d1", 2000, "cherry"),
+                deleted("Topic", "d1", 3000),
+                text("Topic", "d2", 1500, "apple pie"),
+                text("Topic", "d3", 500, "apples are red"),
+                text("Topic", "d4", 2500, "apple"))).blockingAwait();
+        awaitHits(() -> search("apple", at(3500)), 3);
+
+        assertThat(ids(search("apple", at(2200)))).containsExactlyInAnyOrder("d2", "d3");
+        assertThat(search("apple", at(2200)).total()).isEqualTo(2);
+        assertThat(keys(search("apple", at(1200)))).containsExactlyInAnyOrder("d1@1000", "d3@500");
+        assertThat(keys(search("cherry", at(2200)))).containsExactly("d1@2000");
+        assertThat(ids(search("cherry", at(3500)))).isEmpty();
+        assertThat(ids(search("*:*", at(3500)))).containsExactlyInAnyOrder("d2", "d3", "d4");
+        assertThat(ids(search("-cherry", at(3500)))).containsExactlyInAnyOrder("d2", "d3", "d4");
+        assertThat(ids(search("apple", at(400)))).isEmpty();
     }
 
     @Test
-    void aDocumentIsFoundByItsTextAndNotAfterItIsDeleted() throws IOException {
-        JsonDocument person = document("UnitDataSet", "UnitDataSet_Person_1.json");
+    void withHistoryEveryVersionThatHasTheWordsIsAHit() {
+        searchIndex.put(List.of(
+                text("Topic", "d1", 1000, "apple banana"),
+                text("Topic", "d1", 2000, "cherry"),
+                text("Topic", "d1", 2500, "apple again"),
+                deleted("Topic", "d1", 3000),
+                text("Topic", "d2", 1500, "apple pie"))).blockingAwait();
+        awaitHits(() -> search("apple", at(2600)), 2);
 
-        searchIndex.createOrOverwrite(person).blockingAwait();
+        SearchPage history = searchIndex.search(new SearchQuery(namespace, "apple", Set.of(), at(3500), true, 0, 10))
+                .blockingGet();
 
-        SearchResponse found = awaitHits(() -> searchIndex.search("Norway", Set.of("UnitDataSet"), 0, 10).blockingGet(), 1);
-        assertThat(found.getTotalHits()).isEqualTo(1);
-        DocumentKey key = found.getResults().iterator().next().getDocumentKey();
-        assertThat(key.entity()).isEqualTo("UnitDataSet");
-        assertThat(key.id()).isEqualTo("b9c10b86-5867-4270-b56e-ee7439fe381e");
-        assertThat(key.namespace()).isEqualTo("ns");
-        assertThat(key.timestamp()).isEqualTo(person.key().timestamp());
+        assertThat(keys(history)).containsExactlyInAnyOrder("d1@1000", "d1@2500", "d2@1500");
+        assertThat(history.total()).isEqualTo(3);
+        assertThat(keys(searchIndex.search(new SearchQuery(namespace, "apple", Set.of(), at(1200), true, 0, 10))
+                .blockingGet())).containsExactly("d1@1000");
+    }
 
-        searchIndex.delete(person).blockingAwait();
+    /**
+     * A text in a language is found by another form of its words; a text in no language that LDS knows is found by
+     * its words as they are written.
+     */
+    @Test
+    void aTextIsFoundByTheStemOfItsWordsInItsLanguage() {
+        searchIndex.put(List.of(
+                text("Topic", "nb", 1000, Language.NORWEGIAN, "Acme bygger husene i byen"),
+                text("Topic", "nn", 1000, Language.NORWEGIAN, "Gutane går til skulane"),
+                text("Topic", "sv", 1000, Language.SWEDISH, "Huset ligger vid sjön"),
+                text("Topic", "en", 1000, Language.ENGLISH, "Acme builds the houses of the town"),
+                text("Topic", "de", 1000, Language.GERMAN, "Die Häuser an der Straße"),
+                text("Topic", "fr", 1000, Language.FRENCH, "Les écoles de l'île"),
+                text("Topic", "none", 1000, Language.NONE, "husene i byen"))).blockingAwait();
+        awaitHits(() -> search("*:*", at(2000)), 7);
 
-        assertThat(awaitHits(() -> searchIndex.search("Norway", null, 0, 10).blockingGet(), 0).getTotalHits()).isZero();
+        assertThat(ids(search("hus", at(2000)))).containsExactlyInAnyOrder("nb", "sv");
+        assertThat(ids(search("husene", at(2000)))).containsExactlyInAnyOrder("nb", "none");
+        assertThat(ids(search("gutar", at(2000)))).containsExactly("nn");
+        assertThat(ids(search("skule", at(2000)))).containsExactly("nn");
+        assertThat(ids(search("house", at(2000)))).containsExactly("en");
+        assertThat(ids(search("Haus", at(2000)))).containsExactly("de");
+        assertThat(ids(search("Strasse", at(2000)))).containsExactly("de");
+        assertThat(ids(search("école", at(2000)))).containsExactly("fr");
+        assertThat(ids(search("île", at(2000)))).containsExactly("fr");
+        assertThat(ids(search("Acme", at(2000)))).containsExactlyInAnyOrder("nb", "en");
     }
 
     @Test
-    void aSearchIsNarrowedToTheEntitiesItNamesAndToItsPage() throws IOException {
-        searchIndex.createOrOverwrite(List.of(
-                document("UnitDataSet", "UnitDataSet_Person_1.json"),
-                document("UnitDataSet", "UnitDataSet_Family_1.json"),
-                document("LogicalRecord", "LogicalRecord_Person_1.json")
-        )).blockingAwait();
+    void theWordsAreAPhraseAllOfThemOrAnyOfThem() {
+        searchIndex.put(List.of(
+                text("Topic", "pie", 1000, "apple pie"),
+                text("Topic", "red", 1000, "apples are red"))).blockingAwait();
+        awaitHits(() -> search("*:*", at(2000)), 2);
 
-        SearchResponse all = awaitHits(() -> searchIndex.search("*:*", null, 0, 10).blockingGet(), 3);
-        assertThat(all.getResults()).extracting(result -> result.getDocumentKey().entity())
-                .containsExactlyInAnyOrder("UnitDataSet", "UnitDataSet", "LogicalRecord");
+        assertThat(ids(search("pie red", at(2000)))).containsExactlyInAnyOrder("pie", "red");
+        assertThat(ids(search("\"apple pie\"", at(2000)))).containsExactly("pie");
+        assertThat(ids(search("\"pie apple\"", at(2000)))).isEmpty();
+        assertThat(ids(search("apple AND pie", at(2000)))).containsExactly("pie");
+        assertThat(ids(search("+apple -pie", at(2000)))).containsExactly("red");
+    }
 
-        SearchResponse dataSets = searchIndex.search("*:*", Set.of("UnitDataSet"), 0, 10).blockingGet();
-        assertThat(dataSets.getTotalHits()).isEqualTo(2);
-        assertThat(dataSets.getResults()).extracting(result -> result.getDocumentKey().entity()).containsOnly("UnitDataSet");
+    /**
+     * Words that a query of Solr would read as a field, another query or a parser are read as words: they find no
+     * document, and do not widen the search to other entity types or namespaces.
+     */
+    @Test
+    void theWordsCannotNameAFieldOrAQuery() {
+        searchIndex.put(List.of(
+                text("Topic", "topic", 1000, "brewery"),
+                text("Record", "record", 1000, "a record"),
+                deleted("Topic", "gone", 1000))).blockingAwait();
+        awaitHits(() -> search("*:*", at(2000)), 2);
 
-        SearchResponse either = searchIndex.search("*:*", Set.of("UnitDataSet", "LogicalRecord"), 0, 10).blockingGet();
-        assertThat(either.getTotalHits()).isEqualTo(3);
+        for (String words : List.of("lds_entity:Record", "{!lucene}lds_entity:Record", "_query_:\"{!lucene}*:*\"",
+                "lds_deleted:true", "lds_namespace:" + namespace, "id:*")) {
+            assertThat(ids(search(words, at(2000)))).as(words).isEmpty();
+        }
+        assertThat(ids(searchIndex.search(new SearchQuery(namespace, "brewery OR lds_entity:Record", Set.of("Topic"),
+                at(2000), false, 0, 10)).blockingGet())).containsExactly("topic");
+    }
 
-        SearchResponse secondPage = searchIndex.search("*:*", null, 2, 2).blockingGet();
-        assertThat(secondPage.getTotalHits()).isEqualTo(3);
-        assertThat(secondPage.getResults()).hasSize(1);
+    @Test
+    void aSearchIsNarrowedToItsNamespaceTheEntityTypesItNamesAndItsPage() {
+        String other = namespace + "other";
+        searchIndex.put(List.of(
+                text("Topic", "a", 1000, "fjord"),
+                text("Topic", "b", 1000, "fjord"),
+                text("Record", "c", 1000, "fjord"),
+                IndexEntry.written(other, "Topic", "x", T0.plusNanos(1000_000L),
+                        Map.of(Language.NONE, List.of("fjord"))))).blockingAwait();
+        awaitHits(() -> search("fjord", at(2000)), 3);
+
+        assertThat(ids(searchIn(Set.of("Topic"), 0, 10))).containsExactlyInAnyOrder("a", "b");
+        assertThat(ids(searchIn(Set.of("Topic", "Record"), 0, 10))).containsExactlyInAnyOrder("a", "b", "c");
+        assertThat(ids(searchIn(Set.of(), 0, 10))).containsExactlyInAnyOrder("a", "b", "c");
+        assertThat(ids(searchIn(Set.of("*"), 0, 10))).isEmpty();
+        assertThat(ids(searchIn(Set.of("Topi?"), 0, 10))).isEmpty();
+
+        SearchPage second = searchIn(Set.of(), 2, 2);
+        assertThat(second.total()).isEqualTo(3);
+        assertThat(second.hits()).hasSize(1);
+        assertThat(ids(searchIn(Set.of(), 0, 1))).doesNotContainAnyElementsOf(ids(searchIn(Set.of(), 1, 2)));
+    }
+
+    /**
+     * The key of a hit is the key of the version that matched, with the version to the nanosecond, and any id,
+     * also one with a slash or of four bytes in UTF-8, comes back as it was written.
+     */
+    @Test
+    void aHitHasTheKeyOfTheVersionThatMatched() {
+        ZonedDateTime version = ZonedDateTime.parse("2026-11-23T10:00:00.123456789Z");
+        String id = "a/b c/😀";
+        searchIndex.put(List.of(IndexEntry.written(namespace, "Topic", id, version,
+                Map.of(Language.ENGLISH, List.of("found"))))).blockingAwait();
+
+        SearchHit hit = awaitHits(() -> search("found", version), 1).hits().getFirst();
+
+        assertThat(hit.key().namespace()).isEqualTo(namespace);
+        assertThat(hit.key().entity()).isEqualTo("Topic");
+        assertThat(hit.key().id()).isEqualTo(id);
+        assertThat(hit.key().timestamp().toInstant()).isEqualTo(version.toInstant());
+        assertThat(ids(search("found", version.minusNanos(1000)))).isEmpty();
+    }
+
+    @Test
+    void anEntrySentAgainIsKeptOnce() {
+        IndexEntry entry = text("Topic", "again", 1000, "twice");
+        searchIndex.put(List.of(entry)).blockingAwait();
+        searchIndex.put(List.of(entry)).blockingAwait();
+        awaitHits(() -> search("twice", at(2000)), 1);
+
+        assertThat(searchIndex.search(new SearchQuery(namespace, "twice", Set.of(), at(2000), true, 0, 10))
+                .blockingGet().total()).isEqualTo(1);
+    }
+
+    @Test
+    void anIndexWithNothingInItIsSearched() {
+        assertThat(search("anything", at(2000)).total()).isZero();
+    }
+
+    /**
+     * The schema is put in by the first index that uses the core, and an index that finds it there leaves it; one
+     * that finds another mark puts it in again over the fields that are there. Two indexes that put it in at the
+     * same time both end with it.
+     */
+    @Test
+    void theSchemaIsPutInWhenTheCoreDoesNotHaveIt() throws Exception {
+        setMark("not-this-schema");
+        SearchIndex first = new SolrSearchIndex(Solr10.url());
+        SearchIndex second = new SolrSearchIndex(Solr10.url());
+        List<Throwable> errors = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+        Thread a = Thread.ofVirtual().start(() -> put(first, "first", errors));
+        Thread b = Thread.ofVirtual().start(() -> put(second, "second", errors));
+        a.join();
+        b.join();
+
+        assertThat(errors).isEmpty();
+        assertThat(mark()).isEqualTo(new SolrSchema().mark());
+        assertThat(ids(awaitHits(() -> search("mark", at(2000)), 2))).containsExactlyInAnyOrder("first", "second");
+        // a field the schema does not have is refused: Solr does not make one
+        assertThat(post("/update?commit=true", "[{\"id\": \"x\", \"unknown_field\": \"y\"}]")).isEqualTo(400);
+    }
+
+    private void put(SearchIndex index, String id, List<Throwable> errors) {
+        try {
+            index.put(List.of(text("Topic", id, 1000, "mark"))).blockingAwait();
+        } catch (Throwable e) {
+            errors.add(e);
+        }
     }
 
     @Test
     void aWriteAfterSolrHasClosedTheIdleConnectionStillReachesTheIndex() throws InterruptedException {
-        searchIndex.createOrOverwrite(text("UnitDataSet", "first", "before the pause")).blockingAwait();
-        awaitHits(() -> searchIndex.search("pause", null, 0, 10).blockingGet(), 1);
+        searchIndex.put(List.of(text("Topic", "first", 1000, "before the pause"))).blockingAwait();
+        awaitHits(() -> search("pause", at(2000)), 1);
 
         Thread.sleep(Solr10.IDLE_TIMEOUT.multipliedBy(2).toMillis());
 
-        searchIndex.createOrOverwrite(text("UnitDataSet", "second", "after the pause")).blockingAwait();
-        assertThat(awaitHits(() -> searchIndex.search("pause", null, 0, 10).blockingGet(), 2).getResults())
-                .extracting(result -> result.getDocumentKey().id()).containsExactlyInAnyOrder("first", "second");
-    }
-
-    @Test
-    void theOperatorsOfTheTextDoNotLoosenTheEntityFilter() {
-        searchIndex.createOrOverwrite(List.of(
-                text("UnitDataSet", "plural", "memories"),
-                text("UnitDataSet", "singular", "memory"),
-                text("LogicalRecord", "other", "memory")
-        )).blockingAwait();
-        awaitHits(() -> searchIndex.search("memories OR memory", null, 0, 10).blockingGet(), 3);
-
-        SearchResponse dataSets = searchIndex.search("memories OR memory", Set.of("UnitDataSet"), 0, 10).blockingGet();
-
-        assertThat(dataSets.getResults()).extracting(result -> result.getDocumentKey().id())
-                .containsExactlyInAnyOrder("plural", "singular");
-    }
-
-    @Test
-    void aFieldNamedInTheTextDoesNotWidenTheEntityFilter() {
-        searchIndex.createOrOverwrite(List.of(
-                text("UnitDataSet", "brewery", "a brewery"),
-                text("LogicalRecord", "record", "a record")
-        )).blockingAwait();
-        awaitHits(() -> searchIndex.search("*:*", null, 0, 10).blockingGet(), 2);
-
-        SearchResponse dataSets = searchIndex.search("brewery OR entity:LogicalRecord", Set.of("UnitDataSet"), 0, 10)
-                .blockingGet();
-
-        assertThat(dataSets.getResults()).extracting(result -> result.getDocumentKey().entity()).containsOnly("UnitDataSet");
-        assertThat(dataSets.getTotalHits()).isEqualTo(1);
+        searchIndex.put(List.of(text("Topic", "second", 1000, "after the pause"))).blockingAwait();
+        assertThat(ids(awaitHits(() -> search("pause", at(2000)), 2))).containsExactlyInAnyOrder("first", "second");
     }
 
     @Test
@@ -137,16 +270,10 @@ class SolrSearchIndexTest {
         // Solr answers 404 for a core it does not have
         SolrSearchIndex missingCore = new SolrSearchIndex(Solr10.url().replace("/lds-index", "/no-such-core"));
 
-        assertThatThrownBy(() -> missingCore.createOrOverwrite(List.of(text("UnitDataSet", "a", "one"),
-                text("UnitDataSet", "b", "two"))).blockingAwait())
+        assertThatThrownBy(() -> missingCore.put(List.of(text("Topic", "a", 1000, "one"))).blockingAwait())
                 .isInstanceOf(RemoteSolrException.class).hasMessageContaining("404");
-    }
-
-    @Test
-    void aDeleteSolrRefusesFailsForItsCaller() {
-        SolrSearchIndex missingCore = new SolrSearchIndex(Solr10.url().replace("/lds-index", "/no-such-core"));
-
-        assertThatThrownBy(() -> missingCore.delete(text("UnitDataSet", "a", "one")).blockingAwait())
+        assertThatThrownBy(() -> missingCore.search(new SearchQuery(namespace, "one", Set.of(), at(2000), false, 0, 10))
+                .blockingGet())
                 .isInstanceOf(RemoteSolrException.class).hasMessageContaining("404");
     }
 
@@ -162,88 +289,106 @@ class SolrSearchIndexTest {
         assertThatThrownBy(() -> missingCore.health().blockingAwait())
                 .isInstanceOf(RemoteSolrException.class).hasMessageContaining("404");
 
-        int closedPort;
-        try (ServerSocket socket = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            closedPort = socket.getLocalPort();
-        }
-        SolrSearchIndex unreachable = new SolrSearchIndex("http://127.0.0.1:" + closedPort + "/solr/lds-index");
+        SolrSearchIndex unreachable = new SolrSearchIndex("http://127.0.0.1:" + closedPort() + "/solr/lds-index");
         assertThatThrownBy(() -> unreachable.health().blockingAwait())
                 .hasRootCauseInstanceOf(java.net.ConnectException.class);
     }
 
+    /**
+     * Nothing is put in when Solr cannot be reached, and the index tries again the next time it is used.
+     */
     @Test
-    void anUpdateThatCannotReachSolrFailsForItsCaller() throws IOException {
-        int closedPort;
+    void anUpdateThatCannotReachSolrFailsForItsCallerAndIsTriedAgain() throws IOException {
+        SolrSearchIndex unreachable = new SolrSearchIndex("http://127.0.0.1:" + closedPort() + "/solr/lds-index");
+
+        assertThatThrownBy(() -> unreachable.put(List.of(text("Topic", "a", 1000, "one"))).blockingAwait())
+                .hasRootCauseInstanceOf(java.net.ConnectException.class);
+        assertThatThrownBy(() -> unreachable.put(List.of(text("Topic", "a", 1000, "one"))).blockingAwait())
+                .hasRootCauseInstanceOf(java.net.ConnectException.class);
+    }
+
+    private static int closedPort() throws IOException {
         try (ServerSocket socket = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            closedPort = socket.getLocalPort();
+            return socket.getLocalPort();
         }
-        SolrSearchIndex unreachable = new SolrSearchIndex("http://127.0.0.1:" + closedPort + "/solr/lds-index");
-
-        assertThatThrownBy(() -> unreachable.createOrOverwrite(text("UnitDataSet", "a", "one")).blockingAwait())
-                .hasRootCauseInstanceOf(java.net.ConnectException.class);
-        assertThatThrownBy(() -> unreachable.delete(text("UnitDataSet", "a", "one")).blockingAwait())
-                .hasRootCauseInstanceOf(java.net.ConnectException.class);
     }
 
-    @Test
-    void anUpdateIsCompleteOnlyWhenSolrHasAnsweredIt() {
-        // nothing is queued on the side: when the Completable ends, Solr has the documents (to be seen after its commit)
-        searchIndex.createOrOverwrite(List.of(text("UnitDataSet", "x", "answered"), text("UnitDataSet", "y", "answered")))
-                .blockingAwait();
-
-        assertThat(awaitHits(() -> searchIndex.search("answered", null, 0, 10).blockingGet(), 2).getTotalHits()).isEqualTo(2);
+    private SearchPage search(String words, ZonedDateTime at) {
+        return searchIndex.search(new SearchQuery(namespace, words, Set.of(), at, false, 0, 10)).blockingGet();
     }
 
-    @Test
-    void aSearchWithAnEmptySetOfEntitiesIsNotNarrowed() {
-        searchIndex.createOrOverwrite(List.of(
-                text("UnitDataSet", "one", "fjord"),
-                text("LogicalRecord", "two", "fjord")
-        )).blockingAwait();
-        awaitHits(() -> searchIndex.search("fjord", null, 0, 10).blockingGet(), 2);
-
-        assertThat(searchIndex.search("fjord", Set.of(), 0, 10).blockingGet().getTotalHits()).isEqualTo(2);
-    }
-
-    @Test
-    void anEntityNameWithTheSyntaxOfAQueryIsMatchedAsAName() {
-        // the names come from the enum TypeFilters of the GraphQL schema, so they have no space
-        searchIndex.createOrOverwrite(text("UnitDataSet", "one", "fjord")).blockingAwait();
-        awaitHits(() -> searchIndex.search("fjord", null, 0, 10).blockingGet(), 1);
-
-        assertThat(searchIndex.search("fjord", Set.of("*"), 0, 10).blockingGet().getTotalHits()).isZero();
-        assertThat(searchIndex.search("fjord", Set.of("Unit*"), 0, 10).blockingGet().getTotalHits()).isZero();
-        assertThat(searchIndex.search("fjord", Set.of("UnitDataSe?"), 0, 10).blockingGet().getTotalHits()).isZero();
+    private SearchPage searchIn(Set<String> entities, long from, long size) {
+        return searchIndex.search(new SearchQuery(namespace, "fjord", entities, at(2000), false, from, size)).blockingGet();
     }
 
     /**
      * Searches until the index has the number of hits the test expects, and fails when the time a commit may take is
-     * over first. A search fails until the first commit after Solr starts, which makes the field it searches in
-     * (the core is schemaless), so a failure counts as not found yet.
+     * over first.
      */
-    private static SearchResponse awaitHits(Supplier<SearchResponse> search, long hits) {
-        AtomicReference<SearchResponse> response = new AtomicReference<>();
-        await().atMost(COMMIT_WAIT).pollDelay(Duration.ZERO).pollInterval(Duration.ofMillis(100)).ignoreExceptions()
-                .untilAsserted(() -> {
-            response.set(search.get());
-            assertThat(response.get().getTotalHits()).as("hits").isEqualTo(hits);
+    private static SearchPage awaitHits(Supplier<SearchPage> search, long hits) {
+        AtomicReference<SearchPage> page = new AtomicReference<>();
+        await().atMost(COMMIT_WAIT).pollDelay(Duration.ZERO).pollInterval(Duration.ofMillis(100)).untilAsserted(() -> {
+            page.set(search.get());
+            assertThat(page.get().total()).as("hits").isEqualTo(hits);
         });
-        return response.get();
+        return page.get();
     }
 
-    /**
-     * A document whose one searched text is the given one.
-     */
-    private static JsonDocument text(String entity, String id, String text) {
-        JsonNode json = JsonTools.toJsonNode("""
-                {"id": "%s", "name": [{"languageCode": "en", "languageText": "%s"}]}""".formatted(id, text));
-        return new JsonDocument(new DocumentKey("ns", entity, id, ZonedDateTime.now()), json);
+    private static ZonedDateTime at(long millis) {
+        return T0.plusNanos(millis * 1_000_000L);
     }
 
-    private static JsonDocument document(String entity, String resource) throws IOException {
-        try (InputStream in = SolrSearchIndexTest.class.getResourceAsStream("/" + resource)) {
-            JsonNode json = JsonTools.toJsonNode(new String(in.readAllBytes(), StandardCharsets.UTF_8));
-            return new JsonDocument(new DocumentKey("ns", entity, JsonTools.text(json.get("id")), ZonedDateTime.now()), json);
+    private IndexEntry text(String entity, String id, long millis, String text) {
+        return text(entity, id, millis, Language.ENGLISH, text);
+    }
+
+    private IndexEntry text(String entity, String id, long millis, Language language, String text) {
+        return IndexEntry.written(namespace, entity, id, at(millis), Map.of(language, List.of(text)));
+    }
+
+    private IndexEntry deleted(String entity, String id, long millis) {
+        return IndexEntry.deleted(namespace, entity, id, at(millis));
+    }
+
+    private static List<String> ids(SearchPage page) {
+        return page.hits().stream().map(hit -> hit.key().id()).toList();
+    }
+
+    /* The id and the version as milliseconds after T0: d1@1000. */
+    private static List<String> keys(SearchPage page) {
+        return page.hits().stream().map(hit -> hit.key().id() + "@"
+                + Duration.between(T0, hit.key().timestamp()).toMillis()).toList();
+    }
+
+    private static void setMark(String mark) throws Exception {
+        assertThat(post("/config", "{\"set-user-property\": {\"" + SolrSchema.MARK + "\": \"" + mark + "\"}}"))
+                .isEqualTo(200);
+    }
+
+    private static String mark() throws Exception {
+        HttpURLConnection connection = (HttpURLConnection) URI.create(Solr10.url() + "/config/overlay").toURL()
+                .openConnection();
+        try (InputStream in = connection.getInputStream()) {
+            return tools.jackson.databind.json.JsonMapper.builder().build().readTree(in)
+                    .path("overlay").path("userProps").path(SolrSchema.MARK).asString();
+        } finally {
+            connection.disconnect();
+        }
+    }
+
+    /* The status of Solr's answer to a POST of JSON. */
+    private static int post(String path, String json) throws Exception {
+        HttpURLConnection connection = (HttpURLConnection) URI.create(Solr10.url() + path).toURL().openConnection();
+        try {
+            connection.setRequestMethod("POST");
+            connection.setDoOutput(true);
+            connection.setRequestProperty("Content-Type", "application/json");
+            try (OutputStream out = connection.getOutputStream()) {
+                out.write(json.getBytes(StandardCharsets.UTF_8));
+            }
+            return connection.getResponseCode();
+        } finally {
+            connection.disconnect();
         }
     }
 }
