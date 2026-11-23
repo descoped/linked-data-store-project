@@ -51,6 +51,8 @@ class IndexRebuildTest {
     static final class WatchedQueue implements IndexQueue {
         final MemoryIndexQueue queue = new MemoryIndexQueue();
         final List<IndexUpdate> added = new CopyOnWriteArrayList<>();
+        /* how often it was asked how many updates it holds, and held some */
+        final AtomicInteger heldWhenAsked = new AtomicInteger();
         volatile boolean hold;
         volatile boolean fail;
 
@@ -82,7 +84,11 @@ class IndexRebuildTest {
 
         @Override
         public Single<Lag> lag() {
-            return queue.lag();
+            return queue.lag().doOnSuccess(lag -> {
+                if (lag.updates() > 0) {
+                    heldWhenAsked.incrementAndGet();
+                }
+            });
         }
 
         @Override
@@ -272,19 +278,20 @@ class IndexRebuildTest {
      */
     @Test
     void theEntriesTheRebuildDidNotSendAgainAreRemovedWhenTheQueueIsEmpty() throws InterruptedException {
-        SimpleSearchIndex index = new SimpleSearchIndex();
+        MemoryIndexQueueTest.MovingClock clock = new MemoryIndexQueueTest.MovingClock();
+        SimpleSearchIndex index = new SimpleSearchIndex(clock);
         index.put(List.of(IndexEntry.written("ns", "Person", "gone", JAN, Map.of()),
                 IndexEntry.written("other", "Person", "elsewhere", JAN, Map.of()))).blockingAwait();
-        takenAMomentAgo();
+        clock.move(Duration.ofMinutes(1)); // the index took them a minute before the rebuild
         write("Person", "ola", JAN);
         IndexQueueWorker worker = new IndexQueueWorker(queue, index, persistence, IndexEntriesTest.withoutAModel(),
-                Duration.ofMillis(20));
+                Duration.ofMillis(5));
         worker.start();
         try {
             rebuild = new IndexRebuild(persistence, queue, index, "ns", List.of("Person", "Company"),
-                    Duration.ofMillis(20));
+                    Duration.ofMillis(5));
             rebuild.start();
-            await().atMost(Duration.ofSeconds(10)).until(rebuild::isDone);
+            await().atMost(Duration.ofSeconds(10)).pollInterval(Duration.ofMillis(5)).until(rebuild::isDone);
         } finally {
             worker.stop(5, TimeUnit.SECONDS);
         }
@@ -298,25 +305,23 @@ class IndexRebuildTest {
      */
     @Test
     void theCleanUpWaitsUntilTheQueueIsEmpty() {
-        SimpleSearchIndex index = new SimpleSearchIndex();
+        MemoryIndexQueueTest.MovingClock clock = new MemoryIndexQueueTest.MovingClock();
+        SimpleSearchIndex index = new SimpleSearchIndex(clock);
         index.put(List.of(IndexEntry.written("ns", "Person", "gone", JAN, Map.of()))).blockingAwait();
-        takenAMomentAgo();
+        clock.move(Duration.ofMinutes(1)); // the index took it a minute before the rebuild
         write("Person", "ola", JAN);
-        rebuild = new IndexRebuild(persistence, queue, index, "ns", List.of("Person"), Duration.ofMillis(20));
+        rebuild = new IndexRebuild(persistence, queue, index, "ns", List.of("Person"), Duration.ofMillis(5));
         rebuild.start();
-        await().atMost(Duration.ofSeconds(5)).until(() -> queue.lag().blockingGet().updates() == 1);
 
-        await().during(Duration.ofMillis(300)).atMost(Duration.ofSeconds(1)).until(() -> !rebuild.isDone());
+        // the rebuild has added its update and found it in the queue twice, and has not cleaned up
+        await().atMost(Duration.ofSeconds(5)).pollInterval(Duration.ofMillis(5))
+                .until(() -> queue.heldWhenAsked.get() >= 2);
+        assertThat(rebuild.isDone()).isFalse();
         assertThat(everyVersionIn(index, "ns")).containsExactly("gone");
 
         queue.remove(queue.take(10, Duration.ofMinutes(1)).blockingGet()).blockingAwait();
-        await().atMost(Duration.ofSeconds(5)).until(rebuild::isDone);
+        await().atMost(Duration.ofSeconds(5)).pollInterval(Duration.ofMillis(5)).until(rebuild::isDone);
         assertThat(everyVersionIn(index, "ns")).isEmpty();
-    }
-
-    /* Longer ago than the margin the clean-up leaves, so what is in the index now was taken before a rebuild. */
-    private static void takenAMomentAgo() {
-        await().pollDelay(IndexRebuild.MARGIN.plusMillis(200)).until(() -> true);
     }
 
     private static List<String> everyVersionIn(SimpleSearchIndex index, String namespace) {

@@ -9,6 +9,7 @@ import io.descoped.lds.api.search.SearchQuery;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Single;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Comparator;
@@ -32,20 +33,35 @@ public class SimpleSearchIndex implements SearchIndex {
 
     private final Map<Version, IndexEntry> entries = new ConcurrentHashMap<>();
     private final Map<Version, Instant> taken = new ConcurrentHashMap<>();
+    private final Clock clock;
+
+    /**
+     * An index whose clock is the system's.
+     */
+    public SimpleSearchIndex() {
+        this(Clock.systemUTC());
+    }
+
+    /*
+     * An index that reads when it took an entry from the clock given, so a test moves time instead of waiting.
+     */
+    SimpleSearchIndex(Clock clock) {
+        this.clock = clock;
+    }
 
     @Override
     public Completable put(List<IndexEntry> list) {
         return Completable.fromAction(() -> list.forEach(entry -> {
             Version version = new Version(entry.namespace(), entry.entity(), entry.id(), entry.version().toInstant());
             entries.put(version, entry);
-            taken.put(version, Instant.now());
+            taken.put(version, clock.instant());
         }));
     }
 
     @Override
     public Completable removeOlderThan(String namespace, Duration age) {
         return Completable.fromAction(() -> {
-            Instant before = Instant.now().minus(age);
+            Instant before = clock.instant().minus(age);
             taken.entrySet().removeIf(entry -> {
                 boolean old = entry.getKey().namespace().equals(namespace) && entry.getValue().isBefore(before);
                 if (old) {
