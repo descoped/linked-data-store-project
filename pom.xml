@@ -159,6 +159,9 @@
                                         <requireReleaseVersion>
                                             <message>Only releases go to Maven Central; SNAPSHOTs go to maven.descoped.io (-P descoped-snapshots).</message>
                                         </requireReleaseVersion>
+                                        <requireReleaseDeps>
+                                            <message>A release has no SNAPSHOT dependency.</message>
+                                        </requireReleaseDeps>
                                     </rules>
                                 </configuration>
                             </execution>
@@ -237,7 +240,7 @@
                                 <configuration>
                                     <rules>
                                         <requireSnapshotVersion>
-                                            <message>Only SNAPSHOTs go to maven.descoped.io; releases go to Maven Central.</message>
+                                            <message>Only SNAPSHOTs go to maven.descoped.io; releases go to Maven Central (-P central,sign).</message>
                                         </requireSnapshotVersion>
                                         <requireProperty>
                                             <property>descoped.snapshots.url</property>
