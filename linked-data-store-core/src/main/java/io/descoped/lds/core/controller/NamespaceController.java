@@ -1,6 +1,7 @@
 package io.descoped.lds.core.controller;
 
 import io.descoped.lds.core.domain.DocumentLocks;
+import io.descoped.lds.core.domain.SearchWait;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.core.saga.SagaExecutionCoordinator;
@@ -28,20 +29,32 @@ public class NamespaceController implements HttpHandler {
     private final SagaRepository sagaRepository;
     private final TxlogRawdataPool txLogPool;
     private final DocumentLocks documentLocks = new DocumentLocks();
+    /* the wait of a write that asks to be searchable when it is answered; null without search */
+    private final SearchWait searchWait;
+
+    /**
+     * What a write goes through: the sagas, and the wait of a write that asks to be searchable.
+     *
+     * @param sec            the coordinator of the sagas
+     * @param sagaRepository the sagas
+     * @param searchWait     the wait of a write that asks to be searchable when it is answered; null without search
+     */
+    public record Writes(SagaExecutionCoordinator sec, SagaRepository sagaRepository, SearchWait searchWait) {
+    }
 
     public NamespaceController(String namespaceDefault, Specification specification, SchemaRepository schemaRepository,
-                               RxJsonPersistence persistence, SagaExecutionCoordinator sec,
-                               SagaRepository sagaRepository, TxlogRawdataPool txLogPool) {
+                               RxJsonPersistence persistence, Writes writes, TxlogRawdataPool txLogPool) {
+        this.searchWait = writes.searchWait();
         this.specification = specification;
         this.schemaRepository = schemaRepository;
         this.persistence = persistence;
-        this.sagaRepository = sagaRepository;
+        this.sagaRepository = writes.sagaRepository();
         this.txLogPool = txLogPool;
         if (!namespaceDefault.startsWith("/")) {
             namespaceDefault = "/" + namespaceDefault;
         }
         this.defaultNamespace = namespaceDefault;
-        this.sec = sec;
+        this.sec = writes.sec();
     }
 
     @Override
@@ -69,7 +82,8 @@ public class NamespaceController implements HttpHandler {
         }
 
         if (requestPath.equals(defaultNamespace) || requestPath.startsWith(defaultNamespace + "/")) {
-            new DataController(specification, schemaRepository, persistence, sec, sagaRepository, documentLocks).handleRequest(exchange);
+            new DataController(specification, schemaRepository, persistence, sec, sagaRepository, documentLocks,
+                    searchWait).handleRequest(exchange);
             return;
         }
 

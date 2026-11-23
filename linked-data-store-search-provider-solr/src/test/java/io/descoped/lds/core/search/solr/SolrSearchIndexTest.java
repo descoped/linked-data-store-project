@@ -36,8 +36,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 
 /**
- * The Solr provider on a real Solr 10, reached over HTTP as LDS reaches it. An entry is in the index within the five
- * seconds the provider gives Solr to commit it, so the tests wait for what they search for. Each test writes in a
+ * The Solr provider on a real Solr 10, reached over HTTP as LDS reaches it. An entry is in the index within the
+ * second the provider gives Solr to commit it, so the tests wait for what they search for. Each test writes in a
  * namespace of its own, which no other test searches.
  */
 class SolrSearchIndexTest {
@@ -299,6 +299,32 @@ class SolrSearchIndexTest {
 
         assertThat(page.hits()).isEmpty();
         assertThat(page.total()).isEqualTo(1);
+    }
+
+    /**
+     * An index that makes what it takes searchable only after a minute makes it searchable at once when it is asked.
+     */
+    @Test
+    void anEntryIsSearchableAtOnceWhenTheIndexIsAskedTo() {
+        SearchIndex slow = new SolrProvider().getSearchIndex(Map.of("search.index.url", Solr10.url(),
+                "search.index.commit-within", "60000"));
+        slow.put(List.of(text("Topic", "now", 1000, "immediately"))).blockingAwait();
+
+        slow.refresh().blockingAwait();
+
+        assertThat(ids(search("immediately", at(2000)))).containsExactly("now");
+    }
+
+    @Test
+    void theTimeWithinWhichAnEntryIsSearchableIsAtLeastAMillisecondAndANumber() {
+        String url = Solr10.url();
+        SolrProvider provider = new SolrProvider();
+        Map<String, String> notANumber = Map.of("search.index.url", url, "search.index.commit-within", "1s");
+
+        assertThatThrownBy(() -> new SolrSearchIndex(url, 0)).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("search.index.commit-within");
+        assertThatThrownBy(() -> provider.getSearchIndex(notANumber)).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("search.index.commit-within must be a number of milliseconds: 1s");
     }
 
     @Test

@@ -21,6 +21,13 @@ public interface SearchIndex {
     Completable put(List<IndexEntry> entries);
 
     /**
+     * Makes every entry the index has taken searchable now, instead of within the time it takes otherwise.
+     *
+     * @return complete when a search finds every entry the index had taken when it was asked
+     */
+    Completable refresh();
+
+    /**
      * Asks the index whether it answers, for the readiness of LDS.
      *
      * @return completes when the index answers, fails when it cannot be reached or says it is not ready

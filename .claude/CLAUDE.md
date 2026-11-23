@@ -68,6 +68,10 @@ model does not call a link, when asked for that path; Neo4j does not.
 ## The index queue
 
 Decided by the owner (D1, D2): a write does not wait for the search index, and no update of the index is lost.
+One exception, asked for by the client (D7, "only when asked"): a write with `searchable=true` waits after its
+saga, with the lock of its document let go, until the queue holds no update of its document, then for the index to
+make it searchable (`SearchWait`, `IndexQueue.holds`, `SearchIndex.refresh`), at most 10 s, and is then answered
+as any write is.
 The last step of the saga adds the update (namespace, entity, id, version with its zone, written or deleted) to
 the index queue (`IndexQueue`, in the search API) and is done. `IndexQueueWorker` in core takes updates in
 batches of at most 100, reads each written document from persistence at its version, sends the batch and waits
@@ -220,8 +224,8 @@ module makes that module meet them.
   and its parameters, without Neo4j.
 - The Solr provider's tests run on a real Solr 10 (`solr:10.1`) through Testcontainers, started as the compose
   file of the server starts it: the image as it is, with the core `lds-index` created from the configuration the
-  image comes with; the provider puts its schema in. A write is in the index within the five seconds the provider
-  gives Solr to commit it. Each test writes in a namespace of its own.
+  image comes with; the provider puts its schema in. A write is in the index within the second the provider gives
+  Solr to commit it (`search.index.commit-within`). Each test writes in a namespace of its own.
 - The index queue's tests (`PostgresIndexQueueTest`) run on a real PostgreSQL 18 through Testcontainers. Core's
   `IndexQueueWorkerTest` runs the worker on the memory store with an index that can refuse, and
   `MemoryIndexQueueTest` the queue in memory.

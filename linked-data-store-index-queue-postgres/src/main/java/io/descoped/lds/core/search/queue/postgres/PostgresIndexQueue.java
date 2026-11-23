@@ -49,6 +49,8 @@ final class PostgresIndexQueue implements IndexQueue {
      * The lag reads at most LAG_COUNT_LIMIT rows and the first row of the primary key: the oldest update is the one
      * with the lowest sequence, as both rise as rows are added.
      */
+    private static final String HOLDS = "SELECT EXISTS (SELECT 1 FROM lds_index_queue WHERE namespace = ? AND entity = ? "
+            + "AND id = ?)";
     private static final String LAG = "SELECT (SELECT count(*) FROM (SELECT 1 FROM lds_index_queue LIMIT "
             + LAG_COUNT_LIMIT + ") counted), (SELECT added FROM lds_index_queue ORDER BY sequence LIMIT 1)";
 
@@ -142,6 +144,21 @@ final class PostgresIndexQueue implements IndexQueue {
                 return statement.executeUpdate();
             }
         }).ignoreElement();
+    }
+
+    @Override
+    public Single<Boolean> holds(String namespace, String entity, String id) {
+        return inTransaction(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement(HOLDS)) {
+                statement.setString(1, namespace);
+                statement.setString(2, entity);
+                statement.setString(3, id);
+                try (ResultSet row = statement.executeQuery()) {
+                    row.next();
+                    return row.getBoolean(1);
+                }
+            }
+        });
     }
 
     @Override

@@ -104,6 +104,20 @@ public final class DocumentLocks {
         }
     }
 
+    /**
+     * Lets the lock the request holds, if any, go as soon as the saga it was held for has completed, before the
+     * request is answered: a write that waits for search after its saga does not keep other writes of the document
+     * waiting.
+     *
+     * @param exchange the request
+     */
+    public static void letGoAfterSaga(HttpServerExchange exchange) {
+        Held held = exchange.getAttachment(HELD);
+        if (held != null) {
+            held.answered();
+        }
+    }
+
     private static final class Held {
         private final Semaphore stripe;
         private final AtomicBoolean released = new AtomicBoolean(false);

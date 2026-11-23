@@ -162,6 +162,11 @@ class QueryConnectionFetcherTest {
             }
 
             @Override
+            public Completable refresh() {
+                return Completable.complete();
+            }
+
+            @Override
             public Completable health() {
                 return Completable.complete();
             }

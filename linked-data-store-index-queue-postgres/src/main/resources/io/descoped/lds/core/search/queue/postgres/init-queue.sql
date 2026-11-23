@@ -13,3 +13,5 @@ CREATE TABLE IF NOT EXISTS lds_index_queue (
     attempts     integer     NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS lds_index_queue_available ON lds_index_queue (available_at, sequence);
+-- whether an update of a document is in the queue: asked by a write that waits until search finds it
+CREATE INDEX IF NOT EXISTS lds_index_queue_document ON lds_index_queue (namespace, entity, id);

@@ -84,6 +84,11 @@ class IndexRebuildTest {
         }
 
         @Override
+        public Single<Boolean> holds(String namespace, String entity, String id) {
+            return queue.holds(namespace, entity, id);
+        }
+
+        @Override
         public boolean durable() {
             return false;
         }

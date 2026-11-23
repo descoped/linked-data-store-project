@@ -12,6 +12,7 @@ import io.reactivex.rxjava3.core.Single;
 import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.impl.HttpJdkSolrClient;
+import org.apache.solr.client.solrj.request.AbstractUpdateRequest;
 import org.apache.solr.client.solrj.request.GenericSolrRequest;
 import org.apache.solr.client.solrj.request.QueryRequest;
 import org.apache.solr.client.solrj.request.SolrQuery;
@@ -58,7 +59,8 @@ import java.util.stream.Stream;
 public class SolrSearchIndex implements SearchIndex {
 
     private static final Logger LOG = LoggerFactory.getLogger(SolrSearchIndex.class);
-    private static final int COMMIT_WITHIN_MILLIS = 5000;
+    /* The default of search.index.commit-within, in milliseconds (decided by the owner, D7). */
+    static final int COMMIT_WITHIN_MILLIS = 1000;
     /* The last place of a hit that Solr gives: start and rows are ints, and so is their sum. */
     private static final long MAX_PLACE = Integer.MAX_VALUE;
     private static final Duration CONNECTION_TIMEOUT = Duration.ofSeconds(10);
@@ -79,6 +81,7 @@ public class SolrSearchIndex implements SearchIndex {
             + SolrSchema.VERSION_NANOS + " desc";
 
     private final HttpJdkSolrClient solrClient;
+    private final int commitWithin;
     private final SolrSchema schema = new SolrSchema();
     private final AtomicReference<Completable> schemaPutIn = new AtomicReference<>();
 
@@ -88,7 +91,21 @@ public class SolrSearchIndex implements SearchIndex {
      * @param urlString the address of the core, {@code http://solr:8983/solr/lds-index}
      */
     public SolrSearchIndex(String urlString) {
+        this(urlString, COMMIT_WITHIN_MILLIS);
+    }
+
+    /**
+     * The index of the Solr core at the address, which makes what it takes searchable within the time given.
+     *
+     * @param urlString    the address of the core, {@code http://solr:8983/solr/lds-index}
+     * @param commitWithin within how many milliseconds an entry is searchable
+     */
+    public SolrSearchIndex(String urlString, int commitWithin) {
+        if (commitWithin < 1) {
+            throw new IllegalArgumentException("search.index.commit-within must be at least 1 ms: " + commitWithin);
+        }
         this.solrClient = client(urlString);
+        this.commitWithin = commitWithin;
     }
 
     /*
@@ -118,7 +135,7 @@ public class SolrSearchIndex implements SearchIndex {
         return schemaPutIn().andThen(Completable.defer(() -> {
             UpdateRequest request = new UpdateRequest();
             request.add(entries.stream().map(SolrSearchIndex::solrDocument).toList());
-            request.setCommitWithin(COMMIT_WITHIN_MILLIS);
+            request.setCommitWithin(commitWithin);
             return send(request).doOnComplete(() -> LOG.debug("Solr took {} entries", entries.size()));
         }));
     }
@@ -162,6 +179,19 @@ public class SolrSearchIndex implements SearchIndex {
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 is part of every JDK", e);
         }
+    }
+
+    /*
+     * A soft commit that waits until a new searcher sees what Solr has taken: what is searched is made visible, and
+     * nothing more is written to disk than commitWithin writes.
+     */
+    @Override
+    public Completable refresh() {
+        return Completable.defer(() -> {
+            UpdateRequest request = new UpdateRequest();
+            request.setAction(AbstractUpdateRequest.ACTION.COMMIT, true, true, true);
+            return send(request);
+        });
     }
 
     /*

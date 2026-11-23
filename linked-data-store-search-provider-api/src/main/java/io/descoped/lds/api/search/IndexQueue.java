@@ -27,6 +27,17 @@ public interface IndexQueue extends AutoCloseable {
     Completable add(IndexUpdate update);
 
     /**
+     * Whether the queue holds an update of a document, taken or not: a write that is to be searchable when it is
+     * answered waits until it does not.
+     *
+     * @param namespace the namespace
+     * @param entity    the entity type
+     * @param id        the id of the document
+     * @return true while an update of the document is in the queue
+     */
+    Single<Boolean> holds(String namespace, String entity, String id);
+
+    /**
      * Takes the oldest updates that are not taken and not put off, at most {@code max} of them, for {@code lease}.
      *
      * @param max   the most to take

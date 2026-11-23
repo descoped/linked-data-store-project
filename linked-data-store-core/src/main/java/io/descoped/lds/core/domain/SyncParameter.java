@@ -17,10 +17,12 @@ public final class SyncParameter {
      * Whether the write is to be done before it is answered.
      *
      * @param queryParameters the query parameters of the request
-     * @return false only when a {@code sync} parameter is {@code false}, in any letter case
+     * @return false only when a {@code sync} parameter is {@code false}, in any letter case, and the write is not to be
+     * searchable when it is answered ({@code searchable=true})
      */
     public static boolean waits(Map<String, Deque<String>> queryParameters) {
-        return queryParameters.getOrDefault("sync", new ArrayDeque<>())
+        // a write that is to be searchable when it is answered is done first, whatever sync says
+        return SearchWait.asked(queryParameters) || queryParameters.getOrDefault("sync", new ArrayDeque<>())
                 .stream().noneMatch("false"::equalsIgnoreCase);
     }
 }
