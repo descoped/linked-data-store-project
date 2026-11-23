@@ -51,7 +51,7 @@
       "matchPackageNames": [
         "org.apache.maven:apache-maven"
       ],
-      "allowedVersions": "<4"
+      "allowedVersions": "/^3\\./"
     },
     {
       "description": "Maven bumps through the wrapper: Renovate does not update distributionSha256Sum, so CI fails until it is set by hand (see .claude/CLAUDE.md, Maven Wrapper)",
