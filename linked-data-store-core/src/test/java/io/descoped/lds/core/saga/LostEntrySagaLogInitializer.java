@@ -11,7 +11,6 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.Map;
-import java.util.ServiceLoader;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -51,11 +50,8 @@ public class LostEntrySagaLogInitializer implements SagaLogInitializer {
         });
     }
 
-    /** The PostgreSQL saga log's initializer; its package is not exported, so it is found as the service it is. */
     private static SagaLogInitializer postgres() {
-        return ServiceLoader.load(SagaLogInitializer.class).stream()
-                .filter(provider -> provider.type().getName().equals("no.cantara.sagalog.postgres.PostgresSagaLogInitializer"))
-                .findFirst().orElseThrow().get();
+        return SagaLogInitializers.named(SagaLogInitializers.POSTGRES);
     }
 
     private static <T> T proxy(Class<T> type, InvocationHandler handler) {
