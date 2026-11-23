@@ -214,7 +214,9 @@ jobs:
           echo "::add-mask::$origin"
           export SNAPSHOTS_URL="$url" SNAPSHOTS_ORIGIN="$origin"
           # strict: a server without a declared origin gets no credentials, instead of getting them with a warning
-          # that names the origin (Maven 3.10, OriginBoundAuthenticationSelector).
-          ./mvnw --batch-mode --no-transfer-progress -T 1C -P descoped-snapshots -DskipTests \
+          # that names the origin (Maven 3.10, OriginBoundAuthenticationSelector). No test runs while the
+          # credentials exist: skipTests stops Surefire, skipITs Failsafe (whose skipTests no longer reads the
+          # property, 3.6.1).
+          ./mvnw --batch-mode --no-transfer-progress -T 1C -P descoped-snapshots -DskipTests -DskipITs \
             -Dmaven.build.cache.enabled=false -Dmaven.repository.credentialScope=strict deploy
 
