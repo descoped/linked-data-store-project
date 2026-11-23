@@ -174,8 +174,14 @@ which validates the Jackson tree of the document). A schema that at its root say
   Travis, Drone or OSSRH configuration.
 - **Secrets.** Nothing but documented development defaults (the `lds` database user and the Neo4j password
   `lds-development` in tests and the compose file).
-- **Releases only with the owner's go-ahead**, started by hand. **CI publishes nothing**: no SNAPSHOTs, no
-  releases, no images. A release (`3.0.0`) is the release workflow (`.github/workflows/release.yml`, `gh workflow
+- **Releases only with the owner's go-ahead**, started by hand. **CI publishes SNAPSHOTs only**: after a green
+  build, on a push to `master` (`X.Y.Z-SNAPSHOT`) or a start by hand on a branch (`X.Y.Z-<branch>-SNAPSHOT`), the
+  job `snapshot` deploys every module but the load test with the profile `descoped-snapshots` to Descoped's AWS
+  CodeArtifact repository, read publicly at `https://maven.descoped.io/` (also where LDS reads the SNAPSHOTs of
+  Descoped libraries). Its one input is the organization secret `CODEARTIFACT_SNAPSHOTS_ROLE_ARN`; the AWS account
+  and the endpoint are never written in the repository. SNAPSHOTs never go to Maven Central (the profile `central`
+  refuses one), and releases never to maven.descoped.io (`descoped-snapshots` refuses one). CI publishes no
+  release and no image. A release (`3.0.0`) is the release workflow (`.github/workflows/release.yml`, `gh workflow
   run release.yml -f version=3.0.0`): the three images of the server on Docker Hub (`descoped/lds`, linux/amd64 and
   linux/arm64, signed with cosign), a tag and a GitHub release with its notes (`RELEASE-NOTES.md`). **No jar is
   published**: the profiles `central,sign` are kept for the day the owner decides to put only the modules outside
