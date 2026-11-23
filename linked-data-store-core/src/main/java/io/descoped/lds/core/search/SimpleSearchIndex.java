@@ -38,6 +38,11 @@ public class SimpleSearchIndex implements SearchIndex {
     }
 
     @Override
+    public Completable refresh() {
+        return Completable.complete();
+    }
+
+    @Override
     public Completable health() {
         return Completable.complete();
     }

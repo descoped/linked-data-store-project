@@ -3,6 +3,7 @@ package io.descoped.lds.core.controller;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.core.domain.DocumentLocks;
+import io.descoped.lds.core.domain.SearchWait;
 import io.descoped.lds.core.domain.embedded.EmbeddedResourceHandler;
 import io.descoped.lds.core.domain.managed.ManagedResourceHandler;
 import io.descoped.lds.core.domain.reference.ReferenceResourceHandler;
@@ -39,14 +40,18 @@ class DataController implements HttpHandler {
     final SagaExecutionCoordinator sec;
     final SagaRepository sagaRepository;
     final DocumentLocks documentLocks;
+    final SearchWait searchWait;
 
-    DataController(Specification specification, SchemaRepository schemaRepository, RxJsonPersistence persistence, SagaExecutionCoordinator sec, SagaRepository sagaRepository, DocumentLocks documentLocks) {
+    DataController(Specification specification, SchemaRepository schemaRepository, RxJsonPersistence persistence,
+                   SagaExecutionCoordinator sec, SagaRepository sagaRepository, DocumentLocks documentLocks,
+                   SearchWait searchWait) {
         this.specification = specification;
         this.schemaRepository = schemaRepository;
         this.persistence = persistence;
         this.sec = sec;
         this.sagaRepository = sagaRepository;
         this.documentLocks = documentLocks;
+        this.searchWait = searchWait;
     }
 
     @Override
@@ -81,6 +86,9 @@ class DataController implements HttpHandler {
                     exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, TEXT_PLAIN);
                     exchange.getResponseSender().send("The document is being written by another request. Try again.");
                     return;
+                }
+                if (searchWait != null) {
+                    searchWait.attachIfAsked(exchange);
                 }
                 if (!hasTimestamp(exchange)) {
                     resourceContext = ResourceContext.createResourceContext(specification, rawRelativePath(exchange),

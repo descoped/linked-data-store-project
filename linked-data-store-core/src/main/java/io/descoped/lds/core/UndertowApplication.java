@@ -23,6 +23,7 @@ import io.descoped.lds.core.saga.SagasObserver;
 import io.descoped.lds.core.schema.JsonSchema;
 import io.descoped.lds.core.schema.JsonSchemaBuilder;
 import io.descoped.lds.core.search.IndexQueueConfigurator;
+import io.descoped.lds.core.domain.SearchWait;
 import io.descoped.lds.core.search.IndexEntries;
 import io.descoped.lds.core.search.IndexQueueWorker;
 import io.descoped.lds.core.search.IndexRebuild;
@@ -399,7 +400,8 @@ public class UndertowApplication {
                 persistence,
                 sec,
                 sagaRepository,
-                txlogRawdataPool
+                txlogRawdataPool,
+                indexing == null ? null : new SearchWait(indexing.queue(), indexing.index())
         );
 
         SagaParts sagas = new SagaParts(sec, sagaRepository, sagasObserver, sagaRecoveryTrigger, sagaLogPool,

@@ -1,6 +1,7 @@
 package io.descoped.lds.core.domain.reference;
 
 import io.descoped.lds.core.domain.DocumentLocks;
+import io.descoped.lds.core.domain.SearchWait;
 import io.descoped.lds.core.domain.SyncParameter;
 import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.Transaction;
@@ -122,6 +123,7 @@ public class ReferenceResourceHandler implements HttpHandler {
                         SelectableFuture<SagaHandoffResult> handoff = sec.handoff(sync, adapterLoader, saga, sagaInput, SagaCommands.getSagaAdminParameterCommands(httpServerExchange),
                                 completion -> DocumentLocks.holdUntil(httpServerExchange, completion));
                         SagaHandoffResult sagaHandoffResult = handoff.join();
+                        SearchWait.awaitIfAsked(httpServerExchange, resourceContext);
 
                         exchange.setStatusCode(200);
                         exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/json");
@@ -181,6 +183,7 @@ public class ReferenceResourceHandler implements HttpHandler {
         SelectableFuture<SagaHandoffResult> handoff = sec.handoff(sync, adapterLoader, saga, sagaInput, SagaCommands.getSagaAdminParameterCommands(exchange),
                 completion -> DocumentLocks.holdUntil(exchange, completion));
         SagaHandoffResult handoffResult = handoff.join();
+        SearchWait.awaitIfAsked(exchange, resourceContext);
 
         if (sync) {
             exchange.setStatusCode(200);

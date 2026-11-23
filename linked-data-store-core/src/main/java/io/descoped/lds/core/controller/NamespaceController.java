@@ -1,6 +1,7 @@
 package io.descoped.lds.core.controller;
 
 import io.descoped.lds.core.domain.DocumentLocks;
+import io.descoped.lds.core.domain.SearchWait;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.core.saga.SagaExecutionCoordinator;
@@ -28,10 +29,13 @@ public class NamespaceController implements HttpHandler {
     private final SagaRepository sagaRepository;
     private final TxlogRawdataPool txLogPool;
     private final DocumentLocks documentLocks = new DocumentLocks();
+    /* the wait of a write that asks to be searchable when it is answered; null without search */
+    private final SearchWait searchWait;
 
     public NamespaceController(String namespaceDefault, Specification specification, SchemaRepository schemaRepository,
                                RxJsonPersistence persistence, SagaExecutionCoordinator sec,
-                               SagaRepository sagaRepository, TxlogRawdataPool txLogPool) {
+                               SagaRepository sagaRepository, TxlogRawdataPool txLogPool, SearchWait searchWait) {
+        this.searchWait = searchWait;
         this.specification = specification;
         this.schemaRepository = schemaRepository;
         this.persistence = persistence;
@@ -69,7 +73,8 @@ public class NamespaceController implements HttpHandler {
         }
 
         if (requestPath.equals(defaultNamespace) || requestPath.startsWith(defaultNamespace + "/")) {
-            new DataController(specification, schemaRepository, persistence, sec, sagaRepository, documentLocks).handleRequest(exchange);
+            new DataController(specification, schemaRepository, persistence, sec, sagaRepository, documentLocks,
+                    searchWait).handleRequest(exchange);
             return;
         }
 

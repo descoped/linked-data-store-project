@@ -87,6 +87,24 @@ class PostgresIndexQueueTest {
         assertThat(queue.durable()).isTrue();
     }
 
+    /**
+     * The queue holds an update of a document while it is in the queue, taken or not, and not after it is removed.
+     */
+    @Test
+    void theQueueHoldsAnUpdateOfADocumentUntilItIsRemoved() {
+        assertThat(queue.holds("ns", "Person", "ola").blockingGet()).isFalse();
+        queue.add(update("ola", IndexUpdate.Operation.CREATE_OR_OVERWRITE)).blockingAwait();
+
+        assertThat(queue.holds("ns", "Person", "ola").blockingGet()).isTrue();
+        assertThat(queue.holds("ns", "Person", "kari").blockingGet()).isFalse();
+        assertThat(queue.holds("other", "Person", "ola").blockingGet()).isFalse();
+        List<IndexQueue.Entry> taken = queue.take(10, Duration.ofMinutes(1)).blockingGet();
+        assertThat(queue.holds("ns", "Person", "ola").blockingGet()).isTrue();
+
+        queue.remove(taken).blockingAwait();
+        assertThat(queue.holds("ns", "Person", "ola").blockingGet()).isFalse();
+    }
+
     @Test
     void anUpdateComesBackAsItWasAddedWithTheZoneOfItsVersion() {
         IndexUpdate deleted = update("gone", IndexUpdate.Operation.DELETE);

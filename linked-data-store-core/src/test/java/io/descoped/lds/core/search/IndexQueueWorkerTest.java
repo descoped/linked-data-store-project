@@ -71,6 +71,11 @@ class IndexQueueWorkerTest {
         }
 
         @Override
+        public Completable refresh() {
+            return Completable.complete();
+        }
+
+        @Override
         public Completable health() {
             return down ? Completable.error(new IllegalStateException("the index does not answer")) : Completable.complete();
         }

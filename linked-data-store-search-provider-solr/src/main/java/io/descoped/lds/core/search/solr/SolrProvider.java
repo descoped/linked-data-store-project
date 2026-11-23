@@ -12,6 +12,9 @@ import java.util.Set;
  */
 public class SolrProvider implements SearchIndexProvider {
 
+    private static final String URL = "search.index.url";
+    private static final String COMMIT_WITHIN = "search.index.commit-within";
+
     /**
      * The provider, as the service loader makes it.
      */
@@ -26,11 +29,20 @@ public class SolrProvider implements SearchIndexProvider {
 
     @Override
     public Set<String> configurationKeys() {
-        return Set.of("search.index.url");
+        return Set.of(URL, COMMIT_WITHIN);
     }
 
+    /**
+     * The index of the core at {@code search.index.url}, which makes what it takes searchable within
+     * {@code search.index.commit-within} milliseconds (1000 when it is not given).
+     *
+     * @param configuration the values of the keys
+     * @return the index
+     */
     @Override
     public SearchIndex getSearchIndex(Map<String, String> configuration) {
-        return new SolrSearchIndex(configuration.get("search.index.url"));
+        String commitWithin = configuration.get(COMMIT_WITHIN);
+        return new SolrSearchIndex(configuration.get(URL), commitWithin == null || commitWithin.isBlank()
+                ? SolrSearchIndex.COMMIT_WITHIN_MILLIS : Integer.parseInt(commitWithin.strip()));
     }
 }

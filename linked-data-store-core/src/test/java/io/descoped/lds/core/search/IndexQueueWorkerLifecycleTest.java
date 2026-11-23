@@ -66,6 +66,11 @@ class IndexQueueWorkerLifecycleTest {
         }
 
         @Override
+        public Completable refresh() {
+            return Completable.complete();
+        }
+
+        @Override
         public Completable health() {
             return Completable.complete();
         }
@@ -112,6 +117,11 @@ class IndexQueueWorkerLifecycleTest {
         @Override
         public Single<Lag> lag() {
             return queue.lag();
+        }
+
+        @Override
+        public Single<Boolean> holds(String namespace, String entity, String id) {
+            return queue.holds(namespace, entity, id);
         }
 
         @Override

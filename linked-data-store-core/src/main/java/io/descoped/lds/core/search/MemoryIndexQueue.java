@@ -92,6 +92,16 @@ public final class MemoryIndexQueue implements IndexQueue {
     }
 
     @Override
+    public Single<Boolean> holds(String namespace, String entity, String id) {
+        return Single.fromCallable(() -> {
+            synchronized (this) {
+                return slots.values().stream().map(Slot::update).anyMatch(update -> update.namespace().equals(namespace)
+                        && update.entity().equals(entity) && update.id().equals(id));
+            }
+        });
+    }
+
+    @Override
     public Single<Lag> lag() {
         return Single.fromCallable(() -> {
             synchronized (this) {

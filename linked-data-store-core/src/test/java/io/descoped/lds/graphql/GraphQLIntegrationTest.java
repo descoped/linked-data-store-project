@@ -95,6 +95,29 @@ public class GraphQLIntegrationTest {
     }
 
     /**
+     * A write that asks to be searchable is found by the first search after it is answered, and so is a delete.
+     */
+    @Test
+    @ConfigurationOverride({
+            "graphql.enabled", "true",
+            "specification.schema", "spec/demo/contact.json"
+    })
+    public void thatAWriteThatAsksToBeSearchableIsFoundByTheFirstSearchAfterIt() {
+        for (int i = 0; i < 5; i++) {
+            String id = "searchable" + i;
+            String name = "Gladstone" + i;
+            client.put("/data/contact/" + id + "?searchable=true", readFileOrClasspathResource("demo/4-donald.json")
+                    .replace("Donald Duck", name)).expect201Created();
+            assertThat(executeGraphQLQuery("spec/demo/graphql/search_contact.json", name)
+                    .get("data").get("Search").get("edges").size()).as("found after the write").isEqualTo(1);
+
+            client.delete("/data/contact/" + id + "?searchable=true").expect204NoContent();
+            assertThat(executeGraphQLQuery("spec/demo/graphql/search_contact.json", name)
+                    .get("data").get("Search").get("edges").size()).as("gone after the delete").isZero();
+        }
+    }
+
+    /**
      * A search finds a document by the words of its version valid now: a name it had before is not found, unless the
      * search asks for history, which finds the version that had it.
      */

@@ -1,5 +1,6 @@
 package io.descoped.lds.core.domain.embedded;
 
+import io.descoped.lds.core.domain.SearchWait;
 import io.descoped.lds.core.domain.SyncParameter;
 import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.Limits;
@@ -178,6 +179,7 @@ public class EmbeddedResourceHandler implements HttpHandler {
                     SelectableFuture<SagaHandoffResult> handoff = sec.handoff(sync, adapterLoader, saga, sagaInput, SagaCommands.getSagaAdminParameterCommands(httpServerExchange),
                             completion -> DocumentLocks.holdUntil(httpServerExchange, completion));
                     SagaHandoffResult handoffResult = handoff.join();
+                    SearchWait.awaitIfAsked(httpServerExchange, resourceContext);
 
                     exchange.setStatusCode(200);
                     exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, APPLICATION_JSON);
@@ -224,6 +226,7 @@ public class EmbeddedResourceHandler implements HttpHandler {
                     SelectableFuture<SagaHandoffResult> handoff = sec.handoff(sync, adapterLoader, saga, sagaInput, SagaCommands.getSagaAdminParameterCommands(httpServerExchange),
                             completion -> DocumentLocks.holdUntil(httpServerExchange, completion));
                     SagaHandoffResult handoffResult = handoff.join();
+                    SearchWait.awaitIfAsked(httpServerExchange, resourceContext);
 
                     exchange.setStatusCode(200);
                     exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, APPLICATION_JSON);

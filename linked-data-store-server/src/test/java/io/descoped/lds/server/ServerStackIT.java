@@ -107,7 +107,7 @@ class ServerStackIT {
     }
 
     /**
-     * A write is in the index within the five seconds the provider gives Solr to commit it.
+     * A write is in the index within the second the provider gives Solr to commit it.
      */
     @Test
     void aDocumentIsFoundByATextOfIt() throws Exception {
