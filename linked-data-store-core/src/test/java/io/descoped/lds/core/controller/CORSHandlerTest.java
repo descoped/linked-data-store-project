@@ -71,7 +71,7 @@ public class CORSHandlerTest {
             assertThat(response.code()).isEqualTo(222);
             assertThat(response.header(CORSHandler.ACCESS_CONTROL_ALLOW_ORIGIN.toString())).isEqualTo("http://foo");
             assertThat(response.header(CORSHandler.ACCESS_CONTROL_EXPOSE_HEADERS.toString()))
-                    .contains("y-bar").contains("x-foo").contains(",");
+                    .contains("y-bar").contains("x-foo").contains(",").contains("LDS-Searchable");
             assertThat(httpServerExchange).isNotNull();
         }
     }

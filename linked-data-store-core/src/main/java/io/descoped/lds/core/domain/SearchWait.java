@@ -8,6 +8,7 @@ import io.reactivex.rxjava3.core.Flowable;
 import io.reactivex.rxjava3.core.Maybe;
 import io.undertow.server.HttpServerExchange;
 import io.undertow.util.AttachmentKey;
+import io.undertow.util.HttpString;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -16,6 +17,7 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -26,40 +28,62 @@ import java.util.concurrent.TimeUnit;
  * {@code 100 ms}, then asks the index to make what it has taken searchable, and is answered. It waits at most
  * {@code 10 s} (decision L3); then it is answered as any write is, and the update reaches the index as every update
  * does. The wait is the same whichever LDS takes the update from a queue that several share.
+ * <p>
+ * The answer says whether a search finds the write: the header {@code LDS-Searchable}, {@code true} or
+ * {@code false}. A wait holds a request thread, so at most half of them wait at once (decided by the owner): a write
+ * past that is answered when it is done, with {@code LDS-Searchable: false}, and other requests are not slowed by
+ * an index that does not answer.
  */
 public final class SearchWait {
 
     private static final Logger LOG = LoggerFactory.getLogger(SearchWait.class);
     private static final AttachmentKey<SearchWait> ASKED = AttachmentKey.create(SearchWait.class);
 
+    /**
+     * The header of the answer to a write that asked to be searchable: whether a search finds it.
+     */
+    public static final HttpString SEARCHABLE = new HttpString("LDS-Searchable");
+
+    /*
+     * Half of the request threads of Undertow as LDS starts it, which takes its defaults: 8 for each I/O thread, and
+     * an I/O thread for each processor, at least 2 (Undertow.Builder).
+     */
+    private static final int HALF_OF_THE_REQUEST_THREADS = Math.max(Runtime.getRuntime().availableProcessors(), 2) * 4;
+
     private final IndexQueue queue;
     private final SearchIndex index;
     private final Duration poll;
     private final Duration longest;
+    private final Semaphore waiting;
 
     /**
-     * Waits that ask every 100 ms, for at most 10 seconds.
+     * Waits that ask every 100 ms, for at most 10 seconds, at most half of the request threads at once.
      *
      * @param queue the index queue
      * @param index the search index
      */
     public SearchWait(IndexQueue queue, SearchIndex index) {
-        this(queue, index, Duration.ofMillis(100), Duration.ofSeconds(10));
+        this(queue, index, Duration.ofMillis(100), Duration.ofSeconds(10), HALF_OF_THE_REQUEST_THREADS);
     }
 
     /**
-     * Waits that ask as often as given, for at most the time given.
+     * Waits that ask as often as given, for at most the time given, at most as many at once as given.
      *
      * @param queue   the index queue
      * @param index   the search index
      * @param poll    how often the queue is asked
      * @param longest the longest wait
+     * @param atOnce  how many writes may wait at once
      */
-    public SearchWait(IndexQueue queue, SearchIndex index, Duration poll, Duration longest) {
+    public SearchWait(IndexQueue queue, SearchIndex index, Duration poll, Duration longest, int atOnce) {
+        if (atOnce < 1) {
+            throw new IllegalArgumentException("atOnce must be at least 1: " + atOnce);
+        }
         this.queue = Objects.requireNonNull(queue);
         this.index = Objects.requireNonNull(index);
         this.poll = Objects.requireNonNull(poll);
         this.longest = Objects.requireNonNull(longest);
+        this.waiting = new Semaphore(atOnce);
     }
 
     /**
@@ -84,8 +108,9 @@ public final class SearchWait {
     }
 
     /**
-     * Waits, when the request asked for it, until the document of the write is searchable, at most the longest wait.
-     * Called on the worker thread of the request, after its saga.
+     * Waits, when the request asked for it, until the document of the write is searchable, at most the longest wait,
+     * and says in the answer whether it is ({@link #SEARCHABLE}). Called on the worker thread of the request, after
+     * its saga, before the answer is sent.
      *
      * @param exchange the request
      * @param context  the document of the write
@@ -100,8 +125,35 @@ public final class SearchWait {
             // the saga has completed (a searchable write waits for it), so no other write of the document waits for
             // this one's search
             DocumentLocks.letGoAfterSaga(exchange);
-            wait.until(namespace, entity, id);
+            boolean searchable = wait.ifFree(namespace, entity, id);
+            exchange.getResponseHeaders().put(SEARCHABLE, Boolean.toString(searchable));
         }
+    }
+
+    /**
+     * Waits as {@link #until} does, when fewer writes than the most at once are waiting.
+     *
+     * @param namespace the namespace
+     * @param entity    the entity type
+     * @param id        the id of the document
+     * @return whether the document is searchable; false at once when as many writes as may are waiting
+     */
+    boolean ifFree(String namespace, String entity, String id) {
+        if (!waiting.tryAcquire()) {
+            LOG.debug("A write of /{}/{}/{} that asked to be searchable is answered at once: as many writes as may "
+                    + "are waiting for search", namespace, entity, id);
+            return false;
+        }
+        try {
+            return until(namespace, entity, id);
+        } finally {
+            waiting.release();
+        }
+    }
+
+    /* How many more writes may wait now. */
+    int free() {
+        return waiting.availablePermits();
     }
 
     /**

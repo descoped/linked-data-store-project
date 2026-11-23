@@ -71,7 +71,8 @@ Decided by the owner (D1, D2): a write does not wait for the search index, and n
 One exception, asked for by the client (D7, "only when asked"): a write with `searchable=true` waits after its
 saga, with the lock of its document let go, until the queue holds no update of its document, then for the index to
 make it searchable (`SearchWait`, `IndexQueue.holds`, `SearchIndex.refresh`), at most 10 s, and is then answered
-as any write is.
+as any write is, with `LDS-Searchable: true` or `false` (exposed by CORS). At most half of the request threads wait
+at once (owner's decision); a write past that is answered when it is done, with `false`.
 The last step of the saga adds the update (namespace, entity, id, version with its zone, written or deleted) to
 the index queue (`IndexQueue`, in the search API) and is done. `IndexQueueWorker` in core takes updates in
 batches of at most 100, reads each written document from persistence at its version, sends the batch and waits
