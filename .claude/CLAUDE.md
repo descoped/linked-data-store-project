@@ -179,13 +179,13 @@ which validates the Jackson tree of the document). A schema that at its root say
   job `snapshot` deploys every module but the load test with the profile `descoped-snapshots` to Descoped's AWS
   CodeArtifact repository, read publicly at `https://maven.descoped.io/` (also where LDS reads the SNAPSHOTs of
   Descoped libraries). Its one input is the organization secret `CODEARTIFACT_SNAPSHOTS_ROLE_ARN`; the AWS account
-  and the endpoint are never written in the repository. SNAPSHOTs never go to Maven Central (the profile `central`
-  refuses one), and releases never to maven.descoped.io (`descoped-snapshots` refuses one). CI publishes no
-  release and no image. A release (`3.0.0`) is the release workflow (`.github/workflows/release.yml`, `gh workflow
-  run release.yml -f version=3.0.0`): the three images of the server on Docker Hub (`descoped/lds`, linux/amd64 and
-  linux/arm64, signed with cosign), a tag and a GitHub release with its notes (`RELEASE-NOTES.md`). **No jar is
-  published**: the profiles `central,sign` are kept for the day the owner decides to put only the modules outside
-  users build on on Maven Central. Builds are repeatable (`project.build.outputTimestamp`, base images by digest,
+  and the endpoint are never written in the repository. A release never goes to maven.descoped.io
+  (`descoped-snapshots` refuses one). **LDS never publishes to Maven Central** (owner's decision, 2026-11-23): no
+  profile, plugin or job for it, neither SNAPSHOTs nor releases. CI publishes no release and no image. A release
+  (`3.0.0`) is the release workflow (`.github/workflows/release.yml`, `gh workflow run release.yml -f
+  version=3.0.0`): the three images of the server on Docker Hub (`descoped/lds`, linux/amd64 and linux/arm64, signed
+  with cosign), a tag and a GitHub release with its notes (`RELEASE-NOTES.md`). **No jar is released.** Builds are
+  repeatable (`project.build.outputTimestamp`, base images by digest,
   `SOURCE_DATE_EPOCH`), so a release run can be repeated until the tag is made. A milestone (`3.0.0-M1`) is a tag
   and a GitHub release, source only. Both as `docs/developer/build.md` says.
 - **SonarCloud**: one project, `descoped_linked-data-store-project`, for the whole reactor.

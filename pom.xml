@@ -133,91 +133,13 @@
     </repositories>
 
     <profiles>
-        <!-- Not used by a release: a release of LDS is its images on Docker Hub, a tag and a release on GitHub
-             (.github/workflows/release.yml), and no jar is published. Kept for the day the owner decides to put
-             the modules outside users build on (the persistence API, its suite of tests, the search API) on Maven
-             Central, only those, through the Central Portal by central-publishing-maven-plugin. Server `central`
-             in ~/.m2/settings.xml would hold the Portal user token and, for Maven 3.10, list
-             https://central.sonatype.com in repositoryOrigins; an upload is made with autoPublish=false and
-             published by hand in the Portal. Only releases: the enforcer fails a SNAPSHOT version before anything
-             is uploaded. SNAPSHOTs go to maven.descoped.io only (profile descoped-snapshots). -->
-        <profile>
-            <id>central</id>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-enforcer-plugin</artifactId>
-                        <executions>
-                            <execution>
-                                <id>only-releases-to-central</id>
-                                <goals>
-                                    <goal>enforce</goal>
-                                </goals>
-                                <configuration>
-                                    <rules>
-                                        <requireReleaseVersion>
-                                            <message>Only releases go to Maven Central; SNAPSHOTs go to maven.descoped.io (-P descoped-snapshots).</message>
-                                        </requireReleaseVersion>
-                                        <requireReleaseDeps>
-                                            <message>A release has no SNAPSHOT dependency.</message>
-                                        </requireReleaseDeps>
-                                    </rules>
-                                </configuration>
-                            </execution>
-                        </executions>
-                    </plugin>
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-source-plugin</artifactId>
-                        <version>3.4.0</version>
-                        <executions>
-                            <execution>
-                                <id>attach-sources</id>
-                                <goals>
-                                    <goal>jar-no-fork</goal>
-                                </goals>
-                            </execution>
-                        </executions>
-                    </plugin>
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-javadoc-plugin</artifactId>
-                        <executions>
-                            <execution>
-                                <id>attach-javadocs</id>
-                                <goals>
-                                    <goal>jar</goal>
-                                </goals>
-                            </execution>
-                        </executions>
-                    </plugin>
-                    <plugin>
-                        <groupId>org.sonatype.central</groupId>
-                        <artifactId>central-publishing-maven-plugin</artifactId>
-                        <version>0.12.0</version>
-                        <extensions>true</extensions>
-                        <configuration>
-                            <publishingServerId>central</publishingServerId>
-                            <autoPublish>false</autoPublish>
-                            <waitUntil>validated</waitUntil>
-                            <!-- The load test is a tool of this repository, not a library: it is built and
-                                 checked with the reactor and stays out of a release. -->
-                            <excludeArtifacts>
-                                <artifact>linked-data-store-loadtest</artifact>
-                            </excludeArtifacts>
-                        </configuration>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-
         <!-- SNAPSHOTs to Descoped's AWS CodeArtifact repository maven-snapshots, read publicly at
              https://maven.descoped.io/. Only SNAPSHOTs: the enforcer fails a release version, and there is no
              release repository. CI deploys with it after a green build (the job snapshot in ci.yml): it looks the
              endpoint up at run time and sets descoped.snapshots.url in a settings.xml profile it writes, then runs
              ./mvnw -P descoped-snapshots deploy. The endpoint names the AWS account, so it is never written in this
-             repository or in a deployed POM. Without this profile, deploy has no repository and fails. -->
+             repository or in a deployed POM. Without this profile, deploy has no repository and fails. LDS never
+             publishes to Maven Central: a release is its images, a tag and a GitHub release (release.yml). -->
         <profile>
             <id>descoped-snapshots</id>
             <distributionManagement>
@@ -240,7 +162,7 @@
                                 <configuration>
                                     <rules>
                                         <requireSnapshotVersion>
-                                            <message>Only SNAPSHOTs go to maven.descoped.io; releases go to Maven Central (-P central,sign).</message>
+                                            <message>Only SNAPSHOTs go to maven.descoped.io; a release of LDS publishes no jar.</message>
                                         </requireSnapshotVersion>
                                         <requireProperty>
                                             <property>descoped.snapshots.url</property>
@@ -274,29 +196,6 @@
                         <configuration>
                             <deployAtEnd>true</deployAtEnd>
                         </configuration>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-
-        <!-- Signing, required by Central for releases. gpg's default-key signs. -->
-        <profile>
-            <id>sign</id>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-gpg-plugin</artifactId>
-                        <version>3.2.8</version>
-                        <executions>
-                            <execution>
-                                <id>sign-artifacts</id>
-                                <phase>verify</phase>
-                                <goals>
-                                    <goal>sign</goal>
-                                </goals>
-                            </execution>
-                        </executions>
                     </plugin>
                 </plugins>
             </build>
