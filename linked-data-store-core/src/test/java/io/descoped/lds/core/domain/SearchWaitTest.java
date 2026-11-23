@@ -24,6 +24,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.awaitility.Awaitility.await;
 
 /**
  * A write that asks to be searchable waits until the queue holds no update of its document, then for the index to make
@@ -117,13 +118,16 @@ class SearchWaitTest {
         assertThat(locks.acquire(searchable, "ns", "Person", "ola")).isTrue();
         DocumentLocks.holdUntil(searchable, CompletableFuture.completedFuture(null)); // its saga has completed
         wait.attachIfAsked(searchable);
-        add("ola"); // never sent, so the write waits as long as it may
+        add("ola"); // not sent until the end, so the write waits
         CompletableFuture<Void> waiting = CompletableFuture.runAsync(
                 () -> SearchWait.awaitIfAsked(searchable, "ns", "Person", "ola"));
 
         assertThat(locks.acquire(new HttpServerExchange(null), "ns", "Person", "ola")).isTrue();
         assertThat(waiting).isNotDone();
-        waiting.get();
+
+        sendAll();
+        waiting.get(5, TimeUnit.SECONDS);
+        assertThat(searchable.getResponseHeaders().getFirst(SearchWait.SEARCHABLE)).isEqualTo("true");
     }
 
     /**
@@ -135,7 +139,7 @@ class SearchWaitTest {
         SearchWait.awaitIfAsked(found, "ns", "Person", "ola");
         assertThat(found.getResponseHeaders().getFirst(SearchWait.SEARCHABLE)).isEqualTo("true");
 
-        add("kari"); // never sent
+        index.down = true; // the index cannot make it searchable, so the write is answered at once
         HttpServerExchange notFound = asking();
         SearchWait.awaitIfAsked(notFound, "ns", "Person", "kari");
         assertThat(notFound.getResponseHeaders().getFirst(SearchWait.SEARCHABLE)).isEqualTo("false");
@@ -147,33 +151,38 @@ class SearchWaitTest {
     }
 
     /**
-     * At most as many writes as may wait at once wait; one more is answered at once, as not searchable yet, and a
-     * write after a wait has ended waits again.
+     * At most as many writes as may wait at once wait; one more is answered at once, as not searchable yet, and the
+     * room is given back when a wait ends.
      */
     @Test
     void aWritePastTheMostThatMayWaitAtOnceIsAnsweredAtOnce() throws Exception {
         // two may wait at once
-        add("ola"); // never sent, so a write of it waits as long as it may
+        add("ola"); // not sent until the two wait, so they wait
         CompletableFuture<Boolean> first = CompletableFuture.supplyAsync(() -> wait.ifFree("ns", "Person", "ola"));
         CompletableFuture<Boolean> second = CompletableFuture.supplyAsync(() -> wait.ifFree("ns", "Person", "ola"));
-        while (wait.free() > 0) { // until both are waiting
-            Thread.onSpinWait();
-        }
+        // both wait
+        await().atMost(Duration.ofSeconds(5)).pollInterval(Duration.ofMillis(5)).until(() -> wait.free() == 0);
 
         long start = System.nanoTime();
         assertThat(wait.ifFree("ns", "Person", "ola")).isFalse();
         assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(LONGEST.dividedBy(2));
         assertThat(index.refreshes).hasValue(0);
 
-        assertThat(first.get()).isFalse();
-        assertThat(second.get()).isFalse();
-        assertThat(wait.ifFree("ns", "Person", "kari")).isTrue();
+        sendAll();
+        assertThat(first.get(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(second.get(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(wait.free()).isEqualTo(2);
     }
 
     @Test
     void atLeastOneWriteMayWait() {
         assertThatThrownBy(() -> new SearchWait(queue, index, POLL, LONGEST, 0))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    /* The worker has sent every update in the queue. */
+    private void sendAll() {
+        queue.remove(queue.take(100, Duration.ofMinutes(1)).blockingGet()).blockingAwait();
     }
 
     private HttpServerExchange asking() {

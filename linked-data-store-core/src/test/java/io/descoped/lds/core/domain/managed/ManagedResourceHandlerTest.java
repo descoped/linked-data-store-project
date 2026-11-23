@@ -24,15 +24,16 @@ import tools.jackson.databind.JsonNode;
 import javax.inject.Inject;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.Iterator;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
-import static org.awaitility.Awaitility.await;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
@@ -129,7 +130,10 @@ public class ManagedResourceHandlerTest {
         assertFalse(refused.getThreadName().contains("I/O"), refused.getThreadName());
     }
 
-    /* The status line of a PUT whose body is sent in two parts, the second after a pause. */
+    /*
+     * The status line of a PUT whose body is sent in two parts: the second is sent 300 ms after the first, so LDS
+     * reads it in a later read, while this thread waits for the answer, which LDS gives when it has the whole body.
+     */
     private String putInParts(String path, String body) throws IOException {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         try (Socket socket = new Socket("localhost", server.getTestServerServicePort())) {
@@ -139,10 +143,16 @@ public class ManagedResourceHandlerTest {
                     .getBytes(StandardCharsets.US_ASCII));
             out.write(bytes, 0, 10);
             out.flush();
-            await().pollDelay(Duration.ofMillis(300)).until(() -> true); // the second part comes in a later read
-            out.write(bytes, 10, bytes.length - 10);
-            out.flush();
+            CompletableFuture<Void> rest = CompletableFuture.runAsync(() -> {
+                try {
+                    out.write(bytes, 10, bytes.length - 10);
+                    out.flush();
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            }, CompletableFuture.delayedExecutor(300, TimeUnit.MILLISECONDS));
             String answer = new String(socket.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            rest.join();
             return answer.substring(0, answer.indexOf("\r\n"));
         }
     }
