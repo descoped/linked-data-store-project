@@ -2,6 +2,7 @@ package io.descoped.lds.core.persistence.test;
 
 import io.descoped.lds.api.json.JsonNavigationPath;
 import io.descoped.lds.api.persistence.DocumentKey;
+import io.descoped.lds.api.persistence.Limits;
 import io.descoped.lds.api.persistence.PersistenceDeletePolicy;
 import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.json.JsonDocument;
@@ -26,6 +27,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Random;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -91,8 +93,16 @@ public abstract class PersistenceIntegrationTest {
         return address;
     }
 
+    /**
+     * An entity type whose name is of the longest length LDS takes, in letters drawn at random.
+     */
+    protected static final String LONGEST_ENTITY = "E" + asciiLetters(new Random(128), Limits.ENTITY_BYTES - 1);
+
     protected Specification buildSpecification() {
         return SpecificationBuilder.createSpecificationAndRoot(Set.of(
+                objectNode(SpecificationElementType.MANAGED, LONGEST_ENTITY, Set.of(
+                        stringNode("name")
+                )),
                 objectNode(SpecificationElementType.MANAGED, "Person", Set.of(
                         stringNode("firstname"),
                         stringNode("lastname"),
@@ -578,6 +588,158 @@ public abstract class PersistenceIntegrationTest {
             assertNotSame(output, input);
             JSONAssert.assertEquals(JsonTools.toJson(output.jackson()), JsonTools.toJson(input.jackson()), true);
         }
+    }
+
+    /**
+     * Every provider keeps a document at every limit LDS sets at once (Limits): a namespace, an entity type, an id and
+     * the path of a value of the longest length, the path through the most arrays. The names and ids are letters
+     * drawn at random, which a store cannot compress to fit, and take three or four bytes each in UTF-8.
+     */
+    @Test
+    public void thatADocumentAtEveryLimitIsKept() throws JSONException {
+        Random random = new Random(20261122);
+        String longestNamespace = asciiLetters(random, Limits.NAMESPACE_BYTES);
+        String id = letters(random, 0x20000, 0x2A6DF, Limits.ID_BYTES / 4);
+
+        // $, then 32 times .name[] and then .xy: 1 + 32 * 3 + 3 * 308 + 3 = 1024 bytes
+        ObjectNode leaf = mapper.createObjectNode();
+        leaf.put("xy", letters(random, 0x4E00, 0x9FFF, 2000));
+        StringBuilder path = new StringBuilder();
+        JsonNode node = leaf;
+        for (int level = Limits.ARRAY_LEVELS; level >= 1; level--) {
+            String name = letters(random, 0x4E00, 0x9FFF, level <= 20 ? 10 : 9);
+            path.insert(0, "." + name + "[]");
+            ObjectNode parent = mapper.createObjectNode();
+            parent.putArray(name).add(node);
+            node = parent;
+        }
+        ObjectNode document = (ObjectNode) node;
+        path.insert(0, "$").append(".xy");
+        assertThat(Limits.utf8Length(id)).isEqualTo(Limits.ID_BYTES);
+        assertThat(Limits.utf8Length(path)).isEqualTo(Limits.PATH_BYTES);
+        assertThat(Limits.overLimit(document)).isNull();
+
+        ZonedDateTime timestamp = parse("2026-11-22T12:00:00.000Z");
+        try (Transaction transaction = persistence.createTransaction(false)) {
+            JsonDocument input = toDocument(longestNamespace, LONGEST_ENTITY, id, document, timestamp);
+            persistence.createOrOverwrite(transaction, input, specification).blockingAwait();
+
+            JsonDocument output = persistence.readDocument(transaction, timestamp, longestNamespace, LONGEST_ENTITY, id).blockingGet();
+            assertNotNull(output);
+            assertEquals(output.key().id(), id);
+            JSONAssert.assertEquals(JsonTools.toJson(output.jackson()), JsonTools.toJson(document), true);
+            assertThat(ids(persistence.readDocuments(transaction, timestamp, longestNamespace, LONGEST_ENTITY, Range.unbounded())))
+                    .containsExactly(id);
+
+            persistence.deleteAllDocumentVersions(transaction, longestNamespace, LONGEST_ENTITY, id, PersistenceDeletePolicy.FAIL_IF_INCOMING_LINKS).blockingAwait();
+            assertThat(persistence.readDocument(transaction, timestamp, longestNamespace, LONGEST_ENTITY, id).blockingGet()).isNull();
+        }
+    }
+
+    private static String asciiLetters(Random random, int count) {
+        StringBuilder letters = new StringBuilder();
+        for (int i = 0; i < count; i++) {
+            letters.append((char) ('a' + random.nextInt(26)));
+        }
+        return letters.toString();
+    }
+
+    private static String letters(Random random, int first, int last, int count) {
+        StringBuilder letters = new StringBuilder();
+        for (int i = 0; i < count; i++) {
+            letters.appendCodePoint(first + random.nextInt(last - first + 1));
+        }
+        return letters.toString();
+    }
+
+    /**
+     * A list of documents holds every id, also one that starts with a character before or after the letters of ASCII,
+     * or outside ASCII, in the order of their code points, and after and before bound it at any id, without leaving
+     * out the ids next to the bound.
+     */
+    @Test
+    public void thatAListHoldsEveryId() {
+        ZonedDateTime timestamp = parse("2000-01-01T00:00:00.000Z");
+        try (Transaction tx = persistence.createTransaction(false)) {
+            persistence.deleteAllEntities(tx, namespace, "Person", specification).blockingAwait();
+            for (String id : List.of("~x", "øl", "日本", "!a", "m", "a", "a~x", "aø", "b")) {
+                persistence.createOrOverwrite(tx, createPerson(id, timestamp), specification).blockingAwait();
+            }
+
+            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.unbounded())))
+                    .containsExactly("!a", "a", "a~x", "aø", "b", "m", "~x", "øl", "日本");
+            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.firstAfter(10, "m"))))
+                    .containsExactly("~x", "øl", "日本");
+            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.between("m", "øl"))))
+                    .containsExactly("~x");
+            // the ids next to a bound are in the page
+            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.between("!a", "b"))))
+                    .containsExactly("a", "a~x", "aø");
+            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.firstAfter(10, "a"))))
+                    .startsWith("a~x", "aø", "b");
+
+            persistence.deleteAllEntities(tx, namespace, "Person", specification).blockingAwait();
+        }
+    }
+
+    /**
+     * The ids of a list are in the order of their code points (IdOrder), the order of their bytes in UTF-8, in every
+     * provider: a letter above U+FFFF (😀, 𠮷) comes after a letter of U+E000 to U+FFFF (ﬀ, a full-width Ａ), where
+     * Java's order of strings, by UTF-16, would put it before. A bound, an id or a text that no id is, gives what is
+     * strictly after or before it in that order, and a range from the end is given from the end.
+     */
+    @Test
+    public void thatAListIsInTheOrderOfCodePointsAndItsBoundsAreStrict() {
+        ZonedDateTime timestamp = parse("2000-01-01T00:00:00.000Z");
+        try (Transaction tx = persistence.createTransaction(false)) {
+            persistence.deleteAllEntities(tx, namespace, "Person", specification).blockingAwait();
+            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.unbounded()))).isEmpty();
+            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.firstAfter(10, "a"))))
+                    .isEmpty();
+
+            for (String id : List.of("😀", "z", "ab", "\uFB00", "a", "𠮷", "aa", "\uFF21", "a!")) {
+                persistence.createOrOverwrite(tx, createPerson(id, timestamp), specification).blockingAwait();
+            }
+
+            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.unbounded())))
+                    .containsExactly("a", "a!", "aa", "ab", "z", "\uFB00", "\uFF21", "😀", "𠮷");
+            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.between("a", "aa"))))
+                    .containsExactly("a!");
+            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.between("ab", "ab"))))
+                    .isEmpty();
+            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.between("aa", "ab"))))
+                    .isEmpty();
+            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.firstAfter(10, "𠮷"))))
+                    .isEmpty();
+            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.lastBefore(10, "a"))))
+                    .isEmpty();
+            // the bounds where code points and UTF-16 differ
+            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.firstAfter(10, "z"))))
+                    .containsExactly("\uFB00", "\uFF21", "😀", "𠮷");
+            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.firstAfter(2, "\uFF21"))))
+                    .containsExactly("😀", "𠮷");
+            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.lastBefore(2, "😀"))))
+                    .containsExactly("\uFF21", "\uFB00");
+            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.lastBefore(3, "\uFB00"))))
+                    .containsExactly("z", "ab", "aa");
+            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.between("\uE000", "😀"))))
+                    .containsExactly("\uFB00", "\uFF21");
+            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.firstAfter(10, "\uD7FF"))))
+                    .containsExactly("\uFB00", "\uFF21", "😀", "𠮷");
+            // bounds that are not ids
+            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.between("a ", "b"))))
+                    .containsExactly("a!", "aa", "ab");
+            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.first(2))))
+                    .containsExactly("a", "a!");
+            assertThat(ids(persistence.readDocuments(tx, timestamp, namespace, "Person", Range.last(2))))
+                    .containsExactly("𠮷", "😀");
+
+            persistence.deleteAllEntities(tx, namespace, "Person", specification).blockingAwait();
+        }
+    }
+
+    private static List<String> ids(Flowable<JsonDocument> documents) {
+        return documents.map(document -> document.key().id()).toList().blockingGet();
     }
 
     @Test

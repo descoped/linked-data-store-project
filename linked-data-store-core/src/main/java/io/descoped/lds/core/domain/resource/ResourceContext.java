@@ -1,5 +1,7 @@
 package io.descoped.lds.core.domain.resource;
 
+import io.descoped.lds.api.persistence.IdOrder;
+import io.descoped.lds.api.persistence.Limits;
 import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.api.specification.SpecificationElement;
@@ -8,7 +10,10 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
-import java.net.URLDecoder;
+import java.io.ByteArrayOutputStream;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.time.ZonedDateTime;
 import java.util.function.Function;
@@ -21,6 +26,13 @@ import static java.util.Optional.ofNullable;
  */
 public class ResourceContext {
 
+    /**
+     * The resource a path names.
+     *
+     * @param requestPath the path as it was sent, not decoded: each segment is decoded once here, and a {@code +} is a
+     *                    plus
+     * @throws ResourceException when the path names no resource, or an id is not one LDS takes
+     */
     public static ResourceContext createResourceContext(Specification specification, String requestPath, ZonedDateTime timestamp) throws ResourceException {
         SpecificationElement specificationRootElement = specification.getRootElement();
         String[] pathParts = requestPath.substring(1).split("/");
@@ -38,6 +50,7 @@ public class ResourceContext {
             if (managedResourceId.trim().isEmpty()) {
                 throw new ResourceException("Managed resource id cannot be empty.");
             }
+            checkId(managedResourceId);
         }
         SpecificationElement managedSpecificationElement = specificationRootElement.getProperties().get(managedResourceName);
         ResourceElement secondElement = navigateSpecAndCreateResourceContext(managedSpecificationElement, 3, pathParts);
@@ -74,6 +87,7 @@ public class ResourceContext {
                 throw new ResourceException("Reference resource does not support link to managed-domain \"" + linkedManagedDomain + "\". Must be one of: " + matchedElement.getRefTypes());
             }
             String linkedResourceId = urlDecode(resourcePath[depth + 2]);
+            checkId(linkedResourceId);
             String referenceValue = "/" + linkedManagedDomain + "/" + linkedResourceId;
             return new ResourceElement(matchedElement, pathElement, referenceValue, null);
         }
@@ -106,8 +120,75 @@ public class ResourceContext {
         this.timestamp = timestamp;
     }
 
-    private static String urlDecode(String encoded) {
-        return URLDecoder.decode(encoded, StandardCharsets.UTF_8);
+    private static void checkId(String id) {
+        String wrong = whatIsWrongWithId(id);
+        if (wrong != null) {
+            throw new ResourceException(wrong);
+        }
+    }
+
+    /**
+     * What is wrong with an id, or null when nothing is: an id is at most {@link Limits#ID_BYTES} bytes in UTF-8, and
+     * has no {@code /}, no control character and no half of a character (an unpaired surrogate). The same for the id
+     * in a REST path and the id a link names, so every document a link names can be read through REST.
+     *
+     * @param id the id
+     * @return what is wrong, or null
+     */
+    public static String whatIsWrongWithId(String id) {
+        if (Limits.utf8Length(id) > Limits.ID_BYTES) {
+            return "An id is at most " + Limits.ID_BYTES + " bytes in UTF-8";
+        }
+        if (id.indexOf('/') >= 0) {
+            return "An id cannot hold a '/': \"" + id + "\"";
+        }
+        if (id.codePoints().anyMatch(Character::isISOControl)) {
+            return "An id cannot hold a control character";
+        }
+        if (!IdOrder.isWellFormed(id)) {
+            return "An id cannot hold half of a character (an unpaired surrogate)";
+        }
+        return null;
+    }
+
+    /**
+     * A segment of the path, decoded once: each {@code %XX} is a byte of UTF-8, and every other character stands
+     * for itself, a {@code +} too.
+     */
+    static String urlDecode(String segment) {
+        if (segment.indexOf('%') < 0 && segment.chars().allMatch(c -> c < 0x80)) {
+            return segment;
+        }
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        for (int i = 0; i < segment.length(); i++) {
+            char c = segment.charAt(i);
+            if (c == '%') {
+                int high = i + 2 < segment.length() ? Character.digit(segment.charAt(i + 1), 16) : -1;
+                int low = high < 0 ? -1 : Character.digit(segment.charAt(i + 2), 16);
+                if (low < 0) {
+                    throw new ResourceException("Not a valid escape in the path: \"" + segment + "\". Write a '%' as %25");
+                }
+                bytes.write(high * 16 + low);
+                i += 2;
+            } else if (c < 0x80) {
+                bytes.write(c);
+            } else {
+                // not sent by HTTP, where the path is ASCII; a character given here stands for itself, also one of
+                // two chars (a code point above U+FFFF), which is taken whole
+                int codePoint = segment.codePointAt(i);
+                bytes.writeBytes(Character.toString(codePoint).getBytes(StandardCharsets.UTF_8));
+                i += Character.charCount(codePoint) - 1;
+            }
+        }
+        try {
+            return StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(bytes.toByteArray()))
+                    .toString();
+        } catch (CharacterCodingException _) {
+            throw new ResourceException("Not UTF-8 in the path: \"" + segment + "\"");
+        }
     }
 
     public String getNamespace() {

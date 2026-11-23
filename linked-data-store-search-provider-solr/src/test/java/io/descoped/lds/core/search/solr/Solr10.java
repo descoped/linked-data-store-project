@@ -3,18 +3,26 @@ package io.descoped.lds.core.search.solr;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 
+import java.time.Duration;
 import java.util.Map;
 
 /**
  * One Solr 10 container for every test class of the module, started on first use and stopped by Testcontainers
  * when the JVM ends. It is started as the compose file of the server starts Solr: the image as it is, with one
- * core, {@code lds-index}, created from the configuration the image comes with. The tests need Docker.
+ * core, {@code lds-index}, created from the configuration the image comes with. One thing differs: Solr closes a
+ * connection that has been idle for {@link #IDLE_TIMEOUT} instead of 120 seconds, so a test can see what LDS does
+ * when Solr has closed it. The tests need Docker.
  */
 final class Solr10 {
 
     private static final String IMAGE = "solr:10.1";
     private static final String CORE = "lds-index";
     private static final int PORT = 8983;
+
+    /**
+     * How long Solr keeps a connection that is idle (solr.jetty.http.idleTimeout).
+     */
+    static final Duration IDLE_TIMEOUT = Duration.ofSeconds(2);
 
     private static final GenericContainer<?> CONTAINER = start();
 
@@ -25,6 +33,7 @@ final class Solr10 {
     private static GenericContainer<?> start() {
         GenericContainer<?> container = new GenericContainer<>(IMAGE)
                 .withCommand("solr-precreate", CORE)
+                .withEnv("SOLR_OPTS", "-Dsolr.jetty.http.idleTimeout=" + IDLE_TIMEOUT.toMillis())
                 .withExposedPorts(PORT)
                 .waitingFor(Wait.forHttp("/solr/" + CORE + "/admin/ping").forStatusCode(200));
         container.start();

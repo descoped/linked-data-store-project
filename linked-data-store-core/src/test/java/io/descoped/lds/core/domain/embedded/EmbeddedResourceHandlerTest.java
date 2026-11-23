@@ -39,6 +39,17 @@ public class EmbeddedResourceHandlerTest {
     }
 
     @Test
+    public void thatAnEmptyBodyIsRefusedAndNothingIsWritten() {
+        createTestResource("provisionagreement", "e-empty", "{\"id\":\"e-empty\",\"name\":\"pa-test-name\",\"address\":{\"street\":\"Akersveien 26\"}}");
+
+        assertEquals(client.put("/data/provisionagreement/e-empty/address?sync=true", "").expect400BadRequest().body(), "Payload was empty!");
+        assertEquals(client.put("/data/provisionagreement/e-empty/name?sync=true", "").expect400BadRequest().body(), "Payload was empty!");
+        assertEquals(client.put("/data/provisionagreement/e-empty/name?sync=true", "\"x").expect400BadRequest().body().startsWith("The body cannot be read at line 1, column "), true);
+
+        assertEquals(client.get("/data/provisionagreement/e-empty/address").expect200Ok().body(), "{\"street\":\"Akersveien 26\"}");
+    }
+
+    @Test
     public void thatGetEmbeddedResourceNavigatesDocumentToArray() {
         createTestResource("provisionagreement", "e1", "{\"id\":\"e1\",\"name\":\"pa-test-name\",\"contacts\":[\"/contact/c1\",\"/contact/c2\"]}");
         String response = client.get("/data/provisionagreement/e1/contacts").expect200Ok().body();
@@ -58,6 +69,17 @@ public class EmbeddedResourceHandlerTest {
         client.put("/data/provisionagreement/e3/address?sync=true", "{\"street\":\"Akersveien 26\",\"country\":\"Norway\"}").expect200Ok();
         String response = client.get("/data/provisionagreement/e3").expect200Ok().body();
         JSONAssert.assertEquals("{\"id\":\"e3\",\"name\":\"pa-test-name\",\"contacts\":[\"/contact/c1\",\"/contact/c2\"],\"address\":{\"street\":\"Akersveien 26\",\"country\":\"Norway\"}}", response, true);
+    }
+
+    @Test
+    public void thatAPartThatTakesTheDocumentOverTheLimitsIsRefusedAndNothingIsWritten() throws JSONException {
+        String document = "{\"id\":\"e-limits\",\"name\":\"pa-test-name\",\"contacts\":[],\"address\":{\"street\":\"Storgata 1\"}}";
+        createTestResource("provisionagreement", "e-limits", document);
+        // the path is counted in the whole document: $.address. and the name of the field
+        String part = "{\"" + "s".repeat(1100) + "\":\"x\"}";
+        assertEquals(client.put("/data/provisionagreement/e-limits/address?sync=true", part).expect400BadRequest().body(),
+                "The path of a value is at most 1024 bytes in UTF-8: $.address." + "s".repeat(70) + "...");
+        JSONAssert.assertEquals(document, client.get("/data/provisionagreement/e-limits").expect200Ok().body(), true);
     }
 
     @Test

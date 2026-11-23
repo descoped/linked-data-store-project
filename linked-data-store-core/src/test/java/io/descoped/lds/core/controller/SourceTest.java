@@ -2,6 +2,7 @@ package io.descoped.lds.core.controller;
 
 import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.test.ConfigurationOverride;
+import io.descoped.lds.test.client.ResponseHelper;
 import io.descoped.lds.test.client.TestClient;
 import io.descoped.lds.test.server.TestServerListener;
 import org.testng.annotations.Listeners;
@@ -106,5 +107,23 @@ public class SourceTest {
             JsonNode actual = JsonTools.toJsonNode(response);
             assertEquals(actual, expected);
         }
+    }
+
+    @Test
+    @ConfigurationOverride({
+            "txlog.split.sources", "true",
+            "txlog.default-source", "default",
+            "txlog.rawdata.topic-prefix", "tx-discard-",
+            "txlog.rawdata.provider", "discard"
+    })
+    public void thatTheLastSourceIdIsAConflictWhenNoTransactionLogIsKept() {
+        client.put("/data/contact/4b2ef?sync=true&source=A&sourceId=a1", readFileOrClasspathResource("demo/3-scrooge.json")).expect201Created();
+
+        ResponseHelper<String> response = client.get("/source/A");
+
+        assertEquals(response.response().statusCode(), 409);
+        assertEquals(response.response().headers().firstValue("Content-Type").orElse(null), "text/plain");
+        assertEquals(response.body(), "No transaction log is kept (txlog.rawdata.provider=discard), so the last source id "
+                + "of a source is not known");
     }
 }

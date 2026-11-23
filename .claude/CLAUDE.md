@@ -120,6 +120,17 @@ which validates the Jackson tree of the document). A schema that at its root say
   (`PersistenceIntegrationTest`) against the real engine (a container), not a substitute.
 - **No spliced identifiers.** Entity, field, namespace and topic names and user search text are validated and never
   concatenated into SQL, Cypher, Solr queries, keys or file paths.
+- **Limits.** One set of limits for every provider, constants in bytes of UTF-8 (`Limits` in the persistence API):
+  namespace 64, entity type 128, id 1024, path of a value 1024, 32 arrays on a path. They are set by the store
+  with the least room, PostgreSQL (one primary key entry of at most 2,704 bytes holds all of them), not by
+  configuration. Core refuses what goes past them (400 on a write, no start for names), and the shared suite
+  keeps a document at every limit on every provider (`thatADocumentAtEveryLimitIsKept`). A limit is raised only
+  when every provider keeps the new one.
+- **The order of ids** is the order of their Unicode code points (the order of their UTF-8 bytes), in every
+  provider and in core: `IdOrder` in the persistence API. Memory and PostgreSQL (`COLLATE "POSIX"`) compare the
+  bytes; the bridge and core compare with `IdOrder.CODE_POINTS`, never `String.compareTo` (UTF-16, which puts a
+  letter above U+FFFF before one of U+E000 to U+FFFF); Neo4j orders and bounds by the property `idOrder`
+  (`IdOrder.key`, indexed with the namespace) of every document node. An id is whole text, no unpaired surrogate.
 - **Time.** Document versions are stored and compared as UTC instants.
 - **Transactions** commit only when asked and roll back otherwise.
 - **Always the latest stable version** of every library, plugin, action, image and engine (Neo4j 2026, Solr 10).
@@ -183,13 +194,14 @@ module makes that module meet them.
   pool, the saga log pool and the stores.
 - The server's tests are the tests of the image (`*IT`, run by Failsafe after the jars are made, so by `verify`
   and not by `test`). `ServerImageIT` builds the three images with `docker build` and starts each as it is: the
-  example model in memory, the health check, the user it runs as, that it stops when asked to, no shell in the
+  example model in memory, `/ping` under the prefix and on the port it is given, no health check declared, the
+  user it runs as, that it stops when asked to, no shell in the
   distroless image and the JDK tools in the debug image. `ServerStackIT` starts
   `compose.yaml` with `docker compose`, with ports that Docker picks, and writes, reads, follows links and
   searches through LDS with Neo4j, PostgreSQL and Solr. So **the build needs the `docker` command with compose**,
   not only the Docker engine.
 - Core's tests start the application in the JVM on a random port with the memory provider (`TestServerListener`).
-  13 of them are disabled in the source (`enabled = false`, `@Ignore`), several because they hang; they are
+  12 of them are disabled in the source (`enabled = false`, `@Ignore`), several because they hang; they are
   re-enabled or deleted with a reason when core is revised.
 - A change that switches tests on is run about ten times before it is pushed
   (`for n in $(seq 1 10); do ./mvnw -B -q verify || break; done`).
@@ -227,8 +239,8 @@ system property sets only a key that one of the files has).
 
 ## The server image
 
-`linked-data-store-server/Dockerfile` makes three images of the same LDS from what Maven has packaged (`target/lib`,
-the jar of the module and the class `HealthCheck`), each a target: `regular` (the default, tag `3.0.0`), on the
+`linked-data-store-server/Dockerfile` makes three images of the same LDS from what Maven has packaged (`target/lib` and
+the jar of the module), each a target: `regular` (the default, tag `3.0.0`), on the
 distroless base with busybox (`gcr.io/distroless/base-nossl-debian13:debug`); `distroless` (`3.0.0-distroless`), on
 the distroless base with no shell; `debug` (`3.0.0-debug`), as `regular` with the modules of the JDK for diagnostics
 (remote JMX, JDWP, `jcmd`, `jstack`, `jmap`, `jhsdb`, JFR) and debug information. The Java runtimes are made by
@@ -250,13 +262,17 @@ changing them:
   no password. A key is added there when the image needs to be given it.
 - **Three images, one LDS**: they differ only in base and runtime; the rest (`app` stage, user, entry point) is
   the same in each and is kept so. Nothing is installed in an image. The distroless image has `java` as its one
-  program; its health check is a class of the server module (`HealthCheck`, only `java.base`) run by `java` in exec
-  form. The two with a shell check with busybox `wget`, so no second JVM reads the options of the JVM (a JMX or JDWP
-  port would clash). The user `lds` is added to `/etc/passwd` in the build stage.
-- **The images run as the user `lds`**, have a health check on `/ping`, and have the example model in
+  program. The user `lds` is added to `/etc/passwd` in the build stage.
+- **No image declares a health check.** LDS answers `/ping` under `http.prefix`, and whoever runs it asks there,
+  at the port and prefix it gave LDS (`compose.yaml` and the load test's compose file have a `healthcheck`,
+  Kubernetes a probe). Only LDS reads its configuration: nothing in the image reads an `LDS_` variable or starts a
+  second JVM, which would read `JAVA_TOOL_OPTIONS` and clash with a JMX or JDWP port.
+- **The images run as the user `lds`** and have the example model in
   `/lds/schemas`. They are published only by the release workflow (see Invariants).
-- **Every port of the compose file is published on 127.0.0.1**, and can be moved (`LDS_PORT`, ...), which is how
-  `ServerStackIT` runs next to a stack that is up. The passwords in it are development defaults.
+- **Every port of the compose file is published on 127.0.0.1**, and can be moved (`SERVER_PORT`, ...), which is how
+  `ServerStackIT` runs next to a stack that is up. No variable of the compose file starts with `LDS_`, the prefix
+  of the server's own variables, which a server started on the machine would refuse. The passwords in it are
+  development defaults.
 - **The JDK of the image is the baseline**: Renovate is told to keep `eclipse-temurin` at 27. A JDK module that a
   library uses only by name at run time is added to the `jlink` line by hand; `jdeps` does not see it.
 
@@ -268,8 +284,11 @@ or package names there) and `docs/developer/` for those who change the code (`ar
 one document for each part of the code). `docs/README.md` is the index. Keep these when changing it:
 
 - **Only what the code does.** A statement is one found in the code, in a test or by running LDS, and every
-  request shown was run, with the answer that came. A change of behaviour changes the document in the same pull
-  request.
+  request shown was run, with the answer that came.
+- **The documents follow the release.** They describe the released version, and the site publishes them. A pull
+  request that changes behaviour changes code and tests, not `docs/`; what the documents must then say is kept
+  outside the repository, and they are brought up to date after the next release. The documents are not a
+  changelog.
 - **The code as it is, not its history.** LDS went through several designs. The documents describe the current
   code only: no commit ids, no dates of changes, no code or test models that were removed. Earlier code and the
   documents of earlier versions are read to understand the thinking behind the current code, and are not
@@ -317,7 +336,7 @@ changing it:
   users when they update the marketplace. A change of the plugin is never a reason for a release.
 - **Only what LDS does**, as the documentation: every command a skill shows was run against the released image, and
   a skill links the documentation of the site for depth instead of copying it. A change of behaviour that a skill
-  shows changes the skill in the same pull request.
+  shows changes the skill after the release that holds it, as the documents.
 - **Honest about the limits** where the user meets them: no authentication, a JSON Schema model gives no GraphQL
   API, one namespace, the model is read at start, search only of `languageText` fields, links not checked.
 - **A GraphQL schema is the model it makes first**, JSON Schema on request.

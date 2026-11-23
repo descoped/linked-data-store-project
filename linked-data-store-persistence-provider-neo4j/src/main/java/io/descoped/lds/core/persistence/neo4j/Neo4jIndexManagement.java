@@ -15,7 +15,8 @@ import java.util.stream.Collectors;
 /**
  * The constraints and indexes the provider needs, for each entity it manages:
  * <ul>
- * <li>a document is one node with the entity as its label, unique by namespace and id;</li>
+ * <li>a document is one node with the entity as its label, unique by namespace and id, and indexed by namespace and
+ *     {@code idOrder}, the id in the order of code points ({@code IdOrder.key}), which lists and their bounds use;</li>
  * <li>a value is a node with the label {@code <entity>_E}, indexed by namespace, path and value (or the hash of a
  * long value), which is what a search for a value looks up.</li>
  * </ul>
@@ -101,6 +102,7 @@ final class Neo4jIndexManagement {
         wantedIndexes = new LinkedHashSet<>();
         for (String managedDomain : managedDomains) {
             wantedIndexes.add(new Index(managedDomain, List.of("namespace", "id"), true, null));
+            wantedIndexes.add(new Index(managedDomain, List.of("namespace", "idOrder"), false, null));
             wantedIndexes.add(new Index(managedDomain + "_E", List.of("namespace", "path", "hashOrValue"), false, null));
         }
     }

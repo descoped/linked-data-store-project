@@ -16,9 +16,9 @@
 # environment variables (LDS_PERSISTENCE_PROVIDER, LDS_NEO4J_DRIVER_URL, ...) or by a file mounted as
 # /lds/conf/application.properties; options of the JVM are given in JAVA_TOOL_OPTIONS.
 #
-# The health check asks /ping on the port of LDS_HTTP_PORT (9090 without it). Give the port that way, and leave
-# http.prefix as it is: a port or a prefix that is set in the mounted file is one the health check does not know,
-# and the container is then said to be unhealthy while LDS runs.
+# The images declare no health check. LDS answers /ping (under http.prefix), and whoever runs it asks there, at the
+# port and prefix it gave LDS: compose.yaml has a health check for it, Kubernetes a probe. Only LDS reads its
+# configuration, and nothing else in the container starts a JVM.
 #
 # The JDK is the baseline of LDS and is raised by hand, together with java.version in the root POM. The bases are
 # Google's distroless images of Debian 13 (glibc, CA certificates, time zones). Every image the build starts from is
@@ -41,7 +41,7 @@ FROM gcr.io/distroless/base-nossl-debian13:debug@sha256:2548abf86d3e319cdfd0184d
 # /jre, of the regular and the distroless image, has no debug information, and of the archives of classes (CDS) that
 # jlink writes for four settings of the JVM only the one of the default settings (the others are for heaps of more
 # than 32 GB and for object headers that are not compact, which then start without one); the archive halves the start
-# of a JVM, the one of the health check included. /jre-debug, of the debug image, keeps the debug information and has
+# of the JVM. /jre-debug, of the debug image, keeps the debug information and has
 # the modules of diagnostics as well.
 FROM eclipse-temurin:27-jdk@sha256:f67511a7888677dbc4fb64ee6f17f9237c24d2b110f65a61716a3b516b6b3fa8 AS runtime
 
@@ -70,23 +70,15 @@ COPY --from=base-distroless /etc/passwd /etc/group /users/
 RUN echo 'lds:x:1000:1000:lds:/lds:/sbin/nologin' >> /users/passwd \
     && echo 'lds:x:1000:' >> /users/group
 
-# LDS: every jar in /lds/lib, the class of the health check on a class path of its own, the example model, and the
-# users. Nothing in it belongs to the user lds.
+# LDS: every jar in /lds/lib, the example model, and the users. Nothing in it belongs to the user lds.
 FROM scratch AS app
 
 COPY --from=runtime /users/passwd /users/group /etc/
 COPY target/lib/ /lds/lib/
 COPY target/linked-data-store-server-*.jar /lds/lib/
-COPY target/classes/io/descoped/lds/server/HealthCheck.class /lds/health/io/descoped/lds/server/
 COPY schemas/ /lds/schemas/
 
 # The three images. They differ in their base and their runtime; the rest is the same in each, and is kept the same.
-#
-# The health check of the distroless image is a class of its own on a class path of its own, run by a JVM that is
-# made to start quickly and to use little memory; it uses only java.base. That JVM also reads JAVA_TOOL_OPTIONS and
-# JDK_JAVA_OPTIONS: its heap options come after them and win, and it names no garbage collector, since a second one
-# given there would stop it from starting. An option there that opens a port (JMX, JDWP) would clash with LDS. The images with a shell ask with wget of busybox, so that no JVM but the one of LDS reads
-# the options of the JVM: an option that opens a port (remote JMX, a remote debugger) would fail in a second JVM.
 #
 # java is the process of the container, so that the signal that stops the container reaches it: LDS then answers
 # what it is handling and completes its sagas before it ends.
@@ -100,9 +92,6 @@ COPY --from=app / /
 WORKDIR /lds
 USER lds
 EXPOSE 9090
-HEALTHCHECK --start-period=60s --start-interval=1s --interval=10s --timeout=3s --retries=3 \
-    CMD ["java", "-XX:TieredStopAtLevel=1", "-XX:-UsePerfData", "-Xms8m", "-Xmx8m", \
-         "-cp", "/lds/health", "io.descoped.lds.server.HealthCheck"]
 ENTRYPOINT ["java", "-cp", "/lds/lib/*", "io.descoped.lds.server.Server"]
 
 FROM base-shell AS debug
@@ -114,8 +103,6 @@ COPY --from=app / /
 WORKDIR /lds
 USER lds
 EXPOSE 9090
-HEALTHCHECK --start-period=60s --start-interval=1s --interval=10s --timeout=3s --retries=3 \
-    CMD ["/busybox/sh", "-c", "wget -q -O /dev/null \"http://127.0.0.1:${LDS_HTTP_PORT:-9090}/ping\" || exit 1"]
 ENTRYPOINT ["java", "-cp", "/lds/lib/*", "io.descoped.lds.server.Server"]
 
 FROM base-shell AS regular
@@ -127,6 +114,4 @@ COPY --from=app / /
 WORKDIR /lds
 USER lds
 EXPOSE 9090
-HEALTHCHECK --start-period=60s --start-interval=1s --interval=10s --timeout=3s --retries=3 \
-    CMD ["/busybox/sh", "-c", "wget -q -O /dev/null \"http://127.0.0.1:${LDS_HTTP_PORT:-9090}/ping\" || exit 1"]
 ENTRYPOINT ["java", "-cp", "/lds/lib/*", "io.descoped.lds.server.Server"]

@@ -22,6 +22,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 import static graphql.schema.idl.RuntimeWiring.newRuntimeWiring;
@@ -34,6 +35,7 @@ public class GraphqlHttpHandlerTest {
     private Undertow server;
     private HttpClient client;
     private UriTemplate uriTemplate;
+    private String base;
 
     @BeforeMethod
     public void setUp() {
@@ -53,6 +55,7 @@ public class GraphqlHttpHandlerTest {
                 "}" +
                 "type Query{" +
                 "   me: User" +
+                "   echo(text: String): String" +
                 "}";
 
         SchemaParser schemaParser = new SchemaParser();
@@ -61,7 +64,7 @@ public class GraphqlHttpHandlerTest {
         RuntimeWiring runtimeWiring = newRuntimeWiring()
                 .type("Query", builder -> builder.dataFetcher("me", new StaticDataFetcher(
                         Map.of("name", "Hadrien", "address", Map.of("street", "rue de la paix"))
-                )))
+                )).dataFetcher("echo", environment -> environment.getArgument("text")))
                 .build();
 
         SchemaGenerator schemaGenerator = new SchemaGenerator();
@@ -75,13 +78,44 @@ public class GraphqlHttpHandlerTest {
         int port = ((InetSocketAddress) server.getListenerInfo().get(0).getAddress()).getPort();
 
         // Template for the client.
-        uriTemplate = UriTemplate.buildFromTemplate("http://localhost:" + port)
+        base = "http://localhost:" + port;
+        uriTemplate = UriTemplate.buildFromTemplate(base)
                 .query("query", "operationName", "variables").build();
     }
 
     @AfterMethod
     public void tearDown() {
         server.stop();
+    }
+
+    @Test
+    public void testPostWithoutCharsetIsReadAsUtf8() throws IOException, InterruptedException {
+        for (String contentType : new String[]{"application/json", "application/graphql"}) {
+            String query = "{ echo(text: \"øl ☕\") }";
+            String body = contentType.equals("application/json") ? "{\"query\": \"{ echo(text: \\\"øl ☕\\\") }\"}" : query;
+            HttpRequest request = HttpRequest.newBuilder(URI.create(uriTemplate.expand()))
+                    .header("Content-Type", contentType)
+                    .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
+                    .build();
+
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+
+            assertEquals(response.statusCode(), 200, contentType);
+            assertEquals(response.body(), "{\"data\":{\"echo\":\"øl ☕\"}}", contentType);
+        }
+    }
+
+    @Test
+    public void testASnapshotThatIsNotATimeIsAnError() throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder(
+                URI.create(uriTemplate.set("query", "{me{name}}").expand() + "&snapshot=yesterday")).build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        assertEquals(response.statusCode(), 200);
+        assertEquals(response.body(), "{\"errors\":[{\"message\":\"The query parameter snapshot 'yesterday' is not an "
+                + "ISO-8601 time. Example of a valid formatted time is '2018-12-06T11:05:31.000+01:00'\","
+                + "\"locations\":[],\"extensions\":{\"classification\":\"ValidationError\"}}]}");
     }
 
     @Test
@@ -199,34 +233,65 @@ public class GraphqlHttpHandlerTest {
 
     }
 
+    private HttpResponse<String> post(String contentType, String body) throws IOException, InterruptedException {
+        HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(uriTemplate.expand()))
+                .POST(HttpRequest.BodyPublishers.ofString(body));
+        if (contentType != null) {
+            request.header("Content-Type", contentType);
+        }
+        return client.send(request.build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    private HttpResponse<String> get(String query, String variables) throws IOException, InterruptedException {
+        UriTemplate template = UriTemplate.buildFromTemplate(base).query("query", "variables").build();
+        if (query != null) {
+            template.set("query", query);
+        }
+        if (variables != null) {
+            template.set("variables", variables);
+        }
+        return client.send(HttpRequest.newBuilder(URI.create(template.expand())).build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    private static void assertError(HttpResponse<String> response, int status, String message) {
+        assertEquals(response.statusCode(), status, response.body());
+        assertEquals(response.headers().firstValue("Content-Type").orElse(null), "application/json");
+        assertEquals(response.body(), "{\"errors\":[{\"message\":" + JsonTools.toJson(mapper.stringNode(message)) + "}]}");
+    }
+
     /**
      * Jackson 2 read the first document of a body and ignored what came after it.
      */
     @Test
     public void testPostBodyWithSomethingAfterTheDocumentIsRefused() throws IOException, InterruptedException {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(uriTemplate.expand()))
-                .POST(HttpRequest.BodyPublishers.ofString("{\"query\":\"{me{name}}\"} and more"))
-                .header("Content-Type", "application/json")
-                .build();
+        HttpResponse<String> response = post("application/json", "{\"query\":\"{me{name}}\"} and more");
 
-        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-
-        // answered as every body that cannot be read is: an error, and no data
-        assertEquals(response.statusCode(), 500);
-        assertEquals(response.body(), "");
+        assertError(response, 400, "The body cannot be read as JSON at line 1, column 24: Unrecognized token 'and': was "
+                + "expecting (JSON String, Number, Array, Object or token 'null', 'true' or 'false')");
     }
 
     @Test
     public void testGetVariablesWithSomethingAfterTheDocumentAreRefused() throws IOException, InterruptedException {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(uriTemplate
-                .set("query", "{me{name}}")
-                .set("variables", "{\"foo\":true} and more")
-                .expand())).build();
+        HttpResponse<String> response = get("{me{name}}", "{\"foo\":true} and more");
 
-        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        assertError(response, 400, "The parameter \"variables\" cannot be read as JSON at line 1, column 14: Unrecognized "
+                + "token 'and': was expecting (JSON String, Number, Array, Object or token 'null', 'true' or 'false')");
+    }
 
-        // answered as every body that cannot be read is: an error, and no data
-        assertEquals(response.statusCode(), 500);
-        assertEquals(response.body(), "");
+    @Test
+    public void testABodyThatIsNotAGraphQLRequestIsRefused() throws IOException, InterruptedException {
+        assertError(post("application/json", ""), 400, "The body is empty");
+        assertError(post("application/json", "[1]"), 400, "The body is not a JSON object with the field \"query\"");
+        assertError(post("application/json", "{\"variables\": {}}"), 400, "The body has no \"query\" text");
+        assertError(post("application/json", "{\"query\": 7}"), 400, "The body has no \"query\" text");
+        assertError(post("application/graphql", " "), 400, "The body is empty");
+        assertError(get(null, null), 400, "The request has no \"query\" parameter");
+    }
+
+    @Test
+    public void testAnotherContentTypeIsRefused() throws IOException, InterruptedException {
+        assertError(post("text/plain", "{me{name}}"), 415, "Unsupported Content-Type: text/plain. Send application/json or application/graphql");
+        assertError(post("application/x-www-form-urlencoded", "{me{name}}"), 415,
+                "Unsupported Content-Type: application/x-www-form-urlencoded. Send application/json or application/graphql");
     }
 }

@@ -1,11 +1,13 @@
 package io.descoped.lds.core.domain.embedded;
 
 import io.descoped.lds.api.persistence.DocumentKey;
+import io.descoped.lds.api.persistence.Limits;
 import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.json.JsonDocument;
 import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.api.specification.Specification;
+import io.descoped.lds.core.domain.BodyException;
 import io.descoped.lds.core.domain.BodyParser;
 import io.descoped.lds.core.domain.resource.ResourceContext;
 import io.descoped.lds.core.domain.resource.ResourceElement;
@@ -126,13 +128,29 @@ public class EmbeddedResourceHandler implements HttpHandler {
 
                     String contentType = ofNullable(exchange.getRequestHeaders().get(Headers.CONTENT_TYPE))
                             .map(HeaderValues::getFirst).orElse(APPLICATION_JSON);
-                    JsonNode embeddedJson = bodyParser.deserializeBody(contentType, message);
+                    JsonNode embeddedJson;
+                    try {
+                        embeddedJson = bodyParser.deserializeBody(contentType, message);
+                    } catch (BodyException e) {
+                        exchange.setStatusCode(e.status());
+                        exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, TEXT_PLAIN);
+                        exchange.getResponseSender().send(e.getMessage());
+                        return;
+                    }
 
                     if (LOG.isTraceEnabled()) {
                         LOG.trace("{} {}\n{}", exchange.getRequestMethod(), exchange.getRequestPath(), message);
                     }
 
                     mergeJson(resourceContext, managedDocument, embeddedJson);
+
+                    String overLimit = Limits.overLimit(managedDocument);
+                    if (overLimit != null) {
+                        exchange.setStatusCode(400);
+                        exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, TEXT_PLAIN);
+                        exchange.getResponseSender().send(overLimit);
+                        return;
+                    }
 
                     try {
                         LinkedDocumentValidator validator = new LinkedDocumentValidator(specification, schemaRepository);

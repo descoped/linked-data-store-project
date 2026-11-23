@@ -227,10 +227,23 @@ public class RegistrySetupVisitor extends GraphQLTypeVisitorStub {
             } else {
                 trace("OneToMany: {} -> {} -> {} ", sourceObject, field, unwrapAll(targetType));
                 registry.dataFetcher(FieldCoordinates.coordinates(sourceObject, field), new PersistenceLinksFetcher(
-                        persistence, namespace, field.getName(), unwrapAll(targetType).getName()));
+                        persistence, namespace, field.getName(), targetPattern(unwrapAll(targetType))));
             }
         }
         return TraversalControl.CONTINUE;
+    }
+
+    /**
+     * The entity types a link may name, as the link fetchers match them: the name of the type, or the members of a
+     * union, {@code (Cat|Dog)}.
+     */
+    private static String targetPattern(GraphQLUnmodifiedType targetType) {
+        if (targetType instanceof GraphQLUnionType unionType) {
+            return unionType.getTypes().stream()
+                    .map(GraphQLNamedType::getName)
+                    .collect(Collectors.joining("|", "(", ")"));
+        }
+        return targetType.getName();
     }
 
     private TraversalControl visitOneToOneLink(GraphQLFieldDefinition field, TraverserContext<GraphQLSchemaElement> context) {
@@ -238,14 +251,7 @@ public class RegistrySetupVisitor extends GraphQLTypeVisitorStub {
         GraphQLUnmodifiedType targetType = unwrapAll(field.getType());
 
         // PersistenceLinksConnectionFetcher finds the members of a union in its own way.
-        String targetTypeName;
-        if (targetType instanceof GraphQLUnionType unionType) {
-            targetTypeName = unionType.getTypes().stream()
-                    .map(GraphQLNamedType::getName)
-                    .collect(Collectors.joining("|", "(", ")"));
-        } else {
-            targetTypeName = targetType.getName();
-        }
+        String targetTypeName = targetPattern(targetType);
         if (sourceObject.getName().equals(QUERY_NAME)) {
             trace("RootOneToOne: {} -> {} -> {} ", sourceObject, field, unwrapAll(targetType));
             registry.dataFetcher(FieldCoordinates.coordinates(sourceObject, field), new PersistenceFetcher(persistence,

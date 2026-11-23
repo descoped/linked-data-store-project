@@ -26,6 +26,14 @@ services:
       LDS_POSTGRES_DRIVER_DATABASE: lds
     volumes:
       - ./setup/gsim/schemas:/lds/schemas:ro
+    # LDS answers /ping under http.prefix, on the port it listens on in the container (9090, http.port).
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9090/ping"]
+      start_period: 60s
+      start_interval: 2s
+      interval: 10s
+      timeout: 5s
+      retries: 5
     depends_on:
       neo4j:
         condition: service_healthy

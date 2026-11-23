@@ -10,6 +10,8 @@ import org.testcontainers.containers.wait.strategy.Wait;
 
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
@@ -58,13 +60,13 @@ class ServerImageIT {
     }
 
     /*
-     * Started when the health check of the image says that LDS answers.
+     * Started when LDS answers /ping, as whoever runs it asks: the image declares no health check.
      */
     @SuppressWarnings("resource") // the container is returned, and the caller stops it
     private static GenericContainer<?> start(String image) {
         GenericContainer<?> started = new GenericContainer<>(image)
                 .withExposedPorts(PORT)
-                .waitingFor(Wait.forHealthcheck().withStartupTimeout(Duration.ofMinutes(2)));
+                .waitingFor(Wait.forHttp("/ping").forStatusCode(200).withStartupTimeout(Duration.ofMinutes(2)));
         started.start();
         LoopbackPorts.check(started);
         return started;
@@ -145,8 +147,7 @@ class ServerImageIT {
     }
 
     /**
-     * The distroless image answers as the regular one does, became healthy by its health check in Java, and has no
-     * shell to run.
+     * The distroless image answers as the regular one does, and has no shell to run.
      */
     @Test
     void theDistrolessImageAnswersAndHasNoShell() throws Exception {
@@ -161,6 +162,37 @@ class ServerImageIT {
     }
 
     /**
+     * No image declares a health check: only LDS reads its configuration, so only whoever runs it knows the port and
+     * the prefix of {@code /ping}.
+     */
+    @Test
+    void noImageDeclaresAHealthCheck() {
+        for (GenericContainer<?> started : List.of(container, distroless, debug)) {
+            assertThat(started.getDockerClient().inspectContainerCmd(started.getContainerId()).exec().getConfig()
+                    .getHealthcheck()).as(started.getDockerImageName()).isNull();
+        }
+    }
+
+    /**
+     * {@code /ping} is under the prefix and on the port LDS is given, here by its variables.
+     */
+    @Test
+    void pingIsUnderThePrefixOnThePortLdsIsGiven() throws Exception {
+        try (GenericContainer<?> prefixed = new GenericContainer<>(IMAGE)
+                .withEnv("LDS_HTTP_PREFIX", "/lds")
+                .withEnv("LDS_HTTP_PORT", "9191")
+                .withExposedPorts(9191)
+                .waitingFor(Wait.forHttp("/lds/ping").forStatusCode(200).withStartupTimeout(Duration.ofMinutes(2)))) {
+            prefixed.start();
+            LoopbackPorts.check(prefixed);
+            Lds other = new Lds(prefixed.getMappedPort(9191));
+
+            assertThat(other.get("/lds/ping").statusCode()).isEqualTo(200);
+            assertThat(other.get("/ping").statusCode()).isEqualTo(404);
+        }
+    }
+
+    /**
      * The debug image has the tools of the JDK, which attach to the JVM of LDS.
      */
     @Test
@@ -171,6 +203,35 @@ class ServerImageIT {
         assertThat(version.getExitCode()).as(version.getStderr()).isZero();
         assertThat(version.getStdout()).contains("JDK 27");
         assertThat(threads.getStdout()).contains("Full thread dump");
+    }
+
+    /**
+     * A variable that starts with LDS_ and sets no key is a name spelled wrong; LDS does not start with it, and says
+     * which. The output goes to a file and the wait is bounded, so a container that starts anyway is stopped.
+     */
+    @Test
+    void aVariableThatSetsNoKeyStopsTheStart() throws Exception {
+        String name = "lds-unknown-variable-" + ProcessHandle.current().pid();
+        Path output = Files.createTempFile("lds-unknown-variable", ".log");
+        try {
+            Process process = new ProcessBuilder("docker", "run", "--rm", "--name", name,
+                    "-e", "LDS_NAMESPACE_DEFALT=x", "-e", "LDS_HTTP_PORT=9090", IMAGE)
+                    .redirectErrorStream(true)
+                    .redirectOutput(output.toFile())
+                    .start();
+            boolean ended = process.waitFor(2, TimeUnit.MINUTES);
+            if (!ended) {
+                docker("rm", "--force", name);
+            }
+            assertThat(ended).as("LDS stopped by itself: %s", Files.readString(output)).isTrue();
+            assertThat(process.exitValue()).isEqualTo(1);
+            assertThat(Files.readString(output))
+                    .contains("environment variable(s) LDS_NAMESPACE_DEFALT match no configuration key")
+                    .doesNotContain("LDS_HTTP_PORT")
+                    .doesNotContain("Server started");
+        } finally {
+            Files.deleteIfExists(output);
+        }
     }
 
     /**

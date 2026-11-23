@@ -33,7 +33,7 @@ class ServerStackIT {
     static void start() {
         stack = new ComposeContainer(new File("compose.yaml"))
                 .withBuild(true)
-                .withEnv("LDS_PORT", "0")
+                .withEnv("SERVER_PORT", "0")
                 .withEnv("NEO4J_HTTP_PORT", "0")
                 .withEnv("NEO4J_BOLT_PORT", "0")
                 .withEnv("SOLR_PORT", "0")

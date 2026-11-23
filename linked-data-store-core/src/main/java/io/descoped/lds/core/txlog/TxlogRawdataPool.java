@@ -15,14 +15,28 @@ public class TxlogRawdataPool {
     private final boolean splitSources;
     private final String defaultSource;
     private final String txLogTopicPrefix;
+    private final boolean keepsMessages;
 
     private final Map<String, RawdataProducer> producerByTopic = new ConcurrentHashMap<>();
 
-    public TxlogRawdataPool(RawdataClient client, boolean splitSources, String defaultSource, String txLogTopicPrefix) {
+    /**
+     * @param keepsMessages false when the provider of the client keeps no message ({@code discard}), so that the
+     *                      last message of a topic is not known
+     */
+    public TxlogRawdataPool(RawdataClient client, boolean splitSources, String defaultSource, String txLogTopicPrefix,
+                            boolean keepsMessages) {
         this.client = client;
         this.splitSources = splitSources;
         this.defaultSource = defaultSource;
         this.txLogTopicPrefix = txLogTopicPrefix;
+        this.keepsMessages = keepsMessages;
+    }
+
+    /**
+     * @return whether the transaction log keeps what is written to it; the {@code discard} provider keeps nothing
+     */
+    public boolean keepsMessages() {
+        return keepsMessages;
     }
 
     public RawdataClient getClient() {

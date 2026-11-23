@@ -5,6 +5,7 @@ import io.descoped.lds.api.persistence.json.JsonDocument;
 import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.api.search.SearchIndex;
 import io.descoped.lds.api.search.SearchResponse;
+import org.apache.solr.client.solrj.RemoteSolrException;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -12,6 +13,8 @@ import tools.jackson.databind.JsonNode;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.InetAddress;
+import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.ZonedDateTime;
@@ -21,6 +24,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 
 /**
@@ -86,17 +90,128 @@ class SolrSearchIndexTest {
         assertThat(secondPage.getResults()).hasSize(1);
     }
 
+    @Test
+    void aWriteAfterSolrHasClosedTheIdleConnectionStillReachesTheIndex() throws InterruptedException {
+        searchIndex.createOrOverwrite(text("UnitDataSet", "first", "before the pause")).blockingAwait();
+        awaitHits(() -> searchIndex.search("pause", null, 0, 10).blockingGet(), 1);
+
+        Thread.sleep(Solr10.IDLE_TIMEOUT.multipliedBy(2).toMillis());
+
+        searchIndex.createOrOverwrite(text("UnitDataSet", "second", "after the pause")).blockingAwait();
+        assertThat(awaitHits(() -> searchIndex.search("pause", null, 0, 10).blockingGet(), 2).getResults())
+                .extracting(result -> result.getDocumentKey().id()).containsExactlyInAnyOrder("first", "second");
+        assertThat(((SolrSearchIndex) searchIndex).failedUpdates()).isZero();
+    }
+
+    @Test
+    void theOperatorsOfTheTextDoNotLoosenTheEntityFilter() {
+        searchIndex.createOrOverwrite(List.of(
+                text("UnitDataSet", "plural", "memories"),
+                text("UnitDataSet", "singular", "memory"),
+                text("LogicalRecord", "other", "memory")
+        )).blockingAwait();
+        awaitHits(() -> searchIndex.search("memories OR memory", null, 0, 10).blockingGet(), 3);
+
+        SearchResponse dataSets = searchIndex.search("memories OR memory", Set.of("UnitDataSet"), 0, 10).blockingGet();
+
+        assertThat(dataSets.getResults()).extracting(result -> result.getDocumentKey().id())
+                .containsExactlyInAnyOrder("plural", "singular");
+    }
+
+    @Test
+    void aFieldNamedInTheTextDoesNotWidenTheEntityFilter() {
+        searchIndex.createOrOverwrite(List.of(
+                text("UnitDataSet", "brewery", "a brewery"),
+                text("LogicalRecord", "record", "a record")
+        )).blockingAwait();
+        awaitHits(() -> searchIndex.search("*:*", null, 0, 10).blockingGet(), 2);
+
+        SearchResponse dataSets = searchIndex.search("brewery OR entity:LogicalRecord", Set.of("UnitDataSet"), 0, 10)
+                .blockingGet();
+
+        assertThat(dataSets.getResults()).extracting(result -> result.getDocumentKey().entity()).containsOnly("UnitDataSet");
+        assertThat(dataSets.getTotalHits()).isEqualTo(1);
+    }
+
+    @Test
+    void anUpdateSolrRefusesIsCountedForEachOfItsDocumentsAndTheWriteGoesOn() {
+        // Solr answers 404 for a core it does not have; SolrJ then names the documents of the update
+        SolrSearchIndex missingCore = new SolrSearchIndex(Solr10.url().replace("/lds-index", "/no-such-core"));
+
+        missingCore.createOrOverwrite(List.of(text("UnitDataSet", "a", "one"), text("UnitDataSet", "b", "two")))
+                .blockingAwait();
+
+        await().atMost(COMMIT_WAIT).until(() -> missingCore.failedUpdates() == 2);
+    }
+
+    @Test
+    void aDeleteSolrRefusesFailsForItsCaller() {
+        // SolrJ sends an update without documents at once rather than queue it (ConcurrentUpdateBaseSolrClient.request,
+        // streamDeletes false), so the caller gets Solr's answer and nothing is left to count
+        SolrSearchIndex missingCore = new SolrSearchIndex(Solr10.url().replace("/lds-index", "/no-such-core"));
+
+        assertThatThrownBy(() -> missingCore.delete(text("UnitDataSet", "a", "one")).blockingAwait())
+                .isInstanceOf(RemoteSolrException.class).hasMessageContaining("404");
+        assertThat(missingCore.failedUpdates()).isZero();
+    }
+
+    @Test
+    void anUpdateThatCannotReachSolrIsCounted() throws IOException {
+        int closedPort;
+        try (ServerSocket socket = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            closedPort = socket.getLocalPort();
+        }
+        SolrSearchIndex unreachable = new SolrSearchIndex("http://127.0.0.1:" + closedPort + "/solr/lds-index");
+
+        unreachable.createOrOverwrite(text("UnitDataSet", "a", "one")).blockingAwait();
+
+        await().atMost(COMMIT_WAIT).until(() -> unreachable.failedUpdates() >= 1);
+    }
+
+    @Test
+    void aSearchWithAnEmptySetOfEntitiesIsNotNarrowed() {
+        searchIndex.createOrOverwrite(List.of(
+                text("UnitDataSet", "one", "fjord"),
+                text("LogicalRecord", "two", "fjord")
+        )).blockingAwait();
+        awaitHits(() -> searchIndex.search("fjord", null, 0, 10).blockingGet(), 2);
+
+        assertThat(searchIndex.search("fjord", Set.of(), 0, 10).blockingGet().getTotalHits()).isEqualTo(2);
+    }
+
+    @Test
+    void anEntityNameWithTheSyntaxOfAQueryIsMatchedAsAName() {
+        // the names come from the enum TypeFilters of the GraphQL schema, so they have no space
+        searchIndex.createOrOverwrite(text("UnitDataSet", "one", "fjord")).blockingAwait();
+        awaitHits(() -> searchIndex.search("fjord", null, 0, 10).blockingGet(), 1);
+
+        assertThat(searchIndex.search("fjord", Set.of("*"), 0, 10).blockingGet().getTotalHits()).isZero();
+        assertThat(searchIndex.search("fjord", Set.of("Unit*"), 0, 10).blockingGet().getTotalHits()).isZero();
+        assertThat(searchIndex.search("fjord", Set.of("UnitDataSe?"), 0, 10).blockingGet().getTotalHits()).isZero();
+    }
+
     /**
      * Searches until the index has the number of hits the test expects, and fails when the time a commit may take is
-     * over first.
+     * over first. A search fails until the first commit after Solr starts, which makes the field it searches in
+     * (the core is schemaless), so a failure counts as not found yet.
      */
     private static SearchResponse awaitHits(Supplier<SearchResponse> search, long hits) {
         AtomicReference<SearchResponse> response = new AtomicReference<>();
-        await().atMost(COMMIT_WAIT).pollDelay(Duration.ZERO).pollInterval(Duration.ofMillis(100)).untilAsserted(() -> {
+        await().atMost(COMMIT_WAIT).pollDelay(Duration.ZERO).pollInterval(Duration.ofMillis(100)).ignoreExceptions()
+                .untilAsserted(() -> {
             response.set(search.get());
             assertThat(response.get().getTotalHits()).as("hits").isEqualTo(hits);
         });
         return response.get();
+    }
+
+    /**
+     * A document whose one searched text is the given one.
+     */
+    private static JsonDocument text(String entity, String id, String text) {
+        JsonNode json = JsonTools.toJsonNode("""
+                {"id": "%s", "name": [{"languageCode": "en", "languageText": "%s"}]}""".formatted(id, text));
+        return new JsonDocument(new DocumentKey("ns", entity, id, ZonedDateTime.now()), json);
     }
 
     private static JsonDocument document(String entity, String resource) throws IOException {

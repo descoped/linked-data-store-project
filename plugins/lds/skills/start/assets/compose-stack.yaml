@@ -57,8 +57,17 @@ services:
     ports:
       - "127.0.0.1:${NEO4J_HTTP_PORT:-7474}:7474"
       - "127.0.0.1:${NEO4J_BOLT_PORT:-7687}:7687"
+    # A Neo4j for development (Operations Manual 2026.10, configuration settings): the transaction log is not made
+    # 256 MiB in advance, is rotated at 16 MiB and keeps two files, and the memory is small and fixed instead of a
+    # share of the machine.
     environment:
       NEO4J_AUTH: neo4j/lds-development
+      NEO4J_db_tx__log_preallocate: "false"
+      NEO4J_db_tx__log_rotation_size: 16M
+      NEO4J_db_tx__log_rotation_retention__policy: 2 files
+      NEO4J_server_memory_heap_initial__size: 256M
+      NEO4J_server_memory_heap_max__size: 512M
+      NEO4J_server_memory_pagecache_size: 256M
     volumes:
       - neo4j:/data
     healthcheck:

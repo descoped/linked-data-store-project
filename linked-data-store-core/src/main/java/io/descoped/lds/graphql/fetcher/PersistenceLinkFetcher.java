@@ -30,7 +30,10 @@ public class PersistenceLinkFetcher implements DataFetcher<Map<String, Object>> 
     @Override
     public Map<String, Object> get(DataFetchingEnvironment environment) {
         Map<String, Object> source = environment.getSource();
-        String link = (String) source.get(field);
+        // A document without the link, or with something other than a text in its field, links to nothing.
+        if (!(source.get(field) instanceof String link)) {
+            return null;
+        }
         Matcher matcher = pattern.matcher(link);
         if (matcher.matches()) {
             String id = matcher.group("id");

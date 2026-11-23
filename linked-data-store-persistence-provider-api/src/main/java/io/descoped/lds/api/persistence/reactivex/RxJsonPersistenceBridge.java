@@ -2,6 +2,7 @@ package io.descoped.lds.api.persistence.reactivex;
 
 import io.descoped.lds.api.json.JsonNavigationPath;
 import io.descoped.lds.api.persistence.DocumentKey;
+import io.descoped.lds.api.persistence.IdOrder;
 import io.descoped.lds.api.persistence.PersistenceDeletePolicy;
 import io.descoped.lds.api.persistence.PersistenceException;
 import io.descoped.lds.api.persistence.Transaction;
@@ -62,17 +63,17 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
      * Strictly speaking, we could have only one implementation since [first:x, after:y] = [last:x, before:y] if the
      * stream is reversed. Maybe something to consider later.
      */
-    static <E, T extends Comparable<? super T>> Flowable<E> limit(
-            Flowable<E> fragments, Function<E, T> keyExtractor, Range<T> range) {
+    static <E, T> Flowable<E> limit(
+            Flowable<E> fragments, Function<E, T> keyExtractor, Range<T> range, Comparator<? super T> order) {
         if (range.isBackward()) {
             // Flowable MUST return values in reverse order.
             if (range.hasBefore()) {
                 fragments = fragments.skipWhile(fragment ->
-                        keyExtractor.apply(fragment).compareTo(range.getBefore()) >= 0);
+                        order.compare(keyExtractor.apply(fragment), range.getBefore()) >= 0);
             }
             if (range.hasAfter()) {
                 fragments = fragments.takeWhile(fragment ->
-                        keyExtractor.apply(fragment).compareTo(range.getAfter()) > 0);
+                        order.compare(keyExtractor.apply(fragment), range.getAfter()) > 0);
             }
             if (range.hasLast()) {
                 fragments = fragments.take(range.getLast());
@@ -80,11 +81,11 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
         } else {
             if (range.hasAfter()) {
                 fragments = fragments.skipWhile(fragment ->
-                        keyExtractor.apply(fragment).compareTo(range.getAfter()) <= 0);
+                        order.compare(keyExtractor.apply(fragment), range.getAfter()) <= 0);
             }
             if (range.hasBefore()) {
                 fragments = fragments.takeWhile(fragment ->
-                        keyExtractor.apply(fragment).compareTo(range.getBefore()) < 0);
+                        order.compare(keyExtractor.apply(fragment), range.getBefore()) < 0);
             }
             if (range.hasFirst()) {
                 fragments = fragments.take(range.getFirst());
@@ -125,14 +126,14 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
 
     static Flowable<JsonDocument> doReadDocuments(Flowable<Fragment> fragments, Range<String> range, int fragmentSize) {
         Flowable<JsonDocument> documents = toDocuments(fragments, fragmentSize, false);
-        return limit(documents, d -> d.key().id(), range);
+        return limit(documents, d -> d.key().id(), range, IdOrder.CODE_POINTS);
     }
 
     static Flowable<JsonDocument> doReadDocumentVersions(Flowable<Fragment> fragments, Range<ZonedDateTime> range, int fragmentSize) {
         Flowable<JsonDocument> documents = toDocuments(fragments, fragmentSize, true);
         // ZonedDateTime is a bad choice for the API: internal temporal values should be Instant.
         Range<Instant> instantRange = Range.copy(range, ZonedDateTime::toInstant);
-        return limit(documents, document -> document.key().timestamp().toInstant(), instantRange);
+        return limit(documents, document -> document.key().timestamp().toInstant(), instantRange, Comparator.naturalOrder());
     }
 
     @Override
@@ -220,7 +221,7 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
                     });
                     return links;
                 })
-                .sorted((o1, o2) -> range.isBackward() ? o2.compareTo(o1) : o1.compareTo(o2))
+                .sorted((o1, o2) -> range.isBackward() ? IdOrder.compare(o2, o1) : IdOrder.compare(o1, o2))
                 .take(ofNullable(range).map(Range::getLimit).orElse(Integer.MAX_VALUE))
                 .concatMapMaybe(targetId -> readDocument(tx, snapshot, ns, targetEntityName, targetId));
     }

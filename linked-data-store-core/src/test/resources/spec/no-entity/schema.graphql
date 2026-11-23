@@ -1,0 +1,10 @@
+# A GraphQL schema with types and no entity type: no type has @domain
+directive @domain on OBJECT
+
+type Address {
+  street: String
+}
+
+type Query {
+  address: Address
+}

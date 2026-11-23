@@ -1,6 +1,7 @@
 package io.descoped.lds.core.persistence.neo4j;
 
 import io.descoped.lds.api.persistence.DocumentKey;
+import io.descoped.lds.api.persistence.IdOrder;
 import io.descoped.lds.api.persistence.json.JsonDocument;
 import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.api.specification.SpecificationElement;
@@ -97,10 +98,10 @@ class Neo4jDocumentWriterTest {
     void aTextInALinkFieldThatNamesAnEntityItMayLinkToIsALink() throws Exception {
         Map<String, Object> parameters = parametersOf("{'home':'/Boat/b1','history':{'lived':['/House/h1','/House/h2']}}");
 
-        assertThat(links(parameters).get(0)).containsExactly(Map.of("parent", 0, "name", "home", "id", "b1"));
+        assertThat(links(parameters).get(0)).containsExactly(Map.of("parent", 0, "name", "home", "id", "b1", "idOrder", "b1"));
         assertThat(links(parameters).get(1)).containsExactly(
-                Map.of("parent", 2, "name", "[]", "index", 0, "id", "h1"),
-                Map.of("parent", 2, "name", "[]", "index", 1, "id", "h2"));
+                Map.of("parent", 2, "name", "[]", "index", 0, "id", "h1", "idOrder", "h1"),
+                Map.of("parent", 2, "name", "[]", "index", 1, "id", "h2", "idOrder", "h2"));
         assertThat(nodes(parameters)).extracting(node -> node.get("path")).containsExactly("$.history", "$.history.lived");
     }
 
@@ -159,6 +160,19 @@ class Neo4jDocumentWriterTest {
 
         assertThatThrownBy(() -> Neo4jDocumentWriter.documentParameters(document, PERSON, TARGETS))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("JSON object");
+    }
+
+    @Test
+    void theDocumentAndEveryTargetGetTheOrderKeyOfTheirId() {
+        JsonNode document = mapper.readTree("{\"home\":\"/Boat/ﬀ😀\"}");
+        DocumentKey key = new DocumentKey("ns", "Person", "Ａ😀", ZonedDateTime.of(2020, 1, 1, 12, 0, 0, 0, ZoneId.of("Etc/UTC")));
+        Map<String, Object> parameters = Neo4jDocumentWriter.documentParameters(new JsonDocument(key, document), PERSON, TARGETS);
+
+        assertThat(parameters).containsEntry("id", "Ａ😀").containsEntry("idOrder", IdOrder.key("Ａ😀"));
+        assertThat(links(parameters).get(0).getFirst()).containsEntry("id", "ﬀ😀").containsEntry("idOrder", IdOrder.key("ﬀ😀"));
+        assertThat(Neo4jDocumentWriter.statement("Person", List.of("Boat")).cypher())
+                .contains("MERGE (r:`Person` {namespace: record.namespace, id: record.id})\n  SET r.idOrder = record.idOrder")
+                .contains("MERGE (target:`Boat` {namespace: record.namespace, id: link.id})\n    SET target.idOrder = link.idOrder");
     }
 
     @Test

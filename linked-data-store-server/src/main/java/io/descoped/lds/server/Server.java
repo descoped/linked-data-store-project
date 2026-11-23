@@ -16,6 +16,8 @@ public class Server {
 
     private static final Logger LOG = LoggerFactory.getLogger(Server.class);
 
+    static final String VARIABLE_PREFIX = "LDS_";
+
     private Server() {
     }
 
@@ -24,6 +26,7 @@ public class Server {
      * {@code conf/application.properties} and {@code conf_dev/application.properties} under the working
      * directory, then from the environment variables that start with {@code LDS_} and from the system
      * properties; a later source wins over an earlier one. It takes no arguments.
+     * A variable that starts with {@code LDS_} and sets no key stops the start.
      */
     public static void main() {
         long now = System.currentTimeMillis();
@@ -39,7 +42,8 @@ public class Server {
             builder.classpath(name).file(Path.of(name));
         }
         DynamicConfiguration configuration = builder
-                .environment("LDS_")
+                // a variable that names no key, a misspelled one, stops the start: it would be a setting that is not
+                .strictEnvironment(VARIABLE_PREFIX)
                 .systemProperties()
                 .build();
 
