@@ -184,7 +184,8 @@ which validates the Jackson tree of the document). A schema that at its root say
   profile, plugin or job for it, neither SNAPSHOTs nor releases. CI publishes no release and no image. A release
   (`3.0.0`) is the release workflow (`.github/workflows/release.yml`, `gh workflow run release.yml -f
   version=3.0.0`): the three images of the server on Docker Hub (`descoped/lds`, linux/amd64 and linux/arm64, signed
-  with cosign), a tag and a GitHub release with its notes (`RELEASE-NOTES.md`). **No jar is released.** Builds are
+  with cosign), a tag and a GitHub release with its notes (`RELEASE-NOTES.md`). **No jar is released.** Its first
+  step refuses a SNAPSHOT dependency (`requireReleaseDeps`). Builds are
   repeatable (`project.build.outputTimestamp`, base images by digest,
   `SOURCE_DATE_EPOCH`), so a release run can be repeated until the tag is made. A milestone (`3.0.0-M1`) is a tag
   and a GitHub release, source only. Both as `docs/developer/build.md` says.
