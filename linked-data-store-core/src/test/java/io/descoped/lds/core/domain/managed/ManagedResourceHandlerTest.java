@@ -1,5 +1,9 @@
 package io.descoped.lds.core.domain.managed;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.json.JsonDocument;
@@ -12,6 +16,7 @@ import io.descoped.lds.test.ConfigurationOverride;
 import io.descoped.lds.test.server.TestServerListener;
 import org.json.JSONException;
 import org.skyscreamer.jsonassert.JSONAssert;
+import org.slf4j.LoggerFactory;
 import org.testng.annotations.Listeners;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
@@ -19,12 +24,15 @@ import tools.jackson.databind.JsonNode;
 import javax.inject.Inject;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.Iterator;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -87,6 +95,65 @@ public class ManagedResourceHandlerTest {
             out.flush();
             String answer = new String(socket.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
             return new String[]{answer.substring(0, answer.indexOf("\r\n")), answer.substring(answer.indexOf("\r\n\r\n") + 4)};
+        }
+    }
+
+    /**
+     * A body that comes in two parts, the second after a pause, is read whole, and on the worker thread the request
+     * was handed to: read without blocking, Undertow would give it to the handler on an I/O thread, which the saga
+     * and a wait for search would then block.
+     */
+    @Test
+    public void thatABodyThatComesInPartsIsReadWholeOnAWorkerThread() throws IOException {
+        String body = "{\"contacts\":[],\"name\":\"in two parts\"}";
+        assertEquals(putInParts("/data/provisionagreement/parts?sync=true", body), "HTTP/1.1 201 Created");
+        assertEquals(client.get("/data/provisionagreement/parts").expect200Ok().body(), body);
+
+        // a body that is refused says so in the log, on the thread that handled it
+        Logger logger = (Logger) LoggerFactory.getLogger(ManagedResourceHandler.class);
+        Level level = logger.getLevel();
+        ListAppender<ILoggingEvent> lines = new ListAppender<>();
+        lines.start();
+        logger.setLevel(Level.DEBUG);
+        logger.addAppender(lines);
+        try {
+            assertEquals(putInParts("/data/provisionagreement/parts?sync=true", "{\"contacts\":[],\"name\":1234567890}"),
+                    "HTTP/1.1 400 Bad Request");
+        } finally {
+            logger.detachAppender(lines);
+            logger.setLevel(level);
+        }
+        ILoggingEvent refused = lines.list.stream()
+                .filter(line -> line.getFormattedMessage().startsWith("Schema validation error")).findFirst().orElseThrow();
+        assertTrue(refused.getFormattedMessage().contains("$.name: integer found, string expected"),
+                refused.getFormattedMessage());
+        assertFalse(refused.getThreadName().contains("I/O"), refused.getThreadName());
+    }
+
+    /*
+     * The status line of a PUT whose body is sent in two parts: the second is sent 300 ms after the first, so LDS
+     * reads it in a later read, while this thread waits for the answer, which LDS gives when it has the whole body.
+     */
+    private String putInParts(String path, String body) throws IOException {
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        try (Socket socket = new Socket("localhost", server.getTestServerServicePort())) {
+            OutputStream out = socket.getOutputStream();
+            out.write(("PUT " + path + " HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n"
+                    + "Content-Type: application/json\r\nContent-Length: " + bytes.length + "\r\n\r\n")
+                    .getBytes(StandardCharsets.US_ASCII));
+            out.write(bytes, 0, 10);
+            out.flush();
+            CompletableFuture<Void> rest = CompletableFuture.runAsync(() -> {
+                try {
+                    out.write(bytes, 10, bytes.length - 10);
+                    out.flush();
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            }, CompletableFuture.delayedExecutor(300, TimeUnit.MILLISECONDS));
+            String answer = new String(socket.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            rest.join();
+            return answer.substring(0, answer.indexOf("\r\n"));
         }
     }
 

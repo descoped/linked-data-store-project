@@ -106,8 +106,9 @@ public class GraphQLIntegrationTest {
         for (int i = 0; i < 5; i++) {
             String id = "searchable" + i;
             String name = "Gladstone" + i;
-            client.put("/data/contact/" + id + "?searchable=true", readFileOrClasspathResource("demo/4-donald.json")
-                    .replace("Donald Duck", name)).expect201Created();
+            assertThat(client.put("/data/contact/" + id + "?searchable=true", readFileOrClasspathResource(
+                    "demo/4-donald.json").replace("Donald Duck", name)).expect201Created().response().headers()
+                    .firstValue("LDS-Searchable")).as("the answer says it is searchable").hasValue("true");
             assertThat(executeGraphQLQuery("spec/demo/graphql/search_contact.json", name)
                     .get("data").get("Search").get("edges").size()).as("found after the write").isEqualTo(1);
 

@@ -1,5 +1,6 @@
 package io.descoped.lds.core.controller;
 
+import io.descoped.lds.core.domain.SearchWait;
 import io.undertow.server.HttpHandler;
 import io.undertow.server.HttpServerExchange;
 import io.undertow.util.HeaderValues;
@@ -14,6 +15,7 @@ import java.io.Serial;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -254,7 +256,11 @@ public class CORSHandler implements HttpHandler {
     }
 
     private void addExposeHeaders(HttpServerExchange exchange) {
-        exchange.getResponseHeaders().add(ACCESS_CONTROL_EXPOSE_HEADERS, String.join(",", allowedHeaders));
+        // and the header of LDS's own that a client reads: whether a write is searchable
+        Set<String> exposed = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        exposed.addAll(allowedHeaders);
+        exposed.add(SearchWait.SEARCHABLE.toString());
+        exchange.getResponseHeaders().add(ACCESS_CONTROL_EXPOSE_HEADERS, String.join(",", exposed));
     }
 
     private void addAllowMethods(HttpServerExchange exchange) {
