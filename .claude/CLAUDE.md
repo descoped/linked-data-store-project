@@ -174,21 +174,21 @@ which validates the Jackson tree of the document). A schema that at its root say
   Travis, Drone or OSSRH configuration.
 - **Secrets.** Nothing but documented development defaults (the `lds` database user and the Neo4j password
   `lds-development` in tests and the compose file).
-- **Releases only with the owner's go-ahead**, started by hand. **CI publishes SNAPSHOTs only**: after a green
-  build, on a push to `master` (`X.Y.Z-SNAPSHOT`) or a start by hand on a branch (`X.Y.Z-<branch>-SNAPSHOT`), the
-  job `snapshot` deploys every module but the load test with the profile `descoped-snapshots` to Descoped's AWS
-  CodeArtifact repository, read publicly at `https://maven.descoped.io/` (also where LDS reads the SNAPSHOTs of
-  Descoped libraries). Its one input is the organization secret `CODEARTIFACT_SNAPSHOTS_ROLE_ARN`; the AWS account
-  and the endpoint are never written in the repository. A release never goes to maven.descoped.io
-  (`descoped-snapshots` refuses one). **LDS never publishes to Maven Central** (owner's decision, 2026-11-23): no
+- **Releases only with the owner's go-ahead**, started by hand. **CI publishes SNAPSHOTs only**: after a green build,
+  on a push to `master` (`X.Y.Z-SNAPSHOT`) or a start by hand on a branch (`X.Y.Z-<branch>-SNAPSHOT`), the job
+  `snapshot` deploys every module but the load test (`maven.deploy.skip`) to Descoped's AWS CodeArtifact repository,
+  read publicly at `https://maven.descoped.io/` (also where LDS reads the SNAPSHOTs of Descoped libraries). The job
+  names the target on its command line (`-DaltSnapshotDeploymentRepository`, for SNAPSHOTs only); **the POM has no
+  `<distributionManagement>`, and never gets one**: that is what keeps a release from deploying to maven.descoped.io.
+  The job's one input is the organization secret `CODEARTIFACT_SNAPSHOTS_ROLE_ARN`; the AWS account and the endpoint
+  are never written in the repository. **LDS never publishes to Maven Central** (owner's decision, 2026-11-23): no
   profile, plugin or job for it, neither SNAPSHOTs nor releases. CI publishes no release and no image. A release
-  (`3.0.0`) is the release workflow (`.github/workflows/release.yml`, `gh workflow run release.yml -f
-  version=3.0.0`): the three images of the server on Docker Hub (`descoped/lds`, linux/amd64 and linux/arm64, signed
-  with cosign), a tag and a GitHub release with its notes (`RELEASE-NOTES.md`). **No jar is released.** Its first
-  step refuses a SNAPSHOT dependency (`requireReleaseDeps`). Builds are
-  repeatable (`project.build.outputTimestamp`, base images by digest,
-  `SOURCE_DATE_EPOCH`), so a release run can be repeated until the tag is made. A milestone (`3.0.0-M1`) is a tag
-  and a GitHub release, source only. Both as `docs/developer/build.md` says.
+  (`3.0.0`) is the release workflow (`.github/workflows/release.yml`, `gh workflow run release.yml -f version=3.0.0`):
+  the three images of the server on Docker Hub (`descoped/lds`, linux/amd64 and linux/arm64, signed with cosign), a
+  tag and a GitHub release with its notes (`RELEASE-NOTES.md`). **No jar is released.** Its first step refuses a
+  SNAPSHOT dependency (`requireReleaseDeps`). Builds are repeatable (`project.build.outputTimestamp`, base images by
+  digest, `SOURCE_DATE_EPOCH`), so a release run can be repeated until the tag is made. A milestone (`3.0.0-M1`) is a
+  tag and a GitHub release, source only. Both as `docs/developer/build.md` says.
 - **SonarCloud**: one project, `descoped_linked-data-store-project`, for the whole reactor.
 
 Several of these describe where 3.0.0 is going and are not true of the pre-3.0 code yet (UTC instants in the
