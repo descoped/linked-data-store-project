@@ -117,9 +117,11 @@
                 <enabled>false</enabled>
             </snapshots>
         </repository>
-        <!-- SNAPSHOTs of the Descoped libraries (rawdata-client), read without credentials. -->
+        <!-- SNAPSHOTs of the Descoped libraries (rawdata-client), read without credentials. Its id is not the
+             publishing server's (descoped-snapshots): Maven sends a server's credentials to every repository with
+             its id. -->
         <repository>
-            <id>descoped-snapshots</id>
+            <id>descoped-snapshots-public</id>
             <url>https://maven.descoped.io/</url>
             <releases>
                 <enabled>false</enabled>

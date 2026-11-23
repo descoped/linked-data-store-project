@@ -148,7 +148,8 @@ jobs:
             *) echo "Not a SNAPSHOT: $version"; exit 1 ;;
           esac
 
-      # The token is read from the environment of the deploy step; nothing secret is written to disk.
+      # The token and its origin are read from the environment of the deploy step; nothing secret is written to
+      # disk. The token is sent to the CodeArtifact origin only.
       - name: Maven server entry
         run: |
           mkdir -p ~/.m2
@@ -159,6 +160,9 @@ jobs:
                 <id>descoped-snapshots</id>
                 <username>aws</username>
                 <password>${env.CODEARTIFACT_AUTH_TOKEN}</password>
+                <repositoryOrigins>
+                  <repositoryOrigin>${env.SNAPSHOTS_ORIGIN}</repositoryOrigin>
+                </repositoryOrigins>
               </server>
             </servers>
           </settings>
@@ -184,6 +188,10 @@ jobs:
           AWS_SESSION_TOKEN: ${{ steps.aws.outputs.aws-session-token }}
           AWS_REGION: eu-north-1
         run: |
+          # The account ID is masked first, so the log hides it in every text that holds it (the endpoint, the
+          # origin, a warning of Maven). The log of a public repository never shows it.
+          account=$(aws sts get-caller-identity --query Account --output text)
+          echo "::add-mask::$account"
           token=$(aws codeartifact get-authorization-token --domain descoped --duration-seconds 900 \
             --query authorizationToken --output text)
           echo "::add-mask::$token"
@@ -191,6 +199,8 @@ jobs:
           url=$(aws codeartifact get-repository-endpoint --domain descoped --repository maven-snapshots \
             --format maven --query repositoryEndpoint --output text)
           echo "::add-mask::$url"
+          export SNAPSHOTS_ORIGIN="${url%%/maven/*}"
+          echo "::add-mask::$SNAPSHOTS_ORIGIN"
           ./mvnw --batch-mode --no-transfer-progress -T 1C -P descoped-snapshots -DskipTests \
             -Dmaven.build.cache.enabled=false -Ddescoped.snapshots.url="$url" deploy
 
