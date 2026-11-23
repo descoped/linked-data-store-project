@@ -372,8 +372,9 @@
                                 <requireJavaVersion>
                                     <version>${java.version}</version>
                                 </requireJavaVersion>
+                                <!-- maven-build-cache-extension (.mvn/extensions.xml) requires Maven 3.9 or later. -->
                                 <requireMavenVersion>
-                                    <version>3.6.3</version>
+                                    <version>3.9.0</version>
                                 </requireMavenVersion>
                             </rules>
                         </configuration>
