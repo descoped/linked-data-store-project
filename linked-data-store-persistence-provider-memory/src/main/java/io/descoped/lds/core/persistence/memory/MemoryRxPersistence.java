@@ -299,15 +299,15 @@ public class MemoryRxPersistence implements RxPersistence {
                 byte[] truncatedValue = Fragment.hashOf(value);
                 if (range.isBackward()) {
                     // The ids from the last match, and the matches of each id read forward.
-                    io.descoped.tuple.Range matches = index.range(Tuple.of(truncatedValue));
+                    io.descoped.tuple.Range matches = index.range(Tuple.of((Object) truncatedValue));
                     return Flowable.fromPublisher(new AsyncIterablePublisher<>(transaction.getRangeReversed(
                                     KeySelector.firstGreaterOrEqual(matches.begin()), KeySelector.firstGreaterOrEqual(matches.end()),
                                     PATH_VALUE_INDEX, ROW_LIMIT_UNLIMITED)))
                             .map(kv -> index.unpack(kv.key()).getString(1))
                             .distinctUntilChanged()
-                            .concatMap(id -> matchesOf(transaction, primary, index, Tuple.of(truncatedValue, id), snapshot, namespace, entity));
+                            .concatMap(id -> matchesOf(transaction, primary, index, Tuple.of((Object) truncatedValue, id), snapshot, namespace, entity));
                 }
-                return matchesOf(transaction, primary, index, Tuple.of(truncatedValue), snapshot, namespace, entity);
+                return matchesOf(transaction, primary, index, Tuple.of((Object) truncatedValue), snapshot, namespace, entity);
             });
         });
     }

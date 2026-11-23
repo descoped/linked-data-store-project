@@ -176,7 +176,7 @@ public class EmbeddedResourceHandler implements HttpHandler {
                     AdapterLoader adapterLoader = sagaRepository.getAdapterLoader();
                     SagaInput sagaInput = new SagaInput(sec.generateTxId(), "PUT", "TODO", new DocumentKey(namespace, managedDomain, managedDocumentId, resourceContext.getTimestamp()), source, sourceId, managedDocument);
                     SelectableFuture<SagaHandoffResult> handoff = sec.handoff(sync, adapterLoader, saga, sagaInput, SagaCommands.getSagaAdminParameterCommands(httpServerExchange),
-                completion -> DocumentLocks.holdUntil(httpServerExchange, completion));
+                            completion -> DocumentLocks.holdUntil(httpServerExchange, completion));
                     SagaHandoffResult handoffResult = handoff.join();
 
                     exchange.setStatusCode(200);
@@ -222,7 +222,7 @@ public class EmbeddedResourceHandler implements HttpHandler {
                     AdapterLoader adapterLoader = sagaRepository.getAdapterLoader();
                     SagaInput sagaInput = new SagaInput(sec.generateTxId(), "PUT", "TODO", new DocumentKey(namespace, managedDomain, managedDocumentId, resourceContext.getTimestamp()), source, sourceId, rootNode);
                     SelectableFuture<SagaHandoffResult> handoff = sec.handoff(sync, adapterLoader, saga, sagaInput, SagaCommands.getSagaAdminParameterCommands(httpServerExchange),
-                completion -> DocumentLocks.holdUntil(httpServerExchange, completion));
+                            completion -> DocumentLocks.holdUntil(httpServerExchange, completion));
                     SagaHandoffResult handoffResult = handoff.join();
 
                     exchange.setStatusCode(200);

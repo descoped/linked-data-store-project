@@ -39,6 +39,7 @@ public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
     private static final String ITEMS = "items";
     private static final String OBJECT = "object";
     private static final String STRING = "string";
+    private static final String FORMAT = "format";
     private static final String ARRAY = "array";
     private static final String LINK_PROPERTY_PREFIX = "_link_property_";
 
@@ -130,9 +131,9 @@ public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
                         .put("minimum", Long.MIN_VALUE)
                         .put("maximum", Long.MAX_VALUE);
                 case "Float" -> propertyElements.put("type", "number");
-                case "DateTime" -> propertyElements.put("type", STRING).put("format", "date-time");
-                case "Date" -> propertyElements.put("type", STRING).put("format", "date");
-                case "Time" -> propertyElements.put("type", STRING).put("format", "time");
+                case "DateTime" -> propertyElements.put("type", STRING).put(FORMAT, "date-time");
+                case "Date" -> propertyElements.put("type", STRING).put(FORMAT, "date");
+                case "Time" -> propertyElements.put("type", STRING).put(FORMAT, "time");
                 default -> {
                     // A scalar named string in other letters is a text, as LDS always read it; any other gets no type.
                     if (scalarType.getName().equalsIgnoreCase(STRING)) {

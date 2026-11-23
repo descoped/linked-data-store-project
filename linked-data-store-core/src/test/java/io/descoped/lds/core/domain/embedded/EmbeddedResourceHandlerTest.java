@@ -93,6 +93,14 @@ public class EmbeddedResourceHandlerTest {
     }
 
     @Test
+    public void thatAPartWrittenAsNullIsRemovedAsNullIsNoValue() throws JSONException {
+        createTestResource("provisionagreement", "e-null", "{\"id\":\"e-null\",\"name\":\"pa-test-name\",\"address\":{\"street\":\"Storgata 1\"}}");
+        client.put("/data/provisionagreement/e-null/address", "null").expect200Ok();
+        JSONAssert.assertEquals("{\"id\":\"e-null\",\"name\":\"pa-test-name\"}",
+                client.get("/data/provisionagreement/e-null").expect200Ok().body(), true);
+    }
+
+    @Test
     public void thatPutEmbeddedArrayResourceUpdatesSubDocument() throws JSONException {
         createTestResource("provisionagreement", "e4", "{\"id\":\"e4\",\"name\":\"pa-test-name\",\"contacts\":[\"/contact/c1\",\"/contact/c2\"]}");
         client.put("/data/provisionagreement/e4/contacts?sync=true", "[\"/contact/truls\",\"/contact/hans\"]").expect200Ok();

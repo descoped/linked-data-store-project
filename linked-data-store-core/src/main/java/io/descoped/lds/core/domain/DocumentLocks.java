@@ -9,6 +9,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * One write at a time to a document, in this LDS: a write holds the lock of its document from before it reads the
@@ -82,6 +83,15 @@ public final class DocumentLocks {
     }
 
     /**
+     * How long a write waits for the lock of its document.
+     *
+     * @return the longest wait
+     */
+    public Duration timeout() {
+        return timeout;
+    }
+
+    /**
      * Keeps the lock the request holds, if any, until the stage has completed too: the saga of the write.
      *
      * @param exchange   the request
@@ -97,18 +107,18 @@ public final class DocumentLocks {
     private static final class Held {
         private final Semaphore stripe;
         private final AtomicBoolean released = new AtomicBoolean(false);
-        private volatile CompletionStage<?> until;
+        private final AtomicReference<CompletionStage<?>> until = new AtomicReference<>();
 
         Held(Semaphore stripe) {
             this.stripe = stripe;
         }
 
         void holdUntil(CompletionStage<?> completion) {
-            until = completion;
+            until.set(completion);
         }
 
         void answered() {
-            CompletionStage<?> completion = until;
+            CompletionStage<?> completion = until.get();
             if (completion == null) {
                 release();
             } else {

@@ -177,21 +177,21 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
         // Only a text value is supported.
         Map<Integer, byte[]> valueByOffset = FlattenedDocumentLeafNode.valueByOffset(FragmentType.STRING, fragmentSize, value);
         byte[] bytesValue = valueByOffset.get(0);
-        // Without the limit: a false match the store gives is left out below and must not take a place. The store
-        // gives the documents in the order of the range.
+        // Without the limit: a false match the store gives is left out before the limit, so it takes no place in
+        // the page. The store gives the documents in the order of the range.
         Flowable<Fragment> fragments = persistence.find(tx, snapshot, namespace, entityName, navigationPath.serialize(), bytesValue,
                 Range.unlimited(range));
-        return doReadDocuments(fragments, range, fragmentSize).filter(document -> {
-            // Post filter since fragment based implementation can return false positive.
+        Flowable<JsonDocument> matches = toDocuments(fragments, fragmentSize, false).filter(document -> {
+            // A store can give a false match: a value of another type, or a text that only begins the same.
             AtomicBoolean match = new AtomicBoolean(false);
             document.traverseField(navigationPath, (node, _) -> {
-                // Only a text is matched, not a value of another type.
                 if (node.isString() && node.stringValue().equals(value)) {
                     match.set(true);
                 }
             });
-            return match.get(); // false discards a false-positive match from the underlying persistence layer
+            return match.get();
         });
+        return limit(matches, d -> d.key().id(), range, IdOrder.CODE_POINTS);
     }
 
     @Override

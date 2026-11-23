@@ -841,6 +841,35 @@ public abstract class PersistenceIntegrationTest {
         }
     }
 
+    /**
+     * A document that a find gives but that does not hold the text (here a number written the same way) takes no
+     * place in a page of the find.
+     */
+    @Test
+    public void thatAFalseMatchTakesNoPlaceInAPageOfAFind() {
+        ZonedDateTime timestamp = parse("2000-01-01T00:00:00.000Z");
+        try (Transaction tx = persistence.createTransaction(false)) {
+            persistence.deleteAllEntities(tx, namespace, "Person", specification).blockingAwait();
+            persistence.createOrOverwrite(tx, toDocument(namespace, "Person", "a", mapper.createObjectNode().put("lastname", 5), timestamp),
+                    specification).blockingAwait();
+            persistence.createOrOverwrite(tx, toDocument(namespace, "Person", "b", mapper.createObjectNode().put("lastname", "5"), timestamp),
+                    specification).blockingAwait();
+            persistence.createOrOverwrite(tx, toDocument(namespace, "Person", "c", mapper.createObjectNode().put("lastname", 5), timestamp),
+                    specification).blockingAwait();
+            persistence.createOrOverwrite(tx, toDocument(namespace, "Person", "d", mapper.createObjectNode().put("lastname", "5"), timestamp),
+                    specification).blockingAwait();
+
+            JsonNavigationPath lastname = JsonNavigationPath.from("$.lastname");
+            assertThat(ids(persistence.findDocument(tx, timestamp, namespace, "Person", lastname, "5", Range.first(1)))).containsExactly("b");
+            assertThat(ids(persistence.findDocument(tx, timestamp, namespace, "Person", lastname, "5", Range.first(2)))).containsExactly("b", "d");
+            assertThat(ids(persistence.findDocument(tx, timestamp, namespace, "Person", lastname, "5", Range.last(1)))).containsExactly("d");
+            assertThat(ids(persistence.findDocument(tx, timestamp, namespace, "Person", lastname, "5", Range.firstAfter(1, "b"))))
+                    .containsExactly("d");
+
+            persistence.deleteAllEntities(tx, namespace, "Person", specification).blockingAwait();
+        }
+    }
+
     private static List<String> ids(Flowable<JsonDocument> documents) {
         return documents.map(document -> document.key().id()).toList().blockingGet();
     }

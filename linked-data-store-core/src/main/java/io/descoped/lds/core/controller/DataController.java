@@ -18,6 +18,8 @@ import io.undertow.util.Headers;
 import io.undertow.util.HttpString;
 import io.undertow.util.Methods;
 import io.undertow.util.StatusCodes;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.ZonedDateTime;
 import java.util.Arrays;
@@ -28,6 +30,7 @@ import static java.util.Optional.ofNullable;
 
 class DataController implements HttpHandler {
 
+    private static final Logger LOG = LoggerFactory.getLogger(DataController.class);
     private static final String TEXT_PLAIN = "text/plain";
 
     final Specification specification;
@@ -69,6 +72,11 @@ class DataController implements HttpHandler {
                 // the write before it.
                 if (!documentLocks.acquire(exchange, resourceContext.getNamespace(), resourceContext.getFirstElement().name(),
                         resourceContext.getFirstElement().id())) {
+                    // A saga that does not complete keeps the lock of its document (and of the others of its stripe)
+                    // until LDS is restarted; this says where.
+                    LOG.warn("A write of /{}/{}/{} waited {} for the lock of the document and was answered 503",
+                            resourceContext.getNamespace(), resourceContext.getFirstElement().name(),
+                            resourceContext.getFirstElement().id(), documentLocks.timeout());
                     exchange.setStatusCode(StatusCodes.SERVICE_UNAVAILABLE);
                     exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, TEXT_PLAIN);
                     exchange.getResponseSender().send("The document is being written by another request. Try again.");
