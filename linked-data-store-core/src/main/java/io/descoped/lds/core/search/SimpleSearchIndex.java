@@ -31,8 +31,11 @@ public class SimpleSearchIndex implements SearchIndex {
     private record Version(String namespace, String entity, String id, Instant version) {
     }
 
-    private final Map<Version, IndexEntry> entries = new ConcurrentHashMap<>();
-    private final Map<Version, Instant> taken = new ConcurrentHashMap<>();
+    /* An entry, and when the index took it. */
+    private record Taken(IndexEntry entry, Instant at) {
+    }
+
+    private final Map<Version, Taken> entries = new ConcurrentHashMap<>();
     private final Clock clock;
 
     /**
@@ -53,8 +56,7 @@ public class SimpleSearchIndex implements SearchIndex {
     public Completable put(List<IndexEntry> list) {
         return Completable.fromAction(() -> list.forEach(entry -> {
             Version version = new Version(entry.namespace(), entry.entity(), entry.id(), entry.version().toInstant());
-            entries.put(version, entry);
-            taken.put(version, clock.instant());
+            entries.put(version, new Taken(entry, clock.instant()));
         }));
     }
 
@@ -62,13 +64,9 @@ public class SimpleSearchIndex implements SearchIndex {
     public Completable removeOlderThan(String namespace, Duration age) {
         return Completable.fromAction(() -> {
             Instant before = clock.instant().minus(age);
-            taken.entrySet().removeIf(entry -> {
-                boolean old = entry.getKey().namespace().equals(namespace) && entry.getValue().isBefore(before);
-                if (old) {
-                    entries.remove(entry.getKey());
-                }
-                return old;
-            });
+            // an entry put again while this runs is not removed: removeIf removes only the value it judged old
+            entries.entrySet().removeIf(entry -> entry.getKey().namespace().equals(namespace)
+                    && entry.getValue().at().isBefore(before));
         });
     }
 
@@ -85,7 +83,7 @@ public class SimpleSearchIndex implements SearchIndex {
     @Override
     public Single<SearchPage> search(SearchQuery query) {
         return Single.fromCallable(() -> {
-            List<IndexEntry> inScope = entries.values().stream()
+            List<IndexEntry> inScope = entries.values().stream().map(Taken::entry)
                     .filter(entry -> entry.namespace().equals(query.namespace()))
                     .filter(entry -> query.entities().isEmpty() || query.entities().contains(entry.entity()))
                     .filter(entry -> !entry.version().toInstant().isAfter(query.snapshot().toInstant()))

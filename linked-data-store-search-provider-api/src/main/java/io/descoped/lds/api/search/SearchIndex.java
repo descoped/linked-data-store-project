@@ -23,8 +23,8 @@ public interface SearchIndex {
 
     /**
      * Removes the entries of a namespace that the index took longer ago than the age given, measured by the index's
-     * own clock, so that the clocks of several LDS do not matter; and the entries the index holds in a form it no
-     * longer writes, which no search finds. The clean-up after a rebuild: what the rebuild did not send again is what
+     * own clock, so that the clocks of several LDS do not matter; and, in every namespace, the entries the index
+     * holds in a form it no longer writes (left by the search before 3.0.0), which no search finds. The clean-up after a rebuild: what the rebuild did not send again is what
      * storage no longer holds.
      *
      * @param namespace the namespace

@@ -20,18 +20,21 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Rebuilds the search index from storage: every version of every document of every entity type is added to the index
  * queue, as the writes added them, and the worker of the queue sends them. A version that marks a document as deleted
  * is added as a delete, and the versions before it as writes, so the index holds what storage holds, back in time.
- * Each version is an entry of its own in the index and is overwritten in place, so search answers all the while.
+ * Each version is an entry of its own in the index, sent again under the key it has, so it is replaced by the same
+ * entry and search answers all the while.
  * <p>
  * When every update is added, and the queue is then empty (the index has taken them all, the updates of other writes
  * too), the index removes the entries of the namespace it took before the rebuild started, by its own clock: what
  * the rebuild did not send again is what storage no longer holds, or what an earlier model searched. A queue that is
- * never empty puts the clean-up off; a rebuild that is stopped before it leaves the old entries, which search does
- * not find unless they are versions storage no longer holds.
+ * never empty puts the clean-up off, and the log says so every few minutes with the lag of the queue; a rebuild that
+ * is stopped before it leaves the old entries, which search does not find unless they are versions storage no longer
+ * holds.
  * <p>
  * The versions of one entity type are read in one read transaction, opened, read and closed on the rebuild's own
  * thread (the memory store holds a lock of the thread that opened it), and taken from storage as the queue takes
@@ -44,15 +47,21 @@ public final class IndexRebuild {
     static final int CONCURRENT_ADDS = 8;
 
     /*
-     * Taken off the time since the rebuild started, so that an entry the index took as it started is not removed:
-     * the start is measured here, and the index's clock is read when the removal reaches it, later.
+     * Taken off the time since the rebuild started, so that no entry the rebuild sent is removed: the start is
+     * measured here, and the index's clock is read when the removal reaches it, later, after the request and the
+     * index's own queue of updates. An old entry left (removed by the next rebuild, and found by no search unless it
+     * is a version storage no longer holds) is the lesser fault: an entry removed by mistake is lost without a word.
      */
-    static final Duration MARGIN = Duration.ofSeconds(1);
+    static final Duration MARGIN = Duration.ofMinutes(1);
+
+    /* How often the log says that the clean-up still waits for an empty queue. */
+    static final Duration WAITING_REPORT = Duration.ofMinutes(5);
 
     private final RxJsonPersistence persistence;
     private final IndexQueue queue;
     private final SearchIndex index;
     private final Duration poll;
+    private final Duration waitingReport;
     private final String namespace;
     private final List<String> entities;
     private final ExecutorService executor = Executors.newSingleThreadExecutor(
@@ -71,17 +80,23 @@ public final class IndexRebuild {
      */
     public IndexRebuild(RxJsonPersistence persistence, IndexQueue queue, SearchIndex index, String namespace,
                         List<String> entities) {
-        this(persistence, queue, index, namespace, entities, Duration.ofSeconds(1));
+        this(persistence, queue, index, namespace, entities, Duration.ofSeconds(1), WAITING_REPORT);
     }
 
     IndexRebuild(RxJsonPersistence persistence, IndexQueue queue, SearchIndex index, String namespace,
                  List<String> entities, Duration poll) {
+        this(persistence, queue, index, namespace, entities, poll, WAITING_REPORT);
+    }
+
+    IndexRebuild(RxJsonPersistence persistence, IndexQueue queue, SearchIndex index, String namespace,
+                 List<String> entities, Duration poll, Duration waitingReport) {
         this.persistence = persistence;
         this.queue = queue;
         this.index = index;
         this.namespace = namespace;
         this.entities = List.copyOf(entities);
         this.poll = poll;
+        this.waitingReport = waitingReport;
     }
 
     /**
@@ -126,11 +141,24 @@ public final class IndexRebuild {
     }
 
     private Completable emptied() {
-        return Flowable.interval(0, poll.toMillis(), TimeUnit.MILLISECONDS)
-                .concatMapSingle(_ -> queue.lag())
-                .filter(lag -> lag.updates() == 0)
-                .firstOrError()
-                .ignoreElement();
+        return Completable.defer(() -> {
+            long waiting = System.nanoTime();
+            AtomicLong reported = new AtomicLong(waiting);
+            return Flowable.interval(0, poll.toMillis(), TimeUnit.MILLISECONDS)
+                    .concatMapSingle(_ -> queue.lag())
+                    .doOnNext(lag -> {
+                        long now = System.nanoTime();
+                        if (lag.updates() > 0 && now - reported.get() >= waitingReport.toNanos()) {
+                            reported.set(now);
+                            LOG.info("The clean-up after the rebuild of the search index has waited {} for the index"
+                                    + " queue to be empty: it holds {} updates, the oldest added {}",
+                                    Duration.ofNanos(now - waiting).withNanos(0), lag.updates(), lag.oldest());
+                        }
+                    })
+                    .filter(lag -> lag.updates() == 0)
+                    .firstOrError()
+                    .ignoreElement();
+        });
     }
 
     private static IndexUpdate update(JsonDocument document) {
