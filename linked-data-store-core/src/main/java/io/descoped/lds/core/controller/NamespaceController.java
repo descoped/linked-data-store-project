@@ -45,18 +45,16 @@ public class NamespaceController implements HttpHandler {
     public NamespaceController(String namespaceDefault, Specification specification, SchemaRepository schemaRepository,
                                RxJsonPersistence persistence, Writes writes, TxlogRawdataPool txLogPool) {
         this.searchWait = writes.searchWait();
-        SagaExecutionCoordinator sec = writes.sec();
-        SagaRepository sagaRepository = writes.sagaRepository();
         this.specification = specification;
         this.schemaRepository = schemaRepository;
         this.persistence = persistence;
-        this.sagaRepository = sagaRepository;
+        this.sagaRepository = writes.sagaRepository();
         this.txLogPool = txLogPool;
         if (!namespaceDefault.startsWith("/")) {
             namespaceDefault = "/" + namespaceDefault;
         }
         this.defaultNamespace = namespaceDefault;
-        this.sec = sec;
+        this.sec = writes.sec();
     }
 
     @Override
