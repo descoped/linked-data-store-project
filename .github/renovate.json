@@ -44,6 +44,16 @@
       "allowedVersions": "/^18([.-]|$)/"
     },
     {
+      "description": "Maven stays at 3.x by the owner's decision, until Maven 4 has matured; the owner says when it is raised (see .claude/CLAUDE.md, Invariants). The wrapper itself still moves.",
+      "matchManagers": [
+        "maven-wrapper"
+      ],
+      "matchPackageNames": [
+        "org.apache.maven:apache-maven"
+      ],
+      "allowedVersions": "<4"
+    },
+    {
       "description": "Maven bumps through the wrapper: Renovate does not update distributionSha256Sum, so CI fails until it is set by hand (see .claude/CLAUDE.md, Maven Wrapper)",
       "matchManagers": [
         "maven-wrapper"
