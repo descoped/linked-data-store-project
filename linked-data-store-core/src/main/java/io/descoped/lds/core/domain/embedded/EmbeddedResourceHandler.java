@@ -10,6 +10,7 @@ import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.core.domain.BodyException;
 import io.descoped.lds.core.domain.BodyParser;
+import io.descoped.lds.core.domain.DocumentLocks;
 import io.descoped.lds.core.domain.NullFields;
 import io.descoped.lds.core.domain.resource.ResourceContext;
 import io.descoped.lds.core.domain.resource.ResourceElement;
@@ -174,7 +175,8 @@ public class EmbeddedResourceHandler implements HttpHandler {
 
                     AdapterLoader adapterLoader = sagaRepository.getAdapterLoader();
                     SagaInput sagaInput = new SagaInput(sec.generateTxId(), "PUT", "TODO", new DocumentKey(namespace, managedDomain, managedDocumentId, resourceContext.getTimestamp()), source, sourceId, managedDocument);
-                    SelectableFuture<SagaHandoffResult> handoff = sec.handoff(sync, adapterLoader, saga, sagaInput, SagaCommands.getSagaAdminParameterCommands(httpServerExchange));
+                    SelectableFuture<SagaHandoffResult> handoff = sec.handoff(sync, adapterLoader, saga, sagaInput, SagaCommands.getSagaAdminParameterCommands(httpServerExchange),
+                completion -> DocumentLocks.holdUntil(httpServerExchange, completion));
                     SagaHandoffResult handoffResult = handoff.join();
 
                     exchange.setStatusCode(200);
@@ -219,7 +221,8 @@ public class EmbeddedResourceHandler implements HttpHandler {
 
                     AdapterLoader adapterLoader = sagaRepository.getAdapterLoader();
                     SagaInput sagaInput = new SagaInput(sec.generateTxId(), "PUT", "TODO", new DocumentKey(namespace, managedDomain, managedDocumentId, resourceContext.getTimestamp()), source, sourceId, rootNode);
-                    SelectableFuture<SagaHandoffResult> handoff = sec.handoff(sync, adapterLoader, saga, sagaInput, SagaCommands.getSagaAdminParameterCommands(httpServerExchange));
+                    SelectableFuture<SagaHandoffResult> handoff = sec.handoff(sync, adapterLoader, saga, sagaInput, SagaCommands.getSagaAdminParameterCommands(httpServerExchange),
+                completion -> DocumentLocks.holdUntil(httpServerExchange, completion));
                     SagaHandoffResult handoffResult = handoff.join();
 
                     exchange.setStatusCode(200);

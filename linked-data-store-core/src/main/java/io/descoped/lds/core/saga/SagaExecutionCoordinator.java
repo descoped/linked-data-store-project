@@ -32,6 +32,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
@@ -122,6 +123,26 @@ public class SagaExecutionCoordinator {
     }
 
     public SelectableFuture<SagaHandoffResult> handoff(boolean sync, AdapterLoader adapterLoader, Saga saga, SagaInput sagaInput, Map<String, List<SagaCommand>> commandsByNodeId) {
+        return handoff(sync, adapterLoader, saga, sagaInput, commandsByNodeId, _ -> {
+        });
+    }
+
+    /**
+     * Starts a saga, as {@link #handoff(boolean, AdapterLoader, Saga, SagaInput, Map)} does, and gives the caller the
+     * completion of the saga when it has started, also when the caller does not wait for it ({@code sync} false).
+     *
+     * @param sync             whether the returned future completes when the saga has completed, or when it has
+     *                         been written to its saga log
+     * @param adapterLoader    the adapters of the steps
+     * @param saga             the saga
+     * @param sagaInput        the input of the saga
+     * @param commandsByNodeId the commands of the saga admin parameters
+     * @param whenStarted      given the completion of the saga, once it has started
+     * @return the completion of the saga, or of its handoff
+     */
+    public SelectableFuture<SagaHandoffResult> handoff(boolean sync, AdapterLoader adapterLoader, Saga saga, SagaInput sagaInput,
+                                                       Map<String, List<SagaCommand>> commandsByNodeId,
+                                                       Consumer<CompletionStage<SagaHandoffResult>> whenStarted) {
         String executionId = sagaInput.txId();
 
         OwnedSagaLog owned = acquireCleanSagaLog(_ -> {
@@ -155,6 +176,7 @@ public class SagaExecutionCoordinator {
 
         track(handoffControl);
         sagasObserver.registerSaga(handoffControl);
+        whenStarted.accept(handoffControl.getCompletionFuture());
 
         return sync ?
                 handoffControl.getCompletionFuture() : // full saga-execution

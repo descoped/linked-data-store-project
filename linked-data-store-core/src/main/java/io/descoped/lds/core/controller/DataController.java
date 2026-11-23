@@ -2,6 +2,7 @@ package io.descoped.lds.core.controller;
 
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.api.specification.Specification;
+import io.descoped.lds.core.domain.DocumentLocks;
 import io.descoped.lds.core.domain.embedded.EmbeddedResourceHandler;
 import io.descoped.lds.core.domain.managed.ManagedResourceHandler;
 import io.descoped.lds.core.domain.reference.ReferenceResourceHandler;
@@ -14,6 +15,8 @@ import io.descoped.lds.core.utils.RequestTime;
 import io.undertow.server.HttpHandler;
 import io.undertow.server.HttpServerExchange;
 import io.undertow.util.Headers;
+import io.undertow.util.HttpString;
+import io.undertow.util.Methods;
 import io.undertow.util.StatusCodes;
 
 import java.time.ZonedDateTime;
@@ -32,13 +35,15 @@ class DataController implements HttpHandler {
     final RxJsonPersistence persistence;
     final SagaExecutionCoordinator sec;
     final SagaRepository sagaRepository;
+    final DocumentLocks documentLocks;
 
-    DataController(Specification specification, SchemaRepository schemaRepository, RxJsonPersistence persistence, SagaExecutionCoordinator sec, SagaRepository sagaRepository) {
+    DataController(Specification specification, SchemaRepository schemaRepository, RxJsonPersistence persistence, SagaExecutionCoordinator sec, SagaRepository sagaRepository, DocumentLocks documentLocks) {
         this.specification = specification;
         this.schemaRepository = schemaRepository;
         this.persistence = persistence;
         this.sec = sec;
         this.sagaRepository = sagaRepository;
+        this.documentLocks = documentLocks;
     }
 
     @Override
@@ -58,6 +63,22 @@ class DataController implements HttpHandler {
                 return;
             }
             resourceContext = ResourceContext.createResourceContext(specification, rawRelativePath(exchange), timestamp);
+            if (isWrite(exchange)) {
+                // One write at a time to a document, from before it reads the document to the end of its saga. The
+                // version of a write without a timestamp is the time it got the lock, so it is after the version of
+                // the write before it.
+                if (!documentLocks.acquire(exchange, resourceContext.getNamespace(), resourceContext.getFirstElement().name(),
+                        resourceContext.getFirstElement().id())) {
+                    exchange.setStatusCode(StatusCodes.SERVICE_UNAVAILABLE);
+                    exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, TEXT_PLAIN);
+                    exchange.getResponseSender().send("The document is being written by another request. Try again.");
+                    return;
+                }
+                if (!hasTimestamp(exchange)) {
+                    resourceContext = ResourceContext.createResourceContext(specification, rawRelativePath(exchange),
+                            ZonedDateTime.now(RequestTime.UTC));
+                }
+            }
         } catch (ResourceException e) {
             exchange.setStatusCode(StatusCodes.BAD_REQUEST);
             exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, TEXT_PLAIN);
@@ -87,6 +108,16 @@ class DataController implements HttpHandler {
         exchange.setStatusCode(StatusCodes.NOT_FOUND);
         exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, TEXT_PLAIN);
         exchange.getResponseSender().send("Unsupported resource path: " + exchange.getRequestPath());
+    }
+
+    private static boolean isWrite(HttpServerExchange exchange) {
+        HttpString method = exchange.getRequestMethod();
+        return !(Methods.GET.equals(method) || Methods.HEAD.equals(method) || Methods.OPTIONS.equals(method));
+    }
+
+    private static boolean hasTimestamp(HttpServerExchange exchange) {
+        Deque<String> timestampParams = ofNullable(exchange.getQueryParameters().get("timestamp")).orElseGet(() -> exchange.getQueryParameters().get("t"));
+        return timestampParams != null && !timestampParams.isEmpty();
     }
 
     /*

@@ -1,5 +1,6 @@
 package io.descoped.lds.core.controller;
 
+import io.descoped.lds.core.domain.DocumentLocks;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.core.saga.SagaExecutionCoordinator;
@@ -26,6 +27,7 @@ public class NamespaceController implements HttpHandler {
     private final SagaExecutionCoordinator sec;
     private final SagaRepository sagaRepository;
     private final TxlogRawdataPool txLogPool;
+    private final DocumentLocks documentLocks = new DocumentLocks();
 
     public NamespaceController(String namespaceDefault, Specification specification, SchemaRepository schemaRepository,
                                RxJsonPersistence persistence, SagaExecutionCoordinator sec,
@@ -67,7 +69,7 @@ public class NamespaceController implements HttpHandler {
         }
 
         if (requestPath.equals(defaultNamespace) || requestPath.startsWith(defaultNamespace + "/")) {
-            new DataController(specification, schemaRepository, persistence, sec, sagaRepository).handleRequest(exchange);
+            new DataController(specification, schemaRepository, persistence, sec, sagaRepository, documentLocks).handleRequest(exchange);
             return;
         }
 
