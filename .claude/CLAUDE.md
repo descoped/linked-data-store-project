@@ -49,11 +49,13 @@ and a record is taken from the driver when a document is asked for (`Neo4jTransa
 the mechanism when changing this code: a stream is not replaced by a call that returns a complete list, and no
 blocking call is added to an interface.
 
-Not true yet of the bridge: for a list of documents, the versions of a document and a find,
-`RxJsonPersistenceBridge` reads without a limit (`Range.unlimited`) and sorts the fragments (`Flowable.sorted`)
-before it cuts them into documents. So with the memory and PostgreSQL providers every fragment of the read is
-taken from the store before the first document comes out; only the read of one document is on demand to the
-end. Do not rely on a list being streamed until that sort is gone, and do not add another.
+A provider gives the documents of a read in the order of its range, forward or backward (`Range.isBackward`, kept
+by `Range.unlimited`), each one's fragments by path and offset, so the bridge cuts them into documents as they
+come and never sorts. A list passes its range with the limit to the store, which leaves deleted documents out so
+the limit counts what is given (PostgreSQL puts it on the statement); the versions of a document and a find pass
+it without the limit (the bridge leaves out what the store gives beyond it), and the read ends when the page is
+full. The memory provider reads backward by walking its keys from the end for the ids and reading each document
+forward. Do not add a sort.
 
 A provider stores a document as it is given and gives it back the same: also a field the model does not have, a
 value of another kind than the model says, a null, an array inside an array. Whether a document may be like that
@@ -193,10 +195,10 @@ which validates the Jackson tree of the document). A schema that at its root say
 - **SonarCloud**: one project, `descoped_linked-data-store-project`, for the whole reactor.
 
 Several of these describe where 3.0.0 is going and are not true of the pre-3.0 code yet (UTC instants in the
-memory provider, `Transaction.close()` committing, the bridge sorting a list before it gives the first
-document, the search text going into the Solr query as it is). One is met in another way than it is worded: the
-Neo4j provider writes the name of an entity into Cypher as a quoted label (`Cypher.label`), and does not validate
-it; a label as a parameter costs Neo4j its indexes for lists, and a constraint cannot be created with one.
+memory provider, `Transaction.close()` committing, the search text going into the Solr query as it is). One is met
+in another way than it is worded: the Neo4j provider writes the name of an entity into Cypher as a quoted label
+(`Cypher.label`), and does not validate it; a label as a parameter costs Neo4j its indexes for lists, and a
+constraint cannot be created with one.
 Everything else it is given is a parameter. New and revised code must meet them; a pull request that revises a
 module makes that module meet them.
 

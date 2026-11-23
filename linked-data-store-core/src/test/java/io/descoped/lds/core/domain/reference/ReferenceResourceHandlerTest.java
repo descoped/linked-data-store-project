@@ -17,6 +17,15 @@ import tools.jackson.databind.JsonNode;
 import javax.inject.Inject;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+
+import static org.testng.Assert.assertEquals;
 
 @Listeners(TestServerListener.class)
 public class ReferenceResourceHandlerTest {
@@ -54,6 +63,41 @@ public class ReferenceResourceHandlerTest {
         client.get("/data/provisionagreement/r3/contacts/contact/c3").expect404NotFound();
         client.put("/data/provisionagreement/r3/contacts/contact/c3?sync=true").expect200Ok();
         client.get("/data/provisionagreement/r3/contacts/contact/c3").expect200Ok();
+    }
+
+    @Test
+    public void thatALinkIsWrittenAndRemovedBeforeItIsAnsweredWhenSyncIsNotGiven() {
+        createTestResource("provisionagreement", "r-wait", "{\"id\":\"r-wait\",\"name\":\"pa-test-name\"}");
+        for (int n = 0; n < 10; n++) {
+            client.put("/data/provisionagreement/r-wait/contacts/contact/w" + n).expect200Ok();
+            client.get("/data/provisionagreement/r-wait/contacts/contact/w" + n).expect200Ok();
+        }
+        client.delete("/data/provisionagreement/r-wait/contacts/contact/w0").expect200Ok();
+        client.get("/data/provisionagreement/r-wait/contacts/contact/w0").expect404NotFound();
+    }
+
+    @Test
+    public void thatLinksAddedToADocumentAtTheSameTimeAreAllKept() throws Exception {
+        createTestResource("provisionagreement", "r-together", "{\"id\":\"r-together\",\"name\":\"pa-test-name\"}");
+        int writes = 20;
+        CountDownLatch start = new CountDownLatch(1);
+        try (ExecutorService pool = Executors.newFixedThreadPool(writes)) {
+            List<Future<Integer>> answers = new ArrayList<>();
+            for (int n = 0; n < writes; n++) {
+                String link = "/data/provisionagreement/r-together/contacts/contact/t" + n;
+                answers.add(pool.submit(() -> {
+                    start.await();
+                    return client.put(link).response().statusCode();
+                }));
+            }
+            start.countDown();
+            for (Future<Integer> answer : answers) {
+                assertEquals((int) answer.get(60, TimeUnit.SECONDS), 200);
+            }
+        }
+        for (int n = 0; n < writes; n++) {
+            client.get("/data/provisionagreement/r-together/contacts/contact/t" + n).expect200Ok();
+        }
     }
 
     @Test

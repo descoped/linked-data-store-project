@@ -391,7 +391,10 @@ ENTITY Cat
     "Cat" : {
       "properties" : {
         "age" : {
-          "displayName" : ""
+          "displayName" : "",
+          "maximum" : 2147483647,
+          "minimum" : -2147483648,
+          "type" : "integer"
         },
         "name" : {
           "displayName" : "",
@@ -411,7 +414,10 @@ ENTITY Dog
     "Dog" : {
       "properties" : {
         "age" : {
-          "displayName" : ""
+          "displayName" : "",
+          "maximum" : 2147483647,
+          "minimum" : -2147483648,
+          "type" : "integer"
         },
         "name" : {
           "displayName" : "",
@@ -453,7 +459,10 @@ ENTITY Owner
           "type" : "object"
         },
         "age" : {
-          "displayName" : ""
+          "displayName" : "",
+          "maximum" : 2147483647,
+          "minimum" : -2147483648,
+          "type" : "integer"
         },
         "animals" : {
           "displayName" : "",

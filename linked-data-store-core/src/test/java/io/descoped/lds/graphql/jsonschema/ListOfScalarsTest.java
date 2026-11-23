@@ -9,13 +9,12 @@ import tools.jackson.databind.JsonNode;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * The JSON Schema of a list of scalars: a list of texts says its items are texts; a list of any other scalar says
- * nothing of its items, as the converter writes it today.
+ * The JSON Schema of a list of scalars: its items have the type of the scalar, as a field of that scalar has.
  */
 class ListOfScalarsTest {
 
     @Test
-    void aListOfTextsHasTextItemsAndAListOfOtherScalarsHasItemsOfNoType() {
+    void theItemsOfAListOfScalarsHaveTheTypeOfTheScalar() {
         GraphQLSchema schema = GraphQLSchemaBuilder.parseSchema(new SchemaParser().parse("""
                 directive @domain on OBJECT
                 type Person @domain { name: String! nicknames: [String] scores: [Int] }
@@ -26,6 +25,7 @@ class ListOfScalarsTest {
                 .get("$defs").get("Person").get("properties");
 
         assertThat(properties.get("nicknames").get("items").get("type").stringValue()).isEqualTo("string");
-        assertThat(properties.get("scores").get("items").has("type")).isFalse();
+        assertThat(properties.get("scores").get("items").get("type").stringValue()).isEqualTo("integer");
+        assertThat(properties.get("scores").get("items").get("maximum").asLong()).isEqualTo(Integer.MAX_VALUE);
     }
 }

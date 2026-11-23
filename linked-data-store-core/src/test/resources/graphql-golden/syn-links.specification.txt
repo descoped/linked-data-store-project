@@ -7,13 +7,13 @@ root elementType=ROOT jsonTypes=[object] refTypes=[] required=[] isRequired=fals
   property Person
     Person elementType=MANAGED jsonTypes=[object] refTypes=[] required=[height, key, kind, name, nick, pets, seen, worst] isRequired=false description="A person\nwith two lines"
       property age
-        age elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+        age elementType=EMBEDDED jsonTypes=[integer] refTypes=[] required=[] isRequired=false description=""
       property at
-        at elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+        at elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
       property best
         best elementType=REF jsonTypes=[string] refTypes=[Pet] required=[] isRequired=false description=""
       property born
-        born elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+        born elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
       property codes
         codes elementType=EMBEDDED jsonTypes=[array] refTypes=[] required=[] isRequired=false description=""
           items
@@ -23,7 +23,7 @@ root elementType=ROOT jsonTypes=[object] refTypes=[] required=[] isRequired=fals
           items
              elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
       property height
-        height elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=true description=""
+        height elementType=EMBEDDED jsonTypes=[number] refTypes=[] required=[] isRequired=true description=""
       property houses
         houses elementType=REF jsonTypes=[array] refTypes=[House] required=[] isRequired=false description=""
           items

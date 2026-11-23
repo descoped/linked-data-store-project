@@ -10,8 +10,13 @@ public class Range<T> {
     private final T after;
     private final Integer first;
     private final Integer last;
+    private final boolean backward;
 
     private Range(T after, T before, Integer first, Integer last) {
+        this(after, before, first, last, last != null || before != null && after == null);
+    }
+
+    private Range(T after, T before, Integer first, Integer last, boolean backward) {
         if (first != null && last != null) {
             throw new IllegalArgumentException("range cannot use both first and last limits");
         }
@@ -19,6 +24,7 @@ public class Range<T> {
         this.after = after;
         this.first = first;
         this.last = last;
+        this.backward = backward;
     }
 
     public static <T, F> Range<T> copy(Range<F> original, Function<F, T> mapper) {
@@ -26,7 +32,8 @@ public class Range<T> {
                 Optional.ofNullable(original.after).map(mapper).orElse(null),
                 Optional.ofNullable(original.before).map(mapper).orElse(null),
                 original.first,
-                original.last
+                original.last,
+                original.backward
         );
     }
 
@@ -34,10 +41,15 @@ public class Range<T> {
         return copy(original, t -> t);
     }
 
+    /**
+     * The same range without its limit, read in the same direction: a range of the last ten stays a range read from
+     * the end.
+     */
     public static <T> Range<T> unlimited(Range<T> original) {
         return new Range<>(
                 original.after, original.before,
-                null, null
+                null, null,
+                original.backward
         );
     }
 
@@ -108,7 +120,7 @@ public class Range<T> {
      * Returns <i>true</i> if the stream should be read backward.
      */
     public boolean isBackward() {
-        return hasLast() || hasBefore() && !hasAfter();
+        return backward;
     }
 
     /**

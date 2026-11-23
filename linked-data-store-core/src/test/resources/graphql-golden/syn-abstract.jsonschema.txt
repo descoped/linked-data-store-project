@@ -60,7 +60,10 @@ ENTITY Cat
           "type" : "object"
         },
         "age" : {
-          "displayName" : ""
+          "displayName" : "",
+          "maximum" : 2147483647,
+          "minimum" : -2147483648,
+          "type" : "integer"
         },
         "friends" : {
           "displayName" : "",
@@ -153,7 +156,10 @@ ENTITY Mouse
     "Mouse" : {
       "properties" : {
         "size" : {
-          "displayName" : ""
+          "displayName" : "",
+          "maximum" : 2147483647,
+          "minimum" : -2147483648,
+          "type" : "integer"
         }
       },
       "required" : [ "size" ],

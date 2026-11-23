@@ -43,7 +43,9 @@ public class QueryBuildingVisitor extends GraphQLTypeVisitorStub {
                                 .build()
                 )
                 .withDirective(LinkDirective.newLinkDirective(false).getDirective())
-                .type(GraphQLNonNull.nonNull(type)).build();
+                // Nullable: an id that no document has (or had at the snapshot) is null, and the rest of the answer
+                // is kept.
+                .type(type).build();
     }
 
     public GraphQLObjectType getQuery() {

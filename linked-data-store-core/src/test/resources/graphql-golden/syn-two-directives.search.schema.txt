@@ -113,7 +113,7 @@ GraphQLObjectType Query
     @link
       pagination: Boolean value=Boolean:true default=Boolean:true
     fetcher=PersistenceRootConnectionFetcher{{entityName=A, nameSpace=ns, persistence=persistence}}
-  field AById: A! description=null deprecated=null
+  field AById: A description=null deprecated=null
     arg id: ID! default=null description=null
     @link
       pagination: Boolean value=Boolean:false default=Boolean:true
@@ -126,7 +126,7 @@ GraphQLObjectType Query
     @link
       pagination: Boolean value=Boolean:true default=Boolean:true
     fetcher=PersistenceRootConnectionFetcher{{entityName=B, nameSpace=ns, persistence=persistence}}
-  field BById: B! description=null deprecated=null
+  field BById: B description=null deprecated=null
     arg id: ID! default=null description=null
     @link
       pagination: Boolean value=Boolean:false default=Boolean:true

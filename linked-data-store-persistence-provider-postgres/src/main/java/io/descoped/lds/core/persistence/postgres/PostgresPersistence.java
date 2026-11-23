@@ -221,8 +221,8 @@ final class PostgresPersistence implements RxPersistence {
 
     /**
      * The version valid at the snapshot of every document of the entity whose id is inside the range, both bounds
-     * exclusive, by ascending id, or descending for a backward range. The limit counts documents. A document that
-     * is marked as deleted at the snapshot is returned as its marker.
+     * exclusive, by ascending id, or descending for a backward range. A document that is marked as deleted at the
+     * snapshot is left out, so the limit counts the documents that are returned.
      */
     @Override
     public Flowable<Fragment> readAll(Transaction transaction, ZonedDateTime snapshot, String namespace, String entity, Range<String> range) {
@@ -231,7 +231,11 @@ final class PostgresPersistence implements RxPersistence {
                 .sql(AND_C_ENTITY).value(entity)
                 .sql(AND_C_VERSION_AT_MOST).value(instantOf(snapshot));
         idsInside(query, "c.id", range);
-        query.sql(range.isBackward() ? " GROUP BY c.id ORDER BY c.id DESC" : " GROUP BY c.id ORDER BY c.id");
+        // Grouped by id only, so the namespace and the entity are given again, not taken from c.
+        query.sql(" GROUP BY c.id HAVING NOT EXISTS (SELECT 1 FROM fragment x WHERE x.namespace = ").value(namespace)
+                .sql(" AND x.entity = ").value(entity)
+                .sql(" AND x.id = c.id AND x.version = max(c.version) AND x.type = ").value(FragmentType.DELETED.ordinal())
+                .sql(range.isBackward() ? ") ORDER BY c.id DESC" : ") ORDER BY c.id");
         return fragments(transaction, namespace, entity, documentsOf(query, namespace, entity, range, "d.id"));
     }
 

@@ -1,0 +1,28 @@
+# Every scalar LDS gives a JSON Schema type, so that a value GraphQL cannot give back is refused when it is written
+directive @domain on OBJECT
+
+type Measure @domain {
+  name: String!
+  count: Int
+  big: Long
+  ratio: Float
+  day: Date
+  at: Time
+  when: DateTime
+  counts: [Int]
+  part: Part
+}
+
+type Part {
+  label: String
+  size: Int
+}
+
+type Query {
+  MeasureById: [Measure]
+}
+
+scalar Date
+scalar DateTime
+scalar Long
+scalar Time

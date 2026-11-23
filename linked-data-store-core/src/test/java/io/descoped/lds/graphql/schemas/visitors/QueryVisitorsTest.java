@@ -54,7 +54,8 @@ class QueryVisitorsTest {
         assertThat(query.getFieldDefinitions()).extracting(GraphQLFieldDefinition::getName)
                 .containsExactly("Cat", "CatById", "Dog", "DogById", "x");
         assertThat(GraphQLTypeUtil.simplePrint(query.getFieldDefinition("Cat").getType())).isEqualTo("[Cat!]!");
-        assertThat(GraphQLTypeUtil.simplePrint(query.getFieldDefinition("CatById").getType())).isEqualTo("Cat!");
+        // nullable: an id that no document has is null, and the rest of the answer is kept
+        assertThat(GraphQLTypeUtil.simplePrint(query.getFieldDefinition("CatById").getType())).isEqualTo("Cat");
         assertThat(GraphQLTypeUtil.simplePrint(query.getFieldDefinition("CatById").getArgument("id").getType())).isEqualTo("ID!");
     }
 

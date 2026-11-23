@@ -146,26 +146,17 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
 
     @Override
     public Flowable<JsonDocument> readDocuments(Transaction tx, ZonedDateTime snapshot, String ns, String entityName, Range<String> range) {
-        Flowable<Fragment> fragments = persistence.readAll(tx, snapshot, ns, entityName, Range.unlimited(range));
-
-        // Resort.
-        fragments = range.isBackward()
-                ? fragments.sorted(Comparator.reverseOrder())
-                : fragments.sorted();
-
-        return doReadDocuments(fragments, range, fragmentSize);
+        // The store gives the documents in the order of the range and leaves out the deleted ones, so it may apply
+        // the limit.
+        return doReadDocuments(persistence.readAll(tx, snapshot, ns, entityName, range), range, fragmentSize);
     }
 
     @Override
     public Flowable<JsonDocument> readDocumentVersions(Transaction tx, String ns, String entityName, String id,
                                                        Range<ZonedDateTime> range) {
+        // Without the limit: the first version the store gives is the one valid at after, which the limit here leaves
+        // out. The store gives the versions in the order of the range.
         Flowable<Fragment> fragments = persistence.readVersions(tx, ns, entityName, id, Range.unlimited(range));
-
-        // Resort.
-        fragments = range.isBackward()
-                ? fragments.sorted(Comparator.reverseOrder())
-                : fragments.sorted();
-
         return doReadDocumentVersions(fragments, range, fragmentSize);
     }
 
@@ -186,25 +177,21 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
         // Only a text value is supported.
         Map<Integer, byte[]> valueByOffset = FlattenedDocumentLeafNode.valueByOffset(FragmentType.STRING, fragmentSize, value);
         byte[] bytesValue = valueByOffset.get(0);
+        // Without the limit: a false match the store gives is left out before the limit, so it takes no place in
+        // the page. The store gives the documents in the order of the range.
         Flowable<Fragment> fragments = persistence.find(tx, snapshot, namespace, entityName, navigationPath.serialize(), bytesValue,
                 Range.unlimited(range));
-
-        // Resort.
-        fragments = range.isBackward()
-                ? fragments.sorted(Comparator.reverseOrder())
-                : fragments.sorted();
-
-        return doReadDocuments(fragments, range, fragmentSize).filter(document -> {
-            // Post filter since fragment based implementation can return false positive.
+        Flowable<JsonDocument> matches = toDocuments(fragments, fragmentSize, false).filter(document -> {
+            // A store can give a false match: a value of another type, or a text that only begins the same.
             AtomicBoolean match = new AtomicBoolean(false);
             document.traverseField(navigationPath, (node, _) -> {
-                // Only a text is matched, not a value of another type.
                 if (node.isString() && node.stringValue().equals(value)) {
                     match.set(true);
                 }
             });
-            return match.get(); // false discards a false-positive match from the underlying persistence layer
+            return match.get();
         });
+        return limit(matches, d -> d.key().id(), range, IdOrder.CODE_POINTS);
     }
 
     @Override
@@ -246,12 +233,6 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
         byte[] idValue = String.format("/%s/%s", query.entity(), query.id()).getBytes();
         Flowable<Fragment> fragments = persistence.find(tx, snapshot, query.namespace(), query.otherEntity(),
                 query.relationPath().serialize(), idValue, range);
-
-        // Resort.
-        fragments = range.isBackward()
-                ? fragments.sorted(Comparator.reverseOrder())
-                : fragments.sorted();
-
         return doReadDocuments(fragments, range, fragmentSize);
     }
 

@@ -23,4 +23,15 @@ public interface OrderedKeyValueTransaction extends Transaction {
     AsyncIterable<KeyValue> getRange(Range range, String index, int limit);
 
     AsyncIterable<KeyValue> getRange(KeySelector begin, KeySelector end, String index, int limit);
+
+    /**
+     * The same entries as {@link #getRange(KeySelector, KeySelector, String, int)}, from the last key to the first.
+     *
+     * @param begin the first key of the range
+     * @param end   the key after the last of the range
+     * @param index the index
+     * @param limit the most entries to give, or {@link #ROW_LIMIT_UNLIMITED}
+     * @return the entries, last key first
+     */
+    AsyncIterable<KeyValue> getRangeReversed(KeySelector begin, KeySelector end, String index, int limit);
 }

@@ -1,5 +1,6 @@
 package io.descoped.lds.core.domain.managed;
 
+import io.descoped.lds.core.domain.SyncParameter;
 import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.Limits;
 import io.descoped.lds.api.persistence.Transaction;
@@ -10,6 +11,8 @@ import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.core.domain.BodyException;
 import io.descoped.lds.core.domain.BodyParser;
+import io.descoped.lds.core.domain.DocumentLocks;
+import io.descoped.lds.core.domain.NullFields;
 import io.descoped.lds.core.domain.resource.ResourceContext;
 import io.descoped.lds.core.domain.resource.ResourceElement;
 import io.descoped.lds.core.saga.SagaCommands;
@@ -38,8 +41,6 @@ import tools.jackson.databind.node.ObjectNode;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Deque;
-import java.util.LinkedList;
-import java.util.Map;
 
 import static io.descoped.lds.api.persistence.json.JsonTools.mapper;
 import static java.util.Optional.ofNullable;
@@ -189,6 +190,8 @@ public class ManagedResourceHandler implements HttpHandler {
                         LOG.trace("{} {}\n{}", exchange.getRequestMethod(), exchange.getRequestPath(), requestBody);
                     }
 
+                    NullFields.removeFrom(requestData);
+
                     String overLimit = Limits.overLimit(requestData);
                     if (overLimit != null) {
                         exchange.setStatusCode(400);
@@ -208,10 +211,7 @@ public class ManagedResourceHandler implements HttpHandler {
                         return;
                     }
 
-                    // True if defined and no false values.
-                    Map<String, Deque<String>> parameters = exchange.getQueryParameters();
-                    boolean sync = parameters.getOrDefault("sync", new LinkedList<>())
-                            .stream().noneMatch("false"::equalsIgnoreCase);
+                    boolean sync = SyncParameter.waits(exchange.getQueryParameters());
 
                     Saga saga = sagaRepository.get(SagaRepository.SAGA_CREATE_OR_UPDATE_MANAGED_RESOURCE);
 
@@ -220,7 +220,8 @@ public class ManagedResourceHandler implements HttpHandler {
 
                     AdapterLoader adapterLoader = sagaRepository.getAdapterLoader();
                     SagaInput sagaInput = new SagaInput(sec.generateTxId(), "PUT", "TODO", new DocumentKey(namespace, managedDomain, managedDocumentId, resourceContext.getTimestamp()), source, sourceId, requestData);
-                    SelectableFuture<SagaHandoffResult> handoff = sec.handoff(sync, adapterLoader, saga, sagaInput, SagaCommands.getSagaAdminParameterCommands(httpServerExchange));
+                    SelectableFuture<SagaHandoffResult> handoff = sec.handoff(sync, adapterLoader, saga, sagaInput, SagaCommands.getSagaAdminParameterCommands(httpServerExchange),
+                            completion -> DocumentLocks.holdUntil(httpServerExchange, completion));
                     SagaHandoffResult handoffResult = handoff.join();
 
                     exchange.setStatusCode(StatusCodes.CREATED);
@@ -248,10 +249,7 @@ public class ManagedResourceHandler implements HttpHandler {
             return;
         }
 
-        // True if defined and no false values.
-        Map<String, Deque<String>> parameters = exchange.getQueryParameters();
-        boolean sync = parameters.getOrDefault("sync", new LinkedList<>())
-                .stream().noneMatch("false"::equalsIgnoreCase);
+        boolean sync = SyncParameter.waits(exchange.getQueryParameters());
 
         Saga saga = sagaRepository.get(SagaRepository.SAGA_DELETE_MANAGED_RESOURCE);
 
@@ -260,7 +258,8 @@ public class ManagedResourceHandler implements HttpHandler {
 
         AdapterLoader adapterLoader = sagaRepository.getAdapterLoader();
         SagaInput sagaInput = new SagaInput(sec.generateTxId(), "DELETE", "TODO", new DocumentKey(resourceContext.getNamespace(), managedDomain, topLevelElement.id(), resourceContext.getTimestamp()), source, sourceId, null);
-        SelectableFuture<SagaHandoffResult> handoff = sec.handoff(sync, adapterLoader, saga, sagaInput, SagaCommands.getSagaAdminParameterCommands(exchange));
+        SelectableFuture<SagaHandoffResult> handoff = sec.handoff(sync, adapterLoader, saga, sagaInput, SagaCommands.getSagaAdminParameterCommands(exchange),
+                completion -> DocumentLocks.holdUntil(exchange, completion));
         SagaHandoffResult handoffResult = handoff.join();
 
         HeaderMap responseHeaders = exchange.getResponseHeaders();
