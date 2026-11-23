@@ -8,6 +8,8 @@ import graphql.relay.DefaultPageInfo;
 import graphql.relay.Edge;
 import graphql.relay.PageInfo;
 import graphql.schema.DataFetchingEnvironment;
+import graphql.schema.GraphQLNamedType;
+import graphql.schema.GraphQLUnionType;
 import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.json.JsonDocument;
@@ -44,6 +46,8 @@ public class QueryConnectionFetcher extends ConnectionFetcher<Map<String, Object
      */
     static final int DEFAULT_PAGE_SIZE = 10;
 
+    private static final String SEARCH_RESULT = "SearchResult";
+
     /**
      * The largest page: a larger {@code first} or {@code last} is taken as this.
      */
@@ -72,7 +76,13 @@ public class QueryConnectionFetcher extends ConnectionFetcher<Map<String, Object
     @Override
     Connection<Map<String, Object>> getConnection(DataFetchingEnvironment environment, ConnectionParameters connectionParameters) {
         GraphQLContext context = environment.getGraphQlContext().get(GraphQLContext.class);
-        return search(environment.getArgument("query"), environment.getArgument("filter"),
+        List<String> filter = environment.getArgument("filter");
+        if (filter == null || filter.isEmpty()) {
+            // every type that is searched, so that entries the index has of a type no longer searched are left out
+            filter = environment.getGraphQLSchema().getType(SEARCH_RESULT) instanceof GraphQLUnionType union
+                    ? union.getTypes().stream().map(GraphQLNamedType::getName).toList() : null;
+        }
+        return search(environment.getArgument("query"), filter,
                 Boolean.TRUE.equals(environment.getArgument("history")), context.getSnapshot(),
                 connectionParameters.getRange());
     }
@@ -132,7 +142,8 @@ public class QueryConnectionFetcher extends ConnectionFetcher<Map<String, Object
         IndexBasedRange settings = IndexBasedRange.fromRange(range, () -> searchIndex.search(
                 new SearchQuery(nameSpace, query, entities, snapshot, history, 0, 0)).blockingGet().total());
         SearchPage response = searchIndex.search(
-                new SearchQuery(nameSpace, query, entities, snapshot, history, settings.from, settings.size)).blockingGet();
+                        new SearchQuery(nameSpace, query, entities, snapshot, history, settings.from, settings.size))
+                .blockingGet();
 
         LOG.debug("Search query '{}' resulted in {} hits from search settings. Fetching results from {} to {}", query,
                 response.total(), settings.from, settings.from + settings.size);

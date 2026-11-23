@@ -249,6 +249,56 @@ class SolrSearchIndexTest {
         assertThat(ids(search("found", version.minusNanos(1000)))).isEmpty();
     }
 
+    /**
+     * A version is kept to the nanosecond, before 1970 too: of two versions in the same microsecond each is its own
+     * entry, the later is the one valid after it, and a moment a nanosecond before a version does not see it.
+     */
+    @Test
+    void aVersionIsKeptToTheNanosecond() {
+        ZonedDateTime first = ZonedDateTime.parse("1850-06-01T12:00:00.000000100Z");
+        ZonedDateTime second = first.plusNanos(200);
+        searchIndex.put(List.of(
+                IndexEntry.written(namespace, "Topic", "old", first, Map.of(Language.ENGLISH, List.of("whaling"))),
+                IndexEntry.written(namespace, "Topic", "old", second, Map.of(Language.ENGLISH, List.of("sailing")))))
+                .blockingAwait();
+        awaitHits(() -> searchIndex.search(new SearchQuery(namespace, "*:*", Set.of(), second, true, 0, 10))
+                .blockingGet(), 2);
+
+        assertThat(ids(search("whaling", first))).containsExactly("old");
+        assertThat(ids(search("whaling", second.minusNanos(1)))).containsExactly("old");
+        assertThat(ids(search("whaling", second))).isEmpty();
+        assertThat(search("sailing", second).hits().getFirst().key().timestamp().toInstant())
+                .isEqualTo(second.toInstant());
+        assertThat(ids(search("whaling", first.minusNanos(1)))).isEmpty();
+    }
+
+    /**
+     * Two documents whose names, joined with a slash, would read the same are two documents.
+     */
+    @Test
+    void documentsWhoseNamesJoinTheSameAreTwo() {
+        searchIndex.put(List.of(
+                IndexEntry.written(namespace, "Topic", "x/y", at(1000), Map.of(Language.NONE, List.of("twin"))),
+                IndexEntry.written(namespace + "/Topic", "x", "y", at(1000), Map.of(Language.NONE, List.of("twin")))))
+                .blockingAwait();
+
+        awaitHits(() -> search("twin", at(2000)), 1);
+        assertThat(searchIndex.search(new SearchQuery(namespace + "/Topic", "twin", Set.of(), at(2000), false, 0, 10))
+                .blockingGet().total()).isEqualTo(1);
+    }
+
+    @Test
+    void aPagePastEveryPlaceSolrCanGiveIsEmpty() {
+        searchIndex.put(List.of(text("Topic", "a", 1000, "far"))).blockingAwait();
+        awaitHits(() -> search("far", at(2000)), 1);
+
+        SearchPage page = searchIndex.search(new SearchQuery(namespace, "far", Set.of(), at(2000), false,
+                Integer.MAX_VALUE, 10)).blockingGet();
+
+        assertThat(page.hits()).isEmpty();
+        assertThat(page.total()).isEqualTo(1);
+    }
+
     @Test
     void anEntrySentAgainIsKeptOnce() {
         IndexEntry entry = text("Topic", "again", 1000, "twice");
@@ -282,7 +332,7 @@ class SolrSearchIndexTest {
         b.join();
 
         assertThat(errors).isEmpty();
-        assertThat(mark()).isEqualTo(new SolrSchema().mark());
+        assertThat(mark()).isEqualTo(new SolrSchema().markOfThisSchema());
         assertThat(ids(awaitHits(() -> search("mark", at(2000)), 2))).containsExactlyInAnyOrder("first", "second");
         // a field the schema does not have is refused: Solr does not make one
         assertThat(post("/update?commit=true", "[{\"id\": \"x\", \"unknown_field\": \"y\"}]")).isEqualTo(400);
@@ -312,10 +362,12 @@ class SolrSearchIndexTest {
         // Solr answers 404 for a core it does not have
         SolrSearchIndex missingCore = new SolrSearchIndex(Solr10.url().replace("/lds-index", "/no-such-core"));
 
-        assertThatThrownBy(() -> missingCore.put(List.of(text("Topic", "a", 1000, "one"))).blockingAwait())
+        List<IndexEntry> entries = List.of(text("Topic", "a", 1000, "one"));
+        SearchQuery query = new SearchQuery(namespace, "one", Set.of(), at(2000), false, 0, 10);
+
+        assertThatThrownBy(() -> missingCore.put(entries).blockingAwait())
                 .isInstanceOf(RemoteSolrException.class).hasMessageContaining("404");
-        assertThatThrownBy(() -> missingCore.search(new SearchQuery(namespace, "one", Set.of(), at(2000), false, 0, 10))
-                .blockingGet())
+        assertThatThrownBy(() -> missingCore.search(query).blockingGet())
                 .isInstanceOf(RemoteSolrException.class).hasMessageContaining("404");
     }
 
@@ -342,10 +394,11 @@ class SolrSearchIndexTest {
     @Test
     void anUpdateThatCannotReachSolrFailsForItsCallerAndIsTriedAgain() throws IOException {
         SolrSearchIndex unreachable = new SolrSearchIndex("http://127.0.0.1:" + closedPort() + "/solr/lds-index");
+        List<IndexEntry> entries = List.of(text("Topic", "a", 1000, "one"));
 
-        assertThatThrownBy(() -> unreachable.put(List.of(text("Topic", "a", 1000, "one"))).blockingAwait())
+        assertThatThrownBy(() -> unreachable.put(entries).blockingAwait())
                 .hasRootCauseInstanceOf(java.net.ConnectException.class);
-        assertThatThrownBy(() -> unreachable.put(List.of(text("Topic", "a", 1000, "one"))).blockingAwait())
+        assertThatThrownBy(() -> unreachable.put(entries).blockingAwait())
                 .hasRootCauseInstanceOf(java.net.ConnectException.class);
     }
 

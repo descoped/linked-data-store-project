@@ -249,7 +249,7 @@ GraphQLObjectType Query
     fetcher=QueryConnectionFetcher{{entity=SearchResultConnection, nameSpace=ns, persistence=persistence, searchIndex=searchIndex}}
 GraphQLUnionType SearchResult
   description="Union type for possible search results"
-  members=[House, Person, Pet]
+  members=[House, Person]
   typeResolver=true
 GraphQLObjectType SearchResultConnection
   description=null
@@ -273,4 +273,3 @@ GraphQLEnumType TypeFilters
   description="Defines valid type filters"
   value House = "House" description=null deprecated=null
   value Person = "Person" description=null deprecated=null
-  value Pet = "Pet" description=null deprecated=null

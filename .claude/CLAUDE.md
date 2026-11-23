@@ -422,5 +422,6 @@ words only then, so a word only an older version had does not find the document;
 version. The Solr schema is LDS's own and does not depend on the model (`SolrSchema`), so a model that changes needs
 nothing of Solr; what was indexed under an earlier model stays until the index is rebuilt. Keep these: an entry is
 never updated in place; the words are a parameter that edismax reads in the text fields with `uf=-*`, never part of
-the query; the collapse to the newest version comes before the test of the words. Fields for each path (filters,
-facets, where a word matched) are left out until there is a need.
+the query; the collapse to the newest version comes before the test of the words. A search therefore looks at every
+version of the namespace up to the snapshot; its cost grows with the history (accepted, to be measured with the load
+test). Fields for each path (filters, facets, where a word matched) are left out until there is a need.

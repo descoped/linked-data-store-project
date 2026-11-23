@@ -10,7 +10,6 @@ import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Single;
 
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -27,7 +26,7 @@ import java.util.stream.Collectors;
  */
 public class SimpleSearchIndex implements SearchIndex {
 
-    private record Version(String namespace, String entity, String id, long version) {
+    private record Version(String namespace, String entity, String id, Instant version) {
     }
 
     private final Map<Version, IndexEntry> entries = new ConcurrentHashMap<>();
@@ -35,7 +34,7 @@ public class SimpleSearchIndex implements SearchIndex {
     @Override
     public Completable put(List<IndexEntry> list) {
         return Completable.fromAction(() -> list.forEach(entry -> entries.put(new Version(entry.namespace(),
-                entry.entity(), entry.id(), ChronoUnit.MICROS.between(Instant.EPOCH, entry.version().toInstant())), entry)));
+                entry.entity(), entry.id(), entry.version().toInstant()), entry)));
     }
 
     @Override
@@ -51,10 +50,7 @@ public class SimpleSearchIndex implements SearchIndex {
                     .filter(entry -> query.entities().isEmpty() || query.entities().contains(entry.entity()))
                     .filter(entry -> !entry.version().toInstant().isAfter(query.snapshot().toInstant()))
                     .toList();
-            List<IndexEntry> candidates = query.history() ? inScope : List.copyOf(inScope.stream()
-                    .collect(Collectors.toMap(entry -> List.of(entry.entity(), entry.id()), Function.identity(),
-                            (a, b) -> a.version().toInstant().isAfter(b.version().toInstant()) ? a : b))
-                    .values());
+            List<IndexEntry> candidates = query.history() ? inScope : newestOfEach(inScope);
             List<IndexEntry> hits = candidates.stream()
                     .filter(entry -> !entry.deleted() && matches(entry, query.text()))
                     .sorted(Comparator.comparing(IndexEntry::entity).thenComparing(IndexEntry::id)
@@ -65,6 +61,12 @@ public class SimpleSearchIndex implements SearchIndex {
                             entry.version())))
                     .toList());
         });
+    }
+
+    private static List<IndexEntry> newestOfEach(List<IndexEntry> entries) {
+        return List.copyOf(entries.stream().collect(Collectors.toMap(entry -> List.of(entry.entity(), entry.id()),
+                Function.identity(), (a, b) -> a.version().toInstant().isAfter(b.version().toInstant()) ? a : b))
+                .values());
     }
 
     private static boolean matches(IndexEntry entry, String text) {

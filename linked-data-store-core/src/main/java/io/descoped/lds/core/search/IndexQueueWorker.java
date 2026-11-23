@@ -31,15 +31,16 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Sends the updates of the index queue to the search index. In rounds: it takes a batch of updates, reads each
- * written document from storage at its version (one after another: a transaction is one connection or session of the
- * store), sends the entries of the batch in one request ({@link IndexEntries}: a written version with its texts, a
- * deletion as a deletion), and removes the updates when the index has taken them. An update the index does not take is put off and tried again, later each time, up to a minute; when a batch
- * fails, each of its updates is tried alone, so one update the index refuses does not hold back the others. A round
- * follows at once when the last one took updates, and after a short wait when there were none.
+ * written document from storage at its version (one after another: a transaction is one connection or session of
+ * the store), sends the entries of the batch in one request ({@link IndexEntries}: a written version with its
+ * texts, a deletion as a deletion), and removes the updates when the index has taken them. An update the index does
+ * not take is put off and tried again, later each time, up to a minute; when a batch fails, each of its updates is
+ * tried alone, so one update the index refuses does not hold back the others. A round follows at once when the last
+ * one took updates, and after a short wait when there were none.
  * <p>
  * Storage holds the version of every update: the saga of a write adds it to the queue only after its storage step,
- * and never undoes that step, and a rebuild adds what it read from storage. Storage is read as of the version, so the
- * index is told what storage holds; a document storage does not have at all is not sent.
+ * and never undoes that step, and a rebuild adds what it read from storage. Storage is read as of the version, so
+ * the index is told what storage holds; a document storage does not have at all is not sent.
  * <p>
  * An update the index keeps refusing is tried again for as long as LDS runs, a minute apart: an update is never
  * dropped (decided by the owner, D1 and D2). From its tenth attempt each refusal is logged as an error, and the
@@ -80,8 +81,8 @@ public final class IndexQueueWorker {
      * @param indexEntries what the index is given of a document
      * @param poll         how long it waits for updates when there were none
      */
-    public IndexQueueWorker(IndexQueue queue, SearchIndex index, RxJsonPersistence persistence, IndexEntries indexEntries,
-                            Duration poll) {
+    public IndexQueueWorker(IndexQueue queue, SearchIndex index, RxJsonPersistence persistence,
+                            IndexEntries indexEntries, Duration poll) {
         this.queue = queue;
         this.index = index;
         this.persistence = persistence;

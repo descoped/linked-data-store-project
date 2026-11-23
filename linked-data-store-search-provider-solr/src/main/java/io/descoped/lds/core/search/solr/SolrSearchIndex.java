@@ -25,14 +25,17 @@ import org.apache.solr.common.util.NamedList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -56,6 +59,8 @@ public class SolrSearchIndex implements SearchIndex {
 
     private static final Logger LOG = LoggerFactory.getLogger(SolrSearchIndex.class);
     private static final int COMMIT_WITHIN_MILLIS = 5000;
+    /* The last place of a hit that Solr gives: start and rows are ints, and so is their sum. */
+    private static final long MAX_PLACE = Integer.MAX_VALUE;
     private static final Duration CONNECTION_TIMEOUT = Duration.ofSeconds(10);
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(60);
     private static final String JSON = "application/json";
@@ -67,7 +72,11 @@ public class SolrSearchIndex implements SearchIndex {
     /* The user's words, read by edismax in every text field: a field or a query in them is read as words. */
     private static final String WORDS = "{!edismax qf=$ldsFields uf=-* q.op=OR sow=true v=$ldsText}";
     private static final String HIT_FIELDS = String.join(",", SolrSchema.NAMESPACE, SolrSchema.ENTITY,
-            SolrSchema.DOCUMENT_ID, SolrSchema.EXACT_VERSION);
+            SolrSchema.DOCUMENT_ID, SolrSchema.VERSION_SECONDS, SolrSchema.VERSION_NANOS);
+    private static final String TERM = "{!term f=";
+    /* The newest version first. */
+    private static final String NEWEST_FIRST = SolrSchema.VERSION_SECONDS + " desc,"
+            + SolrSchema.VERSION_NANOS + " desc";
 
     private final HttpJdkSolrClient solrClient;
     private final SolrSchema schema = new SolrSchema();
@@ -116,14 +125,16 @@ public class SolrSearchIndex implements SearchIndex {
 
     private static SolrInputDocument solrDocument(IndexEntry entry) {
         SolrInputDocument document = new SolrInputDocument();
-        long version = micros(entry.version());
-        document.addField(SolrSchema.ID, documentOf(entry.namespace(), entry.entity(), entry.id(), version));
+        Instant version = entry.version().toInstant();
+        String key = documentKey(entry.namespace(), entry.entity(), entry.id());
+        // the version as it is written is unique for one version: seconds and nanoseconds
+        document.addField(SolrSchema.ID, key + "!" + version.getEpochSecond() + "." + version.getNano());
         document.addField(SolrSchema.NAMESPACE, entry.namespace());
         document.addField(SolrSchema.ENTITY, entry.entity());
         document.addField(SolrSchema.DOCUMENT_ID, entry.id());
-        document.addField(SolrSchema.DOCUMENT, documentOf(entry.namespace(), entry.entity(), entry.id(), null));
-        document.addField(SolrSchema.VERSION, version);
-        document.addField(SolrSchema.EXACT_VERSION, entry.version().toInstant().toString());
+        document.addField(SolrSchema.DOCUMENT, key);
+        document.addField(SolrSchema.VERSION_SECONDS, version.getEpochSecond());
+        document.addField(SolrSchema.VERSION_NANOS, (long) version.getNano());
         document.addField(SolrSchema.DELETED, entry.deleted());
         for (Map.Entry<Language, List<String>> texts : entry.texts().entrySet()) {
             for (String text : texts.getValue()) {
@@ -135,20 +146,22 @@ public class SolrSearchIndex implements SearchIndex {
     }
 
     /*
-     * The key of a document, or of one of its versions, as one text. A namespace and an entity type have no '/' (LDS
-     * refuses such names at start), the version is digits, and the id, which can hold anything, is last, so two
-     * different keys never give the same text.
+     * One value for every version of a document: SHA-256 of the namespace, the entity type and the id, each with its
+     * length before it, so that no two documents have the same value whatever their names hold. The value is not
+     * read back: a hit is made of the fields that hold the names.
      */
-    private static String documentOf(String namespace, String entity, String id, Long version) {
-        return version == null ? namespace + "/" + entity + "/" + id : namespace + "/" + entity + "/" + version + "/" + id;
-    }
-
-    /*
-     * The version in whole microseconds, rounded down: versions are compared and a search is at a moment to the
-     * microsecond. A hit gives back the exact version (EXACT_VERSION).
-     */
-    private static long micros(ZonedDateTime version) {
-        return ChronoUnit.MICROS.between(Instant.EPOCH, version.toInstant());
+    private static String documentKey(String namespace, String entity, String id) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            for (String part : List.of(namespace, entity, id)) {
+                byte[] bytes = part.getBytes(StandardCharsets.UTF_8);
+                digest.update(ByteBuffer.allocate(Integer.BYTES).putInt(bytes.length).array());
+                digest.update(bytes);
+            }
+            return HexFormat.of().formatHex(digest.digest());
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is part of every JDK", e);
+        }
     }
 
     /*
@@ -177,20 +190,27 @@ public class SolrSearchIndex implements SearchIndex {
         params.set("ldsText", query.text());
         params.set("ldsFields", TEXT_FIELDS);
         params.set("ldsWords", WORDS);
-        params.set("ldsDeleted", "{!term f=" + SolrSchema.DELETED + "}true");
-        params.add("fq", "{!term f=" + SolrSchema.NAMESPACE + " v=$ldsNamespace}");
+        params.set("ldsDeleted", TERM + SolrSchema.DELETED + "}true");
+        params.add("fq", TERM + SolrSchema.NAMESPACE + " v=$ldsNamespace}");
         params.set("ldsNamespace", query.namespace());
         if (!query.entities().isEmpty()) {
             List<String> entities = query.entities().stream().sorted().toList();
             StringBuilder anyOf = new StringBuilder("{!bool");
             for (int i = 0; i < entities.size(); i++) {
                 anyOf.append(" should=$ldsEntity").append(i);
-                params.set("ldsEntity" + i, "{!term f=" + SolrSchema.ENTITY + " v=$ldsEntityName" + i + "}");
+                params.set("ldsEntity" + i, TERM + SolrSchema.ENTITY + " v=$ldsEntityName" + i + "}");
                 params.set("ldsEntityName" + i, entities.get(i));
             }
             params.add("fq", anyOf.append('}').toString());
         }
-        params.add("fq", SolrSchema.VERSION + ":[* TO " + micros(query.snapshot()) + "]");
+        // up to the moment, to the nanosecond: an earlier second, or the same second and no later nanosecond
+        Instant snapshot = query.snapshot().toInstant();
+        params.add("fq", "{!bool should=$ldsEarlier should=$ldsSameSecond}");
+        params.set("ldsEarlier", SolrSchema.VERSION_SECONDS + ":[* TO " + (snapshot.getEpochSecond() - 1) + "]");
+        params.set("ldsSameSecond", "{!bool must=$ldsSecond must=$ldsNanos}");
+        params.set("ldsSecond", SolrSchema.VERSION_SECONDS + ":[" + snapshot.getEpochSecond() + " TO "
+                + snapshot.getEpochSecond() + "]");
+        params.set("ldsNanos", SolrSchema.VERSION_NANOS + ":[* TO " + snapshot.getNano() + "]");
         if (query.history()) {
             // every version that has the words and is not a deletion
             params.set("q", "{!query v=$ldsWords}");
@@ -200,14 +220,20 @@ public class SolrSearchIndex implements SearchIndex {
             // of each document with its score; then only a newest one that has the words and is not a deletion
             params.set("q", "{!bool filter=$ldsAll should=$ldsWords}");
             params.set("ldsAll", "*:*");
-            params.add("fq", "{!collapse field=" + SolrSchema.DOCUMENT + " max=" + SolrSchema.VERSION + "}");
+            params.add("fq", "{!collapse field=" + SolrSchema.DOCUMENT + " sort='" + NEWEST_FIRST + "'}");
             params.set("ldsLive", "{!bool must=$ldsWords must_not=$ldsDeleted}");
             params.add("fq", "{!frange l=0 incl=false cache=false cost=200}query($ldsLive,0)");
         }
-        params.set("sort", "score desc," + SolrSchema.DOCUMENT + " asc," + SolrSchema.VERSION + " desc");
+        params.set("sort", "score desc," + SolrSchema.DOCUMENT + " asc," + NEWEST_FIRST);
         params.set("fl", HIT_FIELDS);
-        params.set("start", Math.toIntExact(query.from()));
-        params.set("rows", Math.toIntExact(query.size()));
+        if (query.from() + query.size() > MAX_PLACE) {
+            // past every place Solr can give: no hits, and the number of hits in all
+            params.set("start", 0);
+            params.set("rows", 0);
+        } else {
+            params.set("start", (int) query.from());
+            params.set("rows", (int) query.size());
+        }
         return params;
     }
 
@@ -215,7 +241,8 @@ public class SolrSearchIndex implements SearchIndex {
         SolrDocumentList documents = response.getResults();
         List<SearchHit> hits = new ArrayList<>(documents.size());
         for (SolrDocument document : documents) {
-            Instant version = Instant.parse((String) document.getFirstValue(SolrSchema.EXACT_VERSION));
+            Instant version = Instant.ofEpochSecond((Long) document.getFirstValue(SolrSchema.VERSION_SECONDS),
+                    (Long) document.getFirstValue(SolrSchema.VERSION_NANOS));
             hits.add(new SearchHit(new DocumentKey((String) document.getFirstValue(SolrSchema.NAMESPACE),
                     (String) document.getFirstValue(SolrSchema.ENTITY),
                     (String) document.getFirstValue(SolrSchema.DOCUMENT_ID),
@@ -247,25 +274,27 @@ public class SolrSearchIndex implements SearchIndex {
                 .flatMapCompletable(overlay -> {
                     Object mark = SolrSchema.get(SolrSchema.get(SolrSchema.get(overlay, "overlay"), "userProps"),
                             SolrSchema.MARK);
-                    if (schema.mark().equals(mark)) {
+                    if (schema.markOfThisSchema().equals(mark)) {
                         return Completable.complete();
                     }
                     // the default chain of updates makes a field of every name it does not know, and refuses every
                     // update once the core has 1000 fields; off, Solr refuses a field it does not know
                     return post("/config", "{\"set-user-property\": {\"update.autoCreateFields\": \"false\"}}")
-                            .andThen(Single.zip(names("/schema/fieldtypes", "fieldTypes"), names("/schema/fields", "fields"),
+                            .andThen(Single.zip(names("/schema/fieldtypes", "fieldTypes"),
+                                    names("/schema/fields", "fields"),
                                     (types, fields) -> {
                                         if (schema.replaces(types, fields)) {
-                                            LOG.warn("The schema of the search index is changed: what was indexed before "
-                                                    + "is searched as it was indexed until the index is rebuilt "
-                                                    + "(search.index.rebuild)");
+                                            LOG.warn("The schema of the search index is changed: what was "
+                                                    + "indexed before is searched as it was indexed until the index "
+                                                    + "is rebuilt (search.index.rebuild)");
                                         }
                                         return schema.changes(types, fields);
                                     }))
                             .flatMapCompletable(changes -> post("/schema", changes))
                             .andThen(post("/config", "{\"set-user-property\": {\"" + SolrSchema.MARK + "\": \""
-                                    + schema.mark() + "\"}}"))
-                            .doOnComplete(() -> LOG.info("The schema of the search index is put in ({})", schema.mark()));
+                                    + schema.markOfThisSchema() + "\"}}"))
+                            .doOnComplete(() -> LOG.info("The schema of the search index is put in ({})",
+                                    schema.markOfThisSchema()));
                 });
     }
 

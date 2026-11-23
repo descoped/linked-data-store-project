@@ -22,6 +22,8 @@ import static graphql.Scalars.GraphQLString;
 import static graphql.schema.GraphQLArgument.newArgument;
 import static graphql.schema.GraphQLList.list;
 import static graphql.schema.GraphQLNonNull.nonNull;
+import io.descoped.lds.graphql.directives.DomainDirective;
+
 import static io.descoped.lds.graphql.directives.DomainDirective.hasDomainDirective;
 import static io.descoped.lds.graphql.schemas.SchemaElements.newEnum;
 import static io.descoped.lds.graphql.schemas.SchemaElements.newFieldDefinition;
@@ -45,6 +47,7 @@ public class AddSearchTypesVisitor extends GraphQLTypeVisitorStub {
     private final Map<String, GraphQLNamedType> typeMap;
     private final GraphQLEnumType.Builder typeFilterEnum;
     private final GraphQLUnionType.Builder searchResultType;
+    private int searched;
 
     public AddSearchTypesVisitor(Map<String, GraphQLNamedType> typeMap, GraphQLObjectType.Builder query) {
         this.typeMap = typeMap;
@@ -69,14 +72,20 @@ public class AddSearchTypesVisitor extends GraphQLTypeVisitorStub {
 
     @Override
     public TraversalControl visitGraphQLObjectType(GraphQLObjectType node, TraverserContext<GraphQLSchemaElement> context) {
-        if (hasDomainDirective(node)) {
+        // a type the model marks as not searched is not searched, also for entries the index has from before
+        if (hasDomainDirective(node) && DomainDirective.isSearched(node)) {
             typeFilterEnum.value(node.getName());
             searchResultType.possibleType(node);
+            searched++;
         }
         return TraversalControl.CONTINUE;
     }
 
     public GraphQLType getQuery() {
+        if (searched == 0) {
+            // no type is searched: no search
+            return query.build();
+        }
 
         if (typeMap.containsKey(TYPE_FILTERS)) {
             throw new IllegalArgumentException("type map already contains " + TYPE_FILTERS);

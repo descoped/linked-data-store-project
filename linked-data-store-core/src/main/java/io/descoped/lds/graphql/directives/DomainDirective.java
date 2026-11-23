@@ -107,13 +107,23 @@ public class DomainDirective {
         Set<String> names = new TreeSet<>();
         for (GraphQLObjectType type : schema.getAllTypesAsList().stream()
                 .filter(GraphQLObjectType.class::isInstance).map(GraphQLObjectType.class::cast).toList()) {
-            GraphQLAppliedDirective domain = type.getAppliedDirective(NAME);
-            GraphQLAppliedDirectiveArgument searchable = domain == null ? null : domain.getArgument(SEARCHABLE_NAME);
-            if (searchable != null && Boolean.FALSE.equals(searchable.getValue())) {
+            if (hasDomainDirective(type) && !isSearched(type)) {
                 names.add(type.getName());
             }
         }
         return names;
+    }
+
+    /**
+     * Whether a type is searched: not when its directive says {@code searchable: false}.
+     *
+     * @param type the type
+     * @return false when the directive of the type says so
+     */
+    public static boolean isSearched(GraphQLObjectType type) {
+        GraphQLAppliedDirective domain = type.getAppliedDirective(NAME);
+        GraphQLAppliedDirectiveArgument searchable = domain == null ? null : domain.getArgument(SEARCHABLE_NAME);
+        return searchable == null || !Boolean.FALSE.equals(searchable.getValue());
     }
 
 }

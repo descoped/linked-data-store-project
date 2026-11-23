@@ -152,7 +152,7 @@ GraphQLObjectType Query
     fetcher=QueryConnectionFetcher{{entity=SearchResultConnection, nameSpace=ns, persistence=persistence, searchIndex=searchIndex}}
 GraphQLUnionType SearchResult
   description="Union type for possible search results"
-  members=[A, B]
+  members=[B]
   typeResolver=true
 GraphQLObjectType SearchResultConnection
   description=null
@@ -172,5 +172,4 @@ GraphQLScalarType String
   description="Built-in String"
 GraphQLEnumType TypeFilters
   description="Defines valid type filters"
-  value A = "A" description=null deprecated=null
   value B = "B" description=null deprecated=null

@@ -84,7 +84,7 @@ public final class IndexEntries {
             return;
         }
         if (node.isString()) {
-            if (element == null || element.getFormat() == null || !NOT_TEXT.contains(element.getFormat())) {
+            if (isText(element)) {
                 add(texts, Language.NONE, node.stringValue());
             }
         } else if (node.isArray()) {
@@ -93,21 +93,39 @@ public final class IndexEntries {
                 walk(item, items, texts);
             }
         } else if (node.isObject()) {
-            JsonNode code = node.get(LANGUAGE_CODE);
-            JsonNode text = node.get(LANGUAGE_TEXT);
-            boolean inALanguage = code != null && code.isString() && text != null && text.isString();
-            for (var property : node.properties()) {
-                SpecificationElement child = element == null ? null : element.getProperties().get(property.getKey());
-                if (inALanguage && LANGUAGE_CODE.equals(property.getKey())) {
-                    continue;
-                }
-                if (inALanguage && LANGUAGE_TEXT.equals(property.getKey())) {
-                    add(texts, Language.of(code.stringValue()), text.stringValue());
-                    continue;
-                }
-                walk(property.getValue(), child, texts);
+            walkObject(node, element, texts);
+        }
+    }
+
+    /*
+     * A text field is text unless the model gives it the format of a date or a time.
+     */
+    private static boolean isText(SpecificationElement element) {
+        return element == null || element.getFormat() == null || !NOT_TEXT.contains(element.getFormat());
+    }
+
+    private static void walkObject(JsonNode node, SpecificationElement element, Map<Language, List<String>> texts) {
+        Language language = languageOf(node);
+        for (var property : node.properties()) {
+            String name = property.getKey();
+            if (language != null && LANGUAGE_TEXT.equals(name)) {
+                add(texts, language, property.getValue().stringValue());
+            } else if (language == null || !LANGUAGE_CODE.equals(name)) {
+                walk(property.getValue(), element == null ? null : element.getProperties().get(name), texts);
             }
         }
+    }
+
+    /*
+     * The language of an object that is a text in a language: one with a languageCode and a languageText, both texts.
+     */
+    private static Language languageOf(JsonNode node) {
+        JsonNode code = node.get(LANGUAGE_CODE);
+        JsonNode text = node.get(LANGUAGE_TEXT);
+        if (code != null && code.isString() && text != null && text.isString()) {
+            return Language.of(code.stringValue());
+        }
+        return null;
     }
 
     private static void add(Map<Language, List<String>> texts, Language language, String text) {

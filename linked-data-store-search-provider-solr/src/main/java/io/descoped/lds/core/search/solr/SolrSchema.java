@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -33,13 +34,16 @@ final class SolrSchema {
     static final String ENTITY = "lds_entity";
     static final String DOCUMENT_ID = "lds_id";
     static final String DOCUMENT = "lds_doc";
-    static final String VERSION = "lds_version";
     /**
-     * The version as it was given, to the nanosecond, which a hit gives back: {@link #VERSION} is in microseconds,
-     * and a store may keep a version to the nanosecond (Neo4j does), so that a read at the microsecond would be
-     * before it.
+     * The version: its whole seconds since 1970 (rounded down), and the nanoseconds within the second
+     * ({@link #VERSION_NANOS}). Two numbers, so that every instant is kept exactly: a store may keep a version to the
+     * nanosecond (Neo4j does), and one number of nanoseconds holds only the years 1677 to 2262.
      */
-    static final String EXACT_VERSION = "lds_version_exact";
+    static final String VERSION_SECONDS = "lds_version_s";
+    /**
+     * The nanoseconds of the version within its second, 0 to 999,999,999.
+     */
+    static final String VERSION_NANOS = "lds_version_n";
     static final String DELETED = "lds_deleted";
     private static final String FOLDED = "_folded";
     static final String INDEXED = "lds_indexed";
@@ -112,7 +116,8 @@ final class SolrSchema {
             case NONE -> List.of();
             case NORWEGIAN -> List.of(filter("solr.NorwegianLightStemFilterFactory").put("variant", "no"));
             case SWEDISH -> List.of(filter("solr.SwedishLightStemFilterFactory"));
-            case ENGLISH -> List.of(filter("solr.EnglishPossessiveFilterFactory"), filter("solr.PorterStemFilterFactory"));
+            case ENGLISH -> List.of(filter("solr.EnglishPossessiveFilterFactory"),
+                    filter("solr.PorterStemFilterFactory"));
             case GERMAN -> List.of(filter("solr.GermanNormalizationFilterFactory"),
                     filter("solr.GermanLightStemFilterFactory"));
             case FRENCH -> List.of(filter("solr.FrenchLightStemFilterFactory"));
@@ -137,8 +142,8 @@ final class SolrSchema {
         for (String name : List.of(NAMESPACE, ENTITY, DOCUMENT_ID, DOCUMENT)) {
             fields.add(field(name, STRING));
         }
-        fields.add(field(VERSION, LONG));
-        fields.add(field(EXACT_VERSION, STRING).put(INDEXED_ATTRIBUTE, false));
+        fields.add(field(VERSION_SECONDS, LONG));
+        fields.add(field(VERSION_NANOS, LONG));
         fields.add(field(DELETED, BOOLEAN));
         // the time Solr took the entry, which Solr sets itself
         fields.add(field(INDEXED, DATE).put("default", "NOW"));
@@ -164,7 +169,7 @@ final class SolrSchema {
     }
 
     private static String textType(Language language) {
-        return "lds_text_" + language.name().toLowerCase(java.util.Locale.ROOT);
+        return "lds_text_" + language.name().toLowerCase(Locale.ROOT);
     }
 
     private static ObjectNode text(String name, Language language, boolean folded) {
@@ -205,7 +210,7 @@ final class SolrSchema {
      *
      * @return 16 hex digits
      */
-    String mark() {
+    String markOfThisSchema() {
         return digest;
     }
 

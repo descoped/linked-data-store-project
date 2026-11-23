@@ -16,6 +16,7 @@ public class SolrProvider implements SearchIndexProvider {
      * The provider, as the service loader makes it.
      */
     public SolrProvider() {
+        // nothing to set up: the index is made by getSearchIndex, with the configuration
     }
 
     @Override
