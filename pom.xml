@@ -132,75 +132,11 @@
         </repository>
     </repositories>
 
-    <profiles>
-        <!-- SNAPSHOTs to Descoped's AWS CodeArtifact repository maven-snapshots, read publicly at
-             https://maven.descoped.io/. Only SNAPSHOTs: the enforcer fails a release version, and there is no
-             release repository. CI deploys with it after a green build (the job snapshot in ci.yml): it looks the
-             endpoint up at run time and sets descoped.snapshots.url in a settings.xml profile it writes, then runs
-             ./mvnw -P descoped-snapshots deploy. The endpoint names the AWS account, so it is never written in this
-             repository or in a deployed POM. Without this profile, deploy has no repository and fails. LDS never
-             publishes to Maven Central: a release is its images, a tag and a GitHub release (release.yml). -->
-        <profile>
-            <id>descoped-snapshots</id>
-            <distributionManagement>
-                <snapshotRepository>
-                    <id>descoped-snapshots</id>
-                    <url>${descoped.snapshots.url}</url>
-                </snapshotRepository>
-            </distributionManagement>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-enforcer-plugin</artifactId>
-                        <executions>
-                            <execution>
-                                <id>only-snapshots-to-descoped</id>
-                                <goals>
-                                    <goal>enforce</goal>
-                                </goals>
-                                <configuration>
-                                    <rules>
-                                        <requireSnapshotVersion>
-                                            <message>Only SNAPSHOTs go to maven.descoped.io; a release of LDS publishes no jar.</message>
-                                        </requireSnapshotVersion>
-                                        <requireProperty>
-                                            <property>descoped.snapshots.url</property>
-                                            <message>descoped.snapshots.url is not set: define it in a settings.xml profile (CI writes one).</message>
-                                            <regex>https://\S+/</regex>
-                                            <regexMessage>descoped.snapshots.url must be an https URL ending in /, not empty or an unexpanded ${env...}.</regexMessage>
-                                        </requireProperty>
-                                    </rules>
-                                </configuration>
-                            </execution>
-                        </executions>
-                    </plugin>
-                    <!-- Sources for IDEs that use a SNAPSHOT. -->
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-source-plugin</artifactId>
-                        <version>3.4.0</version>
-                        <executions>
-                            <execution>
-                                <id>attach-sources</id>
-                                <goals>
-                                    <goal>jar-no-fork</goal>
-                                </goals>
-                            </execution>
-                        </executions>
-                    </plugin>
-                    <!-- Every module is built before the first upload, so a failed build uploads nothing. -->
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-deploy-plugin</artifactId>
-                        <configuration>
-                            <deployAtEnd>true</deployAtEnd>
-                        </configuration>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
+    <!-- No <distributionManagement>, and never one. The job snapshot of ci.yml names its target on the command line
+         (altSnapshotDeploymentRepository), which applies to SNAPSHOTs only, so a release version has nowhere to
+         deploy. LDS never publishes to Maven Central: a release is its images, a tag and a GitHub release. -->
 
+    <profiles>
         <profile>
             <id>coverage</id>
             <build>
@@ -391,6 +327,19 @@
                     <version>3.2.0</version>
                 </plugin>
 
+                <!-- The job snapshot of ci.yml attaches the sources of every module (source:jar-no-fork) for IDEs that
+                     use a SNAPSHOT. That goal runs before the lifecycle, so the sources jar goes in a folder of its own:
+                     the server and the load test remove every jar in target at prepare-package, and the image takes
+                     target/linked-data-store-server-*.jar. -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-source-plugin</artifactId>
+                    <version>3.4.0</version>
+                    <configuration>
+                        <outputDirectory>${project.build.directory}/sources</outputDirectory>
+                    </configuration>
+                </plugin>
+
                 <!-- The job snapshot of ci.yml reads the version (help:evaluate) and sets a branch's own version
                      (versions:set). -->
                 <plugin>
@@ -423,9 +372,9 @@
                                 <requireJavaVersion>
                                     <version>${java.version}</version>
                                 </requireJavaVersion>
-                                <!-- Sonatype's central-publishing-maven-plugin does not support Maven 4. -->
+                                <!-- maven-build-cache-extension (.mvn/extensions.xml) requires Maven 3.9 or later. -->
                                 <requireMavenVersion>
-                                    <version>[3.6.3,4)</version>
+                                    <version>3.9.0</version>
                                 </requireMavenVersion>
                             </rules>
                         </configuration>
