@@ -411,13 +411,16 @@ steps, the same load (80 reads to 20 writes, 1 to 50 threads, ten seconds each),
 
 Decided by the owner (the design of 2026-11-23 in the dossier): the search index holds one entry for each version of
 each document, written or deleted, never changed, with the texts of the version (`IndexEntry`, made by
-`IndexEntries` in core with the model). A text in an object with a `languageCode` and a `languageText` is searched in
-the language of the code, with that language's stemmer (`Language`: Norwegian bokmål and nynorsk, Swedish, English,
-German, French); every other text word for word. A link, a date, a time, a number and a boolean are not text, and an
-entity type marked `@domain(searchable: false)` has no entries. A search is at a moment (`SearchQuery`): of each
-document the newest entry up to it, tested for the words only then, so a word only an older version had does not
-find the document; `history` gives every matching version. The Solr schema is LDS's own and does not depend on the
-model (`SolrSchema`), so a model that changes needs nothing of Solr; what was indexed under an earlier model stays
-until the index is rebuilt. Keep these: an entry is never updated in place; the words are a parameter that edismax
-reads in the text fields with `uf=-*`, never part of the query; the collapse to the newest version comes before the
-test of the words. Fields for each path (filters, facets, where a word matched) are left out until there is a need.
+`IndexEntries` in core with the model). A text in an object with a `languageCode` and a `languageText` is searched
+in the language of the code, with that language's stemmer (`Language`: Norwegian bokmål and nynorsk, Swedish,
+English, German, French); every other text word for word. Each text is also in a field with its letters folded (ø,
+ö, oe as o; å, ä, æ, aa, ae as a in Norwegian, Swedish and texts of no language; accents taken off), before the
+stem, so a word typed without its letters is found, and a match as it is written counts twice and ranks first. A
+link, a date, a time, a number and a boolean are not text, and an entity type marked `@domain(searchable: false)`
+has no entries. A search is at a moment (`SearchQuery`): of each document the newest entry up to it, tested for the
+words only then, so a word only an older version had does not find the document; `history` gives every matching
+version. The Solr schema is LDS's own and does not depend on the model (`SolrSchema`), so a model that changes needs
+nothing of Solr; what was indexed under an earlier model stays until the index is rebuilt. Keep these: an entry is
+never updated in place; the words are a parameter that edismax reads in the text fields with `uf=-*`, never part of
+the query; the collapse to the newest version comes before the test of the words. Fields for each path (filters,
+facets, where a word matched) are left out until there is a need.

@@ -130,6 +130,48 @@ class SolrSearchIndexTest {
         assertThat(ids(search("Acme", at(2000)))).containsExactlyInAnyOrder("nb", "en");
     }
 
+    /**
+     * A word is found also when it is typed without the letters it is written with, or with them when it is written
+     * without: ø, å, æ and the ways they are written without them (oe, aa, ae), and accents.
+     */
+    @Test
+    void aWordIsFoundTypedWithOrWithoutItsLetters() {
+        searchIndex.put(List.of(
+                text("Topic", "nb", 1000, Language.NORWEGIAN, "Bøkene på hylla er kjære"),
+                text("Topic", "sv", 1000, Language.SWEDISH, "Böckerna på hyllan"),
+                text("Topic", "name", 1000, Language.NONE, "Åse Bjørn"),
+                text("Topic", "fr", 1000, Language.FRENCH, "Les écoles de l'île"),
+                text("Topic", "de", 1000, Language.GERMAN, "Die Häuser"),
+                text("Topic", "plain", 1000, Language.NORWEGIAN, "Boker uten bokstaver"))).blockingAwait();
+        awaitHits(() -> search("*:*", at(2000)), 6);
+
+        assertThat(ids(search("boker", at(2000)))).containsExactlyInAnyOrder("nb", "plain");
+        assertThat(ids(search("bøker", at(2000)))).containsExactlyInAnyOrder("nb", "plain");
+        assertThat(ids(search("kjaere", at(2000)))).containsExactly("nb");
+        assertThat(ids(search("kjare", at(2000)))).containsExactly("nb");
+        assertThat(ids(search("bockerna", at(2000)))).containsExactly("sv");
+        assertThat(ids(search("Aase", at(2000)))).containsExactly("name");
+        assertThat(ids(search("Ase", at(2000)))).containsExactly("name");
+        assertThat(ids(search("Bjorn", at(2000)))).containsExactly("name");
+        assertThat(ids(search("ile", at(2000)))).containsExactly("fr");
+        assertThat(ids(search("ecoles", at(2000)))).containsExactly("fr");
+        assertThat(ids(search("Hauser", at(2000)))).containsExactly("de");
+    }
+
+    /**
+     * A word as it is written ranks before the same word with other letters: "for" finds "før" too, after "for".
+     */
+    @Test
+    void aWordAsItIsWrittenRanksFirst() {
+        searchIndex.put(List.of(
+                text("Topic", "before", 1000, Language.NORWEGIAN, "før middag"),
+                text("Topic", "for", 1000, Language.NORWEGIAN, "for middag"))).blockingAwait();
+        awaitHits(() -> search("*:*", at(2000)), 2);
+
+        assertThat(ids(search("for", at(2000)))).containsExactly("for", "before");
+        assertThat(ids(search("før", at(2000)))).containsExactly("before", "for");
+    }
+
     @Test
     void theWordsAreAPhraseAllOfThemOrAnyOfThem() {
         searchIndex.put(List.of(

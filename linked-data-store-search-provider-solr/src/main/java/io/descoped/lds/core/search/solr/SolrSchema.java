@@ -41,12 +41,20 @@ final class SolrSchema {
      */
     static final String EXACT_VERSION = "lds_version_exact";
     static final String DELETED = "lds_deleted";
+    private static final String FOLDED = "_folded";
     static final String INDEXED = "lds_indexed";
 
     /**
-     * The field of the texts of each language.
+     * The field of the texts of each language, as they are written.
      */
-    static final Map<Language, String> TEXT_FIELDS = textFields();
+    static final Map<Language, String> TEXT_FIELDS = textFields("");
+
+    /**
+     * The field of the texts of each language with the letters folded: ø, ö and oe as o, å, ä, æ, aa and ae as a
+     * (in Norwegian, Swedish and in texts of no language), and every accent taken off (é as e), so that a word typed
+     * without them is found.
+     */
+    static final Map<Language, String> FOLDED_FIELDS = textFields(FOLDED);
 
     private static final String TEXT_FIELD = "solr.TextField";
     private static final String STRING = "lds_string";
@@ -67,14 +75,14 @@ final class SolrSchema {
     private final List<ObjectNode> fields = fields();
     private final String digest = digest();
 
-    private static Map<Language, String> textFields() {
+    private static Map<Language, String> textFields(String suffix) {
         Map<Language, String> fields = new EnumMap<>(Language.class);
-        fields.put(Language.NONE, "lds_text");
-        fields.put(Language.NORWEGIAN, "lds_text_no");
-        fields.put(Language.SWEDISH, "lds_text_sv");
-        fields.put(Language.ENGLISH, "lds_text_en");
-        fields.put(Language.GERMAN, "lds_text_de");
-        fields.put(Language.FRENCH, "lds_text_fr");
+        fields.put(Language.NONE, "lds_text" + suffix);
+        fields.put(Language.NORWEGIAN, "lds_text_no" + suffix);
+        fields.put(Language.SWEDISH, "lds_text_sv" + suffix);
+        fields.put(Language.ENGLISH, "lds_text_en" + suffix);
+        fields.put(Language.GERMAN, "lds_text_de" + suffix);
+        fields.put(Language.FRENCH, "lds_text_fr" + suffix);
         return Map.copyOf(fields);
     }
 
@@ -82,7 +90,9 @@ final class SolrSchema {
      * The text types have no stop words, so a phrase is kept whole, and depend on no file of the configuration
      * the core was made from. The stemmers are those Solr's own text_<language> types use, each light: the
      * Norwegian one with both bokmål and nynorsk ("gutane" and "guttene" are both "gutt"/"gut" as their written form
-     * is), the Swedish one, which also takes the definite form of a singular ("huset", "flickan").
+     * is), the Swedish one, which also takes the definite form of a singular ("huset", "flickan"). Each language has a
+     * second type that folds the letters before the stem is taken, so that a word written with or without them
+     * has one stem.
      */
     private static List<ObjectNode> fieldTypes() {
         List<ObjectNode> types = new ArrayList<>();
@@ -90,19 +100,36 @@ final class SolrSchema {
         types.add(type(LONG, "solr.LongPointField").put(DOC_VALUES, true));
         types.add(type(BOOLEAN, "solr.BoolField").put(DOC_VALUES, true));
         types.add(type(DATE, "solr.DatePointField").put(DOC_VALUES, true));
-        types.add(text(Language.NONE));
-        types.add(text(Language.NORWEGIAN, filter("solr.NorwegianLightStemFilterFactory").put("variant", "no")));
-        types.add(text(Language.SWEDISH, filter("solr.SwedishLightStemFilterFactory")));
-        types.add(text(Language.ENGLISH, filter("solr.EnglishPossessiveFilterFactory"),
-                filter("solr.PorterStemFilterFactory")));
-        types.add(text(Language.GERMAN, filter("solr.GermanNormalizationFilterFactory"),
-                filter("solr.GermanLightStemFilterFactory")));
-        // l'école, d'Acme: the article is taken off before the word is lowered and stemmed
-        ObjectNode french = text(Language.FRENCH, filter("solr.FrenchLightStemFilterFactory"));
-        ((ArrayNode) french.get("analyzer").get("filters")).insert(0,
-                filter("solr.ElisionFilterFactory").put("ignoreCase", true));
-        types.add(french);
+        for (Language language : Language.values()) {
+            types.add(text(textType(language), language, false));
+            types.add(text(textType(language) + FOLDED, language, true));
+        }
         return List.copyOf(types);
+    }
+
+    private static List<ObjectNode> stemming(Language language) {
+        return switch (language) {
+            case NONE -> List.of();
+            case NORWEGIAN -> List.of(filter("solr.NorwegianLightStemFilterFactory").put("variant", "no"));
+            case SWEDISH -> List.of(filter("solr.SwedishLightStemFilterFactory"));
+            case ENGLISH -> List.of(filter("solr.EnglishPossessiveFilterFactory"), filter("solr.PorterStemFilterFactory"));
+            case GERMAN -> List.of(filter("solr.GermanNormalizationFilterFactory"),
+                    filter("solr.GermanLightStemFilterFactory"));
+            case FRENCH -> List.of(filter("solr.FrenchLightStemFilterFactory"));
+        };
+    }
+
+    /*
+     * Folding of the Nordic letters, and of the ways they are written without them (aa, ae, oe), in the languages
+     * that have them and in texts of no language, which hold names ("Åse" and "Aase", "Bjørn" and "Bjorn"); then
+     * every other letter with an accent as the letter without it.
+     */
+    private static List<ObjectNode> folding(Language language) {
+        return switch (language) {
+            case NONE, NORWEGIAN, SWEDISH -> List.of(filter("solr.ScandinavianFoldingFilterFactory"),
+                    filter("solr.ASCIIFoldingFilterFactory"));
+            case ENGLISH, GERMAN, FRENCH -> List.of(filter("solr.ASCIIFoldingFilterFactory"));
+        };
     }
 
     private static List<ObjectNode> fields() {
@@ -116,10 +143,15 @@ final class SolrSchema {
         // the time Solr took the entry, which Solr sets itself
         fields.add(field(INDEXED, DATE).put("default", "NOW"));
         for (Language language : Language.values()) {
-            fields.add(JSON.createObjectNode().put(NAME, TEXT_FIELDS.get(language)).put(TYPE, textType(language))
-                    .put(INDEXED_ATTRIBUTE, true).put(STORED, false).put(MULTI_VALUED, true));
+            fields.add(textField(TEXT_FIELDS.get(language), textType(language)));
+            fields.add(textField(FOLDED_FIELDS.get(language), textType(language) + FOLDED));
         }
         return List.copyOf(fields);
+    }
+
+    private static ObjectNode textField(String name, String type) {
+        return JSON.createObjectNode().put(NAME, name).put(TYPE, type).put(INDEXED_ATTRIBUTE, true).put(STORED, false)
+                .put(MULTI_VALUED, true);
     }
 
     private static ObjectNode type(String name, String solrClass) {
@@ -135,15 +167,21 @@ final class SolrSchema {
         return "lds_text_" + language.name().toLowerCase(java.util.Locale.ROOT);
     }
 
-    private static ObjectNode text(Language language, ObjectNode... stemming) {
+    private static ObjectNode text(String name, Language language, boolean folded) {
         ObjectNode analyzer = JSON.createObjectNode();
         analyzer.set("tokenizer", JSON.createObjectNode().put(CLASS, "solr.StandardTokenizerFactory"));
         ArrayNode filters = analyzer.putArray("filters");
-        filters.add(filter("solr.LowerCaseFilterFactory"));
-        for (ObjectNode filter : stemming) {
-            filters.add(filter);
+        if (language == Language.FRENCH) {
+            // l'école, d'Acme: the article is taken off before the word is lowered and stemmed
+            filters.add(filter("solr.ElisionFilterFactory").put("ignoreCase", true));
         }
-        ObjectNode type = type(textType(language), TEXT_FIELD).put("positionIncrementGap", "100");
+        filters.add(filter("solr.LowerCaseFilterFactory"));
+        if (folded) {
+            // before the stem is taken, so that "kjære" and "kjaere" have the same stem
+            folding(language).forEach(filters::add);
+        }
+        stemming(language).forEach(filters::add);
+        ObjectNode type = type(name, TEXT_FIELD).put("positionIncrementGap", "100");
         type.set("analyzer", analyzer);
         return type;
     }

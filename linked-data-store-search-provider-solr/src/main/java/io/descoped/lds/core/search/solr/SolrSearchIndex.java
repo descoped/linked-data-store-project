@@ -41,6 +41,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * The search index in one Solr core ({@code search.index.url}): one Solr document for each version of each LDS
@@ -58,7 +59,10 @@ public class SolrSearchIndex implements SearchIndex {
     private static final Duration CONNECTION_TIMEOUT = Duration.ofSeconds(10);
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(60);
     private static final String JSON = "application/json";
-    private static final String TEXT_FIELDS = SolrSchema.TEXT_FIELDS.values().stream().sorted()
+    /* Every text field: a word as it is written counts twice what a word with its letters folded does. */
+    private static final String TEXT_FIELDS = Stream.concat(
+                    SolrSchema.TEXT_FIELDS.values().stream().sorted().map(field -> field + "^2"),
+                    SolrSchema.FOLDED_FIELDS.values().stream().sorted())
             .collect(Collectors.joining(" "));
     /* The user's words, read by edismax in every text field: a field or a query in them is read as words. */
     private static final String WORDS = "{!edismax qf=$ldsFields uf=-* q.op=OR sow=true v=$ldsText}";
@@ -124,6 +128,7 @@ public class SolrSearchIndex implements SearchIndex {
         for (Map.Entry<Language, List<String>> texts : entry.texts().entrySet()) {
             for (String text : texts.getValue()) {
                 document.addField(SolrSchema.TEXT_FIELDS.get(texts.getKey()), text);
+                document.addField(SolrSchema.FOLDED_FIELDS.get(texts.getKey()), text);
             }
         }
         return document;
