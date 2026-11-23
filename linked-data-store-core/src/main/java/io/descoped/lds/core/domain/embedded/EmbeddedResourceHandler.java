@@ -111,6 +111,9 @@ public class EmbeddedResourceHandler implements HttpHandler {
     }
 
     private void putEmbedded(HttpServerExchange exchange) {
+        // the body is read here, on the worker thread the request was handed to: read without blocking, a body that
+        // came in parts would be given to the callback on an I/O thread, which the saga and a wait for search block
+        exchange.startBlocking();
         exchange.getRequestReceiver().receiveFullString(
                 (httpServerExchange, message) -> {
                     ResourceElement topLevelElement = resourceContext.getFirstElement();
@@ -194,6 +197,9 @@ public class EmbeddedResourceHandler implements HttpHandler {
     }
 
     private void deleteEmbedded(HttpServerExchange exchange) {
+        // the body is read here, on the worker thread the request was handed to: read without blocking, a body that
+        // came in parts would be given to the callback on an I/O thread, which the saga and a wait for search block
+        exchange.startBlocking();
         exchange.getRequestReceiver().receiveFullString(
                 (httpServerExchange, _) -> {
                     ResourceElement topLevelElement = resourceContext.getFirstElement();

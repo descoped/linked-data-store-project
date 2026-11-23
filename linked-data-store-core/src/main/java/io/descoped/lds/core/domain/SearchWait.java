@@ -44,12 +44,6 @@ public final class SearchWait {
      */
     public static final HttpString SEARCHABLE = new HttpString("LDS-Searchable");
 
-    /*
-     * Half of the request threads of Undertow as LDS starts it, which takes its defaults: 8 for each I/O thread, and
-     * an I/O thread for each processor, at least 2 (Undertow.Builder).
-     */
-    private static final int HALF_OF_THE_REQUEST_THREADS = Math.max(Runtime.getRuntime().availableProcessors(), 2) * 4;
-
     private final IndexQueue queue;
     private final SearchIndex index;
     private final Duration poll;
@@ -57,13 +51,14 @@ public final class SearchWait {
     private final Semaphore waiting;
 
     /**
-     * Waits that ask every 100 ms, for at most 10 seconds, at most half of the request threads at once.
+     * Waits that ask every 100 ms, for at most 10 seconds, at most as many at once as given.
      *
-     * @param queue the index queue
-     * @param index the search index
+     * @param queue  the index queue
+     * @param index  the search index
+     * @param atOnce how many writes may wait at once: half of the request threads
      */
-    public SearchWait(IndexQueue queue, SearchIndex index) {
-        this(queue, index, Duration.ofMillis(100), Duration.ofSeconds(10), HALF_OF_THE_REQUEST_THREADS);
+    public SearchWait(IndexQueue queue, SearchIndex index, int atOnce) {
+        this(queue, index, Duration.ofMillis(100), Duration.ofSeconds(10), atOnce);
     }
 
     /**

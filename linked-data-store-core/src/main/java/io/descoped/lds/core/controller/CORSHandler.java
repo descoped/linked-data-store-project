@@ -257,7 +257,8 @@ public class CORSHandler implements HttpHandler {
 
     private void addExposeHeaders(HttpServerExchange exchange) {
         // and the header of LDS's own that a client reads: whether a write is searchable
-        Set<String> exposed = new TreeSet<>(allowedHeaders);
+        Set<String> exposed = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        exposed.addAll(allowedHeaders);
         exposed.add(SearchWait.SEARCHABLE.toString());
         exchange.getResponseHeaders().add(ACCESS_CONTROL_EXPOSE_HEADERS, String.join(",", exposed));
     }

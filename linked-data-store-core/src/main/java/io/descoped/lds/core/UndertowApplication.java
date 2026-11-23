@@ -129,6 +129,11 @@ public class UndertowApplication {
     record Indexing(SearchIndex index, IndexQueue queue, IndexQueueWorker worker, IndexRebuild rebuild) {
     }
 
+    /* Undertow's defaults, set here so that what depends on them follows: an I/O thread for each processor, at least
+     * 2, and 8 request threads for each. */
+    static final int IO_THREADS = Math.max(Runtime.getRuntime().availableProcessors(), 2);
+    static final int REQUEST_THREADS = IO_THREADS * 8;
+
     /* How long the worker of the index queue waits for updates when there were none. */
     static final Duration INDEX_QUEUE_POLL = Duration.ofMillis(200);
 
@@ -231,6 +236,8 @@ public class UndertowApplication {
 
         this.server = Undertow.builder()
                 .addHttpListener(port, host)
+                .setIoThreads(IO_THREADS)
+                .setWorkerThreads(REQUEST_THREADS)
                 .setHandler(corsHandler)
                 .build();
     }
@@ -399,7 +406,8 @@ public class UndertowApplication {
                 specification,
                 persistence,
                 new NamespaceController.Writes(sec, sagaRepository,
-                        indexing == null ? null : new SearchWait(indexing.queue(), indexing.index())),
+                        indexing == null ? null : new SearchWait(indexing.queue(), indexing.index(),
+                                REQUEST_THREADS / 2)),
                 txlogRawdataPool
         );
 
