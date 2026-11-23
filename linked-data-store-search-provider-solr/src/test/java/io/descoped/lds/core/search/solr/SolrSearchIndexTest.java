@@ -6,6 +6,8 @@ import io.descoped.lds.api.search.SearchHit;
 import io.descoped.lds.api.search.SearchIndex;
 import io.descoped.lds.api.search.SearchPage;
 import io.descoped.lds.api.search.SearchQuery;
+import io.reactivex.rxjava3.core.Completable;
+import io.reactivex.rxjava3.core.Single;
 import org.apache.solr.client.solrj.RemoteSolrException;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -365,9 +367,13 @@ class SolrSearchIndexTest {
         List<IndexEntry> entries = List.of(text("Topic", "a", 1000, "one"));
         SearchQuery query = new SearchQuery(namespace, "one", Set.of(), at(2000), false, 0, 10);
 
-        assertThatThrownBy(() -> missingCore.put(entries).blockingAwait())
+        // put and search only make the request; it is sent, and fails, when it is waited for
+        Completable put = missingCore.put(entries);
+        Single<SearchPage> search = missingCore.search(query);
+
+        assertThatThrownBy(put::blockingAwait)
                 .isInstanceOf(RemoteSolrException.class).hasMessageContaining("404");
-        assertThatThrownBy(() -> missingCore.search(query).blockingGet())
+        assertThatThrownBy(search::blockingGet)
                 .isInstanceOf(RemoteSolrException.class).hasMessageContaining("404");
     }
 
@@ -396,10 +402,11 @@ class SolrSearchIndexTest {
         SolrSearchIndex unreachable = new SolrSearchIndex("http://127.0.0.1:" + closedPort() + "/solr/lds-index");
         List<IndexEntry> entries = List.of(text("Topic", "a", 1000, "one"));
 
-        assertThatThrownBy(() -> unreachable.put(entries).blockingAwait())
-                .hasRootCauseInstanceOf(java.net.ConnectException.class);
-        assertThatThrownBy(() -> unreachable.put(entries).blockingAwait())
-                .hasRootCauseInstanceOf(java.net.ConnectException.class);
+        Completable first = unreachable.put(entries);
+        Completable again = unreachable.put(entries);
+
+        assertThatThrownBy(first::blockingAwait).hasRootCauseInstanceOf(java.net.ConnectException.class);
+        assertThatThrownBy(again::blockingAwait).hasRootCauseInstanceOf(java.net.ConnectException.class);
     }
 
     private static int closedPort() throws IOException {
