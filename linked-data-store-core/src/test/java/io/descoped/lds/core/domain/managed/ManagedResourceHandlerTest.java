@@ -26,11 +26,13 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.Iterator;
 
+import static org.awaitility.Awaitility.await;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
@@ -101,7 +103,7 @@ public class ManagedResourceHandlerTest {
      * and a wait for search would then block.
      */
     @Test
-    public void thatABodyThatComesInPartsIsReadWholeOnAWorkerThread() throws IOException, InterruptedException {
+    public void thatABodyThatComesInPartsIsReadWholeOnAWorkerThread() throws IOException {
         String body = "{\"contacts\":[],\"name\":\"in two parts\"}";
         assertEquals(putInParts("/data/provisionagreement/parts?sync=true", body), "HTTP/1.1 201 Created");
         assertEquals(client.get("/data/provisionagreement/parts").expect200Ok().body(), body);
@@ -128,7 +130,7 @@ public class ManagedResourceHandlerTest {
     }
 
     /* The status line of a PUT whose body is sent in two parts, the second after a pause. */
-    private String putInParts(String path, String body) throws IOException, InterruptedException {
+    private String putInParts(String path, String body) throws IOException {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         try (Socket socket = new Socket("localhost", server.getTestServerServicePort())) {
             OutputStream out = socket.getOutputStream();
@@ -137,7 +139,7 @@ public class ManagedResourceHandlerTest {
                     .getBytes(StandardCharsets.US_ASCII));
             out.write(bytes, 0, 10);
             out.flush();
-            Thread.sleep(300);
+            await().pollDelay(Duration.ofMillis(300)).until(() -> true); // the second part comes in a later read
             out.write(bytes, 10, bytes.length - 10);
             out.flush();
             String answer = new String(socket.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
