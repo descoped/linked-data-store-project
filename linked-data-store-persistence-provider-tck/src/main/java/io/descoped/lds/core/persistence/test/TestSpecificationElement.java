@@ -69,6 +69,11 @@ public class TestSpecificationElement implements SpecificationElement {
     }
 
     @Override
+    public String getFormat() {
+        return null;
+    }
+
+    @Override
     public Set<String> getRefTypes() {
         return refTypes;
     }

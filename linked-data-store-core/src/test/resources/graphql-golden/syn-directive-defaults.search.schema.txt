@@ -145,13 +145,14 @@ GraphQLObjectType Query
     arg before: String default=null description=null
     arg filter: [TypeFilters] default=null description=null
     arg first: Int default=null description=null
+    arg history: Boolean default=Boolean:false description="Every version up to the snapshot that matches, and not only the one valid at it"
     arg last: Int default=null description=null
     arg query: String! default=null description=null
     @search
     fetcher=QueryConnectionFetcher{{entity=SearchResultConnection, nameSpace=ns, persistence=persistence, searchIndex=searchIndex}}
 GraphQLUnionType SearchResult
   description="Union type for possible search results"
-  members=[A, B]
+  members=[B]
   typeResolver=true
 GraphQLObjectType SearchResultConnection
   description=null
@@ -171,5 +172,4 @@ GraphQLScalarType String
   description="Built-in String"
 GraphQLEnumType TypeFilters
   description="Defines valid type filters"
-  value A = "A" description=null deprecated=null
   value B = "B" description=null deprecated=null

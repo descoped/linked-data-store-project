@@ -20,6 +20,14 @@ public interface SpecificationElement {
 
     Set<String> getRefTypes();
 
+    /**
+     * The format of a text value, as the JSON Schema of the model gives it ({@code date-time}, {@code date},
+     * {@code time}, ...).
+     *
+     * @return the format, or null when the model gives none
+     */
+    String getFormat();
+
     Map<String, SpecificationElement> getProperties();
 
     SpecificationElement getItems();

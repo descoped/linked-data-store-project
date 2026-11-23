@@ -242,13 +242,10 @@ class IndexRebuildTest {
         write("Person", "ola", FEB);
         write("Person", "kari", JAN);
         delete("Person", "kari", MAR);
-        IndexQueueWorkerLifecycleTest.HeldIndex index = new IndexQueueWorkerLifecycleTest.HeldIndex() {
-            @Override
-            public Completable deleteAll() {
-                return Completable.error(new AssertionError("a rebuild does not clear the index"));
-            }
-        };
-        IndexQueueWorker worker = new IndexQueueWorker(queue, index, persistence, Duration.ofMillis(20));
+        // the index can only be added to: nothing in it is cleared
+        IndexQueueWorkerLifecycleTest.HeldIndex index = new IndexQueueWorkerLifecycleTest.HeldIndex();
+        IndexQueueWorker worker = new IndexQueueWorker(queue, index, persistence, IndexEntriesTest.withoutAModel(),
+                Duration.ofMillis(20));
         worker.start();
         try {
             rebuild().start();

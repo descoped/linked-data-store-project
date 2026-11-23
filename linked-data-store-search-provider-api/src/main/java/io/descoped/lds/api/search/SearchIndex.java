@@ -1,42 +1,24 @@
 package io.descoped.lds.api.search;
 
-import io.descoped.lds.api.persistence.json.JsonDocument;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Single;
 
-import java.util.Collection;
-import java.util.Set;
+import java.util.List;
 
 /**
- * Common interface for all search index operations
+ * The search index: one entry for each version of each document, written and deleted, from which a search finds the
+ * documents whose texts match words, as they were at a moment (see {@link SearchQuery}).
  */
 public interface SearchIndex {
 
     /**
-     * Creates or updates the index with the given json document
+     * Adds entries, in one request. An entry that the index already has (the same document and version, sent again
+     * by a retry or a rebuild) is replaced by the one given, which holds the same.
      *
-     * @param document a json-document representing the entity
+     * @param entries the entries
+     * @return complete when the index has taken every entry; fails when it refuses them or cannot be reached
      */
-    Completable createOrOverwrite(JsonDocument document);
-
-    /**
-     * Creates or updates the index with the given collection of json documents
-     *
-     * @param documents a list json-document representing the entities
-     */
-    Completable createOrOverwrite(Collection<JsonDocument> documents);
-
-    /**
-     * Deletes a given entity from the index
-     *
-     * @param document a json-document representing the entity
-     */
-    Completable delete(JsonDocument document);
-
-    /**
-     * Deletes all documents from the index.
-     */
-    Completable deleteAll();
+    Completable put(List<IndexEntry> entries);
 
     /**
      * Asks the index whether it answers, for the readiness of LDS.
@@ -46,14 +28,10 @@ public interface SearchIndex {
     Completable health();
 
     /**
-     * Searches the index for the given text.
+     * Searches.
      *
-     * @param query      query that is passed directly to the search index implementation
-     * @param typeFilter list of entity types that should be filtered. The search should narrow results to only these
-     *                   types
-     * @param from       the number of initial results that should be skipped, defaults to 0
-     * @param size       the number of results that should be returned
-     * @return search response object
+     * @param query the search
+     * @return the page of hits the query asks for, and the number of hits in all
      */
-    Single<SearchResponse> search(String query, Set<String> typeFilter, long from, long size);
+    Single<SearchPage> search(SearchQuery query);
 }

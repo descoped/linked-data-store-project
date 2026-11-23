@@ -26,6 +26,7 @@ class ImmutableSpecificationElement implements SpecificationElement {
     private final Map<String, SpecificationElement> properties;
     private final SpecificationElement items;
     private final Set<String> required;
+    private final String format;
 
     ImmutableSpecificationElement(SpecificationElementBuilder elementBuilder) {
         elementBuilder.specificationElement(this);
@@ -39,6 +40,7 @@ class ImmutableSpecificationElement implements SpecificationElement {
         this.properties = ofNullable(elementBuilder.properties()).map(Collections::unmodifiableMap).orElse(Collections.emptyMap());
         this.items = elementBuilder.items();
         this.required = elementBuilder.required();
+        this.format = elementBuilder.format();
     }
 
     @Override
@@ -69,6 +71,11 @@ class ImmutableSpecificationElement implements SpecificationElement {
     @Override
     public List<SpecificationValidator> getValidators() {
         return validators;
+    }
+
+    @Override
+    public String getFormat() {
+        return format;
     }
 
     @Override

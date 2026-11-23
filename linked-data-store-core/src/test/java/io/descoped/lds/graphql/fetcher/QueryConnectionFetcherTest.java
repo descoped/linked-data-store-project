@@ -8,8 +8,10 @@ import io.descoped.lds.api.persistence.json.JsonDocument;
 import io.descoped.lds.api.persistence.reactivex.Range;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.api.search.SearchIndex;
-import io.descoped.lds.api.search.SearchResponse;
-import io.descoped.lds.api.search.SearchResult;
+import io.descoped.lds.api.search.IndexEntry;
+import io.descoped.lds.api.search.SearchHit;
+import io.descoped.lds.api.search.SearchPage;
+import io.descoped.lds.api.search.SearchQuery;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Maybe;
 import io.reactivex.rxjava3.core.Single;
@@ -17,7 +19,6 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Proxy;
 import java.time.ZonedDateTime;
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -85,10 +86,10 @@ class QueryConnectionFetcherTest {
     void theNextPageStartsAfterTheLastEdgeOfThePageBefore() {
         QueryConnectionFetcher fetcher = new QueryConnectionFetcher(index(5), persistence(Set.of()), "ns", "Search");
 
-        Connection<Map<String, Object>> page1 = fetcher.search("text", null, SNAPSHOT, Range.first(2));
-        Connection<Map<String, Object>> page2 = fetcher.search("text", null, SNAPSHOT,
+        Connection<Map<String, Object>> page1 = fetcher.search("text", null, false, SNAPSHOT, Range.first(2));
+        Connection<Map<String, Object>> page2 = fetcher.search("text", null, false, SNAPSHOT,
                 Range.firstAfter(2, page1.getPageInfo().getEndCursor().getValue()));
-        Connection<Map<String, Object>> page3 = fetcher.search("text", null, SNAPSHOT,
+        Connection<Map<String, Object>> page3 = fetcher.search("text", null, false, SNAPSHOT,
                 Range.firstAfter(2, page2.getPageInfo().getEndCursor().getValue()));
 
         assertThat(ids(page1)).containsExactly("d0", "d1");
@@ -102,14 +103,14 @@ class QueryConnectionFetcherTest {
     void lastWithoutBeforeGivesTheEndOfTheResult() {
         QueryConnectionFetcher fetcher = new QueryConnectionFetcher(index(25), persistence(Set.of()), "ns", "Search");
 
-        assertThat(ids(fetcher.search("text", null, SNAPSHOT, Range.last(2)))).containsExactly("d23", "d24");
+        assertThat(ids(fetcher.search("text", null, false, SNAPSHOT, Range.last(2)))).containsExactly("d23", "d24");
     }
 
     @Test
     void aResultThatIsLeftOutDoesNotMoveTheCursorsAfterIt() {
         QueryConnectionFetcher fetcher = new QueryConnectionFetcher(index(4), persistence(Set.of("d1")), "ns", "Search");
 
-        Connection<Map<String, Object>> page = fetcher.search("text", null, SNAPSHOT, Range.first(4));
+        Connection<Map<String, Object>> page = fetcher.search("text", null, false, SNAPSHOT, Range.first(4));
 
         assertThat(ids(page)).containsExactly("d0", "d2", "d3");
         assertThat(page.getEdges()).extracting(edge -> QueryConnectionCursor.fromValue(edge.getCursor().getValue()).getIndex())
@@ -120,16 +121,16 @@ class QueryConnectionFetcherTest {
     void aPageWhoseResultsAreAllLeftOutStillLeadsToTheNextPage() {
         QueryConnectionFetcher fetcher = new QueryConnectionFetcher(index(4), persistence(Set.of("d0", "d1")), "ns", "Search");
 
-        Connection<Map<String, Object>> page = fetcher.search("text", null, SNAPSHOT, Range.first(2));
+        Connection<Map<String, Object>> page = fetcher.search("text", null, false, SNAPSHOT, Range.first(2));
 
         assertThat(page.getEdges()).isEmpty();
         assertThat(page.getPageInfo().isHasNextPage()).isTrue();
         assertThat(page.getPageInfo().isHasPreviousPage()).isFalse();
         String endCursor = page.getPageInfo().getEndCursor().getValue();
         assertThat(QueryConnectionCursor.fromValue(endCursor).getIndex()).isEqualTo(1L);
-        assertThat(ids(fetcher.search("text", null, SNAPSHOT, Range.firstAfter(2, endCursor)))).containsExactly("d2", "d3");
+        assertThat(ids(fetcher.search("text", null, false, SNAPSHOT, Range.firstAfter(2, endCursor)))).containsExactly("d2", "d3");
         // past the end of the result there is no page
-        Connection<Map<String, Object>> beyond = fetcher.search("text", null, SNAPSHOT, Range.firstAfter(2,
+        Connection<Map<String, Object>> beyond = fetcher.search("text", null, false, SNAPSHOT, Range.firstAfter(2,
                 new QueryConnectionCursor(3).getValue()));
         assertThat(beyond.getEdges()).isEmpty();
         assertThat(beyond.getPageInfo().isHasNextPage()).isFalse();
@@ -141,35 +142,22 @@ class QueryConnectionFetcherTest {
     }
 
     /**
-     * An index whose result for any text is the documents d0 to d{total - 1}, in that order.
+     * An index whose result for any text is the documents d0 to d{total - 1}, in that order, each at a version a
+     * second before the one before it.
      */
     private static SearchIndex index(long total) {
         return new SearchIndex() {
             @Override
-            public Single<SearchResponse> search(String query, Set<String> typeFilter, long from, long size) {
-                List<SearchResult> results = LongStream.range(from, Math.min(total, from + size))
-                        .mapToObj(place -> new SearchResult(new DocumentKey("ns", "Thing", "d" + place, SNAPSHOT)))
+            public Single<SearchPage> search(SearchQuery query) {
+                List<SearchHit> hits = LongStream.range(query.from(), Math.min(total, query.from() + query.size()))
+                        .mapToObj(place -> new SearchHit(new DocumentKey("ns", "Thing", "d" + place,
+                                SNAPSHOT.minusSeconds(place + 1))))
                         .toList();
-                return Single.just(new SearchResponse(total, results, from, size));
+                return Single.just(new SearchPage(total, hits));
             }
 
             @Override
-            public Completable createOrOverwrite(JsonDocument document) {
-                throw new UnsupportedOperationException();
-            }
-
-            @Override
-            public Completable createOrOverwrite(Collection<JsonDocument> documents) {
-                throw new UnsupportedOperationException();
-            }
-
-            @Override
-            public Completable delete(JsonDocument document) {
-                throw new UnsupportedOperationException();
-            }
-
-            @Override
-            public Completable deleteAll() {
+            public Completable put(List<IndexEntry> entries) {
                 throw new UnsupportedOperationException();
             }
 
@@ -180,8 +168,17 @@ class QueryConnectionFetcherTest {
         };
     }
 
+    @Test
+    void aHitIsReadAtTheVersionThatMatched() {
+        QueryConnectionFetcher fetcher = new QueryConnectionFetcher(index(2), persistence(Set.of()), "ns", "Search");
+
+        assertThat(fetcher.search("text", null, false, SNAPSHOT, Range.first(2)).getEdges()).extracting(Edge::getNode)
+                .extracting(node -> ((DocumentKey) node.get("__graphql_internal_document_key")).timestamp())
+                .containsExactly(SNAPSHOT.minusSeconds(1), SNAPSHOT.minusSeconds(2));
+    }
+
     /**
-     * A store that holds every document but those named, as they are at the snapshot.
+     * A store that holds every document but those named, under the version it is read at.
      */
     private static RxJsonPersistence persistence(Set<String> missing) {
         Transaction transaction = (Transaction) Proxy.newProxyInstance(QueryConnectionFetcherTest.class.getClassLoader(),
@@ -193,7 +190,8 @@ class QueryConnectionFetcherTest {
                         String id = (String) args[4];
                         yield missing.contains(id)
                                 ? Maybe.empty()
-                                : Maybe.just(new JsonDocument(new DocumentKey("ns", (String) args[3], id, SNAPSHOT),
+                                : Maybe.just(new JsonDocument(new DocumentKey("ns", (String) args[3], id,
+                                (java.time.ZonedDateTime) args[1]),
                                 Map.<String, Object>of("name", id)));
                     }
                     default -> throw new UnsupportedOperationException(method.getName());

@@ -47,6 +47,10 @@ class SpecificationElementBuilder {
         return name;
     }
 
+    String format() {
+        return schemaElement == null ? null : schemaElement.format;
+    }
+
     SpecificationElementBuilder name(String name) {
         this.name = name;
         return this;

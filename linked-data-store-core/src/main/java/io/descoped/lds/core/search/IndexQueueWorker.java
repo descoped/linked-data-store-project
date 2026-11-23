@@ -4,6 +4,7 @@ import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.json.JsonDocument;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
+import io.descoped.lds.api.search.IndexEntry;
 import io.descoped.lds.api.search.IndexQueue;
 import io.descoped.lds.api.search.IndexUpdate;
 import io.descoped.lds.api.search.SearchIndex;
@@ -17,10 +18,8 @@ import io.reactivex.rxjava3.schedulers.Schedulers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.event.Level;
-import tools.jackson.databind.JsonNode;
 
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -32,15 +31,16 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Sends the updates of the index queue to the search index. In rounds: it takes a batch of updates, reads each
- * written document from storage at its version (one after another: a transaction is one connection or session of the
- * store), sends the batch (its deletes side by side), and removes the updates when the index has taken
- * them. An update the index does not take is put off and tried again, later each time, up to a minute; when a batch
- * fails, each of its updates is tried alone, so one update the index refuses does not hold back the others. A round
- * follows at once when the last one took updates, and after a short wait when there were none.
+ * written document from storage at its version (one after another: a transaction is one connection or session of
+ * the store), sends the entries of the batch in one request ({@link IndexEntries}: a written version with its
+ * texts, a deletion as a deletion), and removes the updates when the index has taken them. An update the index does
+ * not take is put off and tried again, later each time, up to a minute; when a batch fails, each of its updates is
+ * tried alone, so one update the index refuses does not hold back the others. A round follows at once when the last
+ * one took updates, and after a short wait when there were none.
  * <p>
  * Storage holds the version of every update: the saga of a write adds it to the queue only after its storage step,
- * and never undoes that step, and a rebuild adds what it read from storage. Storage is read as of the version, so the
- * index is told what storage holds; a document storage does not have at all is not sent.
+ * and never undoes that step, and a rebuild adds what it read from storage. Storage is read as of the version, so
+ * the index is told what storage holds; a document storage does not have at all is not sent.
  * <p>
  * An update the index keeps refusing is tried again for as long as LDS runs, a minute apart: an update is never
  * dropped (decided by the owner, D1 and D2). From its tenth attempt each refusal is logged as an error, and the
@@ -55,7 +55,6 @@ public final class IndexQueueWorker {
     private static final AtomicInteger WORKERS = new AtomicInteger();
 
     static final int BATCH = 100;
-    static final int CONCURRENT_DELETES = 8;
     static final Duration LEASE = Duration.ofMinutes(2);
     static final Duration FIRST_DELAY = Duration.ofSeconds(1);
     static final Duration LONGEST_DELAY = Duration.ofMinutes(1);
@@ -63,6 +62,7 @@ public final class IndexQueueWorker {
     private final IndexQueue queue;
     private final SearchIndex index;
     private final RxJsonPersistence persistence;
+    private final IndexEntries indexEntries;
     private final Duration poll;
     private final ExecutorService executor;
     private final Scheduler scheduler;
@@ -77,13 +77,16 @@ public final class IndexQueueWorker {
      *
      * @param queue       the queue it takes updates from
      * @param index       the index it sends them to
-     * @param persistence the storage it reads the documents from
-     * @param poll        how long it waits for updates when there were none
+     * @param persistence  the storage it reads the documents from
+     * @param indexEntries what the index is given of a document
+     * @param poll         how long it waits for updates when there were none
      */
-    public IndexQueueWorker(IndexQueue queue, SearchIndex index, RxJsonPersistence persistence, Duration poll) {
+    public IndexQueueWorker(IndexQueue queue, SearchIndex index, RxJsonPersistence persistence,
+                            IndexEntries indexEntries, Duration poll) {
         this.queue = queue;
         this.index = index;
         this.persistence = persistence;
+        this.indexEntries = indexEntries;
         this.poll = poll;
         String threadName = THREAD_NAME + WORKERS.incrementAndGet();
         this.executor = Executors.newSingleThreadExecutor(runnable -> {
@@ -224,42 +227,35 @@ public final class IndexQueueWorker {
     }
 
     /*
-     * Reads the written documents at their versions, then sends them in one update and each delete after it. The
-     * read transaction is opened, and closed, on the thread of the worker: a store may tie the transaction to the
-     * thread that opened it (the memory store holds a lock of that thread), and the documents can come on another.
+     * Reads the written documents at their versions, then sends the entries of the batch in one update. The read
+     * transaction is opened, and closed, on the thread of the worker: a store may tie the transaction to the thread
+     * that opened it (the memory store holds a lock of that thread), and the documents can come on another.
      */
     private Completable send(List<IndexQueue.Entry> entries) {
         return Single.using(() -> persistence.createTransaction(true),
                         transaction -> Flowable.fromIterable(entries)
-                                .filter(entry -> entry.update().operation() == IndexUpdate.Operation.CREATE_OR_OVERWRITE)
-                                .concatMapMaybe(entry -> read(transaction, entry.update()))
+                                .concatMapMaybe(entry -> entryOf(transaction, entry.update()))
                                 .toList()
                                 .observeOn(scheduler),
                         Transaction::close)
                 .subscribeOn(scheduler)
-                .flatMapCompletable(documents -> {
-                    Completable written = documents.isEmpty() ? Completable.complete() : index.createOrOverwrite(documents);
-                    List<Completable> deletes = new ArrayList<>();
-                    for (IndexQueue.Entry entry : entries) {
-                        if (entry.update().operation() == IndexUpdate.Operation.DELETE) {
-                            deletes.add(Completable.defer(() -> index.delete(new JsonDocument(key(entry.update()), (JsonNode) null))));
-                        }
-                    }
-                    // the deletes are of different versions, so they are sent side by side over the index's client
-                    return written.andThen(Completable.merge(Flowable.fromIterable(deletes), CONCURRENT_DELETES));
-                });
+                .flatMapCompletable(index::put);
     }
 
     /*
-     * The document as storage holds it at the version, under the key of the update: the index names a version by the
-     * zone it was written with.
+     * A written version as storage holds it, and a deletion, each at the version of its update: the instant the
+     * write was made at (the memory store does not yet give back the instant of a version written with a zone other
+     * than UTC). An entity type that is not searched has no entry, and its update is removed.
      */
-    private Maybe<JsonDocument> read(Transaction transaction, IndexUpdate update) {
+    private Maybe<IndexEntry> entryOf(Transaction transaction, IndexUpdate update) {
+        if (!indexEntries.searched(update.entity())) {
+            return Maybe.empty();
+        }
+        if (update.operation() == IndexUpdate.Operation.DELETE) {
+            return Maybe.just(IndexEntry.deleted(update.namespace(), update.entity(), update.id(), update.version()));
+        }
         return persistence.readDocument(transaction, update.version(), update.namespace(), update.entity(), update.id())
-                .map(document -> new JsonDocument(key(update), document.jackson()));
-    }
-
-    private static DocumentKey key(IndexUpdate update) {
-        return new DocumentKey(update.namespace(), update.entity(), update.id(), update.version());
+                .flatMap(document -> Maybe.fromOptional(indexEntries.written(new JsonDocument(new DocumentKey(
+                        update.namespace(), update.entity(), update.id(), update.version()), document.jackson()))));
     }
 }

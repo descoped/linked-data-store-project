@@ -8,27 +8,29 @@ import graphql.relay.DefaultPageInfo;
 import graphql.relay.Edge;
 import graphql.relay.PageInfo;
 import graphql.schema.DataFetchingEnvironment;
+import graphql.schema.GraphQLNamedType;
+import graphql.schema.GraphQLUnionType;
 import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.json.JsonDocument;
 import io.descoped.lds.api.persistence.reactivex.Range;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.api.search.SearchIndex;
-import io.descoped.lds.api.search.SearchResponse;
-import io.descoped.lds.api.search.SearchResult;
+import io.descoped.lds.api.search.SearchHit;
+import io.descoped.lds.api.search.SearchPage;
+import io.descoped.lds.api.search.SearchQuery;
 import io.descoped.lds.graphql.GraphQLContext;
-import io.reactivex.rxjava3.core.Maybe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.StringJoiner;
 import java.util.function.LongSupplier;
 
@@ -43,6 +45,8 @@ public class QueryConnectionFetcher extends ConnectionFetcher<Map<String, Object
      * The size of a page when the query gives neither {@code first} nor {@code last}.
      */
     static final int DEFAULT_PAGE_SIZE = 10;
+
+    private static final String SEARCH_RESULT = "SearchResult";
 
     /**
      * The largest page: a larger {@code first} or {@code last} is taken as this.
@@ -72,7 +76,14 @@ public class QueryConnectionFetcher extends ConnectionFetcher<Map<String, Object
     @Override
     Connection<Map<String, Object>> getConnection(DataFetchingEnvironment environment, ConnectionParameters connectionParameters) {
         GraphQLContext context = environment.getGraphQlContext().get(GraphQLContext.class);
-        return search(environment.getArgument("query"), environment.getArgument("filter"), context.getSnapshot(),
+        List<String> filter = environment.getArgument("filter");
+        if (filter == null || filter.isEmpty()) {
+            // every type that is searched, so that entries the index has of a type no longer searched are left out
+            filter = environment.getGraphQLSchema().getType(SEARCH_RESULT) instanceof GraphQLUnionType union
+                    ? union.getTypes().stream().map(GraphQLNamedType::getName).toList() : null;
+        }
+        return search(environment.getArgument("query"), filter,
+                Boolean.TRUE.equals(environment.getArgument("history")), context.getSnapshot(),
                 connectionParameters.getRange());
     }
 
@@ -125,21 +136,23 @@ public class QueryConnectionFetcher extends ConnectionFetcher<Map<String, Object
 
     }
 
-    Connection<Map<String, Object>> search(String query, List<String> typeFilter,
-                                                   ZonedDateTime snapshot, Range<String> range) {
-        HashSet<String> filter = typeFilter != null ? new HashSet<>(typeFilter) : null;
-        IndexBasedRange settings = IndexBasedRange.fromRange(range,
-                () -> searchIndex.search(query, filter, 0, 0).blockingGet().getTotalHits());
-        SearchResponse response = searchIndex.search(query, filter, settings.from, settings.size).blockingGet();
+    Connection<Map<String, Object>> search(String query, List<String> typeFilter, boolean history,
+                                           ZonedDateTime snapshot, Range<String> range) {
+        Set<String> entities = typeFilter != null ? Set.copyOf(typeFilter) : Set.of();
+        IndexBasedRange settings = IndexBasedRange.fromRange(range, () -> searchIndex.search(
+                new SearchQuery(nameSpace, query, entities, snapshot, history, 0, 0)).blockingGet().total());
+        SearchPage response = searchIndex.search(
+                        new SearchQuery(nameSpace, query, entities, snapshot, history, settings.from, settings.size))
+                .blockingGet();
 
         LOG.debug("Search query '{}' resulted in {} hits from search settings. Fetching results from {} to {}", query,
-                response.getTotalHits(), settings.from, settings.from + settings.size);
+                response.total(), settings.from, settings.from + settings.size);
         // The cursor of an edge is the place of its result in the index, also when a result before it is left out
         List<Edge<Map<String, Object>>> edges = new ArrayList<>();
         long place = settings.from;
-        for (SearchResult result : response.getResults()) {
+        for (SearchHit hit : response.hits()) {
             QueryConnectionCursor cursor = new QueryConnectionCursor(place++);
-            readDocument(result.getDocumentKey(), snapshot).ifPresent(document -> edges.add(toEdge(document, cursor)));
+            readDocument(hit.key()).ifPresent(document -> edges.add(toEdge(document, cursor)));
         }
 
         if (place == settings.from) {
@@ -149,7 +162,7 @@ public class QueryConnectionFetcher extends ConnectionFetcher<Map<String, Object
         }
 
         boolean hasPrevious = settings.from > 0;
-        boolean hasNext = settings.from + settings.size < response.getTotalHits();
+        boolean hasNext = settings.from + settings.size < response.total();
 
         // When every result of the page is gone at the snapshot, the cursors are the places of the page in the index,
         // so that the page after it can still be asked for.
@@ -172,13 +185,17 @@ public class QueryConnectionFetcher extends ConnectionFetcher<Map<String, Object
         return new DefaultEdge<>(map, connectionCursor);
     }
 
-    private Optional<JsonDocument> readDocument(DocumentKey documentKey, ZonedDateTime snapshot) {
+    /*
+     * The version that matched, as storage holds it. Storage holds every version the index has, unless storage was
+     * emptied or restored and the index was not rebuilt; such a hit is left out.
+     */
+    private Optional<JsonDocument> readDocument(DocumentKey key) {
         try (Transaction tx = persistence.createTransaction(true)) {
-            Maybe<JsonDocument> jsonDocumentMaybe = persistence.readDocument(tx, snapshot, documentKey.namespace(),
-                    documentKey.entity(), documentKey.id());
-            JsonDocument jsonDocument = jsonDocumentMaybe.blockingGet();
+            JsonDocument jsonDocument = persistence.readDocument(tx, key.timestamp(), key.namespace(), key.entity(),
+                    key.id()).blockingGet();
             if (jsonDocument == null) {
-                LOG.error("Cound not find document for key {}", documentKey);
+                LOG.warn("The search index has {}/{}/{} at {}, and storage does not: rebuild the index "
+                        + "(search.index.rebuild)", key.namespace(), key.entity(), key.id(), key.timestamp());
                 return Optional.empty();
             }
             return Optional.of(jsonDocument);

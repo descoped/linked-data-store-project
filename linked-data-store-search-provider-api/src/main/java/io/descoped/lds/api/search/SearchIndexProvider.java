@@ -4,23 +4,29 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Common interface for Java's SPI to set up different search engine providers.
+ * A search index that LDS finds with the service loader, by its id ({@code search.index.provider}).
  */
 public interface SearchIndexProvider {
 
     /**
-     * Returns a unique ID of the search engine provider
+     * The id the configuration names the provider by.
+     *
+     * @return the id
      */
     String getProviderId();
 
     /**
-     * Returns a list of configuration keys that is used by the search engine provider
+     * The keys of the configuration the provider reads.
+     *
+     * @return the keys
      */
     Set<String> configurationKeys();
 
     /**
-     * Creates and initializes the search engine with the given configuration
+     * The search index, set up with the configuration.
+     *
+     * @param configuration the values of the keys the provider reads
+     * @return the index
      */
     SearchIndex getSearchIndex(Map<String, String> configuration);
-
 }
