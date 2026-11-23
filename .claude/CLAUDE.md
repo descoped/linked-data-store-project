@@ -167,9 +167,10 @@ which validates the Jackson tree of the document). A schema that at its root say
 - **Transactions** commit only when asked and roll back otherwise.
 - **Always the latest stable version** of every library, plugin, action, image and engine (Neo4j 2026, Solr 10).
   Pre-releases only on request. Old and outdated code and configuration is removed, not carried along. Renovate
-  moves every dependency, and CI on JDK 27 is the gate. One version is held, by the owner's decision: **PostgreSQL
-  stays at 18** (19.0 came out in November 2026 and is too new). The owner says when it is raised; Renovate is
-  told to stay below 19 (`.github/renovate.json`).
+  moves every dependency, and CI on JDK 27 is the gate. Two versions are held, by the owner's decision, and the
+  owner says when each is raised: **PostgreSQL stays at 18** (19.0 came out in November 2026 and is too new;
+  Renovate is told to stay below 19), and **Maven stays at 3** until Maven 4 has matured (`requireMavenVersion`
+  `[3.9.0,4)` in the root POM; Renovate keeps the wrapper's Maven below 4). Both in `.github/renovate.json`.
 - **No leftovers** of the earlier hosts and pipelines: no Statistics Norway (SSB) references, Azure Pipelines,
   Travis, Drone or OSSRH configuration.
 - **Secrets.** Nothing but documented development defaults (the `lds` database user and the Neo4j password
