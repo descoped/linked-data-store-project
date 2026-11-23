@@ -3,6 +3,7 @@ package io.descoped.lds.api.search;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Single;
 
+import java.time.Duration;
 import java.util.List;
 
 /**
@@ -19,6 +20,18 @@ public interface SearchIndex {
      * @return complete when the index has taken every entry; fails when it refuses them or cannot be reached
      */
     Completable put(List<IndexEntry> entries);
+
+    /**
+     * Removes the entries of a namespace that the index took longer ago than the age given, measured by the index's
+     * own clock, so that the clocks of several LDS do not matter; and the entries the index holds in a form it no
+     * longer writes, which no search finds. The clean-up after a rebuild: what the rebuild did not send again is what
+     * storage no longer holds.
+     *
+     * @param namespace the namespace
+     * @param age       how long ago the index took the entries that stay, at the most
+     * @return complete when the index has removed them
+     */
+    Completable removeOlderThan(String namespace, Duration age);
 
     /**
      * Makes every entry the index has taken searchable now, instead of within the time it takes otherwise.

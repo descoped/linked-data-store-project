@@ -18,6 +18,7 @@ import io.reactivex.rxjava3.core.Single;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Proxy;
+import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Map;
@@ -159,6 +160,11 @@ class QueryConnectionFetcherTest {
             @Override
             public Completable put(List<IndexEntry> entries) {
                 throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public Completable removeOlderThan(String namespace, Duration age) {
+                return Completable.complete();
             }
 
             @Override

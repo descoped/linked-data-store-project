@@ -71,6 +71,11 @@ class IndexQueueWorkerTest {
         }
 
         @Override
+        public Completable removeOlderThan(String namespace, Duration age) {
+            return Completable.complete();
+        }
+
+        @Override
         public Completable refresh() {
             return Completable.complete();
         }

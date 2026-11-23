@@ -6,8 +6,10 @@ import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.json.JsonDocument;
 import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
+import io.descoped.lds.api.search.IndexEntry;
 import io.descoped.lds.api.search.IndexQueue;
 import io.descoped.lds.api.search.IndexUpdate;
+import io.descoped.lds.api.search.SearchQuery;
 import io.descoped.lds.core.persistence.memory.MemoryInitializer;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Flowable;
@@ -129,7 +131,7 @@ class IndexRebuildTest {
     }
 
     private IndexRebuild rebuild() {
-        rebuild = new IndexRebuild(persistence, queue, "ns", List.of("Person", "Company"));
+        rebuild = new IndexRebuild(persistence, queue, new SimpleSearchIndex(), "ns", List.of("Person", "Company"));
         return rebuild;
     }
 
@@ -186,7 +188,7 @@ class IndexRebuildTest {
         AtomicInteger read = new AtomicInteger();
         RxJsonPersistence counted = counting(persistence, read);
         queue.hold = true;
-        rebuild = new IndexRebuild(counted, queue, "ns", List.of("Person"));
+        rebuild = new IndexRebuild(counted, queue, new SimpleSearchIndex(), "ns", List.of("Person"));
 
         rebuild.start();
         await().atMost(Duration.ofSeconds(5)).until(() -> read.get() > 0);
@@ -206,7 +208,8 @@ class IndexRebuildTest {
         }
         AtomicInteger read = new AtomicInteger();
         queue.hold = true;
-        rebuild = new IndexRebuild(counting(persistence, read), queue, "ns", List.of("Person"));
+        rebuild = new IndexRebuild(counting(persistence, read), queue, new SimpleSearchIndex(), "ns",
+                List.of("Person"));
         rebuild.start();
         await().atMost(Duration.ofSeconds(5)).until(() -> read.get() > 0);
 
@@ -261,5 +264,63 @@ class IndexRebuildTest {
         }
 
         assertThat(index.taken).containsExactlyInAnyOrder("ola", "ola", "kari");
+    }
+
+    /**
+     * When the queue is empty after the rebuild, the index no longer holds what the rebuild did not send again: an
+     * entry of a version storage does not hold. Another namespace keeps its entries.
+     */
+    @Test
+    void theEntriesTheRebuildDidNotSendAgainAreRemovedWhenTheQueueIsEmpty() throws InterruptedException {
+        SimpleSearchIndex index = new SimpleSearchIndex();
+        index.put(List.of(IndexEntry.written("ns", "Person", "gone", JAN, Map.of()),
+                IndexEntry.written("other", "Person", "elsewhere", JAN, Map.of()))).blockingAwait();
+        takenAMomentAgo();
+        write("Person", "ola", JAN);
+        IndexQueueWorker worker = new IndexQueueWorker(queue, index, persistence, IndexEntriesTest.withoutAModel(),
+                Duration.ofMillis(20));
+        worker.start();
+        try {
+            rebuild = new IndexRebuild(persistence, queue, index, "ns", List.of("Person", "Company"),
+                    Duration.ofMillis(20));
+            rebuild.start();
+            await().atMost(Duration.ofSeconds(10)).until(rebuild::isDone);
+        } finally {
+            worker.stop(5, TimeUnit.SECONDS);
+        }
+
+        assertThat(everyVersionIn(index, "ns")).containsExactly("ola");
+        assertThat(everyVersionIn(index, "other")).containsExactly("elsewhere");
+    }
+
+    /**
+     * The clean-up waits until the queue is empty: until then the index has not taken all the rebuild sent.
+     */
+    @Test
+    void theCleanUpWaitsUntilTheQueueIsEmpty() {
+        SimpleSearchIndex index = new SimpleSearchIndex();
+        index.put(List.of(IndexEntry.written("ns", "Person", "gone", JAN, Map.of()))).blockingAwait();
+        takenAMomentAgo();
+        write("Person", "ola", JAN);
+        rebuild = new IndexRebuild(persistence, queue, index, "ns", List.of("Person"), Duration.ofMillis(20));
+        rebuild.start();
+        await().atMost(Duration.ofSeconds(5)).until(() -> queue.lag().blockingGet().updates() == 1);
+
+        await().during(Duration.ofMillis(300)).atMost(Duration.ofSeconds(1)).until(() -> !rebuild.isDone());
+        assertThat(everyVersionIn(index, "ns")).containsExactly("gone");
+
+        queue.remove(queue.take(10, Duration.ofMinutes(1)).blockingGet()).blockingAwait();
+        await().atMost(Duration.ofSeconds(5)).until(rebuild::isDone);
+        assertThat(everyVersionIn(index, "ns")).isEmpty();
+    }
+
+    /* Longer ago than the margin the clean-up leaves, so what is in the index now was taken before a rebuild. */
+    private static void takenAMomentAgo() {
+        await().pollDelay(IndexRebuild.MARGIN.plusMillis(200)).until(() -> true);
+    }
+
+    private static List<String> everyVersionIn(SimpleSearchIndex index, String namespace) {
+        return index.search(new SearchQuery(namespace, "*:*", Set.of(), ZonedDateTime.parse("2100-01-01T00:00:00Z"),
+                true, 0, 100)).blockingGet().hits().stream().map(hit -> hit.key().id()).toList();
     }
 }

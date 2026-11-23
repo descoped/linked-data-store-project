@@ -89,7 +89,10 @@ The start option `search.index.rebuild` rebuilds the index from storage (`IndexR
 every version of every document of every entity type, read with `readAllDocumentVersions` (the persistence API,
 held by the shared suite), is added to the queue, a deletion as a delete and the versions before it as writes, and
 the worker sends them. The index is never cleared, so search answers during a rebuild. Storage is read only as fast
-as the queue takes, and each read transaction is opened and closed on the rebuild's own thread.
+as the queue takes, and each read transaction is opened and closed on the rebuild's own thread. When every update
+is added and the queue is then empty, the index removes the entries of the namespace it took before the rebuild
+started, by its own clock less a second (`SearchIndex.removeOlderThan`), and those of the search before 3.0.0: what
+was not sent again is what storage no longer holds. A queue that is never empty puts the clean-up off.
 
 ## Readiness
 

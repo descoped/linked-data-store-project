@@ -324,7 +324,8 @@ public class UndertowApplication {
             IndexQueue indexQueue = IndexQueueConfigurator.configureIndexQueue(configuration);
             sagaRepositoryBuilder.indexQueue(indexQueue);
             IndexRebuild rebuild = configuration.getBoolean("search.index.rebuild", false)
-                    ? new IndexRebuild(persistence, indexQueue, configuration.find("namespace.default").orElseThrow(),
+                    ? new IndexRebuild(persistence, indexQueue, searchIndex,
+                    configuration.find("namespace.default").orElseThrow(),
                     List.copyOf(specification.getManagedDomains()))
                     : null;
             indexing = new Indexing(searchIndex, indexQueue,
