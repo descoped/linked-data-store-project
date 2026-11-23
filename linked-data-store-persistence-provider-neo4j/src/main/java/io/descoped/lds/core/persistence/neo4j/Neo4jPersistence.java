@@ -244,6 +244,24 @@ final class Neo4jPersistence implements RxJsonPersistence {
         return documents(tx, cypher, params, ns, entityName);
     }
 
+    /*
+     * One statement: every version of every document node of the entity in the namespace, by the order key of its id
+     * and then its time; a record is taken from the driver when a document is asked for. A version that marks the
+     * document as deleted is given as a deleted document (no content), as the other stores give it.
+     */
+    @Override
+    public Flowable<JsonDocument> readAllDocumentVersions(Transaction tx, String ns, String entityName) {
+        String cypher = MATCH_DOCUMENT + Cypher.label(entityName) + " {namespace: $namespace})-[v:VERSION]->(m)\n" +
+                "WITH r, v, m ORDER BY r.idOrder, v.from\n" +
+                RETURN_DOCUMENT;
+        return ((Neo4jTransaction) tx).executeCypherAsync(cypher, Map.of(NAMESPACE, ns)).map(row -> {
+            JsonDocument document = toDocument(row, ns, entityName);
+            return row.get("m").asNode().get("deleted").asBoolean(false)
+                    ? new JsonDocument(document.key(), (JsonNode) null)
+                    : document;
+        });
+    }
+
     @Override
     public Flowable<JsonDocument> readDocumentVersions(Transaction tx, String ns, String entityName, String id, Range<ZonedDateTime> range) {
         Map<String, Object> params = new LinkedHashMap<>();

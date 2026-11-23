@@ -39,6 +39,13 @@ public interface SearchIndex {
     Completable deleteAll();
 
     /**
+     * Asks the index whether it answers, for the readiness of LDS.
+     *
+     * @return completes when the index answers, fails when it cannot be reached or says it is not ready
+     */
+    Completable health();
+
+    /**
      * Searches the index for the given text.
      *
      * @param query      query that is passed directly to the search index implementation

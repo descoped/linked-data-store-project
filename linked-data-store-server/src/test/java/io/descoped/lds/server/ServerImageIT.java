@@ -174,6 +174,29 @@ class ServerImageIT {
     }
 
     /**
+     * {@code /ping} and {@code /health/alive} answer whenever the process does: whether LDS can take writes is the
+     * readiness.
+     */
+    @Test
+    void pingAndAliveAnswerWheneverTheProcessDoes() throws Exception {
+        assertThat(lds.get("/ping").statusCode()).isEqualTo(200);
+        assertThat(lds.get("/health/alive").statusCode()).isEqualTo(200);
+    }
+
+    /**
+     * In memory, LDS is ready when the store, the saga log and the transaction log answer; there is no search.
+     */
+    @Test
+    void ldsInMemoryIsReady() throws Exception {
+        HttpResponse<String> ready = lds.get("/health/ready");
+
+        assertThat(ready.statusCode()).isEqualTo(200);
+        assertThat(ready.body()).startsWith("{\"status\":\"UP\",\"checks\":{\"persistence\":{\"status\":\"UP\"")
+                .contains("\"sagaLog\":{\"status\":\"UP\"", "\"transactionLog\":{\"status\":\"UP\"")
+                .doesNotContain("search", "indexQueue");
+    }
+
+    /**
      * {@code /ping} is under the prefix and on the port LDS is given, here by its variables.
      */
     @Test
@@ -228,6 +251,37 @@ class ServerImageIT {
             assertThat(Files.readString(output))
                     .contains("environment variable(s) LDS_NAMESPACE_DEFALT match no configuration key")
                     .doesNotContain("LDS_HTTP_PORT")
+                    .doesNotContain("Server started");
+        } finally {
+            Files.deleteIfExists(output);
+        }
+    }
+
+    /**
+     * A saga log in PostgreSQL whose pool cannot hold a connection for each saga log and one more is refused at
+     * start, before LDS connects to the database, with the keys to change.
+     */
+    @Test
+    void aSagaLogPoolTooSmallForItsLogsStopsTheStart() throws Exception {
+        String name = "lds-small-pool-" + ProcessHandle.current().pid();
+        Path output = Files.createTempFile("lds-small-pool", ".log");
+        try {
+            Process process = new ProcessBuilder("docker", "run", "--rm", "--name", name,
+                    "-e", "LDS_SAGALOG_PROVIDER=no.cantara.sagalog.postgres.PostgresSagaLogInitializer",
+                    "-e", "LDS_SAGALOG_CONFIG_CONNECTION_POOL_MAX_SIZE=10", "-e", "LDS_SAGA_NUMBER_OF_LOGS=30", IMAGE)
+                    .redirectErrorStream(true)
+                    .redirectOutput(output.toFile())
+                    .start();
+            boolean ended = process.waitFor(2, TimeUnit.MINUTES);
+            if (!ended) {
+                docker("rm", "--force", name);
+            }
+            assertThat(ended).as("LDS stopped by itself: %s", Files.readString(output)).isTrue();
+            assertThat(process.exitValue()).isEqualTo(1);
+            assertThat(Files.readString(output))
+                    .contains("The saga log has 10 connections in its pool (sagalog.config.connection-pool.max-size)"
+                            + " for 30 saga logs (saga.number-of-logs)")
+                    .doesNotContain("SagaLogPool provider initialization attempt")
                     .doesNotContain("Server started");
         } finally {
             Files.deleteIfExists(output);

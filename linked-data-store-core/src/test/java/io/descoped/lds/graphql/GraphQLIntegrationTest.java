@@ -85,14 +85,13 @@ public class GraphQLIntegrationTest {
     public void thatSeachByContactNameWorks() {
         // setup demo data
         putResource("/data/contact/821aa", "demo/4-donald.json");
-        JsonNode result = executeGraphQLQuery("spec/demo/graphql/search_contact.json", "Duck");
+        // the index is sent the update after the write, by the index queue
+        JsonNode result = searchUntil("spec/demo/graphql/search_contact.json", "Duck", 1);
         assertNoErrors(result);
-        Assert.assertEquals(result.get("data").get("Search").get("edges").size(), 1);
         Assert.assertEquals(JsonTools.text(result.get("data").get("Search").get("edges").get(0).get("node").get("name")), "Donald Duck");
         // Check that the entity is deleted from the index
         client.delete("/data/contact/821aa?sync=true");
-        result = executeGraphQLQuery("spec/demo/graphql/search_contact.json", "Duck");
-        Assert.assertEquals(result.get("data").get("Search").get("edges").size(), 0);
+        searchUntil("spec/demo/graphql/search_contact.json", "Duck", 0);
     }
 
     @Test
@@ -105,16 +104,14 @@ public class GraphQLIntegrationTest {
         putResource("/data/provisionagreement/2a41c", "demo/1-money-bin.json");
         putResource("/data/provisionagreement/2a41c/address", "demo/2-money-bin-address.json");
 
-        JsonNode result = executeGraphQLQuery("spec/demo/graphql/search_address.json", "Duckburg");
+        JsonNode result = searchUntil("spec/demo/graphql/search_address.json", "Duckburg", 1);
         assertNoErrors(result);
-        Assert.assertEquals(result.get("data").get("Search").get("edges").size(), 1);
         Assert.assertEquals(JsonTools.text(result.get("data").get("Search").get("edges").get(0).get("node").get("name")), "Money Bin");
         // Check that the entity index is updated
         client.put("/data/provisionagreement/2a41c", readFileOrClasspathResource(
                 "demo/1-money-bin.json").replace("Money Bin", "Jupiter"));
-        result = executeGraphQLQuery("spec/demo/graphql/search_address.json", "Jupiter");
+        result = searchUntil("spec/demo/graphql/search_address.json", "Jupiter", 1);
         assertNoErrors(result);
-        Assert.assertEquals(result.get("data").get("Search").get("edges").size(), 1);
     }
 
     @Test
@@ -228,5 +225,19 @@ public class GraphQLIntegrationTest {
         return JsonTools.toJsonNode(client.postJson("/graphql", query)
                 .expect200Ok()
                 .body());
+    }
+
+    /*
+     * Searches until the search has the given number of results, a few seconds at most: the index queue sends a write
+     * to the index after the write.
+     */
+    private JsonNode searchUntil(String query, String text, int results) {
+        JsonNode[] last = new JsonNode[1];
+        org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(10)).until(() -> {
+            last[0] = executeGraphQLQuery(query, text);
+            JsonNode edges = last[0].path("data").path("Search").path("edges");
+            return edges.isArray() && edges.size() == results;
+        });
+        return last[0];
     }
 }

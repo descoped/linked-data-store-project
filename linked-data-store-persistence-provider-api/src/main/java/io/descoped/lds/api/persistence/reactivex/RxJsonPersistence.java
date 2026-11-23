@@ -60,6 +60,20 @@ public interface RxJsonPersistence {
     Flowable<JsonDocument> readDocumentVersions(Transaction tx, String ns, String entityName, String id,
                                                 Range<ZonedDateTime> range);
 
+    /**
+     * Every version of every document of an entity type, as the store holds them, for a rebuild of what is derived
+     * from the store, such as the search index. A version that marks a document as deleted is included, as a document
+     * whose {@link JsonDocument#deleted()} is true, so that the versions of a deleted document are found. The documents
+     * come by id, in the order of their code points ({@link io.descoped.lds.api.persistence.IdOrder}), with the
+     * versions of one id together, in an order the store chooses; they are taken from the store as they are asked for.
+     *
+     * @param tx         the transaction
+     * @param ns         the namespace
+     * @param entityName the entity type
+     * @return the versions
+     */
+    Flowable<JsonDocument> readAllDocumentVersions(Transaction tx, String ns, String entityName);
+
 
     /**
      * Read the <b>target</b> {@link JsonDocument}s linked to a <b>source</b> document.

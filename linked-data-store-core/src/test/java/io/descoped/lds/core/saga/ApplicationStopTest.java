@@ -32,6 +32,7 @@ import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -41,6 +42,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -72,6 +74,34 @@ class ApplicationStopTest {
             server.getApplication().getSec().runningSagas.clear(); // what a test put there never completes
             server.getApplication().stop(); // does nothing when the test has stopped it
         }
+    }
+
+    /**
+     * With search on, the worker of the index queue runs from the start of the application, and its thread has ended
+     * when the application has stopped: after the sagas, which add to its queue, and before the store it reads.
+     */
+    @Test
+    void theWorkerOfTheIndexQueueRunsFromTheStartAndHasEndedWhenTheApplicationHasStopped() throws Exception {
+        Set<String> before = indexQueueThreads();
+        server = start();
+        assertThat(put("/data/provisionagreement/indexed?sync=true")).isEqualTo(201);
+
+        await().atMost(Duration.ofSeconds(5)).until(() -> !startedSince(before).isEmpty());
+        Set<String> started = startedSince(before);
+
+        server.getApplication().stop();
+
+        assertThat(indexQueueThreads()).doesNotContainAnyElementsOf(started);
+    }
+
+    /* The live threads of index queue workers, by name: each worker names its own. */
+    private static Set<String> indexQueueThreads() {
+        return Thread.getAllStackTraces().keySet().stream().filter(Thread::isAlive).map(Thread::getName)
+                .filter(name -> name.startsWith("lds-index-queue-")).collect(Collectors.toSet());
+    }
+
+    private static Set<String> startedSince(Set<String> before) {
+        return indexQueueThreads().stream().filter(name -> !before.contains(name)).collect(Collectors.toSet());
     }
 
     @Test

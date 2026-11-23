@@ -100,18 +100,7 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
      * The received fragments must be ordered by id <strong>before</strong> it is ordered by path..
      */
     static Flowable<JsonDocument> toDocuments(Flowable<Fragment> fragmentFlowable, int fragmentSize, boolean includeDeleted) {
-        return RxGroupByTools.groupByOrdered(
-                fragmentFlowable.takeWhile(fragment -> !fragment.isStreamingControl()),
-                DocumentKey::from
-
-        ).concatMap(group -> {
-            // For each group, create a FlattenedDocument.
-            return group.flowable()
-                    .toMultimap(Fragment::path)
-                    .map(map -> FlattenedDocument.decodeDocument(group.key(), map, fragmentSize))
-                    .toFlowable();
-
-        }).filter(flattenedDocument -> {
+        return toFlattenedDocuments(fragmentFlowable, fragmentSize).filter(flattenedDocument -> {
             // Filter out the deleted documents.
             return includeDeleted || !flattenedDocument.deleted();
 
@@ -122,6 +111,19 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
                     new FlattenedDocumentToJson(flattenedDocument).toJsonNode()
             );
         });
+    }
+
+    /*
+     * One document for each group of fragments with the same key, asking the source for more one document at a time.
+     */
+    private static Flowable<FlattenedDocument> toFlattenedDocuments(Flowable<Fragment> fragmentFlowable, int fragmentSize) {
+        return RxGroupByTools.groupByOrdered(
+                fragmentFlowable.takeWhile(fragment -> !fragment.isStreamingControl()),
+                DocumentKey::from
+        ).concatMap(group -> group.flowable()
+                .toMultimap(Fragment::path)
+                .map(map -> FlattenedDocument.decodeDocument(group.key(), map, fragmentSize))
+                .toFlowable());
     }
 
     static Flowable<JsonDocument> doReadDocuments(Flowable<Fragment> fragments, Range<String> range, int fragmentSize) {
@@ -165,6 +167,17 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
                 : fragments.sorted();
 
         return doReadDocumentVersions(fragments, range, fragmentSize);
+    }
+
+    /*
+     * The store gives the fragments by id, version and path, so they are cut into documents as they come: no sort.
+     */
+    @Override
+    public Flowable<JsonDocument> readAllDocumentVersions(Transaction tx, String ns, String entityName) {
+        return toFlattenedDocuments(persistence.readAllVersions(tx, ns, entityName), fragmentSize)
+                .map(flattenedDocument -> flattenedDocument.deleted()
+                        ? new JsonDocument(flattenedDocument.key(), (JsonNode) null)
+                        : new JsonDocument(flattenedDocument.key(), new FlattenedDocumentToJson(flattenedDocument).toJsonNode()));
     }
 
     @Override

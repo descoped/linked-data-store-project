@@ -131,6 +131,12 @@
         </dependency>
         <dependency>
             <groupId>io.descoped.lds</groupId>
+            <artifactId>linked-data-store-index-queue-postgres</artifactId>
+            <version>${project.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.descoped.lds</groupId>
             <artifactId>linked-data-store-persistence-provider-memory</artifactId>
             <version>${project.version}</version>
             <scope>runtime</scope>

@@ -15,6 +15,11 @@
     <name>Linked Data Store Load Test</name>
     <description>The load test of Linked Data Store: the program that turns the results of a run into statistics and plot files. The scripts next to it start LDS and drive the load.</description>
 
+    <properties>
+        <!-- A tool of this repository, not a library: never published, neither as a SNAPSHOT nor in a release. -->
+        <maven.deploy.skip>true</maven.deploy.skip>
+    </properties>
+
     <build>
         <plugins>
             <!-- The image of the load test is made of every jar in target and target/lib. The jars of an earlier

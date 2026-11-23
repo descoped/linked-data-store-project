@@ -100,7 +100,6 @@ class SolrSearchIndexTest {
         searchIndex.createOrOverwrite(text("UnitDataSet", "second", "after the pause")).blockingAwait();
         assertThat(awaitHits(() -> searchIndex.search("pause", null, 0, 10).blockingGet(), 2).getResults())
                 .extracting(result -> result.getDocumentKey().id()).containsExactlyInAnyOrder("first", "second");
-        assertThat(((SolrSearchIndex) searchIndex).failedUpdates()).isZero();
     }
 
     @Test
@@ -134,38 +133,65 @@ class SolrSearchIndexTest {
     }
 
     @Test
-    void anUpdateSolrRefusesIsCountedForEachOfItsDocumentsAndTheWriteGoesOn() {
-        // Solr answers 404 for a core it does not have; SolrJ then names the documents of the update
+    void anUpdateSolrRefusesFailsForItsCaller() {
+        // Solr answers 404 for a core it does not have
         SolrSearchIndex missingCore = new SolrSearchIndex(Solr10.url().replace("/lds-index", "/no-such-core"));
 
-        missingCore.createOrOverwrite(List.of(text("UnitDataSet", "a", "one"), text("UnitDataSet", "b", "two")))
-                .blockingAwait();
-
-        await().atMost(COMMIT_WAIT).until(() -> missingCore.failedUpdates() == 2);
+        assertThatThrownBy(() -> missingCore.createOrOverwrite(List.of(text("UnitDataSet", "a", "one"),
+                text("UnitDataSet", "b", "two"))).blockingAwait())
+                .isInstanceOf(RemoteSolrException.class).hasMessageContaining("404");
     }
 
     @Test
     void aDeleteSolrRefusesFailsForItsCaller() {
-        // SolrJ sends an update without documents at once rather than queue it (ConcurrentUpdateBaseSolrClient.request,
-        // streamDeletes false), so the caller gets Solr's answer and nothing is left to count
         SolrSearchIndex missingCore = new SolrSearchIndex(Solr10.url().replace("/lds-index", "/no-such-core"));
 
         assertThatThrownBy(() -> missingCore.delete(text("UnitDataSet", "a", "one")).blockingAwait())
                 .isInstanceOf(RemoteSolrException.class).hasMessageContaining("404");
-        assertThat(missingCore.failedUpdates()).isZero();
+    }
+
+    /**
+     * The health of the index is that of its core: an empty core answers, a core Solr does not have and a Solr that
+     * cannot be reached do not.
+     */
+    @Test
+    void theIndexIsHealthyWhenItsCoreAnswers() throws IOException {
+        searchIndex.health().blockingAwait();
+
+        SolrSearchIndex missingCore = new SolrSearchIndex(Solr10.url().replace("/lds-index", "/no-such-core"));
+        assertThatThrownBy(() -> missingCore.health().blockingAwait())
+                .isInstanceOf(RemoteSolrException.class).hasMessageContaining("404");
+
+        int closedPort;
+        try (ServerSocket socket = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            closedPort = socket.getLocalPort();
+        }
+        SolrSearchIndex unreachable = new SolrSearchIndex("http://127.0.0.1:" + closedPort + "/solr/lds-index");
+        assertThatThrownBy(() -> unreachable.health().blockingAwait())
+                .hasRootCauseInstanceOf(java.net.ConnectException.class);
     }
 
     @Test
-    void anUpdateThatCannotReachSolrIsCounted() throws IOException {
+    void anUpdateThatCannotReachSolrFailsForItsCaller() throws IOException {
         int closedPort;
         try (ServerSocket socket = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
             closedPort = socket.getLocalPort();
         }
         SolrSearchIndex unreachable = new SolrSearchIndex("http://127.0.0.1:" + closedPort + "/solr/lds-index");
 
-        unreachable.createOrOverwrite(text("UnitDataSet", "a", "one")).blockingAwait();
+        assertThatThrownBy(() -> unreachable.createOrOverwrite(text("UnitDataSet", "a", "one")).blockingAwait())
+                .hasRootCauseInstanceOf(java.net.ConnectException.class);
+        assertThatThrownBy(() -> unreachable.delete(text("UnitDataSet", "a", "one")).blockingAwait())
+                .hasRootCauseInstanceOf(java.net.ConnectException.class);
+    }
 
-        await().atMost(COMMIT_WAIT).until(() -> unreachable.failedUpdates() >= 1);
+    @Test
+    void anUpdateIsCompleteOnlyWhenSolrHasAnsweredIt() {
+        // nothing is queued on the side: when the Completable ends, Solr has the documents (to be seen after its commit)
+        searchIndex.createOrOverwrite(List.of(text("UnitDataSet", "x", "answered"), text("UnitDataSet", "y", "answered")))
+                .blockingAwait();
+
+        assertThat(awaitHits(() -> searchIndex.search("answered", null, 0, 10).blockingGet(), 2).getTotalHits()).isEqualTo(2);
     }
 
     @Test

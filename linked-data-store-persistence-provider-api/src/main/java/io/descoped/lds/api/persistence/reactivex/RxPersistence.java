@@ -30,6 +30,17 @@ public interface RxPersistence {
             String id
     );
 
+    /**
+     * The fragments of every version of every document of the entity, deletion markers included: by id, then by
+     * version (in an order the store chooses), then by path, so that the fragments of one version come together.
+     *
+     * @param tx        the transaction
+     * @param namespace the namespace
+     * @param entity    the entity type
+     * @return the fragments, taken from the store as they are asked for
+     */
+    Flowable<Fragment> readAllVersions(Transaction tx, String namespace, String entity);
+
     Flowable<Fragment> readVersions(
             Transaction tx,
             String namespace,

@@ -1,5 +1,6 @@
 package io.descoped.lds.core;
 
+import io.descoped.lds.core.utils.Jitter;
 import graphql.GraphQL;
 import graphql.schema.GraphQLSchema;
 import graphql.schema.idl.SchemaParser;
@@ -7,10 +8,12 @@ import graphql.schema.idl.TypeDefinitionRegistry;
 import io.descoped.config.DynamicConfiguration;
 import io.descoped.lds.api.persistence.Limits;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
+import io.descoped.lds.api.search.IndexQueue;
 import io.descoped.lds.api.search.SearchIndex;
 import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.core.controller.CORSHandler;
-import io.descoped.lds.core.controller.HealthCheckHandler;
+import io.descoped.lds.core.health.Readiness;
+import io.descoped.lds.core.health.ReadinessHandler;
 import io.descoped.lds.core.controller.NamespaceController;
 import io.descoped.lds.core.persistence.PersistenceConfigurator;
 import io.descoped.lds.core.saga.SagaExecutionCoordinator;
@@ -19,6 +22,9 @@ import io.descoped.lds.core.saga.SagaRepository;
 import io.descoped.lds.core.saga.SagasObserver;
 import io.descoped.lds.core.schema.JsonSchema;
 import io.descoped.lds.core.schema.JsonSchemaBuilder;
+import io.descoped.lds.core.search.IndexQueueConfigurator;
+import io.descoped.lds.core.search.IndexQueueWorker;
+import io.descoped.lds.core.search.IndexRebuild;
 import io.descoped.lds.core.search.SearchIndexConfigurator;
 import io.descoped.lds.core.specification.JsonSchemaBasedSpecification;
 import io.descoped.lds.core.specification.SpecificationJsonSchemaBuilder;
@@ -44,8 +50,10 @@ import tools.jackson.databind.node.ObjectNode;
 
 import java.io.File;
 import java.net.URL;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.time.Clock;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Optional;
@@ -87,6 +95,8 @@ public class UndertowApplication {
     private final SelectableThreadPoolExecutor sagaThreadPool;
     private final SagaRecoveryTrigger sagaRecoveryTrigger;
     private final TxlogRawdataPool txlogRawdataPool;
+    private final Indexing indexing;
+    private final Readiness readiness;
 
     /**
      * The parts of the write path the application runs and stops.
@@ -104,8 +114,23 @@ public class UndertowApplication {
                      TxlogRawdataPool txlogRawdataPool) {
     }
 
+    /**
+     * Search: the index, the queue of the updates it has not taken, the worker that sends them, and the rebuild of the
+     * index from storage when the start asks for it.
+     *
+     * @param index   the search index
+     * @param queue   the index queue
+     * @param worker  the worker
+     * @param rebuild the rebuild, or null
+     */
+    record Indexing(SearchIndex index, IndexQueue queue, IndexQueueWorker worker, IndexRebuild rebuild) {
+    }
+
+    /* How long the worker of the index queue waits for updates when there were none. */
+    static final Duration INDEX_QUEUE_POLL = Duration.ofMillis(200);
+
     UndertowApplication(Specification specification, RxJsonPersistence persistence, SagaParts sagas, int port,
-                        NamespaceController namespaceController, SearchIndex searchIndex,
+                        NamespaceController namespaceController, Indexing indexing,
                         DynamicConfiguration configuration) {
         this.specification = specification;
         this.sagaRecoveryTrigger = sagas.recoveryTrigger();
@@ -118,6 +143,8 @@ public class UndertowApplication {
         this.sagaLogPool = sagas.logPool();
         this.sagaThreadPool = sagas.threadPool();
         this.txlogRawdataPool = sagas.txlogRawdataPool();
+        this.indexing = indexing;
+        SearchIndex searchIndex = indexing == null ? null : indexing.index();
 
         LOG.info("Initializing Http handlers ...");
 
@@ -153,11 +180,18 @@ public class UndertowApplication {
 
         LOG.info("Initializing health handlers ...");
 
-        HealthCheckHandler healthHandler = new HealthCheckHandler(persistence);
-        pathHandler.addExactPath(HealthCheckHandler.HEALTH_ALIVE_PATH, healthHandler);
-        ResponseCodeHandler aliveHandler = new ResponseCodeHandler(StatusCodes.OK);
-        pathHandler.addExactPath(HealthCheckHandler.HEALTH_READY_PATH, aliveHandler);
-        pathHandler.addExactPath(HealthCheckHandler.PING_PATH, aliveHandler);
+        // alive and ping: the process answers; whether LDS can take writes is the readiness, which asks every part
+        ResponseCodeHandler answers = new ResponseCodeHandler(StatusCodes.OK);
+        pathHandler.addExactPath(ReadinessHandler.ALIVE_PATH, answers);
+        pathHandler.addExactPath(ReadinessHandler.PING_PATH, answers);
+        this.readiness = new Readiness()
+                .persistence(persistence, namespace, new TreeSet<>(specification.getManagedDomains()).first())
+                .sagaLog(sagaLogPool)
+                .transactionLog(txlogRawdataPool);
+        if (indexing != null) {
+            readiness.search(indexing.index()).indexQueue(indexing.queue(), Clock.systemUTC());
+        }
+        pathHandler.addExactPath(ReadinessHandler.PATH, new ReadinessHandler(readiness));
         pathHandler.addPrefixPath("/", namespaceController);
 
         HttpHandler httpHandler;
@@ -272,8 +306,17 @@ public class UndertowApplication {
         LOG.info("Initializing search-index ...");
 
         SearchIndex searchIndex = SearchIndexConfigurator.configureSearchIndex(configuration);
+        Indexing indexing = null;
         if (searchIndex != null) {
-            sagaRepositoryBuilder.indexer(searchIndex);
+            LOG.info("Initializing index queue ...");
+            IndexQueue indexQueue = IndexQueueConfigurator.configureIndexQueue(configuration);
+            sagaRepositoryBuilder.indexQueue(indexQueue);
+            IndexRebuild rebuild = configuration.getBoolean("search.index.rebuild", false)
+                    ? new IndexRebuild(persistence, indexQueue, configuration.find("namespace.default").orElseThrow(),
+                    List.copyOf(specification.getManagedDomains()))
+                    : null;
+            indexing = new Indexing(searchIndex, indexQueue,
+                    new IndexQueueWorker(indexQueue, searchIndex, persistence, INDEX_QUEUE_POLL), rebuild);
         }
 
         LOG.info("Initializing transaction-log ...");
@@ -324,7 +367,7 @@ public class UndertowApplication {
         LOG.info("Initializing saga-recovery thread-pool ...");
 
         AtomicInteger executorThreadId = new AtomicInteger();
-        ScheduledExecutorService recoveryThreadPool = Executors.newScheduledThreadPool(10, runnable -> new Thread(runnable, "saga-recovery-" + executorThreadId.incrementAndGet()));
+        ScheduledExecutorService recoveryThreadPool = Executors.newScheduledThreadPool(SAGA_RECOVERY_THREADS, runnable -> new Thread(runnable, "saga-recovery-" + executorThreadId.incrementAndGet()));
 
         LOG.info("Initializing saga-execution-coordinator ...");
 
@@ -356,7 +399,7 @@ public class UndertowApplication {
 
         SagaParts sagas = new SagaParts(sec, sagaRepository, sagasObserver, sagaRecoveryTrigger, sagaLogPool,
                 sagaThreadPool, txlogRawdataPool);
-        return new UndertowApplication(specification, persistence, sagas, port, namespaceController, searchIndex,
+        return new UndertowApplication(specification, persistence, sagas, port, namespaceController, indexing,
                 configuration);
     }
 
@@ -377,6 +420,7 @@ public class UndertowApplication {
         ServiceLoader<SagaLogInitializer> loader = ServiceLoader.load(SagaLogInitializer.class);
         SagaLogInitializer initializer = loader.stream().filter(c -> providerClass.equals(c.type().getName())).findFirst().orElseThrow().get();
         Map<String, String> providerConfig = subMapFromPrefix(configuration.asMap(), "sagalog.config.");
+        checkSagaLogPool(initializer, providerConfig, configuration.getInt("saga.number-of-logs"));
 
         int retryIntervalSeconds = configuration.getInt("sagalog.provider.initialization.retry-interval-seconds");
         int maxWaitSeconds = configuration.getInt("sagalog.provider.initialization.max-wait-seconds");
@@ -392,7 +436,7 @@ public class UndertowApplication {
                 long remainingMs = TimeUnit.SECONDS.toMillis(maxWaitSeconds) - durationMs;
                 if (remainingMs > 0) {
                     try {
-                        Thread.sleep(Math.min(retryIntervalSeconds * 1000L, remainingMs));
+                        Thread.sleep(Math.min(Jitter.around(retryIntervalSeconds * 1000L), remainingMs));
                     } catch (InterruptedException _) {
                         Thread.currentThread().interrupt();
                         throw new RuntimeException("Interrupted while attempting to sleep, interrupt status preserved.", e);
@@ -401,6 +445,42 @@ public class UndertowApplication {
                     throw e;
                 }
             }
+        }
+    }
+
+    /*
+     * The threads that recover sagas: each recovers one saga log at a time, and a log of another instance of the
+     * cluster is opened for it, and closed when it is done.
+     */
+    static final int SAGA_RECOVERY_THREADS = 10;
+
+    /*
+     * The key of a saga log provider whose saga logs each hold a connection of a pool while they are open (PostgreSQL).
+     */
+    static final String SAGA_LOG_POOL_SIZE = "connection-pool.max-size";
+
+    /*
+     * Each saga log of a provider with a pool of connections holds one connection while it is open, and a log is
+     * opened when a write first takes it, so a pool too small for the logs shows only under load, as writes that
+     * wait and fail. It is refused at start: the pool must have a connection for each of its logs, which stay open
+     * once opened, one for each log of another instance that recovery opens at the same time (one for each recovery
+     * thread), and one for the pool's own queries (listing the logs). The pool's size is the provider's key, or its
+     * default. Whether the database has room for the pool, the provider checks when it makes it.
+     */
+    static void checkSagaLogPool(SagaLogInitializer initializer, Map<String, String> providerConfig, int numberOfLogs) {
+        String poolSize = providerConfig.getOrDefault(SAGA_LOG_POOL_SIZE,
+                initializer.configurationOptionsAndDefaults().get(SAGA_LOG_POOL_SIZE));
+        if (poolSize == null) {
+            return; // the provider keeps its logs without a pool of connections
+        }
+        int connections = Integer.parseInt(poolSize.trim());
+        int needed = numberOfLogs + SAGA_RECOVERY_THREADS + 1;
+        if (connections < needed) {
+            throw new IllegalStateException("The saga log has " + connections + " connections in its pool"
+                    + " (sagalog.config." + SAGA_LOG_POOL_SIZE + ") for " + numberOfLogs + " saga logs"
+                    + " (saga.number-of-logs): each open saga log holds a connection, recovery opens up to "
+                    + SAGA_RECOVERY_THREADS + " logs of other instances at once, and the pool needs one for its own"
+                    + " queries. Give the pool at least " + needed + " connections, or use fewer saga logs.");
         }
     }
 
@@ -448,7 +528,7 @@ public class UndertowApplication {
                 long remainingMs = TimeUnit.SECONDS.toMillis(maxWaitSeconds) - durationMs;
                 if (remainingMs > 0) {
                     try {
-                        Thread.sleep(Math.min(retryIntervalSeconds * 1000L, remainingMs));
+                        Thread.sleep(Math.min(Jitter.around(retryIntervalSeconds * 1000L), remainingMs));
                     } catch (InterruptedException _) {
                         Thread.currentThread().interrupt();
                         throw new RuntimeException("Interrupted while attempting to sleep, interrupt status preserved.", e);
@@ -501,6 +581,13 @@ public class UndertowApplication {
     public void start() {
         LOG.info("Starting Undertow ...");
         server.start();
+        if (indexing != null) {
+            LOG.info("Starting the index queue ...");
+            indexing.worker().start();
+            if (indexing.rebuild() != null) {
+                indexing.rebuild().start();
+            }
+        }
         if (sagaRecoveryTrigger != null) {
             LOG.info("Starting saga-recovery (instance-local) ...");
             // attempt to recover local saga-logs immediately, then attempt cluster wide recovery regularly
@@ -554,6 +641,7 @@ public class UndertowApplication {
             }
         });
         stop("Undertow", server::stop);
+        stop("Readiness checks", readiness::close);
         if (sagaRecoveryTrigger != null) {
             stop("SagaRecoveryTrigger", sagaRecoveryTrigger::stop); // shuts the recovery thread-pool down as well
         } else {
@@ -572,6 +660,15 @@ public class UndertowApplication {
         stop("SagaObserver", sagasObserver::shutdown);
 
         stop("SagaLogPool", sagaLogPool::shutdown);
+
+        if (indexing != null) {
+            // after the sagas, which add to the queue, and before the store, which the worker reads
+            if (indexing.rebuild() != null) {
+                stop("Index rebuild", indexing.rebuild()::stop);
+            }
+            stop("Index queue worker", () -> indexing.worker().stop(timeout, unit));
+            stop("Index queue", indexing.queue()::close);
+        }
 
         stop("Persistence provider", persistence::close);
         stop("Transaction log (rawdata client)", () -> txlogRawdataPool.getClient().close());

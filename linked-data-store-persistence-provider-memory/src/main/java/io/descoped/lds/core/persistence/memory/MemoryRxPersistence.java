@@ -215,6 +215,24 @@ public class MemoryRxPersistence implements RxPersistence {
                 );
     }
 
+    /*
+     * The whole primary range of the entity: by id, then by version, newest first (the key holds the negated time),
+     * then by path.
+     */
+    @Override
+    public Flowable<Fragment> readAllVersions(Transaction tx, String namespace, String entity) {
+        final OrderedKeyValueTransaction transaction = (OrderedKeyValueTransaction) tx;
+        return Single.defer(() -> getPrimary(namespace, entity))
+                .flatMapPublisher(primary -> Flowable.fromPublisher(
+                                new AsyncIterablePublisher<>(transaction.getRange(
+                                        KeySelector.firstGreaterOrEqual(primary.range().begin()),
+                                        KeySelector.firstGreaterOrEqual(primary.range().end()),
+                                        PRIMARY_INDEX,
+                                        ROW_LIMIT_UNLIMITED
+                                )))
+                        .map(kv -> toFragment(primary, kv, namespace, entity)));
+    }
+
     @Override
     public Flowable<Fragment> readAll(Transaction tx, ZonedDateTime snapshot, String namespace, String entity, io.descoped.lds.api.persistence.reactivex.Range<String> range) {
         final OrderedKeyValueTransaction transaction = (OrderedKeyValueTransaction) tx;

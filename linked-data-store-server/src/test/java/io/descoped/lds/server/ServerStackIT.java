@@ -9,6 +9,9 @@ import org.testcontainers.containers.ComposeContainer;
 import org.testcontainers.containers.ContainerState;
 import org.testcontainers.containers.wait.strategy.Wait;
 
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+
 import java.io.File;
 import java.net.http.HttpResponse;
 import java.time.Duration;
@@ -69,6 +72,23 @@ class ServerStackIT {
                 "Using saga-log-pool provider-class: no.cantara.sagalog.postgres.PostgresSagaLogInitializer",
                 "Using transaction-log provider: postgres",
                 "Search index provider configured: solr");
+    }
+
+    /**
+     * Ready when every engine answers: the store, the saga log, the transaction log, search and the index queue,
+     * which is the table in the PostgreSQL of the transaction log. Compose waits for it, by its health check.
+     */
+    @Test
+    void ldsIsReadyWhenEveryEngineOfTheStackAnswers() throws Exception {
+        HttpResponse<String> ready = lds.get("/health/ready");
+
+        assertThat(ready.statusCode()).isEqualTo(200);
+        JsonNode body = new ObjectMapper().readTree(ready.body());
+        assertThat(body.get("status").asString()).as(ready.body()).isEqualTo("UP");
+        assertThat(body.get("checks").propertyNames())
+                .containsExactly("persistence", "sagaLog", "transactionLog", "search", "indexQueue");
+        assertThat(body.get("checks").get("transactionLog").get("keepsMessages").asBoolean()).isTrue();
+        assertThat(body.get("checks").get("indexQueue").get("durable").asBoolean()).isTrue();
     }
 
     @Test

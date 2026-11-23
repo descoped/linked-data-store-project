@@ -1,7 +1,7 @@
 package io.descoped.lds.core.saga;
 
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
-import io.descoped.lds.api.search.SearchIndex;
+import io.descoped.lds.api.search.IndexQueue;
 import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.core.persistence.PersistenceCreateOrOverwriteSagaAdapter;
 import io.descoped.lds.core.persistence.PersistenceDeleteSagaAdapter;
@@ -21,52 +21,57 @@ public class SagaRepository {
     public static final String SAGA_CREATE_OR_UPDATE_MANAGED_RESOURCE = "Create or update managed resource";
     public static final String SAGA_DELETE_MANAGED_RESOURCE = "Delete managed resource";
 
-    /* The ids of the two nodes both sagas have: the transaction log, then the store. */
+    /* The ids of the nodes of both sagas: the transaction log, then the store, then the index queue when there is search. */
     private static final String TXLOG = "txlog";
     private static final String PERSISTENCE = "persistence";
+    private static final String INDEX_QUEUE = "index-queue";
 
     final Map<String, Saga> sagaByName = new ConcurrentHashMap<>();
 
     final AdapterLoader adapterLoader;
 
-    private SagaRepository(Specification specification, RxJsonPersistence persistence, SearchIndex indexer, TxlogRawdataPool txLogPool) {
+    private SagaRepository(Specification specification, RxJsonPersistence persistence, IndexQueue indexQueue, TxlogRawdataPool txLogPool) {
         adapterLoader = new AdapterLoader();
         adapterLoader.register(new PersistenceCreateOrOverwriteSagaAdapter(persistence, specification));
         adapterLoader.register(new PersistenceDeleteSagaAdapter(persistence));
         adapterLoader.register(new AppendTxLogAdapter(txLogPool));
         adapterLoader.register(new DeleteTxLogAdapter(txLogPool));
-        if (indexer != null) {
-            adapterLoader.register(new UpdateIndexSagaAdapter(indexer));
-            adapterLoader.register(new DeleteIndexSagaAdapter(indexer));
+        if (indexQueue != null) {
+            adapterLoader.register(new UpdateIndexSagaAdapter(indexQueue));
+            adapterLoader.register(new DeleteIndexSagaAdapter(indexQueue));
         }
 
-        register(buildCreateOrUpdateSaga(indexer));
-        register(buildDeleteSaga(indexer));
+        register(buildCreateOrUpdateSaga(indexQueue != null));
+        register(buildDeleteSaga(indexQueue != null));
     }
 
-    private Saga buildCreateOrUpdateSaga(SearchIndex indexer) {
+    /*
+     * The transaction log, then the store, then the index queue: the queue holds only what the store has, so the
+     * worker that sends it finds each document at its version.
+     */
+    private Saga buildCreateOrUpdateSaga(boolean indexed) {
         Saga.SagaBuilder createSagaBuilder = Saga.start(SAGA_CREATE_OR_UPDATE_MANAGED_RESOURCE)
                 .linkTo(TXLOG);
-        if (indexer != null) {
-            createSagaBuilder.id(TXLOG).adapter(AppendTxLogAdapter.ADAPTER_NAME).linkTo(PERSISTENCE, "search-index-update");
-            createSagaBuilder.id("search-index-update").adapter(UpdateIndexSagaAdapter.ADAPTER_NAME).linkToEnd();
+        createSagaBuilder.id(TXLOG).adapter(AppendTxLogAdapter.ADAPTER_NAME).linkTo(PERSISTENCE);
+        if (indexed) {
+            createSagaBuilder.id(PERSISTENCE).adapter(PersistenceCreateOrOverwriteSagaAdapter.ADAPTER_NAME).linkTo(INDEX_QUEUE);
+            createSagaBuilder.id(INDEX_QUEUE).adapter(UpdateIndexSagaAdapter.ADAPTER_NAME).linkToEnd();
         } else {
-            createSagaBuilder.id(TXLOG).adapter(AppendTxLogAdapter.ADAPTER_NAME).linkTo(PERSISTENCE);
+            createSagaBuilder.id(PERSISTENCE).adapter(PersistenceCreateOrOverwriteSagaAdapter.ADAPTER_NAME).linkToEnd();
         }
-        createSagaBuilder.id(PERSISTENCE).adapter(PersistenceCreateOrOverwriteSagaAdapter.ADAPTER_NAME).linkToEnd();
         return createSagaBuilder.end();
     }
 
-    private Saga buildDeleteSaga(SearchIndex indexer) {
+    private Saga buildDeleteSaga(boolean indexed) {
         Saga.SagaBuilder deleteSagaBuilder = Saga.start(SAGA_DELETE_MANAGED_RESOURCE)
                 .linkTo(TXLOG);
-        if (indexer != null) {
-            deleteSagaBuilder.id(TXLOG).adapter(DeleteTxLogAdapter.ADAPTER_NAME).linkTo(PERSISTENCE, "search-index-delete");
-            deleteSagaBuilder.id("search-index-delete").adapter(DeleteIndexSagaAdapter.ADAPTER_NAME).linkToEnd();
+        deleteSagaBuilder.id(TXLOG).adapter(DeleteTxLogAdapter.ADAPTER_NAME).linkTo(PERSISTENCE);
+        if (indexed) {
+            deleteSagaBuilder.id(PERSISTENCE).adapter(PersistenceDeleteSagaAdapter.ADAPTER_NAME).linkTo(INDEX_QUEUE);
+            deleteSagaBuilder.id(INDEX_QUEUE).adapter(DeleteIndexSagaAdapter.ADAPTER_NAME).linkToEnd();
         } else {
-            deleteSagaBuilder.id(TXLOG).adapter(DeleteTxLogAdapter.ADAPTER_NAME).linkTo(PERSISTENCE);
+            deleteSagaBuilder.id(PERSISTENCE).adapter(PersistenceDeleteSagaAdapter.ADAPTER_NAME).linkToEnd();
         }
-        deleteSagaBuilder.id(PERSISTENCE).adapter(PersistenceDeleteSagaAdapter.ADAPTER_NAME).linkToEnd();
         return deleteSagaBuilder.end();
     }
 
@@ -87,7 +92,7 @@ public class SagaRepository {
 
         Specification specification;
         RxJsonPersistence persistence;
-        SearchIndex indexer;
+        IndexQueue indexQueue;
         TxlogRawdataPool txlogRawdataPool;
 
         public Builder specification(Specification specification) {
@@ -100,8 +105,8 @@ public class SagaRepository {
             return this;
         }
 
-        public Builder indexer(SearchIndex indexer) {
-            this.indexer = indexer;
+        public Builder indexQueue(IndexQueue indexQueue) {
+            this.indexQueue = indexQueue;
             return this;
         }
 
@@ -111,7 +116,7 @@ public class SagaRepository {
         }
 
         public SagaRepository build() {
-            return new SagaRepository(specification, persistence, indexer, txlogRawdataPool);
+            return new SagaRepository(specification, persistence, indexQueue, txlogRawdataPool);
         }
     }
 }

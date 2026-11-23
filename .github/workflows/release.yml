@@ -71,6 +71,9 @@ jobs:
           [ "$pom" = "$VERSION" ] || { echo "::error::The POMs on master have $pom, not $VERSION"; exit 1; }
           ! git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null || { echo "::error::The tag $VERSION exists"; exit 1; }
           grep -qx "## $VERSION" RELEASE-NOTES.md || { echo "::error::RELEASE-NOTES.md has no section ## $VERSION"; exit 1; }
+          # A SNAPSHOT dependency (from maven.descoped.io) would make the release whatever that SNAPSHOT was that day.
+          ./mvnw --batch-mode --quiet enforcer:enforce -Denforcer.rules=requireReleaseDeps \
+            || { echo "::error::A release has no SNAPSHOT dependency"; exit 1; }
           ci="$(gh api "repos/$GITHUB_REPOSITORY/commits/$(git rev-parse HEAD)/check-runs" \
               --jq '[.check_runs[] | select(.name == "Build (JDK 27)") | .conclusion] | first')"
           [ "$ci" = "success" ] || { echo "::error::CI on $(git rev-parse HEAD) is '$ci', not success"; exit 1; }

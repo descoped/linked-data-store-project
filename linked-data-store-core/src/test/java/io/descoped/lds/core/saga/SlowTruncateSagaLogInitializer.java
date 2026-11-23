@@ -9,7 +9,6 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.Map;
-import java.util.ServiceLoader;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -88,11 +87,8 @@ public class SlowTruncateSagaLogInitializer implements SagaLogInitializer {
         }, CompletableFuture.delayedExecutor(millis, TimeUnit.MILLISECONDS));
     }
 
-    /** The memory saga log's initializer; its package is not exported, so it is found as the service it is. */
     private static SagaLogInitializer memory() {
-        return ServiceLoader.load(SagaLogInitializer.class).stream()
-                .filter(provider -> provider.type().getName().equals("no.cantara.sagalog.memory.MemorySagaLogInitializer"))
-                .findFirst().orElseThrow().get();
+        return SagaLogInitializers.named(SagaLogInitializers.MEMORY);
     }
 
     private static <T> T proxy(Class<T> type, InvocationHandler handler) {

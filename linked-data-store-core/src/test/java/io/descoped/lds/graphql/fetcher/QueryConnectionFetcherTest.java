@@ -172,6 +172,11 @@ class QueryConnectionFetcherTest {
             public Completable deleteAll() {
                 throw new UnsupportedOperationException();
             }
+
+            @Override
+            public Completable health() {
+                return Completable.complete();
+            }
         };
     }
 
