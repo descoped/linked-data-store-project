@@ -198,6 +198,13 @@ public class GraphQLIntegrationTest {
 
         assertThat(JsonTools.toJsonNode(client.get("/data/Owner/noage").expect200Ok().body()))
                 .isEqualTo(JsonTools.toJsonNode("{\"name\": \"noage\", \"email\": \"noage@example.com\"}"));
+
+        // through GraphQL, a field that is not there is null: no age, and not an age of 0
+        JsonNode byId = JsonTools.toJsonNode(client.postJson("/graphql",
+                "{\"query\": \"{ OwnerById(id: \\\"noage\\\") { name age } }\"}").expect200Ok().body());
+        assertNoErrors(byId);
+        assertThat(byId.at("/data/OwnerById/name").asString()).isEqualTo("noage");
+        assertThat(byId.at("/data/OwnerById/age").isNull()).isTrue();
     }
 
     @Test
