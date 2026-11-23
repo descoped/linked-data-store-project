@@ -316,9 +316,15 @@ class SolrSearchIndexTest {
     }
 
     @Test
-    void theTimeWithinWhichAnEntryIsSearchableIsAtLeastAMillisecond() {
-        assertThatThrownBy(() -> new SolrSearchIndex(Solr10.url(), 0)).isInstanceOf(IllegalArgumentException.class)
+    void theTimeWithinWhichAnEntryIsSearchableIsAtLeastAMillisecondAndANumber() {
+        String url = Solr10.url();
+        SolrProvider provider = new SolrProvider();
+        Map<String, String> notANumber = Map.of("search.index.url", url, "search.index.commit-within", "1s");
+
+        assertThatThrownBy(() -> new SolrSearchIndex(url, 0)).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("search.index.commit-within");
+        assertThatThrownBy(() -> provider.getSearchIndex(notANumber)).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("search.index.commit-within must be a number of milliseconds: 1s");
     }
 
     @Test

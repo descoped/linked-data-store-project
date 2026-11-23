@@ -32,10 +32,21 @@ public class NamespaceController implements HttpHandler {
     /* the wait of a write that asks to be searchable when it is answered; null without search */
     private final SearchWait searchWait;
 
+    /**
+     * What a write goes through: the sagas, and the wait of a write that asks to be searchable.
+     *
+     * @param sec            the coordinator of the sagas
+     * @param sagaRepository the sagas
+     * @param searchWait     the wait of a write that asks to be searchable when it is answered; null without search
+     */
+    public record Writes(SagaExecutionCoordinator sec, SagaRepository sagaRepository, SearchWait searchWait) {
+    }
+
     public NamespaceController(String namespaceDefault, Specification specification, SchemaRepository schemaRepository,
-                               RxJsonPersistence persistence, SagaExecutionCoordinator sec,
-                               SagaRepository sagaRepository, TxlogRawdataPool txLogPool, SearchWait searchWait) {
-        this.searchWait = searchWait;
+                               RxJsonPersistence persistence, Writes writes, TxlogRawdataPool txLogPool) {
+        this.searchWait = writes.searchWait();
+        SagaExecutionCoordinator sec = writes.sec();
+        SagaRepository sagaRepository = writes.sagaRepository();
         this.specification = specification;
         this.schemaRepository = schemaRepository;
         this.persistence = persistence;

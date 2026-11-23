@@ -15,6 +15,7 @@ import io.descoped.lds.core.controller.CORSHandler;
 import io.descoped.lds.core.health.Readiness;
 import io.descoped.lds.core.health.ReadinessHandler;
 import io.descoped.lds.core.controller.NamespaceController;
+import io.descoped.lds.core.domain.SearchWait;
 import io.descoped.lds.core.persistence.PersistenceConfigurator;
 import io.descoped.lds.core.saga.SagaExecutionCoordinator;
 import io.descoped.lds.core.saga.SagaRecoveryTrigger;
@@ -23,7 +24,6 @@ import io.descoped.lds.core.saga.SagasObserver;
 import io.descoped.lds.core.schema.JsonSchema;
 import io.descoped.lds.core.schema.JsonSchemaBuilder;
 import io.descoped.lds.core.search.IndexQueueConfigurator;
-import io.descoped.lds.core.domain.SearchWait;
 import io.descoped.lds.core.search.IndexEntries;
 import io.descoped.lds.core.search.IndexQueueWorker;
 import io.descoped.lds.core.search.IndexRebuild;
@@ -398,10 +398,9 @@ public class UndertowApplication {
                 specification,
                 specification,
                 persistence,
-                sec,
-                sagaRepository,
-                txlogRawdataPool,
-                indexing == null ? null : new SearchWait(indexing.queue(), indexing.index())
+                new NamespaceController.Writes(sec, sagaRepository,
+                        indexing == null ? null : new SearchWait(indexing.queue(), indexing.index())),
+                txlogRawdataPool
         );
 
         SagaParts sagas = new SagaParts(sec, sagaRepository, sagasObserver, sagaRecoveryTrigger, sagaLogPool,

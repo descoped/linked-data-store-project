@@ -41,8 +41,17 @@ public class SolrProvider implements SearchIndexProvider {
      */
     @Override
     public SearchIndex getSearchIndex(Map<String, String> configuration) {
-        String commitWithin = configuration.get(COMMIT_WITHIN);
-        return new SolrSearchIndex(configuration.get(URL), commitWithin == null || commitWithin.isBlank()
-                ? SolrSearchIndex.COMMIT_WITHIN_MILLIS : Integer.parseInt(commitWithin.strip()));
+        return new SolrSearchIndex(configuration.get(URL), commitWithin(configuration.get(COMMIT_WITHIN)));
+    }
+
+    private static int commitWithin(String value) {
+        if (value == null || value.isBlank()) {
+            return SolrSearchIndex.COMMIT_WITHIN_MILLIS;
+        }
+        try {
+            return Integer.parseInt(value.strip());
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(COMMIT_WITHIN + " must be a number of milliseconds: " + value, e);
+        }
     }
 }

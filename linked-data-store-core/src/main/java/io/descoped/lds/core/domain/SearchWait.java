@@ -21,7 +21,8 @@ import java.util.concurrent.TimeUnit;
 /**
  * A write that is to be searchable when it is answered: the query parameter {@code searchable=true} (decided by the
  * owner: only when a client asks, so that no other write waits for search, nor is slowed when the index is down).
- * After its saga, the write waits until the index queue holds no update of its document, asking every
+ * After its saga, the write lets the lock of its document go and waits until the index queue holds no update of its
+ * document, asking every
  * {@code 100 ms}, then asks the index to make what it has taken searchable, and is answered. It waits at most
  * {@code 10 s} (decision L3); then it is answered as any write is, and the update reaches the index as every update
  * does. The wait is the same whichever LDS takes the update from a queue that several share.
@@ -90,9 +91,16 @@ public final class SearchWait {
      * @param context  the document of the write
      */
     public static void awaitIfAsked(HttpServerExchange exchange, ResourceContext context) {
+        awaitIfAsked(exchange, context.getNamespace(), context.getFirstElement().name(), context.getFirstElement().id());
+    }
+
+    static void awaitIfAsked(HttpServerExchange exchange, String namespace, String entity, String id) {
         SearchWait wait = exchange.getAttachment(ASKED);
         if (wait != null) {
-            wait.until(context.getNamespace(), context.getFirstElement().name(), context.getFirstElement().id());
+            // the saga has completed (a searchable write waits for it), so no other write of the document waits for
+            // this one's search
+            DocumentLocks.letGoAfterSaga(exchange);
+            wait.until(namespace, entity, id);
         }
     }
 
@@ -109,8 +117,10 @@ public final class SearchWait {
         if (error == null) {
             return true;
         }
-        LOG.warn("A write of /{}/{}/{} that asked to be searchable is answered before it is ({})", namespace, entity,
-                id, error.toString());
+        if (LOG.isWarnEnabled()) {
+            LOG.warn("A write of /{}/{}/{} that asked to be searchable is answered before it is ({})", namespace,
+                    entity, id, error.toString());
+        }
         return false;
     }
 

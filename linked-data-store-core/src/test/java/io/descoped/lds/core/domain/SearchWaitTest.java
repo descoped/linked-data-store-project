@@ -9,6 +9,7 @@ import io.descoped.lds.api.search.SearchQuery;
 import io.descoped.lds.core.search.MemoryIndexQueue;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Single;
+import io.undertow.server.HttpServerExchange;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -74,7 +75,7 @@ class SearchWaitTest {
     }
 
     @Test
-    void aWriteWaitsUntilTheQueueHoldsNoUpdateOfItsDocument() throws Exception {
+    void aWriteWaitsUntilTheQueueHoldsNoUpdateOfItsDocument() {
         add("ola");
         add("kari");
         CompletableFuture<Void> sent = CompletableFuture.runAsync(() -> {
@@ -100,6 +101,28 @@ class SearchWaitTest {
 
         assertThat(Duration.ofNanos(System.nanoTime() - start)).isBetween(LONGEST, LONGEST.multipliedBy(4));
         assertThat(index.refreshes).hasValue(0);
+    }
+
+    /**
+     * A write that waits for search has let the lock of its document go: another write of the document, which does
+     * not ask to be searchable, takes it while the first still waits.
+     */
+    @Test
+    void anotherWriteOfTheDocumentDoesNotWaitForTheSearchOfOne() throws Exception {
+        // a write waits for the lock of its document at most 200 ms, less than the wait for search
+        DocumentLocks locks = new DocumentLocks(1, Duration.ofMillis(200));
+        HttpServerExchange searchable = new HttpServerExchange(null);
+        searchable.addQueryParam("searchable", "true");
+        assertThat(locks.acquire(searchable, "ns", "Person", "ola")).isTrue();
+        DocumentLocks.holdUntil(searchable, CompletableFuture.completedFuture(null)); // its saga has completed
+        wait.attachIfAsked(searchable);
+        add("ola"); // never sent, so the write waits as long as it may
+        CompletableFuture<Void> waiting = CompletableFuture.runAsync(
+                () -> SearchWait.awaitIfAsked(searchable, "ns", "Person", "ola"));
+
+        assertThat(locks.acquire(new HttpServerExchange(null), "ns", "Person", "ola")).isTrue();
+        assertThat(waiting).isNotDone();
+        waiting.get();
     }
 
     @Test
