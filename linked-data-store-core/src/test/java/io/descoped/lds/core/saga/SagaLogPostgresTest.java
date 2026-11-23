@@ -143,6 +143,36 @@ public class SagaLogPostgresTest {
     }
 
     /**
+     * A write whose transaction log step ran, but whose End entry of that step never reached the saga log (the
+     * process stopped between the two), is finished by the next write: the recovery runs the step again, then
+     * the rest of the saga. The transaction log is PostgreSQL, as in the compose file, in the same container; search
+     * is off.
+     */
+    @Test
+    public void aWriteWhoseTransactionLogStepEndedUnrecordedIsFinishedByTheNextWrite() throws Exception {
+        TestServer server = start("lost-entry", "01", "sagalog.provider", LostEntrySagaLogInitializer.class.getName(),
+                "saga.recovery.enabled", "false", "saga.number-of-logs", "1",
+                "graphql.search.enabled", "false", // the index queue of a PostgreSQL transaction log is a module of its own
+                "txlog.rawdata.provider", "postgres",
+                "txlog.config.postgres.driver.host", postgres.getHost(),
+                "txlog.config.postgres.driver.port", String.valueOf(postgres.getMappedPort(PostgreSQLContainer.POSTGRESQL_PORT)),
+                "txlog.config.postgres.driver.user", postgres.getUsername(),
+                "txlog.config.postgres.driver.password", postgres.getPassword(),
+                "txlog.config.postgres.driver.database", postgres.getDatabaseName());
+        LostEntrySagaLogInitializer.LOSE_END_OF.set("txlog");
+
+        assertThat(put(server, "/data/provisionagreement/lost?sync=true")).as("the write whose End was lost").isEqualTo(500);
+        assertThat(LostEntrySagaLogInitializer.LOSE_END_OF.get()).as("the End entry was lost").isNull();
+        assertThat(entries(server)).as("the unfinished saga in the log").isPositive();
+
+        assertThat(put(server, "/data/provisionagreement/next?sync=true")).as("the next write").isEqualTo(201);
+        await(Duration.ofSeconds(30), () -> entries(server) == 0);
+
+        assertThat(get(server, "/data/provisionagreement/lost")).as("the write that was recovered").isEqualTo(200);
+        assertThat(deadEntries(server)).as("entries moved to the dead-letter log").isZero();
+    }
+
+    /**
      * Starts a server with its saga log in the container.
      *
      * @param cluster    the cluster name; with the instance id it names the saga logs

@@ -1,1 +1,2 @@
 io.descoped.lds.core.saga.SlowTruncateSagaLogInitializer
+io.descoped.lds.core.saga.LostEntrySagaLogInitializer
