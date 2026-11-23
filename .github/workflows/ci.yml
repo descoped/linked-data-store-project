@@ -201,6 +201,9 @@ jobs:
           echo "::add-mask::$url"
           export SNAPSHOTS_ORIGIN="${url%%/maven/*}"
           echo "::add-mask::$SNAPSHOTS_ORIGIN"
+          # strict: a server without a declared origin gets no credentials, instead of getting them with a warning
+          # that names the origin (Maven 3.10, OriginBoundAuthenticationSelector).
           ./mvnw --batch-mode --no-transfer-progress -T 1C -P descoped-snapshots -DskipTests \
-            -Dmaven.build.cache.enabled=false -Ddescoped.snapshots.url="$url" deploy
+            -Dmaven.build.cache.enabled=false -Dmaven.repository.credentialScope=strict \
+            -Ddescoped.snapshots.url="$url" deploy
 

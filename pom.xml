@@ -242,6 +242,8 @@
                                         <requireProperty>
                                             <property>descoped.snapshots.url</property>
                                             <message>Give the CodeArtifact endpoint: -Ddescoped.snapshots.url=...</message>
+                                            <regex>https://\S+/</regex>
+                                            <regexMessage>descoped.snapshots.url must be an https URL ending in /, not empty.</regexMessage>
                                         </requireProperty>
                                     </rules>
                                 </configuration>
