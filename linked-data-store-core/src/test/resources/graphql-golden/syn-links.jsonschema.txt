@@ -64,17 +64,24 @@ ENTITY Person
           "type" : "object"
         },
         "age" : {
-          "displayName" : ""
+          "displayName" : "",
+          "maximum" : 2147483647,
+          "minimum" : -2147483648,
+          "type" : "integer"
         },
         "at" : {
-          "displayName" : ""
+          "displayName" : "",
+          "format" : "time",
+          "type" : "string"
         },
         "best" : {
           "displayName" : "",
           "type" : "string"
         },
         "born" : {
-          "displayName" : ""
+          "displayName" : "",
+          "format" : "date",
+          "type" : "string"
         },
         "codes" : {
           "displayName" : "",
@@ -91,7 +98,8 @@ ENTITY Person
           "type" : "array"
         },
         "height" : {
-          "displayName" : ""
+          "displayName" : "",
+          "type" : "number"
         },
         "houses" : {
           "displayName" : "",

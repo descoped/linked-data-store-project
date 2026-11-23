@@ -83,6 +83,16 @@ public class EmbeddedResourceHandlerTest {
     }
 
     @Test
+    public void thatAPartIsWrittenBeforeItIsAnsweredWhenSyncIsNotGivenAndANullFieldInItIsLeftOut() throws JSONException {
+        createTestResource("provisionagreement", "e-wait", "{\"id\":\"e-wait\",\"name\":\"pa-test-name\",\"contacts\":[]}");
+        for (int n = 0; n < 20; n++) {
+            client.put("/data/provisionagreement/e-wait/address", "{\"street\":\"Storgata " + n + "\",\"country\":null}").expect200Ok();
+            JSONAssert.assertEquals("{\"id\":\"e-wait\",\"name\":\"pa-test-name\",\"contacts\":[],\"address\":{\"street\":\"Storgata " + n + "\"}}",
+                    client.get("/data/provisionagreement/e-wait").expect200Ok().body(), true);
+        }
+    }
+
+    @Test
     public void thatPutEmbeddedArrayResourceUpdatesSubDocument() throws JSONException {
         createTestResource("provisionagreement", "e4", "{\"id\":\"e4\",\"name\":\"pa-test-name\",\"contacts\":[\"/contact/c1\",\"/contact/c2\"]}");
         client.put("/data/provisionagreement/e4/contacts?sync=true", "[\"/contact/truls\",\"/contact/hans\"]").expect200Ok();

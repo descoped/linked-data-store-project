@@ -795,6 +795,52 @@ public abstract class PersistenceIntegrationTest {
         }
     }
 
+    /**
+     * A page of a list or of a find holds the documents of the range in its order, read forward or from the end, and a
+     * deleted document takes no place in it. Each document is whole in either direction, also a text longer than a
+     * fragment.
+     */
+    @Test
+    public void thatAPageInEitherDirectionHoldsWholeDocumentsAndNoDeletedOne() {
+        ZonedDateTime written = parse("2000-01-01T00:00:00.000Z");
+        ZonedDateTime deleted = parse("2000-02-01T00:00:00.000Z");
+        ZonedDateTime read = parse("2000-03-01T00:00:00.000Z");
+        String longText = "0123456789".repeat(500);
+        try (Transaction tx = persistence.createTransaction(false)) {
+            persistence.deleteAllEntities(tx, namespace, "Person", specification).blockingAwait();
+            for (String id : List.of("a", "b", "c", "d", "e", "f")) {
+                persistence.createOrOverwrite(tx, toDocument(namespace, "Person", id, createPerson(id + longText, "Paged"), written),
+                        specification).blockingAwait();
+            }
+            persistence.markDocumentDeleted(tx, namespace, "Person", "c", deleted, PersistenceDeletePolicy.FAIL_IF_INCOMING_LINKS)
+                    .blockingAwait();
+
+            assertThat(ids(persistence.readDocuments(tx, read, namespace, "Person", Range.first(3)))).containsExactly("a", "b", "d");
+            assertThat(ids(persistence.readDocuments(tx, read, namespace, "Person", Range.firstAfter(2, "b")))).containsExactly("d", "e");
+            assertThat(ids(persistence.readDocuments(tx, read, namespace, "Person", Range.last(3)))).containsExactly("f", "e", "d");
+            assertThat(ids(persistence.readDocuments(tx, read, namespace, "Person", Range.lastBefore(2, "d")))).containsExactly("b", "a");
+            assertThat(ids(persistence.readDocuments(tx, deleted.minusDays(1), namespace, "Person", Range.lastBefore(2, "d"))))
+                    .containsExactly("c", "b");
+
+            for (Range<String> range : List.of(Range.<String>first(5), Range.<String>last(5))) {
+                assertThat(persistence.readDocuments(tx, read, namespace, "Person", range).toList().blockingGet())
+                        .hasSize(5)
+                        .allSatisfy(document -> assertThat(JsonTools.text(document.jackson().get("firstname")))
+                                .isEqualTo(document.key().id() + longText));
+            }
+
+            JsonNavigationPath lastname = JsonNavigationPath.from("$.lastname");
+            assertThat(ids(persistence.findDocument(tx, read, namespace, "Person", lastname, "Paged", Range.first(3))))
+                    .containsExactly("a", "b", "d");
+            assertThat(ids(persistence.findDocument(tx, read, namespace, "Person", lastname, "Paged", Range.last(3))))
+                    .containsExactly("f", "e", "d");
+            assertThat(ids(persistence.findDocument(tx, read, namespace, "Person", lastname, "Paged", Range.lastBefore(2, "d"))))
+                    .containsExactly("b", "a");
+
+            persistence.deleteAllEntities(tx, namespace, "Person", specification).blockingAwait();
+        }
+    }
+
     private static List<String> ids(Flowable<JsonDocument> documents) {
         return documents.map(document -> document.key().id()).toList().blockingGet();
     }

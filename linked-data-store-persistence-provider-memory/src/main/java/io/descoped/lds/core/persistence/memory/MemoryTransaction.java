@@ -168,6 +168,12 @@ public class MemoryTransaction implements OrderedKeyValueTransaction {
         return getRangeWithoutFrom(toExclusive, begin, end, index, limit);
     }
 
+    @Override
+    public AsyncIterable<KeyValue> getRangeReversed(KeySelector begin, KeySelector end, String index, int limit) {
+        MemoryAsyncIterable forward = (MemoryAsyncIterable) getRange(begin, end, index, ROW_LIMIT_UNLIMITED);
+        return new MemoryAsyncIterable(executor, forward.map.descendingMap(), limit);
+    }
+
     private AsyncIterable<KeyValue> getRangeFrom(byte[] fromInclusive, byte[] toExclusive, KeySelector end, String index, int limit) {
         if (toExclusive != null) {
             int compareUnsigned = Arrays.compareUnsigned(fromInclusive, toExclusive);

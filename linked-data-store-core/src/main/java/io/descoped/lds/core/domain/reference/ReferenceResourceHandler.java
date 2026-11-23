@@ -1,5 +1,6 @@
 package io.descoped.lds.core.domain.reference;
 
+import io.descoped.lds.core.domain.SyncParameter;
 import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.json.JsonDocument;
@@ -25,7 +26,6 @@ import tools.jackson.databind.node.ArrayNode;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Deque;
-import java.util.LinkedList;
 
 import static io.descoped.lds.api.persistence.json.JsonTools.mapper;
 import static java.util.Optional.ofNullable;
@@ -109,7 +109,7 @@ public class ReferenceResourceHandler implements HttpHandler {
                     } else {
                         new ReferenceJsonHelper(specification, topLevelElement).createReferenceJson(resourceContext, jsonDocument.jackson());
 
-                        boolean sync = exchange.getQueryParameters().getOrDefault("sync", new LinkedList<>()).stream().anyMatch("true"::equalsIgnoreCase);
+                        boolean sync = SyncParameter.waits(exchange.getQueryParameters());
 
                         Saga saga = sagaRepository.get(SagaRepository.SAGA_CREATE_OR_UPDATE_MANAGED_RESOURCE);
 
@@ -167,7 +167,7 @@ public class ReferenceResourceHandler implements HttpHandler {
 
         new ReferenceJsonHelper(specification, resourceContext.getFirstElement()).deleteReferenceJson(resourceContext, rootNode);
 
-        boolean sync = exchange.getQueryParameters().getOrDefault("sync", new LinkedList<>()).stream().anyMatch(s -> "true".equalsIgnoreCase(s));
+        boolean sync = SyncParameter.waits(exchange.getQueryParameters());
 
         Saga saga = sagaRepository.get(SagaRepository.SAGA_CREATE_OR_UPDATE_MANAGED_RESOURCE);
 

@@ -114,26 +114,31 @@ public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
         return visitGraphQLType(node.getType(), context);
     }
 
+    /*
+     * The JSON Schema type of a scalar of GraphQL: a value that GraphQL cannot give back (an Int out of the range of
+     * 32 bits, a Date that is not a date) is refused when it is written. A scalar LDS does not know gets no type.
+     */
     private static void putScalarType(ObjectNode propertyElements, GraphQLType graphQLType) {
         if (graphQLType instanceof GraphQLScalarType scalarType) {
-            String scalarName = scalarType.getName();
-            if (scalarName.equalsIgnoreCase(STRING)) {
-                propertyElements.put("type", STRING);
-            }
-            switch (scalarName) {
-                case "String":
-                    propertyElements.put("type", STRING);
-                    break;
-                case "Boolean":
-                    propertyElements.put("type", "boolean");
-                    break;
-                case "DateTime":
-                    propertyElements.put("type", STRING);
-                    propertyElements.put("format", "date-time");
-                    break;
-                default:
-                    // Any other scalar gets no type.
-                    break;
+            switch (scalarType.getName()) {
+                case "String" -> propertyElements.put("type", STRING);
+                case "Boolean" -> propertyElements.put("type", "boolean");
+                case "Int" -> propertyElements.put("type", "integer")
+                        .put("minimum", Integer.MIN_VALUE)
+                        .put("maximum", Integer.MAX_VALUE);
+                case "Long" -> propertyElements.put("type", "integer")
+                        .put("minimum", Long.MIN_VALUE)
+                        .put("maximum", Long.MAX_VALUE);
+                case "Float" -> propertyElements.put("type", "number");
+                case "DateTime" -> propertyElements.put("type", STRING).put("format", "date-time");
+                case "Date" -> propertyElements.put("type", STRING).put("format", "date");
+                case "Time" -> propertyElements.put("type", STRING).put("format", "time");
+                default -> {
+                    // A scalar named string in other letters is a text, as LDS always read it; any other gets no type.
+                    if (scalarType.getName().equalsIgnoreCase(STRING)) {
+                        propertyElements.put("type", STRING);
+                    }
+                }
             }
         }
     }
@@ -221,9 +226,7 @@ public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
         if (type instanceof GraphQLObjectType objectType) {
             return visitListOfObjects(node, objectType, fieldProperties, itemList, context);
         } else if (type instanceof GraphQLScalarType scalarType) {
-            if (scalarType.getName().equalsIgnoreCase(STRING)) {
-                itemList.put("type", STRING);
-            }
+            putScalarType(itemList, scalarType);
             fieldProperties.set(ITEMS, itemList);
             lastVisitedNodeType = GraphQLList.class.getName();
 

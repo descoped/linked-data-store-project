@@ -187,7 +187,7 @@ GraphQLObjectType Query
     @link
       pagination: Boolean value=Boolean:true default=Boolean:true
     fetcher=PersistenceRootConnectionFetcher{{entityName=City, nameSpace=ns, persistence=persistence}}
-  field CityById: City! description=null deprecated=null
+  field CityById: City description=null deprecated=null
     arg id: ID! default=null description=null
     @link
       pagination: Boolean value=Boolean:false default=Boolean:true
@@ -200,7 +200,7 @@ GraphQLObjectType Query
     @link
       pagination: Boolean value=Boolean:true default=Boolean:true
     fetcher=PersistenceRootConnectionFetcher{{entityName=Job, nameSpace=ns, persistence=persistence}}
-  field JobById: Job! description=null deprecated=null
+  field JobById: Job description=null deprecated=null
     arg id: ID! default=null description=null
     @link
       pagination: Boolean value=Boolean:false default=Boolean:true
@@ -213,7 +213,7 @@ GraphQLObjectType Query
     @link
       pagination: Boolean value=Boolean:true default=Boolean:true
     fetcher=PersistenceRootConnectionFetcher{{entityName=Person, nameSpace=ns, persistence=persistence}}
-  field PersonById: Person! description=null deprecated=null
+  field PersonById: Person description=null deprecated=null
     arg id: ID! default=null description=null
     @link
       pagination: Boolean value=Boolean:false default=Boolean:true

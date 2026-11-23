@@ -79,7 +79,8 @@ public class GraphQLSchemaBuilder {
                 .comparatorRegistry(SchemaElements.ORDER)
                 .scalar(DateTimeScalar.INSTANCE)
                 .scalar(ExtendedScalars.Date)
-                .scalar(ExtendedScalars.Time);
+                .scalar(ExtendedScalars.Time)
+                .scalar(ExtendedScalars.GraphQLLong);
 
         runtime.wiringFactory(new EchoingWiringFactory());
 

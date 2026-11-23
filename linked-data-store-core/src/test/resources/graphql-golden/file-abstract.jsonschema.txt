@@ -7,7 +7,8 @@ ENTITY Cat
       "displayName" : "This is a cat",
       "properties" : {
         "age" : {
-          "displayName" : ""
+          "displayName" : "",
+          "type" : "number"
         },
         "alive" : {
           "displayName" : "",
@@ -33,7 +34,8 @@ ENTITY Dog
       "displayName" : "This is a dog",
       "properties" : {
         "age" : {
-          "displayName" : ""
+          "displayName" : "",
+          "type" : "number"
         },
         "friendly" : {
           "displayName" : "",
@@ -79,7 +81,8 @@ ENTITY Owner
           "type" : "object"
         },
         "age" : {
-          "displayName" : ""
+          "displayName" : "",
+          "type" : "number"
         },
         "animals" : {
           "displayName" : "",

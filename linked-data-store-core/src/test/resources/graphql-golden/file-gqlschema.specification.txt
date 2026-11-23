@@ -151,13 +151,13 @@ root elementType=ROOT jsonTypes=[object] refTypes=[] required=[] isRequired=fals
   property Cat
     Cat elementType=MANAGED jsonTypes=[object] refTypes=[] required=[name] isRequired=false description=""
       property age
-        age elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+        age elementType=EMBEDDED jsonTypes=[integer] refTypes=[] required=[] isRequired=false description=""
       property name
         name elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description=""
   property Dog
     Dog elementType=MANAGED jsonTypes=[object] refTypes=[] required=[name] isRequired=false description=""
       property age
-        age elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+        age elementType=EMBEDDED jsonTypes=[integer] refTypes=[] required=[] isRequired=false description=""
       property name
         name elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description=""
   property MultilingualText
@@ -169,7 +169,7 @@ root elementType=ROOT jsonTypes=[object] refTypes=[] required=[] isRequired=fals
   property Owner
     Owner elementType=MANAGED jsonTypes=[object] refTypes=[] required=[email, name] isRequired=false description=""
       property age
-        age elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+        age elementType=EMBEDDED jsonTypes=[integer] refTypes=[] required=[] isRequired=false description=""
       property animals
         animals elementType=REF jsonTypes=[array] refTypes=[Cat, Dog] required=[] isRequired=false description=""
           items

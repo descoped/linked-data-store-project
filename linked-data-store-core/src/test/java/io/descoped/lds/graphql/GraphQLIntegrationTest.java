@@ -170,6 +170,75 @@ public class GraphQLIntegrationTest {
     @ConfigurationOverride({
             "graphql.enabled", "true",
             "graphql.search.enabled", "false",
+            "specification.schema", "src/test/resources/spec/abstract/jsonschemas",
+            "graphql.schema", "src/test/resources/spec/abstract/graphqlschemas/schema.graphql"
+    })
+    public void thatAnIdNoDocumentHasIsNullAndTheRestOfTheAnswerIsKept() {
+        client.put("/data/Owner/known?sync=true", "{\"name\": \"known\", \"email\": \"known@example.com\"}").expect201Created();
+
+        JsonNode result = JsonTools.toJsonNode(client.postJson("/graphql",
+                "{\"query\": \"{ known: OwnerById(id: \\\"known\\\") { name } nobody: OwnerById(id: \\\"nobody\\\") { name } }\"}")
+                .expect200Ok().body());
+
+        assertNoErrors(result);
+        assertThat(result.at("/data/known/name").asString()).isEqualTo("known");
+        assertThat(result.at("/data/nobody").isNull()).isTrue();
+    }
+
+    @Test
+    @ConfigurationOverride({
+            "graphql.enabled", "true",
+            "graphql.search.enabled", "false",
+            "specification.schema", "src/test/resources/spec/abstract/jsonschemas",
+            "graphql.schema", "src/test/resources/spec/abstract/graphqlschemas/schema.graphql"
+    })
+    public void thatAFieldThatIsNullIsWrittenAsAFieldThatIsNotThere() {
+        client.put("/data/Owner/noage?sync=true", "{\"name\": \"noage\", \"email\": \"noage@example.com\", \"age\": null}")
+                .expect201Created();
+
+        assertThat(JsonTools.toJsonNode(client.get("/data/Owner/noage").expect200Ok().body()))
+                .isEqualTo(JsonTools.toJsonNode("{\"name\": \"noage\", \"email\": \"noage@example.com\"}"));
+    }
+
+    @Test
+    @ConfigurationOverride({
+            "graphql.enabled", "true",
+            "graphql.search.enabled", "false",
+            "graphql.schema", "src/test/resources/spec/scalars/schema.graphql"
+    })
+    public void thatAValueGraphQLCannotGiveBackIsRefusedWhenItIsWritten() {
+        client.put("/data/Measure/m1?sync=true", """
+                {"name": "m1", "count": 2147483647, "big": 9007199254740993, "ratio": 1.5, "day": "2026-11-23",
+                 "at": "10:15:30Z", "when": "2026-11-23T10:15:30.123Z", "counts": [1, -2147483648], "part": {"size": 7}}""")
+                .expect201Created();
+
+        JsonNode result = JsonTools.toJsonNode(client.postJson("/graphql",
+                "{\"query\": \"{ MeasureById(id: \\\"m1\\\") { count big ratio day at counts part { size } } }\"}")
+                .expect200Ok().body());
+        assertNoErrors(result);
+        assertThat(result.at("/data/MeasureById")).isEqualTo(JsonTools.toJsonNode("""
+                {"count": 2147483647, "big": 9007199254740993, "ratio": 1.5, "day": "2026-11-23", "at": "10:15:30Z",
+                 "counts": [1, -2147483648], "part": {"size": 7}}"""));
+
+        for (String refused : List.of(
+                "{\"name\": \"r\", \"count\": 2147483648}",
+                "{\"name\": \"r\", \"count\": 1.5}",
+                "{\"name\": \"r\", \"big\": 9223372036854775808}",
+                "{\"name\": \"r\", \"ratio\": \"1.5\"}",
+                "{\"name\": \"r\", \"day\": \"23.11.2026\"}",
+                "{\"name\": \"r\", \"at\": \"25:00:00Z\"}",
+                "{\"name\": \"r\", \"counts\": [1, 2147483648]}")) {
+            var answer = client.put("/data/Measure/refused?sync=true", refused);
+            assertThat(answer.response().statusCode()).as(refused).isEqualTo(400);
+            assertThat(answer.body()).as(refused).startsWith("Schema validation error: ");
+        }
+        client.get("/data/Measure/refused").expect404NotFound();
+    }
+
+    @Test
+    @ConfigurationOverride({
+            "graphql.enabled", "true",
+            "graphql.search.enabled", "false",
             "graphql.schema", "src/test/resources/spec/plain-links/schema.graphql"
     })
     public void thatAPlainListOfLinksToAUnionHasTheDocumentsTheLinksName() {

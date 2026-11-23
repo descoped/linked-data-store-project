@@ -57,6 +57,17 @@ public class ReferenceResourceHandlerTest {
     }
 
     @Test
+    public void thatALinkIsWrittenAndRemovedBeforeItIsAnsweredWhenSyncIsNotGiven() {
+        createTestResource("provisionagreement", "r-wait", "{\"id\":\"r-wait\",\"name\":\"pa-test-name\"}");
+        for (int n = 0; n < 10; n++) {
+            client.put("/data/provisionagreement/r-wait/contacts/contact/w" + n).expect200Ok();
+            client.get("/data/provisionagreement/r-wait/contacts/contact/w" + n).expect200Ok();
+        }
+        client.delete("/data/provisionagreement/r-wait/contacts/contact/w0").expect200Ok();
+        client.get("/data/provisionagreement/r-wait/contacts/contact/w0").expect404NotFound();
+    }
+
+    @Test
     public void thatPUTCreateArrayReferenceReturns200() {
         createTestResource("provisionagreement", "r4", "{\"id\":\"r4\",\"name\":\"pa-test-name\"}");
         client.get("/data/provisionagreement/r4/contacts/contact/c3").expect404NotFound();

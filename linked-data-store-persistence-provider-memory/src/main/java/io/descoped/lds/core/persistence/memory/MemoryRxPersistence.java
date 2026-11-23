@@ -180,6 +180,10 @@ public class MemoryRxPersistence implements RxPersistence {
         return new Fragment(documentKey, path, fragmentType, offset, kv.value());
     }
 
+    /*
+     * The keys hold the negated time, so the versions of a document are stored newest first: a backward range is
+     * read as it is stored, and a forward one from its last key, one version at a time.
+     */
     @Override
     public Flowable<Fragment> readVersions(Transaction tx, String namespace, String entity, String id, io.descoped.lds.api.persistence.reactivex.Range<ZonedDateTime> range) {
         Tuple snapshotFrom = toTuple(ofNullable(range.getAfter()).orElse(BEGINNING_OF_TIME));
@@ -202,15 +206,20 @@ public class MemoryRxPersistence implements RxPersistence {
                             /*
                              * Get all fragments of all matching versions.
                              */
-                            AsyncIterable<KeyValue> asyncIterable = transaction.getRange(
-                                    KeySelector.firstGreaterOrEqual(primary.pack(Tuple.of(id, tickBackward(snapshotTo)))),
-                                    KeySelector.firstGreaterOrEqual(primary.pack(Tuple.of(id, lowerBound))),
-                                    PRIMARY_INDEX,
-                                    ROW_LIMIT_UNLIMITED
-                            );
-
-                            return Flowable.fromPublisher(new AsyncIterablePublisher<>(asyncIterable))
-                                    .map(kv -> toFragment(primary, kv, namespace, entity));
+                            KeySelector begin = KeySelector.firstGreaterOrEqual(primary.pack(Tuple.of(id, tickBackward(snapshotTo))));
+                            KeySelector end = KeySelector.firstGreaterOrEqual(primary.pack(Tuple.of(id, lowerBound)));
+                            if (range.isBackward()) {
+                                return Flowable.fromPublisher(new AsyncIterablePublisher<>(
+                                                transaction.getRange(begin, end, PRIMARY_INDEX, ROW_LIMIT_UNLIMITED)))
+                                        .map(kv -> toFragment(primary, kv, namespace, entity));
+                            }
+                            return Flowable.fromPublisher(new AsyncIterablePublisher<>(
+                                            transaction.getRangeReversed(begin, end, PRIMARY_INDEX, ROW_LIMIT_UNLIMITED)))
+                                    .map(kv -> primary.unpack(kv.key()).getNestedTuple(1))
+                                    .distinctUntilChanged()
+                                    .concatMap(version -> Flowable.fromPublisher(new AsyncIterablePublisher<>(
+                                                    transaction.getRange(primary.range(Tuple.of(id, version)), PRIMARY_INDEX, ROW_LIMIT_UNLIMITED)))
+                                            .map(kv -> toFragment(primary, kv, namespace, entity)));
                         })
                 );
     }
@@ -233,40 +242,51 @@ public class MemoryRxPersistence implements RxPersistence {
                         .map(kv -> toFragment(primary, kv, namespace, entity)));
     }
 
+    /*
+     * Forward, the range is read as it is stored, and of each id the first version that is not after the snapshot
+     * is kept (the newest, as the keys hold the negated time). Backward, the ids are taken from the last key, and the
+     * version of each is read as read does. A deletion marker is left out.
+     */
     @Override
     public Flowable<Fragment> readAll(Transaction tx, ZonedDateTime snapshot, String namespace, String entity, io.descoped.lds.api.persistence.reactivex.Range<String> range) {
         final OrderedKeyValueTransaction transaction = (OrderedKeyValueTransaction) tx;
-        final AtomicReference<String> idRef = new AtomicReference<>();
-        final AtomicReference<ZonedDateTime> versionRef = new AtomicReference<>();
-        return Single.defer(() -> getPrimary(namespace, entity))
-                .flatMapPublisher(primary -> Flowable.fromPublisher(
-                                new AsyncIterablePublisher<>(transaction.getRange(
-                                        // from the key after every key of the id after, or the start of the entity
-                                        KeySelector.firstGreaterOrEqual(range.hasAfter()
-                                                ? primary.range(Tuple.of(range.getAfter())).end()
-                                                : primary.range().begin()),
-                                        // to the first key of the id before, or the end of the entity
-                                        KeySelector.firstGreaterOrEqual(range.hasBefore()
-                                                ? primary.pack(Tuple.of(range.getBefore()))
-                                                : primary.range().end()),
-                                        PRIMARY_INDEX,
-                                        ROW_LIMIT_UNLIMITED
-                                )))
-                        .map(kv -> toFragment(primary, kv, namespace, entity))
-                        .filter(fragment -> {
-                            if (!fragment.id().equals(idRef.get())) {
-                                idRef.set(fragment.id());
-                                versionRef.set(null);
-                            }
-                            if (snapshot.isBefore(fragment.timestamp())) {
-                                return false;
-                            }
-                            if (versionRef.get() == null) {
-                                versionRef.set(fragment.timestamp());
-                            }
-                            return fragment.timestamp().equals(versionRef.get());
-                        })
-                );
+        return Single.defer(() -> getPrimary(namespace, entity)).flatMapPublisher(primary -> {
+            // from the key after every key of the id after, or the start of the entity
+            KeySelector begin = KeySelector.firstGreaterOrEqual(range.hasAfter()
+                    ? primary.range(Tuple.of(range.getAfter())).end()
+                    : primary.range().begin());
+            // to the first key of the id before, or the end of the entity
+            KeySelector end = KeySelector.firstGreaterOrEqual(range.hasBefore()
+                    ? primary.pack(Tuple.of(range.getBefore()))
+                    : primary.range().end());
+            if (range.isBackward()) {
+                return Flowable.fromPublisher(new AsyncIterablePublisher<>(
+                                transaction.getRangeReversed(begin, end, PRIMARY_INDEX, ROW_LIMIT_UNLIMITED)))
+                        .map(kv -> primary.unpack(kv.key()).getString(0))
+                        .distinctUntilChanged()
+                        .concatMap(id -> read(tx, snapshot, namespace, entity, id))
+                        .filter(fragment -> !fragment.deleteMarker());
+            }
+            final AtomicReference<String> idRef = new AtomicReference<>();
+            final AtomicReference<ZonedDateTime> versionRef = new AtomicReference<>();
+            return Flowable.fromPublisher(new AsyncIterablePublisher<>(
+                            transaction.getRange(begin, end, PRIMARY_INDEX, ROW_LIMIT_UNLIMITED)))
+                    .map(kv -> toFragment(primary, kv, namespace, entity))
+                    .filter(fragment -> {
+                        if (!fragment.id().equals(idRef.get())) {
+                            idRef.set(fragment.id());
+                            versionRef.set(null);
+                        }
+                        if (snapshot.isBefore(fragment.timestamp())) {
+                            return false;
+                        }
+                        if (versionRef.get() == null) {
+                            versionRef.set(fragment.timestamp());
+                        }
+                        return fragment.timestamp().equals(versionRef.get());
+                    })
+                    .filter(fragment -> !fragment.deleteMarker());
+        });
     }
 
     @Override
@@ -277,13 +297,31 @@ public class MemoryRxPersistence implements RxPersistence {
             return getIndex(namespace, entity, arrayIndexUnawarePath).flatMapPublisher(index -> {
                 OrderedKeyValueTransaction transaction = (OrderedKeyValueTransaction) tx;
                 byte[] truncatedValue = Fragment.hashOf(value);
-                AsyncIterablePublisher<KeyValue> indexMatchesPublisher = new AsyncIterablePublisher<>(transaction.getRange(index.range(Tuple.of(truncatedValue)), PATH_VALUE_INDEX, ROW_LIMIT_UNLIMITED));
-                AtomicReference<String> idRef = new AtomicReference<>(null);
-                return Flowable.fromPublisher(indexMatchesPublisher)
-                        .filter(pathValueIndexedKeyValue -> isVisibleAndFirstOfItsResource(index, pathValueIndexedKeyValue, snapshot, idRef))
-                        .concatMapEager(pathValueIndexedKeyValue -> readMatchedVersion(transaction, primary, index, pathValueIndexedKeyValue, snapshot, namespace, entity));
+                if (range.isBackward()) {
+                    // The ids from the last match, and the matches of each id read forward.
+                    io.descoped.tuple.Range matches = index.range(Tuple.of(truncatedValue));
+                    return Flowable.fromPublisher(new AsyncIterablePublisher<>(transaction.getRangeReversed(
+                                    KeySelector.firstGreaterOrEqual(matches.begin()), KeySelector.firstGreaterOrEqual(matches.end()),
+                                    PATH_VALUE_INDEX, ROW_LIMIT_UNLIMITED)))
+                            .map(kv -> index.unpack(kv.key()).getString(1))
+                            .distinctUntilChanged()
+                            .concatMap(id -> matchesOf(transaction, primary, index, Tuple.of(truncatedValue, id), snapshot, namespace, entity));
+                }
+                return matchesOf(transaction, primary, index, Tuple.of(truncatedValue), snapshot, namespace, entity);
             });
         });
+    }
+
+    /*
+     * The documents of the index matches that start with the prefix, by id: the version each match points at, when
+     * it is the one visible at snapshot time.
+     */
+    private Flowable<Fragment> matchesOf(OrderedKeyValueTransaction transaction, Subspace primary, Subspace index, Tuple prefix, ZonedDateTime snapshot, String namespace, String entity) {
+        AsyncIterablePublisher<KeyValue> indexMatchesPublisher = new AsyncIterablePublisher<>(transaction.getRange(index.range(prefix), PATH_VALUE_INDEX, ROW_LIMIT_UNLIMITED));
+        AtomicReference<String> idRef = new AtomicReference<>(null);
+        return Flowable.fromPublisher(indexMatchesPublisher)
+                .filter(pathValueIndexedKeyValue -> isVisibleAndFirstOfItsResource(index, pathValueIndexedKeyValue, snapshot, idRef))
+                .concatMapEager(pathValueIndexedKeyValue -> readMatchedVersion(transaction, primary, index, pathValueIndexedKeyValue, snapshot, namespace, entity));
     }
 
     /*

@@ -7,7 +7,7 @@ root elementType=ROOT jsonTypes=[object] refTypes=[] required=[] isRequired=fals
   property Cat
     Cat elementType=MANAGED jsonTypes=[object] refTypes=[] required=[name] isRequired=false description=""
       property age
-        age elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+        age elementType=EMBEDDED jsonTypes=[integer] refTypes=[] required=[] isRequired=false description=""
       property friends
         friends elementType=REF jsonTypes=[array] refTypes=[Cat] required=[] isRequired=false description=""
           items
@@ -39,4 +39,4 @@ root elementType=ROOT jsonTypes=[object] refTypes=[] required=[] isRequired=fals
   property Mouse
     Mouse elementType=MANAGED jsonTypes=[object] refTypes=[] required=[size] isRequired=false description=""
       property size
-        size elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=true description=""
+        size elementType=EMBEDDED jsonTypes=[integer] refTypes=[] required=[] isRequired=true description=""
