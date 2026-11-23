@@ -148,9 +148,9 @@ jobs:
             *) echo "Not a SNAPSHOT: $version"; exit 1 ;;
           esac
 
-      # The token and its origin are read from the environment of the deploy step; nothing secret is written to
-      # disk. The token is sent to the CodeArtifact origin only.
-      - name: Maven server entry
+      # The token, the endpoint and its origin are read from the environment of the deploy step; nothing secret is
+      # written to disk. The token is sent to the CodeArtifact origin only.
+      - name: Maven settings
         run: |
           mkdir -p ~/.m2
           cat > ~/.m2/settings.xml <<'XML'
@@ -165,6 +165,17 @@ jobs:
                 </repositoryOrigins>
               </server>
             </servers>
+            <profiles>
+              <profile>
+                <id>descoped-codeartifact</id>
+                <properties>
+                  <descoped.snapshots.url>${env.SNAPSHOTS_URL}</descoped.snapshots.url>
+                </properties>
+              </profile>
+            </profiles>
+            <activeProfiles>
+              <activeProfile>descoped-codeartifact</activeProfile>
+            </activeProfiles>
           </settings>
           XML
 
@@ -198,12 +209,12 @@ jobs:
           export CODEARTIFACT_AUTH_TOKEN="$token"
           url=$(aws codeartifact get-repository-endpoint --domain descoped --repository maven-snapshots \
             --format maven --query repositoryEndpoint --output text)
+          origin="${url%%/maven/*}"
           echo "::add-mask::$url"
-          export SNAPSHOTS_ORIGIN="${url%%/maven/*}"
-          echo "::add-mask::$SNAPSHOTS_ORIGIN"
+          echo "::add-mask::$origin"
+          export SNAPSHOTS_URL="$url" SNAPSHOTS_ORIGIN="$origin"
           # strict: a server without a declared origin gets no credentials, instead of getting them with a warning
           # that names the origin (Maven 3.10, OriginBoundAuthenticationSelector).
           ./mvnw --batch-mode --no-transfer-progress -T 1C -P descoped-snapshots -DskipTests \
-            -Dmaven.build.cache.enabled=false -Dmaven.repository.credentialScope=strict \
-            -Ddescoped.snapshots.url="$url" deploy
+            -Dmaven.build.cache.enabled=false -Dmaven.repository.credentialScope=strict deploy
 
