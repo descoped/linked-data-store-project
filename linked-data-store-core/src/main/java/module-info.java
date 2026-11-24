@@ -34,5 +34,6 @@ module io.descoped.lds.core {
     uses no.cantara.sagalog.SagaLogInitializer;
 
     exports io.descoped.lds.core;
+    exports io.descoped.lds.core.lifecycle;
     exports io.descoped.lds.test.server; // Needed to run tests in IntelliJ
 }

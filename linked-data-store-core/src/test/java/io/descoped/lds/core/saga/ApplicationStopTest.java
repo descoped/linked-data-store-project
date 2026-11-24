@@ -6,6 +6,7 @@ import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.core.UndertowApplication;
 import io.descoped.lds.core.health.ReadinessHandler;
+import io.descoped.lds.core.lifecycle.Lifecycles;
 import io.descoped.lds.core.persistence.StoreReads;
 import io.descoped.lds.test.server.TestServer;
 import io.descoped.lds.test.server.TestServerListener;
@@ -120,6 +121,23 @@ class ApplicationStopTest {
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("stopping");
     }
 
+    /**
+     * Every subsystem is stopped, in the reverse order of the one they were made in: what takes work in stops before
+     * what it needs, and the store last.
+     */
+    @Test
+    void theSubsystemsStopInTheReverseOrderOfTheOneTheyWereMadeIn() {
+        server = start();
+        Lifecycles lifecycles = server.getApplication().getLifecycles();
+
+        server.getApplication().stop();
+
+        assertThat(lifecycles.stopped()).containsExactly(
+                "HTTP server", "Readiness checks", "Sagas", "Saga thread pool", "Saga observer", "Transaction log",
+                "Index queue worker", "Index queue", "Search index", "Saga log pool", "Store reads", "Store");
+        assertThat(lifecycles.stopped()).isEqualTo(lifecycles.names().reversed());
+    }
+
     /* The live threads of index queue workers, by name: each worker names its own. */
     private static Set<String> indexQueueThreads() {
         return Thread.getAllStackTraces().keySet().stream().filter(Thread::isAlive).map(Thread::getName)
@@ -192,7 +210,7 @@ class ApplicationStopTest {
         assertThat(held.entered.await(10, TimeUnit.SECONDS)).isTrue();
         SagaLog sagaLog = sec.getSagaLogPool().connect(sec.executionIdBySagaLogId.keySet().iterator().next());
 
-        CompletableFuture<Void> stop = CompletableFuture.runAsync(() -> server.getApplication().stop(200, TimeUnit.MILLISECONDS));
+        CompletableFuture<Void> stop = CompletableFuture.runAsync(() -> server.getApplication().stop(Duration.ofMillis(200)));
         await("the thread pool to be shut down").atMost(Duration.ofSeconds(10))
                 .pollDelay(Duration.ZERO).pollInterval(Duration.ofMillis(10))
                 .until(sec.getThreadPool()::isShutdown);
@@ -262,7 +280,7 @@ class ApplicationStopTest {
         server = start();
         try (Socket inFlight = requestWithHalfItsBody()) {
             long before = System.nanoTime();
-            server.getApplication().stop(200, TimeUnit.MILLISECONDS);
+            server.getApplication().stop(Duration.ofMillis(200));
 
             // the wait for the requests, then a second for the threads of Undertow; not its read timeout of ten minutes
             assertThat(Duration.ofNanos(System.nanoTime() - before)).isLessThan(Duration.ofSeconds(5));
@@ -309,7 +327,7 @@ class ApplicationStopTest {
         server.getApplication().getSec().runningSagas.add(new CompletableFuture<>());
 
         long before = System.nanoTime();
-        server.getApplication().stop(200, TimeUnit.MILLISECONDS);
+        server.getApplication().stop(Duration.ofMillis(200));
 
         assertThat(Duration.ofNanos(System.nanoTime() - before)).isBetween(Duration.ofMillis(200), Duration.ofSeconds(5));
         assertStopped(server);

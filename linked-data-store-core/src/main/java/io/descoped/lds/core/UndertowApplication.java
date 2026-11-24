@@ -14,6 +14,8 @@ import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.core.controller.CORSHandler;
 import io.descoped.lds.core.health.Readiness;
 import io.descoped.lds.core.health.ReadinessHandler;
+import io.descoped.lds.core.lifecycle.Lifecycle;
+import io.descoped.lds.core.lifecycle.Lifecycles;
 import io.descoped.lds.core.controller.NamespaceController;
 import io.descoped.lds.core.domain.DocumentLocks;
 import io.descoped.lds.core.domain.SearchWait;
@@ -74,7 +76,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
@@ -83,7 +84,7 @@ import java.util.stream.Stream;
 
 import static java.util.Optional.ofNullable;
 
-public class UndertowApplication {
+public class UndertowApplication implements Lifecycle {
 
     private static final Logger LOG = LoggerFactory.getLogger(UndertowApplication.class);
     private final RxJsonPersistence persistence;
@@ -92,7 +93,6 @@ public class UndertowApplication {
     private final Undertow server;
     /** In front of every handler but the CORS handler: counts the requests in flight, and refuses new ones when the application stops. */
     private final GracefulShutdownHandler requests;
-    private final AtomicBoolean stopping = new AtomicBoolean();
     private final String host;
     private final int port;
     private final SagaExecutionCoordinator sec;
@@ -102,10 +102,11 @@ public class UndertowApplication {
     private final SelectableThreadPoolExecutor sagaThreadPool;
     private final SagaRecoveryTrigger sagaRecoveryTrigger;
     private final TxlogRawdataPool txlogRawdataPool;
-    private final Indexing indexing;
     private final Readiness readiness;
-    // the threads the store is read on, closed when the application stops (stop)
-    private final StoreReads storeReads = new StoreReads();
+    // the threads the store is read on
+    private final StoreReads storeReads;
+    // the subsystems, started and stopped with the application
+    private final Lifecycles lifecycles;
 
     /**
      * The parts of the write path the application runs and stops.
@@ -143,10 +144,12 @@ public class UndertowApplication {
     /* How long the worker of the index queue waits for updates when there were none. */
     static final Duration INDEX_QUEUE_POLL = Duration.ofMillis(200);
 
-    UndertowApplication(Specification specification, RxJsonPersistence persistence, SagaParts sagas, int port,
-                        NamespaceController namespaceController, Indexing indexing,
-                        DynamicConfiguration configuration) {
+    UndertowApplication(Specification specification, RxJsonPersistence persistence, StoreReads storeReads,
+                        SagaParts sagas, int port, NamespaceController namespaceController, Indexing indexing,
+                        DynamicConfiguration configuration, Lifecycles lifecycles) {
         this.specification = specification;
+        this.storeReads = storeReads;
+        this.lifecycles = lifecycles;
         this.documentLocks = namespaceController.documentLocks();
         this.sagaRecoveryTrigger = sagas.recoveryTrigger();
         this.host = configuration.find("http.host").orElse(null);
@@ -158,7 +161,6 @@ public class UndertowApplication {
         this.sagaLogPool = sagas.logPool();
         this.sagaThreadPool = sagas.threadPool();
         this.txlogRawdataPool = sagas.txlogRawdataPool();
-        this.indexing = indexing;
         SearchIndex searchIndex = indexing == null ? null : indexing.index();
 
         LOG.info("Initializing Http handlers ...");
@@ -199,8 +201,8 @@ public class UndertowApplication {
         ResponseCodeHandler answers = new ResponseCodeHandler(StatusCodes.OK);
         pathHandler.addExactPath(ReadinessHandler.ALIVE_PATH, answers);
         pathHandler.addExactPath(ReadinessHandler.PING_PATH, answers);
-        // a field of the application, closed when it stops (stop)
         this.readiness = new Readiness();
+        lifecycles.add(Lifecycle.of("Readiness checks", _ -> readiness.close()));
         readiness.persistence(persistence, storeReads, namespace, new TreeSet<>(specification.getManagedDomains()).first())
                 .sagaLog(sagaLogPool)
                 .transactionLog(txlogRawdataPool);
@@ -252,6 +254,14 @@ public class UndertowApplication {
                 .setServerOption(UndertowOptions.SHUTDOWN_TIMEOUT, 1000)
                 .setHandler(corsHandler)
                 .build();
+        lifecycles.add(Lifecycle.of("HTTP server", server::start, timeout -> {
+            requests.shutdown(); // every request from here on is answered 503 Service Unavailable
+            if (!requests.awaitShutdown(timeout.toMillis())) {
+                LOG.warn("Requests were still being handled after {}. They lose their connection when the HTTP "
+                        + "server stops.", timeout);
+            }
+            server.stop();
+        }));
     }
 
     private static TypeDefinitionRegistry parseSchemaFile(File graphQLFile) {
@@ -274,8 +284,27 @@ public class UndertowApplication {
         return initializeUndertowApplication(configuration, port);
     }
 
+    /**
+     * Makes the application and its subsystems; none is started. When a subsystem cannot be made, those made before
+     * it are stopped, and the exception is thrown.
+     *
+     * @param configuration the configuration
+     * @param port          the port of the HTTP server
+     * @return the application
+     */
     public static UndertowApplication initializeUndertowApplication(DynamicConfiguration configuration, int port) {
         LOG.info("Initializing Linked Data Store (LDS) server ...");
+        Lifecycles lifecycles = new Lifecycles();
+        try {
+            return initialize(configuration, port, lifecycles);
+        } catch (RuntimeException | Error e) {
+            LOG.error("LDS could not be made; what was made is stopped");
+            lifecycles.stop(STOP_TIMEOUT);
+            throw e;
+        }
+    }
+
+    private static UndertowApplication initialize(DynamicConfiguration configuration, int port, Lifecycles lifecycles) {
 
         LOG.info("Initializing specification ...");
 
@@ -318,10 +347,14 @@ public class UndertowApplication {
         LOG.info("Initializing primary persistence ...");
 
         RxJsonPersistence persistence = PersistenceConfigurator.configurePersistence(configuration, specification);
+        lifecycles.add(Lifecycle.of("Store", _ -> persistence.close()));
+        StoreReads storeReads = new StoreReads();
+        lifecycles.add(Lifecycle.of("Store reads", storeReads::close));
 
         LOG.info("Initializing saga-log pool ...");
 
         SagaLogPool sagaLogPool = configureSagaLogProvider(configuration);
+        lifecycles.add(Lifecycle.of("Saga log pool", _ -> sagaLogPool.shutdown()));
 
         SagaRepository.Builder sagaRepositoryBuilder = new SagaRepository.Builder()
                 .specification(specification)
@@ -332,22 +365,31 @@ public class UndertowApplication {
         SearchIndex searchIndex = SearchIndexConfigurator.configureSearchIndex(configuration);
         Indexing indexing = null;
         if (searchIndex != null) {
+            lifecycles.add(Lifecycle.of("Search index", _ -> searchIndex.close()));
             LOG.info("Initializing index queue ...");
             IndexQueue indexQueue = IndexQueueConfigurator.configureIndexQueue(configuration);
+            lifecycles.add(Lifecycle.of("Index queue", _ -> indexQueue.close()));
             sagaRepositoryBuilder.indexQueue(indexQueue);
             IndexRebuild rebuild = configuration.getBoolean("search.index.rebuild", false)
                     ? new IndexRebuild(persistence, indexQueue, searchIndex,
                     configuration.find("namespace.default").orElseThrow(),
                     List.copyOf(specification.getManagedDomains()))
                     : null;
-            indexing = new Indexing(searchIndex, indexQueue,
-                    new IndexQueueWorker(indexQueue, searchIndex, persistence,
-                            new IndexEntries(specification, notSearched), INDEX_QUEUE_POLL), rebuild);
+            IndexQueueWorker worker = new IndexQueueWorker(indexQueue, searchIndex, persistence,
+                    new IndexEntries(specification, notSearched), INDEX_QUEUE_POLL);
+            // after the queue and the index it sends to, and before the sagas, which add to the queue
+            lifecycles.add(Lifecycle.of("Index queue worker", worker::start,
+                    timeout -> worker.stop(timeout.toMillis(), TimeUnit.MILLISECONDS)));
+            if (rebuild != null) {
+                lifecycles.add(Lifecycle.of("Index rebuild", rebuild::start, _ -> rebuild.stop()));
+            }
+            indexing = new Indexing(searchIndex, indexQueue, worker, rebuild);
         }
 
         LOG.info("Initializing transaction-log ...");
 
         RawdataClient txLogClient = configureTxLogRawdataClient(configuration);
+        lifecycles.add(Lifecycle.of("Transaction log", _ -> txLogClient.close()));
         boolean splitSources = configuration.getBoolean("txlog.split.sources", false);
         String defaultSource = configuration.find("txlog.default-source").filter(s -> !s.isBlank()).orElse("default");
         String txLogTopicPrefix = configuration.find("txlog.rawdata.topic-prefix").map(String::trim).orElse("");
@@ -364,6 +406,7 @@ public class UndertowApplication {
         LOG.info("Initializing saga observer ...");
 
         final SagasObserver sagasObserver = new SagasObserver(sagaRepository).start();
+        lifecycles.add(Lifecycle.of("Saga observer", _ -> sagasObserver.shutdown()));
 
         LOG.info("Initializing saga thread-pool ...");
 
@@ -386,6 +429,8 @@ public class UndertowApplication {
                 },
                 new ThreadPoolExecutor.AbortPolicy()
         );
+        // a saga that branches hands steps to this pool, so such a saga fails if it runs when the pool is shut down
+        lifecycles.add(Lifecycle.of("Saga thread pool", _ -> shutdownAndAwaitTermination(sagaThreadPool)));
         int numberOfSagaLogs = configuration.getInt("saga.number-of-logs");
 
         boolean sagaCommandsEnabled = configuration.getBoolean("saga.commands.enabled", false);
@@ -410,6 +455,7 @@ public class UndertowApplication {
             int intervalMaxSec = configuration.getInt("saga.recovery.interval.seconds.max");
             sagaRecoveryTrigger = new SagaRecoveryTrigger(sec, intervalMinSec, intervalMaxSec, recoveryThreadPool);
         }
+        lifecycles.add(sagas(sec, sagaRecoveryTrigger, recoveryThreadPool));
 
         LOG.info("Initializing namespace-controller ...");
 
@@ -426,8 +472,42 @@ public class UndertowApplication {
 
         SagaParts sagas = new SagaParts(sec, sagaRepository, sagasObserver, sagaRecoveryTrigger, sagaLogPool,
                 sagaThreadPool, txlogRawdataPool);
-        return new UndertowApplication(specification, persistence, sagas, port, namespaceController, indexing,
-                configuration);
+        return new UndertowApplication(specification, persistence, storeReads, sagas, port, namespaceController,
+                indexing, configuration, lifecycles);
+    }
+
+    /*
+     * The sagas: started, the local sagas that did not complete are recovered, then the trigger recovers those of the
+     * cluster regularly. Stopped, the recovery stops first, then the sagas that are running complete (they still have
+     * their thread pool, their saga logs and the stores they write to), then the coordinator.
+     */
+    private static Lifecycle sagas(SagaExecutionCoordinator sec, SagaRecoveryTrigger trigger,
+                                   ScheduledExecutorService recoveryThreadPool) {
+        return Lifecycle.of("Sagas", () -> {
+            if (trigger != null) {
+                // recover local saga logs at once, then the cluster's regularly
+                sec.completeLocalIncompleteSagas(sec.getRecoveryThreadPool()).handle((_, t) -> {
+                    if (t != null) {
+                        LOG.error("Error during initial local saga-logs recovery attempt", t);
+                    }
+                    LOG.info("Starting saga-recovery-trigger ...");
+                    trigger.start();
+                    return null;
+                });
+            }
+        }, timeout -> {
+            if (trigger != null) {
+                trigger.stop(); // shuts the recovery thread-pool down as well
+            } else {
+                // recovery by the next write uses this pool also when there is no trigger
+                shutdownAndAwaitTermination(recoveryThreadPool);
+            }
+            if (!sec.awaitRunningSagas(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
+                LOG.warn("Sagas were still running after {}. They fail when their thread pool is shut down, and are "
+                        + "recovered from their saga logs.", timeout);
+            }
+            sec.shutdown();
+        });
     }
 
     private static JsonSchemaBasedSpecification createJsonSpecification(SequencedMap<String, ObjectNode> jsonMap) {
@@ -605,128 +685,63 @@ public class UndertowApplication {
         return port;
     }
 
+    @Override
+    public String name() {
+        return "Linked Data Store";
+    }
+
+    /**
+     * Starts the subsystems, in the order they need each other (see {@link #getLifecycles()}). When one cannot
+     * start, every subsystem is stopped and the start fails.
+     */
+    @Override
     public void start() {
-        LOG.info("Starting Undertow ...");
-        server.start();
-        if (indexing != null) {
-            LOG.info("Starting the index queue ...");
-            indexing.worker().start();
-            if (indexing.rebuild() != null) {
-                indexing.rebuild().start();
-            }
-        }
-        if (sagaRecoveryTrigger != null) {
-            LOG.info("Starting saga-recovery (instance-local) ...");
-            // attempt to recover local saga-logs immediately, then attempt cluster wide recovery regularly
-            sec.completeLocalIncompleteSagas(sec.getRecoveryThreadPool()).handle((_, t) -> {
-                if (t != null) {
-                    LOG.error("Error during initial local saga-logs recovery attempt", t);
-                }
-                LOG.info("Starting saga-recovery-trigger ...");
-                sagaRecoveryTrigger.start();
-                return null;
-            });
-        }
+        lifecycles.start(STOP_TIMEOUT);
         LOG.info("Started Linked Data Store server. PID {}", ProcessHandle.current().pid());
         LOG.info("Listening on {}:{}", host, port);
     }
 
     /**
-     * Stops the application, one part at a time, in the order the parts need each other:
+     * Stops the application, one subsystem at a time, in the reverse order of the one they were made in, so that a
+     * subsystem stops before what it needs does:
      * <ol>
-     * <li>No new work. A request that arrives from here on is answered 503 Service Unavailable, while the requests
-     * that are being handled are completed. Then the HTTP server stops, and the recovery of unfinished sagas.</li>
-     * <li>The sagas that are running complete. They still have their thread pool, their saga logs and the stores
-     * they write to.</li>
-     * <li>The thread pool of the sagas is shut down. A saga that branches hands steps to this pool, so such a saga
-     * fails if it is running when the pool is shut down.</li>
-     * <li>The saga log pool is shut down. After that it gives out no log.</li>
-     * <li>With search, the index queue worker stops, the queue is closed, and the search index lets go of its
-     * client.</li>
-     * <li>The threads the store is read on are closed, once the reads on them have completed.</li>
-     * <li>The stores the sagas wrote to are closed.</li>
+     * <li>The HTTP server: a request that arrives from here on is answered 503 Service Unavailable, while the
+     * requests that are being handled are completed; then it stops. Then the readiness checks.</li>
+     * <li>The sagas: the recovery stops, the sagas that are running complete, then the coordinator stops.</li>
+     * <li>The thread pool of the sagas, the saga observer and the transaction log.</li>
+     * <li>With search, the rebuild, the worker of the index queue, the queue and the search index.</li>
+     * <li>The saga log pool, the threads the store is read on, and the store.</li>
      * </ol>
-     * A part that fails to stop is logged, and the parts after it are stopped all the same. The application is
+     * A subsystem that fails to stop is logged, and those after it are stopped all the same. The application is
      * stopped once: a second call does nothing, and does not wait for the first to be done.
      */
     public void stop() {
-        stop(RUNNING_SAGAS_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        stop(STOP_TIMEOUT);
     }
 
     /**
      * Stops the application as {@link #stop()} does, waiting the given time at most for the requests that are
-     * being handled, and then the same time at most for the sagas that are running.
+     * being handled, then for the running sagas, and then for each subsystem's work.
      *
-     * @param timeout the longest time to wait for the requests, and then for the running sagas
-     * @param unit    the unit of the timeout
+     * @param timeout the longest time to wait for the work of each subsystem
      */
-    public void stop(long timeout, TimeUnit unit) {
-        if (!stopping.compareAndSet(false, true)) {
-            return; // stopped, or being stopped by another caller
+    @Override
+    public void stop(Duration timeout) {
+        if (lifecycles.stop(timeout)) {
+            LOG.info("Leaving.. Bye!");
         }
-        stop("HTTP requests", () -> {
-            requests.shutdown(); // every request from here on is answered 503 Service Unavailable
-            if (!requests.awaitShutdown(unit.toMillis(timeout))) {
-                LOG.warn("Requests were still being handled after {} {}. They lose their connection when the HTTP server stops.", timeout, unit);
-            }
-        });
-        stop("Undertow", server::stop);
-        stop("Readiness checks", readiness::close);
-        if (sagaRecoveryTrigger != null) {
-            stop("SagaRecoveryTrigger", sagaRecoveryTrigger::stop); // shuts the recovery thread-pool down as well
-        } else {
-            // recovery by the next write uses this pool also when there is no trigger
-            stop("Saga recovery thread-pool", () -> shutdownAndAwaitTermination(sec.getRecoveryThreadPool()));
-        }
-
-        stop("Running sagas", () -> {
-            if (!sec.awaitRunningSagas(timeout, unit)) {
-                LOG.warn("Sagas were still running after {} {}. They fail when their thread pool is shut down, and are recovered from their saga logs.", timeout, unit);
-            }
-        });
-
-        stop("Saga Execution Coordinator", sec::shutdown);
-        stop("Saga thread-pool", () -> shutdownAndAwaitTermination(sagaThreadPool));
-        stop("SagaObserver", sagasObserver::shutdown);
-
-        stop("SagaLogPool", sagaLogPool::shutdown);
-
-        if (indexing != null) {
-            // after the sagas, which add to the queue, and before the store, which the worker reads
-            if (indexing.rebuild() != null) {
-                stop("Index rebuild", indexing.rebuild()::stop);
-            }
-            stop("Index queue worker", () -> indexing.worker().stop(timeout, unit));
-            stop("Index queue", indexing.queue()::close);
-            stop("Search index", indexing.index()::close);
-        }
-
-        // after the requests and the index worker, the last that read the store, and before the store
-        stop("Store reads", () -> storeReads.close(Duration.of(timeout, unit.toChronoUnit())));
-
-        stop("Persistence provider", persistence::close);
-        stop("Transaction log (rawdata client)", () -> txlogRawdataPool.getClient().close());
-        LOG.info("Leaving.. Bye!");
     }
 
-    static final int RUNNING_SAGAS_TIMEOUT_SECONDS = 10;
+    /** How long the stop waits, at most, for the requests, then for the running sagas, then for each subsystem. */
+    public static final Duration STOP_TIMEOUT = Duration.ofSeconds(10);
 
-    /* A part of the application that is stopped; waiting for the requests may be interrupted. */
-    @FunctionalInterface
-    private interface Stopping {
-        void stop() throws InterruptedException;
-    }
-
-    private static void stop(String part, Stopping action) {
-        try {
-            action.stop();
-            LOG.debug("{} was shutdown", part);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            LOG.error("Interrupted while shutting down: {}", part, e);
-        } catch (Exception e) {
-            LOG.error("Error while shutting down: {}", part, e);
-        }
+    /**
+     * The subsystems of the application, in the order they are started.
+     *
+     * @return the subsystems
+     */
+    public Lifecycles getLifecycles() {
+        return lifecycles;
     }
 
     public RxJsonPersistence getPersistence() {
