@@ -182,8 +182,11 @@ which validates the Jackson tree of the document). A schema that at its root say
   for search (`AsyncAnswer.afterSaga`), and GraphQL runs with `executeAsync`. A read of the store that is composed
   runs on a thread of the store's (`StoreReads`), which opens and closes its transaction (the store in memory holds
   a lock of the thread). A client that only blocks (JDBC, the saga log, the transaction log) is called on a thread of
-  its own, never on an I/O or request thread. No `blockingGet`, `blockingAwait`, `join`, `sleep` or blocking read is
-  added; what is left is listed in the dossier (`blocking-calls-2026-11-24.md`) and goes as its part is revised.
+  its own, never on an I/O or request thread. The steps of a saga are synchronous and may block, on the saga's own
+  bounded pool (owner's decision, 2026-11-24): an asynchronous step only moves a blocking JDBC call to an unbounded
+  pool and loses the back-pressure of the bounded one. Never block an event loop, a request thread or an Rx
+  scheduler. No `blockingGet`, `blockingAwait`, `join`, `sleep` or blocking read is added there; what is left is
+  listed in the dossier (`blocking-calls-2026-11-24.md`) and goes as its part is revised.
 - **Time.** Document versions are stored and compared as UTC instants.
 - **Transactions** commit only when asked and roll back otherwise.
 - **Always the latest stable version** of every library, plugin, action, image and engine (Neo4j 2026, Solr 10).
