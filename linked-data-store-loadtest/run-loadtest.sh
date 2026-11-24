@@ -5,7 +5,7 @@
 # LDS, warms it up, runs the load with 1 to 50 threads for ten seconds each, draws the plots and stops everything.
 # It takes about seven minutes.
 #
-#   ./run-loadtest.sh memory|neo4j|postgres
+#   ./run-loadtest.sh memory|neo4j|postgres|postgres-logs
 #
 # The results are in lds<provider>/results. Build LDS first: ./mvnw package -DskipTests in the root of the
 # repository.

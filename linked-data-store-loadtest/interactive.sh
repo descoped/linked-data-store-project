@@ -3,7 +3,7 @@
 #
 # The steps of a load test one at a time, to try a load by hand:
 #
-#   ./interactive.sh memory|neo4j|postgres COMMAND [ARGUMENTS]
+#   ./interactive.sh memory|neo4j|postgres|postgres-logs COMMAND [ARGUMENTS]
 #
 # Start with "up", end with "down". The results are in lds<provider>/results.
 #
@@ -11,7 +11,7 @@
 . "$(dirname "$0")/functions.sh"
 
 if [ "${1:-}" = "help" ] || [ $# -lt 2 ]; then
-  echo "Usage: $0 memory|neo4j|postgres COMMAND"
+  echo "Usage: $0 memory|neo4j|postgres|postgres-logs COMMAND"
   echo "Commands: up, configure, prepopulate, warmup THREADS SECONDS, run THREADS SECONDS, plot, down"
   exit 0
 fi

@@ -10,7 +10,9 @@ name: lds-loadtest
 services:
 
   # LDS from the image of the server module, with the model of the load test: JSON Schema files, no GraphQL
-  # schema. The saga log is in memory and no transaction log is kept, so the test measures the provider.
+  # schema. The saga log is in memory and no transaction log is kept, so the test measures the provider; with
+  # postgres-logs (ldspostgres-logs.sh) the saga log and the transaction log are in PostgreSQL too, in databases of
+  # their own as in the compose file of the server, so the test measures a write as a whole LDS makes it.
   lds:
     build: ../linked-data-store-server
     environment:
@@ -24,6 +26,16 @@ services:
       LDS_POSTGRES_DRIVER_USER: lds
       LDS_POSTGRES_DRIVER_PASSWORD: lds
       LDS_POSTGRES_DRIVER_DATABASE: lds
+      LDS_SAGALOG_PROVIDER: ${LDS_SAGALOG_PROVIDER:-no.cantara.sagalog.memory.MemorySagaLogInitializer}
+      LDS_SAGALOG_CONFIG_POSTGRES_DRIVER_HOST: postgres
+      LDS_SAGALOG_CONFIG_POSTGRES_DRIVER_USER: lds
+      LDS_SAGALOG_CONFIG_POSTGRES_DRIVER_PASSWORD: lds
+      LDS_SAGALOG_CONFIG_POSTGRES_DRIVER_DATABASE: sagalog
+      LDS_TXLOG_RAWDATA_PROVIDER: ${LDS_TXLOG_RAWDATA_PROVIDER:-discard}
+      LDS_TXLOG_CONFIG_POSTGRES_DRIVER_HOST: postgres
+      LDS_TXLOG_CONFIG_POSTGRES_DRIVER_USER: lds
+      LDS_TXLOG_CONFIG_POSTGRES_DRIVER_PASSWORD: lds
+      LDS_TXLOG_CONFIG_POSTGRES_DRIVER_DATABASE: txlog
     volumes:
       - ./setup/gsim/schemas:/lds/schemas:ro
     # LDS answers /ping under http.prefix, on the port it listens on in the container (9090, http.port).
@@ -55,7 +67,8 @@ services:
       timeout: 10s
       retries: 5
 
-  # PostgreSQL stays at 18 (see .claude/CLAUDE.md, Invariants).
+  # PostgreSQL stays at 18 (see .claude/CLAUDE.md, Invariants). The databases of the saga log and the transaction
+  # log are made at its first start, by the script of the server's compose file; with postgres they stay empty.
   postgres:
     profiles: ["postgres"]
     image: postgres:18-alpine
@@ -63,6 +76,8 @@ services:
       POSTGRES_USER: lds
       POSTGRES_PASSWORD: lds
       POSTGRES_DB: lds
+    volumes:
+      - ../linked-data-store-server/postgres-init.sql:/docker-entrypoint-initdb.d/postgres-init.sql:ro
     healthcheck:
       test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "lds", "-d", "lds"]
       start_period: 60s

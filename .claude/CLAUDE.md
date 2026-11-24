@@ -417,7 +417,9 @@ changing it:
 `linked-data-store-loadtest` is the load test LDS had before 3.0, brought up to date and kept as it was: the same
 steps, the same load (80 reads to 20 writes, 1 to 50 threads, ten seconds each), the same model and templates
 (`setup/gsim`, the schemas now JSON Schema 2020-12) and the same statistics and plots. `./ldsmemory.sh`,
-`./ldsneo4j.sh` and `./ldspostgres.sh` run it; its README says what a run does. Keep these when changing it:
+`./ldsneo4j.sh` and `./ldspostgres.sh` run it with the saga log in memory and no transaction log;
+`./ldspostgres-logs.sh` (owner's request, 2026-11-24) runs it with PostgreSQL as the store, the saga log and the
+transaction log, to test the saga under load. Its README says what a run does. Keep these when changing it:
 
 - **It is not part of the build**: nothing in `verify` or in CI starts it. Maven compiles and tests the
   statistics program with the reactor, and that is all.

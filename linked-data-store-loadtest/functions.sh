@@ -7,14 +7,22 @@
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# use_provider memory|neo4j|postgres: which persistence provider LDS is tested with, and where the results go.
+# use_provider memory|neo4j|postgres|postgres-logs: which persistence provider LDS is tested with, and where the
+# results go. postgres-logs is postgres with the saga log and the transaction log in PostgreSQL as well; the others
+# keep the saga log in memory and no transaction log.
 use_provider() {
+  unset LDS_SAGALOG_PROVIDER LDS_TXLOG_RAWDATA_PROVIDER
   case "${1:-}" in
     memory)   export LDS_PERSISTENCE_PROVIDER=mem      COMPOSE_PROFILES= ;;
     neo4j)    export LDS_PERSISTENCE_PROVIDER=neo4j    COMPOSE_PROFILES=neo4j ;;
     postgres) export LDS_PERSISTENCE_PROVIDER=postgres COMPOSE_PROFILES=postgres ;;
+    postgres-logs)
+      export LDS_PERSISTENCE_PROVIDER=postgres COMPOSE_PROFILES=postgres \
+        LDS_SAGALOG_PROVIDER=no.cantara.sagalog.postgres.PostgresSagaLogInitializer \
+        LDS_TXLOG_RAWDATA_PROVIDER=postgres
+      ;;
     *)
-      echo "ERROR: the provider is memory, neo4j or postgres, not '${1:-}'" >&2
+      echo "ERROR: the provider is memory, neo4j, postgres or postgres-logs, not '${1:-}'" >&2
       exit 1
       ;;
   esac
