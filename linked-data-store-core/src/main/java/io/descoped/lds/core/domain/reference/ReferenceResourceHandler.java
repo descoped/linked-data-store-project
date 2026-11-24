@@ -26,7 +26,6 @@ import org.slf4j.LoggerFactory;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ArrayNode;
 
-import java.nio.charset.StandardCharsets;
 import java.util.Deque;
 
 import static io.descoped.lds.api.persistence.json.JsonTools.mapper;
