@@ -1,13 +1,18 @@
 package io.descoped.lds.core.search;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.PersistenceDeletePolicy;
 import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.json.JsonDocument;
 import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
+import io.descoped.lds.api.search.IndexEntry;
 import io.descoped.lds.api.search.IndexQueue;
 import io.descoped.lds.api.search.IndexUpdate;
+import io.descoped.lds.api.search.SearchQuery;
 import io.descoped.lds.core.persistence.memory.MemoryInitializer;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Flowable;
@@ -15,6 +20,7 @@ import io.reactivex.rxjava3.core.Single;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
@@ -49,6 +55,8 @@ class IndexRebuildTest {
     static final class WatchedQueue implements IndexQueue {
         final MemoryIndexQueue queue = new MemoryIndexQueue();
         final List<IndexUpdate> added = new CopyOnWriteArrayList<>();
+        /* how often it was asked how many updates it holds, and held some */
+        final AtomicInteger heldWhenAsked = new AtomicInteger();
         volatile boolean hold;
         volatile boolean fail;
 
@@ -80,7 +88,11 @@ class IndexRebuildTest {
 
         @Override
         public Single<Lag> lag() {
-            return queue.lag();
+            return queue.lag().doOnSuccess(lag -> {
+                if (lag.updates() > 0) {
+                    heldWhenAsked.incrementAndGet();
+                }
+            });
         }
 
         @Override
@@ -129,7 +141,7 @@ class IndexRebuildTest {
     }
 
     private IndexRebuild rebuild() {
-        rebuild = new IndexRebuild(persistence, queue, "ns", List.of("Person", "Company"));
+        rebuild = new IndexRebuild(persistence, queue, new SimpleSearchIndex(), "ns", List.of("Person", "Company"));
         return rebuild;
     }
 
@@ -186,7 +198,7 @@ class IndexRebuildTest {
         AtomicInteger read = new AtomicInteger();
         RxJsonPersistence counted = counting(persistence, read);
         queue.hold = true;
-        rebuild = new IndexRebuild(counted, queue, "ns", List.of("Person"));
+        rebuild = new IndexRebuild(counted, queue, new SimpleSearchIndex(), "ns", List.of("Person"));
 
         rebuild.start();
         await().atMost(Duration.ofSeconds(5)).until(() -> read.get() > 0);
@@ -206,7 +218,8 @@ class IndexRebuildTest {
         }
         AtomicInteger read = new AtomicInteger();
         queue.hold = true;
-        rebuild = new IndexRebuild(counting(persistence, read), queue, "ns", List.of("Person"));
+        rebuild = new IndexRebuild(counting(persistence, read), queue, new SimpleSearchIndex(), "ns",
+                List.of("Person"));
         rebuild.start();
         await().atMost(Duration.ofSeconds(5)).until(() -> read.get() > 0);
 
@@ -261,5 +274,78 @@ class IndexRebuildTest {
         }
 
         assertThat(index.taken).containsExactlyInAnyOrder("ola", "ola", "kari");
+    }
+
+    /**
+     * When the queue is empty after the rebuild, the index no longer holds what the rebuild did not send again: an
+     * entry of a version storage does not hold. Another namespace keeps its entries, and so does an entry taken less
+     * than the margin before the rebuild: an old entry left is the lesser fault.
+     */
+    @Test
+    void theEntriesTheRebuildDidNotSendAgainAreRemovedWhenTheQueueIsEmpty() throws InterruptedException {
+        MemoryIndexQueueTest.MovingClock clock = new MemoryIndexQueueTest.MovingClock();
+        SimpleSearchIndex index = new SimpleSearchIndex(clock);
+        index.put(List.of(IndexEntry.written("ns", "Person", "gone", JAN, Map.of()),
+                IndexEntry.written("other", "Person", "elsewhere", JAN, Map.of()))).blockingAwait();
+        clock.move(Duration.ofMinutes(10)); // the index took them ten minutes before the rebuild
+        index.put(List.of(IndexEntry.written("ns", "Person", "lately", JAN, Map.of()))).blockingAwait();
+        clock.move(Duration.ofSeconds(30)); // and this thirty seconds before, within the margin
+        write("Person", "ola", JAN);
+        IndexQueueWorker worker = new IndexQueueWorker(queue, index, persistence, IndexEntriesTest.withoutAModel(),
+                Duration.ofMillis(5));
+        worker.start();
+        try {
+            rebuild = new IndexRebuild(persistence, queue, index, "ns", List.of("Person", "Company"),
+                    Duration.ofMillis(5));
+            rebuild.start();
+            await().atMost(Duration.ofSeconds(10)).pollInterval(Duration.ofMillis(5)).until(rebuild::isDone);
+        } finally {
+            worker.stop(5, TimeUnit.SECONDS);
+        }
+
+        assertThat(everyVersionIn(index, "ns")).containsExactlyInAnyOrder("ola", "lately");
+        assertThat(everyVersionIn(index, "other")).containsExactly("elsewhere");
+    }
+
+    /**
+     * The clean-up waits until the queue is empty: until then the index has not taken all the rebuild sent, and the
+     * log says that it waits, and the lag of the queue.
+     */
+    @Test
+    void theCleanUpWaitsUntilTheQueueIsEmpty() {
+        MemoryIndexQueueTest.MovingClock clock = new MemoryIndexQueueTest.MovingClock();
+        SimpleSearchIndex index = new SimpleSearchIndex(clock);
+        index.put(List.of(IndexEntry.written("ns", "Person", "gone", JAN, Map.of()))).blockingAwait();
+        clock.move(Duration.ofMinutes(10)); // the index took it ten minutes before the rebuild
+        write("Person", "ola", JAN);
+        Logger logger = (Logger) LoggerFactory.getLogger(IndexRebuild.class);
+        ListAppender<ILoggingEvent> lines = new ListAppender<>();
+        lines.start();
+        logger.addAppender(lines);
+        try {
+            // the log says at every look that the clean-up waits
+            rebuild = new IndexRebuild(persistence, queue, index, "ns", List.of("Person"), Duration.ofMillis(5),
+                    Duration.ZERO);
+            rebuild.start();
+
+            // the rebuild has added its update and found it in the queue twice, and has not cleaned up
+            await().atMost(Duration.ofSeconds(5)).pollInterval(Duration.ofMillis(5))
+                    .until(() -> queue.heldWhenAsked.get() >= 2);
+        } finally {
+            logger.detachAppender(lines);
+        }
+        assertThat(rebuild.isDone()).isFalse();
+        assertThat(everyVersionIn(index, "ns")).containsExactly("gone");
+        assertThat(lines.list).extracting(ILoggingEvent::getFormattedMessage)
+                .anyMatch(line -> line.contains("waited") && line.contains("it holds 1 updates"));
+
+        queue.remove(queue.take(10, Duration.ofMinutes(1)).blockingGet()).blockingAwait();
+        await().atMost(Duration.ofSeconds(5)).pollInterval(Duration.ofMillis(5)).until(rebuild::isDone);
+        assertThat(everyVersionIn(index, "ns")).isEmpty();
+    }
+
+    private static List<String> everyVersionIn(SimpleSearchIndex index, String namespace) {
+        return index.search(new SearchQuery(namespace, "*:*", Set.of(), ZonedDateTime.parse("2100-01-01T00:00:00Z"),
+                true, 0, 100)).blockingGet().hits().stream().map(hit -> hit.key().id()).toList();
     }
 }

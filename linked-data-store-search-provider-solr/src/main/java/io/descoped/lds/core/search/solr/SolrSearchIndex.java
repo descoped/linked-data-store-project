@@ -182,6 +182,24 @@ public class SolrSearchIndex implements SearchIndex {
     }
 
     /*
+     * Two deletes by query in one request: the entries of the namespace Solr took before NOW less the age, by its own
+     * clock (the end is left out), and every entry with no time taken, which only the search of LDS before this
+     * schema wrote. The namespace is a parameter of the request.
+     */
+    @Override
+    public Completable removeOlderThan(String namespace, Duration age) {
+        return schemaPutIn().andThen(Completable.defer(() -> {
+            UpdateRequest request = new UpdateRequest();
+            request.deleteByQuery("+_query_:\"" + TERM + SolrSchema.NAMESPACE + " v=$ldsNamespace}\" +"
+                    + SolrSchema.INDEXED + ":[* TO NOW-" + age.toMillis() + "MILLIS}");
+            request.deleteByQuery("*:* -" + SolrSchema.INDEXED + ":[* TO *]");
+            request.setParam("ldsNamespace", namespace);
+            request.setCommitWithin(commitWithin);
+            return send(request);
+        }));
+    }
+
+    /*
      * A soft commit that waits until a new searcher sees what Solr has taken: what is searched is made visible, and
      * nothing more is written to disk than commitWithin writes.
      */

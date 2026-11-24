@@ -21,7 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class MemoryIndexQueueTest {
 
     static final class MovingClock extends Clock {
-        private Instant now = Instant.parse("2026-01-01T00:00:00Z");
+        private volatile Instant now = Instant.parse("2026-01-01T00:00:00Z");
 
         void move(Duration duration) {
             now = now.plus(duration);

@@ -302,6 +302,29 @@ class SolrSearchIndexTest {
     }
 
     /**
+     * The clean-up after a rebuild: of the namespace, an entry Solr took less long ago than the age stays and one it
+     * took longer ago goes, by Solr's own clock; another namespace keeps its entries, and a namespace that reads as a
+     * query removes nothing. The ages, an hour and none, are chosen so that no test waits.
+     */
+    @Test
+    void theEntriesOfANamespaceTakenLongerAgoThanTheAgeAreRemoved() {
+        String other = namespace + "other";
+        searchIndex.put(List.of(text("Topic", "taken", 1000, "harbour"), IndexEntry.written(other, "Topic",
+                "elsewhere", at(1000), Map.of(Language.ENGLISH, List.of("harbour"))))).blockingAwait();
+
+        searchIndex.removeOlderThan(namespace, Duration.ofHours(1)).blockingAwait();
+        searchIndex.removeOlderThan("\" OR *:* OR \"", Duration.ZERO).blockingAwait();
+        searchIndex.refresh().blockingAwait();
+        assertThat(ids(search("harbour", at(2000)))).containsExactly("taken");
+
+        searchIndex.removeOlderThan(namespace, Duration.ZERO).blockingAwait();
+        searchIndex.refresh().blockingAwait();
+        assertThat(ids(search("harbour", at(2000)))).isEmpty();
+        assertThat(ids(searchIndex.search(new SearchQuery(other, "harbour", Set.of(), at(2000), false, 0, 10))
+                .blockingGet())).containsExactly("elsewhere");
+    }
+
+    /**
      * An index that makes what it takes searchable only after a minute makes it searchable at once when it is asked.
      */
     @Test

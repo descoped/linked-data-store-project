@@ -9,6 +9,8 @@ import io.descoped.lds.api.search.SearchQuery;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Single;
 
+import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
@@ -29,12 +31,43 @@ public class SimpleSearchIndex implements SearchIndex {
     private record Version(String namespace, String entity, String id, Instant version) {
     }
 
-    private final Map<Version, IndexEntry> entries = new ConcurrentHashMap<>();
+    /* An entry, and when the index took it. */
+    private record Taken(IndexEntry entry, Instant at) {
+    }
+
+    private final Map<Version, Taken> entries = new ConcurrentHashMap<>();
+    private final Clock clock;
+
+    /**
+     * An index whose clock is the system's.
+     */
+    public SimpleSearchIndex() {
+        this(Clock.systemUTC());
+    }
+
+    /*
+     * An index that reads when it took an entry from the clock given, so a test moves time instead of waiting.
+     */
+    SimpleSearchIndex(Clock clock) {
+        this.clock = clock;
+    }
 
     @Override
     public Completable put(List<IndexEntry> list) {
-        return Completable.fromAction(() -> list.forEach(entry -> entries.put(new Version(entry.namespace(),
-                entry.entity(), entry.id(), entry.version().toInstant()), entry)));
+        return Completable.fromAction(() -> list.forEach(entry -> {
+            Version version = new Version(entry.namespace(), entry.entity(), entry.id(), entry.version().toInstant());
+            entries.put(version, new Taken(entry, clock.instant()));
+        }));
+    }
+
+    @Override
+    public Completable removeOlderThan(String namespace, Duration age) {
+        return Completable.fromAction(() -> {
+            Instant before = clock.instant().minus(age);
+            // an entry put again while this runs is not removed: removeIf removes only the value it judged old
+            entries.entrySet().removeIf(entry -> entry.getKey().namespace().equals(namespace)
+                    && entry.getValue().at().isBefore(before));
+        });
     }
 
     @Override
@@ -50,7 +83,7 @@ public class SimpleSearchIndex implements SearchIndex {
     @Override
     public Single<SearchPage> search(SearchQuery query) {
         return Single.fromCallable(() -> {
-            List<IndexEntry> inScope = entries.values().stream()
+            List<IndexEntry> inScope = entries.values().stream().map(Taken::entry)
                     .filter(entry -> entry.namespace().equals(query.namespace()))
                     .filter(entry -> query.entities().isEmpty() || query.entities().contains(entry.entity()))
                     .filter(entry -> !entry.version().toInstant().isAfter(query.snapshot().toInstant()))
