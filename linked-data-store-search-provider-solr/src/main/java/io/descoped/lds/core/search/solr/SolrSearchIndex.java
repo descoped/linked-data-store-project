@@ -8,6 +8,7 @@ import io.descoped.lds.api.search.SearchIndex;
 import io.descoped.lds.api.search.SearchPage;
 import io.descoped.lds.api.search.SearchQuery;
 import io.reactivex.rxjava3.core.Completable;
+import io.reactivex.rxjava3.core.Flowable;
 import io.reactivex.rxjava3.core.Single;
 import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.SolrServerException;
@@ -81,6 +82,13 @@ public class SolrSearchIndex implements SearchIndex {
     /* The newest version first. */
     private static final String NEWEST_FIRST = SolrSchema.VERSION_SECONDS + " desc,"
             + SolrSchema.VERSION_NANOS + " desc";
+
+    /* How many times the schema is tried put in before a write or search fails, and the first pause between. */
+    static final int SCHEMA_ATTEMPTS = 5;
+    static final Duration SCHEMA_PAUSE = Duration.ofMillis(100);
+
+    /* The property of Solr's default configuration that makes the default chain of updates add unknown fields. */
+    static final String AUTO_CREATE_FIELDS = "update.autoCreateFields";
 
     private final HttpJdkSolrClient solrClient;
     private final int commitWithin;
@@ -332,8 +340,15 @@ public class SolrSearchIndex implements SearchIndex {
 
     /*
      * The schema is put in once, before the first write or search, and again after a failure: Solr may not be up when
-     * LDS starts. Two LDS that put it in at once both end with it: the one that adds second is refused, reads the
-     * core again and replaces what the other added with the same.
+     * LDS starts. Several LDS may put it in at once, and each ends with it:
+     * - the schema: the one that adds a field second is refused, and tries again, reading the core again and
+     *   replacing what the other added with the same;
+     * - the configuration: Solr (standalone, 10.1) changes it with no lock, reading configoverlay.json, writing it
+     *   whole (emptied, then written: Files.write) and reloading the core. One that reads it while another writes it
+     *   is answered "Error reading config overlay", and of two that change it at once, the one that writes last wins.
+     *   So LDS changes it once, last, with every property it needs in that one change, the same in every LDS of this
+     *   schema; and reads it back, and tries again when it does not hold them.
+     * A try that fails is made again after a pause that doubles, on a timer: no thread waits.
      */
     private Completable schemaPutIn() {
         Completable putIn = schemaPutIn.get();
@@ -341,7 +356,12 @@ public class SolrSearchIndex implements SearchIndex {
             return putIn;
         }
         AtomicReference<Completable> self = new AtomicReference<>();
-        Completable attempt = Completable.defer(this::putSchemaIn).retry(2)
+        Completable attempt = Completable.defer(this::putSchemaIn)
+                .retryWhen(failures -> failures.zipWith(Flowable.range(1, SCHEMA_ATTEMPTS), (failure, tried) ->
+                                tried < SCHEMA_ATTEMPTS
+                                        ? Flowable.timer(SCHEMA_PAUSE.toMillis() << (tried - 1), TimeUnit.MILLISECONDS)
+                                        : Flowable.<Long>error(failure))
+                        .flatMap(pause -> pause))
                 .doOnError(_ -> schemaPutIn.compareAndSet(self.get(), null))
                 .cache();
         self.set(attempt);
@@ -349,32 +369,53 @@ public class SolrSearchIndex implements SearchIndex {
     }
 
     private Completable putSchemaIn() {
-        return answer(new GenericSolrRequest(SolrRequest.METHOD.GET, "/config/overlay"))
-                .flatMapCompletable(overlay -> {
-                    Object mark = SolrSchema.get(SolrSchema.get(SolrSchema.get(overlay, "overlay"), "userProps"),
-                            SolrSchema.MARK);
-                    if (schema.markOfThisSchema().equals(mark)) {
-                        return Completable.complete();
-                    }
-                    // the default chain of updates makes a field of every name it does not know, and refuses every
-                    // update once the core has 1000 fields; off, Solr refuses a field it does not know
-                    return post("/config", "{\"set-user-property\": {\"update.autoCreateFields\": \"false\"}}")
-                            .andThen(Single.zip(names("/schema/fieldtypes", "fieldTypes"),
-                                    names("/schema/fields", "fields"),
-                                    (types, fields) -> {
-                                        if (schema.replaces(types, fields)) {
-                                            LOG.warn("The schema of the search index is changed: what was "
-                                                    + "indexed before is searched as it was indexed until the index "
-                                                    + "is rebuilt (search.index.rebuild)");
-                                        }
-                                        return schema.changes(types, fields);
-                                    }))
-                            .flatMapCompletable(changes -> post("/schema", changes))
-                            .andThen(post("/config", "{\"set-user-property\": {\"" + SolrSchema.MARK + "\": \""
-                                    + schema.markOfThisSchema() + "\"}}"))
-                            .doOnComplete(() -> LOG.info("The schema of the search index is put in ({})",
-                                    schema.markOfThisSchema()));
-                });
+        return userProperties().flatMapCompletable(properties -> {
+            if (isPutIn(properties)) {
+                return Completable.complete();
+            }
+            // the core had another schema when it has another mark; none is the first put in, or another LDS's at once
+            Object mark = SolrSchema.get(properties, SolrSchema.MARK);
+            boolean anotherSchema = mark != null && !schema.markOfThisSchema().equals(mark);
+            return Single.zip(names("/schema/fieldtypes", "fieldTypes"), names("/schema/fields", "fields"),
+                            (types, fields) -> {
+                                if (anotherSchema && schema.replaces(types, fields)) {
+                                    LOG.warn("The schema of the search index is changed: what was indexed before "
+                                            + "is searched as it was indexed until the index is rebuilt "
+                                            + "(search.index.rebuild)");
+                                }
+                                return schema.changes(types, fields);
+                            })
+                    .flatMapCompletable(changes -> post("/schema", changes))
+                    // the one change of the configuration, last: the mark says the schema is in
+                    .andThen(post("/config", "{\"set-user-property\": {\"" + AUTO_CREATE_FIELDS + "\": \"false\", \""
+                            + SolrSchema.MARK + "\": \"" + schema.markOfThisSchema() + "\"}}"))
+                    .andThen(userProperties())
+                    .flatMapCompletable(after -> isPutIn(after)
+                            ? Completable.complete()
+                            : Completable.error(new IllegalStateException("The configuration of the search index "
+                            + "does not hold the properties after the change (another changed it at the same time, "
+                            + "or the core's configuration does not use " + AUTO_CREATE_FIELDS + "): " + after)))
+                    .doOnComplete(() -> LOG.info("The schema of the search index is put in ({})",
+                            schema.markOfThisSchema()));
+        });
+    }
+
+    /* The user properties of the core's configuration (its overlay); none when it has none. */
+    private Single<Object> userProperties() {
+        return answer(new GenericSolrRequest(SolrRequest.METHOD.GET, "/config/overlay")).map(overlay -> {
+            Object properties = SolrSchema.get(SolrSchema.get(overlay, "overlay"), "userProps");
+            return properties == null ? Map.of() : properties;
+        });
+    }
+
+    /*
+     * Whether the core has this schema: its mark, and the default chain of updates told not to make a field of every
+     * name it does not know (it would, and refuse every update once the core has 1000 fields; off, Solr refuses a
+     * field it does not know).
+     */
+    private boolean isPutIn(Object properties) {
+        return schema.markOfThisSchema().equals(SolrSchema.get(properties, SolrSchema.MARK))
+                && "false".equals(String.valueOf(SolrSchema.get(properties, AUTO_CREATE_FIELDS)));
     }
 
     private Single<Set<String>> names(String path, String list) {
