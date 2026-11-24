@@ -26,6 +26,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertTrue;
 
 @Listeners(TestServerListener.class)
 public class ReferenceResourceHandlerTest {
@@ -55,6 +56,18 @@ public class ReferenceResourceHandlerTest {
     public void thatGETReferenceReturnsWith200() {
         createTestResource("provisionagreement", "r2", "{\"id\":\"r2\",\"name\":\"pa-test-name\",\"contacts\":[\"/contact/c1\",\"/contact/c2\"]}");
         client.get("/data/provisionagreement/r2/contacts/contact/c1").expect200Ok();
+    }
+
+    /**
+     * A link is set in a field that holds something other than text (stored as it was given, under another model):
+     * the field takes the link, where the comparison with what it held failed.
+     */
+    @Test
+    public void thatALinkIsSetInAFieldThatHoldsNoText() {
+        createTestResource("provisionagreement", "r-number", "{\"id\":\"r-number\",\"name\":\"pa-test-name\",\"friend\":42}");
+        client.put("/data/provisionagreement/r-number/friend/contact/c1?sync=true").expect200Ok();
+        client.get("/data/provisionagreement/r-number/friend/contact/c1").expect200Ok();
+        assertTrue(client.get("/data/provisionagreement/r-number").expect200Ok().body().contains("\"friend\":\"/contact/c1\""));
     }
 
     @Test

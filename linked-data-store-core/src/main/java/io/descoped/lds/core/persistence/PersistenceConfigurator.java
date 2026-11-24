@@ -25,7 +25,9 @@ public class PersistenceConfigurator {
     }
 
     public static RxJsonPersistence configurePersistence(DynamicConfiguration configuration, Specification specification) {
-        final String providerId = configuration.find("persistence.provider").orElse(null);
+        final String providerId = configuration.find("persistence.provider").filter(id -> !id.isBlank())
+                .orElseThrow(() -> new IllegalStateException("persistence.provider is not set: name the persistence"
+                        + " provider, such as mem, postgres or neo4j"));
         LOG.info("Using persistence provider: {}", providerId);
 
         PersistenceInitializer initializer = findInitializer(providerId);
@@ -68,7 +70,7 @@ public class PersistenceConfigurator {
                 .filter(p -> {
                     Class<? extends PersistenceInitializer> type = p.type();
                     ProviderName providerName = type.getDeclaredAnnotation(ProviderName.class);
-                    return providerId.equals(providerName.value());
+                    return providerName != null && providerId.equals(providerName.value());
                 })
                 .toList();
         if (providers.isEmpty()) {

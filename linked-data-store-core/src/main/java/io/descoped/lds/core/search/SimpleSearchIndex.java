@@ -62,6 +62,9 @@ public class SimpleSearchIndex implements SearchIndex {
 
     @Override
     public Completable removeOlderThan(String namespace, Duration age) {
+        if (age.isNegative()) {
+            throw new IllegalArgumentException("The age of the entries to remove is below none: " + age);
+        }
         return Completable.fromAction(() -> {
             Instant before = clock.instant().minus(age);
             // an entry put again while this runs is not removed: removeIf removes only the value it judged old
@@ -108,6 +111,9 @@ public class SimpleSearchIndex implements SearchIndex {
     }
 
     private static boolean matches(IndexEntry entry, String text) {
+        if (text == null || text.isBlank()) {
+            return false; // no words find nothing, as in Solr
+        }
         if ("*:*".equals(text)) {
             return true;
         }

@@ -88,7 +88,7 @@ public class ReferenceJsonHelper {
     private static boolean setValue(ObjectNode refParentNode, String referencePropertyName, String referenceValue) {
         if (!refParentNode.has(referencePropertyName)
                 || refParentNode.get(referencePropertyName).isNull()
-                || !JsonTools.text(refParentNode.get(referencePropertyName)).equals(referenceValue)) {
+                || !referenceValue.equals(JsonTools.text(refParentNode.get(referencePropertyName)))) {
             // not already set, or set to another value
             refParentNode.put(referencePropertyName, referenceValue);
             return true;

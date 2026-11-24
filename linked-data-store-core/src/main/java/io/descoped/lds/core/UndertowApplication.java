@@ -192,8 +192,9 @@ public class UndertowApplication {
         ResponseCodeHandler answers = new ResponseCodeHandler(StatusCodes.OK);
         pathHandler.addExactPath(ReadinessHandler.ALIVE_PATH, answers);
         pathHandler.addExactPath(ReadinessHandler.PING_PATH, answers);
-        this.readiness = new Readiness()
-                .persistence(persistence, namespace, new TreeSet<>(specification.getManagedDomains()).first())
+        // a field of the application, closed when it stops (stop)
+        this.readiness = new Readiness();
+        readiness.persistence(persistence, namespace, new TreeSet<>(specification.getManagedDomains()).first())
                 .sagaLog(sagaLogPool)
                 .transactionLog(txlogRawdataPool);
         if (indexing != null) {

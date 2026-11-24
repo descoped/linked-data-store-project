@@ -436,4 +436,6 @@ nothing of Solr; what was indexed under an earlier model stays until the index i
 never updated in place; the words are a parameter that edismax reads in the text fields with `uf=-*`, never part of
 the query; the collapse to the newest version comes before the test of the words. A search therefore looks at every
 version of the namespace up to the snapshot; its cost grows with the history (accepted, to be measured with the load
-test). Fields for each path (filters, facets, where a word matched) are left out until there is a need.
+test). Fields for each path (filters, facets, where a word matched) are left out until there is a need. A text and
+the words are put in one Unicode form (NFC) before Solr sees them, so a letter and its accent written as a mark of
+its own match the letter written whole; no words (empty or blank) find nothing, and Solr is not asked.

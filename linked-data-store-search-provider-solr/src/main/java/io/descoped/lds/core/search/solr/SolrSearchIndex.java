@@ -30,6 +30,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.text.Normalizer;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -155,8 +156,9 @@ public class SolrSearchIndex implements SearchIndex {
         document.addField(SolrSchema.DELETED, entry.deleted());
         for (Map.Entry<Language, List<String>> texts : entry.texts().entrySet()) {
             for (String text : texts.getValue()) {
-                document.addField(SolrSchema.TEXT_FIELDS.get(texts.getKey()), text);
-                document.addField(SolrSchema.FOLDED_FIELDS.get(texts.getKey()), text);
+                String composed = composed(text);
+                document.addField(SolrSchema.TEXT_FIELDS.get(texts.getKey()), composed);
+                document.addField(SolrSchema.FOLDED_FIELDS.get(texts.getKey()), composed);
             }
         }
         return document;
@@ -188,6 +190,9 @@ public class SolrSearchIndex implements SearchIndex {
      */
     @Override
     public Completable removeOlderThan(String namespace, Duration age) {
+        if (age.isNegative()) {
+            throw new IllegalArgumentException("The age of the entries to remove is below none: " + age);
+        }
         return schemaPutIn().andThen(Completable.defer(() -> {
             UpdateRequest request = new UpdateRequest();
             request.deleteByQuery("+_query_:\"" + TERM + SolrSchema.NAMESPACE + " v=$ldsNamespace}\" +"
@@ -223,10 +228,22 @@ public class SolrSearchIndex implements SearchIndex {
 
     @Override
     public Single<SearchPage> search(SearchQuery query) {
+        if (query.text() == null || query.text().isBlank()) {
+            // no words find nothing; Solr refuses a query of no words
+            return Single.just(new SearchPage(0, List.of()));
+        }
         return schemaPutIn().andThen(Single.defer(() -> {
             QueryRequest request = new QueryRequest(parameters(query), SolrRequest.METHOD.POST);
             return answer(request).map(answer -> page(new QueryResponse(answer)));
         }));
+    }
+
+    /*
+     * A text and the words of a search in one form (Unicode NFC): a letter and an accent written as a mark of its own
+     * after it, as macOS and many keyboards write it, become the letter written whole, so either is found by the other.
+     */
+    private static String composed(String text) {
+        return Normalizer.normalize(text, Normalizer.Form.NFC);
     }
 
     /*
@@ -235,7 +252,7 @@ public class SolrSearchIndex implements SearchIndex {
      */
     private static ModifiableSolrParams parameters(SearchQuery query) {
         ModifiableSolrParams params = new ModifiableSolrParams();
-        params.set("ldsText", query.text());
+        params.set("ldsText", composed(query.text()));
         params.set("ldsFields", TEXT_FIELDS);
         params.set("ldsWords", WORDS);
         params.set("ldsDeleted", TERM + SolrSchema.DELETED + "}true");
