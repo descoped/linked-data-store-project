@@ -3,7 +3,14 @@ package io.descoped.lds.core.domain;
 import io.undertow.server.HttpServerExchange;
 import org.junit.jupiter.api.Test;
 
+import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -96,5 +103,61 @@ class DocumentLocksTest {
 
         DocumentLocks.letGoAfterSaga(first);
         assertThat(after).isCompletedWithValue(true);
+    }
+
+    /**
+     * The time of a turn is the time of the clock, to the microsecond, when the clock has moved on.
+     */
+    @Test
+    void theTimeOfATurnIsNowWhenTheClockHasMovedOn() {
+        DocumentLocks timed = new DocumentLocks(1, Duration.ofSeconds(30), clock(
+                "2026-11-25T00:00:00.000001500Z", "2026-11-25T00:00:01Z"));
+
+        assertThat(timed.timeOfTurn()).isEqualTo(ZonedDateTime.parse("2026-11-25T00:00:00.000001Z[Etc/UTC]"));
+        assertThat(timed.timeOfTurn()).isEqualTo(ZonedDateTime.parse("2026-11-25T00:00:01Z[Etc/UTC]"));
+    }
+
+    /**
+     * A clock that goes back (set back, or the clock of a virtual machine corrected) or stands still does not give a
+     * turn a time before or at the turn before it: a write would then read the document as it was before the write
+     * before it, and write a version in the past that the newest version does not have.
+     */
+    @Test
+    void theTimeOfATurnIsAfterTheTurnBeforeItAlsoWhenTheClockGoesBack() {
+        DocumentLocks timed = new DocumentLocks(1, Duration.ofSeconds(30), clock(
+                "2026-11-25T00:00:01Z", "2026-11-25T00:00:00.995Z", "2026-11-25T00:00:00.995Z",
+                "2026-11-25T00:00:01.000001Z", "2026-11-25T00:00:02Z"));
+
+        assertThat(List.of(timed.timeOfTurn(), timed.timeOfTurn(), timed.timeOfTurn(), timed.timeOfTurn(),
+                timed.timeOfTurn())).extracting(ZonedDateTime::toInstant).containsExactly(
+                Instant.parse("2026-11-25T00:00:01Z"),
+                Instant.parse("2026-11-25T00:00:01.000001Z"),
+                Instant.parse("2026-11-25T00:00:01.000002Z"),
+                Instant.parse("2026-11-25T00:00:01.000003Z"),
+                Instant.parse("2026-11-25T00:00:02Z"));
+    }
+
+    /* A clock that gives the instants in turn. */
+    private static Clock clock(String... instants) {
+        Deque<Instant> next = new ArrayDeque<>();
+        for (String instant : instants) {
+            next.add(Instant.parse(instant));
+        }
+        return new Clock() {
+            @Override
+            public ZoneOffset getZone() {
+                return ZoneOffset.UTC;
+            }
+
+            @Override
+            public Clock withZone(java.time.ZoneId zone) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public Instant instant() {
+                return next.removeFirst();
+            }
+        };
     }
 }

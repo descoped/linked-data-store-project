@@ -121,8 +121,8 @@ class DataController implements HttpHandler {
 
     /*
      * A write, when it has asked for the lock of its document: refused when it did not get it in time, else handled.
-     * The version of a write without a timestamp is the time it got the lock, so it is after the version of the
-     * write before it.
+     * The version of a write without a timestamp is the time it got the lock, after the version of the write before
+     * it also when the clock goes back (DocumentLocks.timeOfTurn).
      */
     private void write(HttpServerExchange exchange, ResourceContext resourceContext, boolean taken) {
         if (!taken) {
@@ -143,7 +143,7 @@ class DataController implements HttpHandler {
         if (!hasTimestamp(exchange)) {
             try {
                 context = ResourceContext.createResourceContext(specification, rawRelativePath(exchange),
-                        ZonedDateTime.now(RequestTime.UTC));
+                        documentLocks.timeOfTurn());
             } catch (ResourceException e) {
                 exchange.setStatusCode(StatusCodes.BAD_REQUEST);
                 exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, TEXT_PLAIN);
