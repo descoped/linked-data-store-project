@@ -4,7 +4,7 @@ Contents: [The rules for every source](#the-rules-for-every-source) · [Types](#
 [Sample JSON](#sample-json) · [CSV](#csv) · [SQL DDL](#sql-ddl) · [OpenAPI](#openapi) ·
 [After converting](#after-converting)
 
-Each example below was converted as shown, read by `descoped/lds:3.0.0`, and its documents written and queried.
+Each example below was converted as shown, read by `descoped/lds:3.0.1`, and its documents written and queried.
 The examples are small and come from different domains; the user's own domain is the normal case.
 
 ## The rules for every source
@@ -38,11 +38,11 @@ The examples are small and come from different domains; the user's own domain is
 | `BOOLEAN`; `true`/`false` | `Boolean` | `{"type": "boolean"}` |
 | `TIMESTAMPTZ`; a date-time with a zone; `format: date-time` | `DateTime` | `{"type": "string", "format": "date-time"}` |
 | `TIMESTAMP` without a zone; a date-time without one | `DateTime`; the values need a zone (`Z`) when loaded, or they are refused | the same |
-| `DATE`; `2026-11-20`; `format: date` | `Date` (not checked), or `DateTime` at midnight UTC (checked) | `{"type": "string", "format": "date"}` |
+| `DATE`; `2026-11-20`; `format: date` | `Date` | `{"type": "string", "format": "date"}` |
 | `TIME`; `format: time` | `Time`, values with a zone: `10:00:00Z` | `{"type": "string", "format": "time"}` |
-| `SMALLINT`, `INTEGER`; whole numbers | `Int` (not checked; at most 2147483647 in GraphQL) | `{"type": "integer"}` |
-| `BIGINT` | `Float` (not checked); `String` when every digit matters | `{"type": "integer"}` |
-| `NUMERIC`, `DECIMAL`, `REAL`, `DOUBLE`; decimals | `Float` (not checked); `String` for amounts with more digits than a double holds | `{"type": "number"}` |
+| `SMALLINT`, `INTEGER`; whole numbers | `Int` (from -2147483648 to 2147483647) | `{"type": "integer"}` |
+| `BIGINT` | `Long` (64 bits; declare `scalar Long`) | `{"type": "integer"}` |
+| `NUMERIC`, `DECIMAL`, `REAL`, `DOUBLE`; decimals | `Float`; `String` for amounts with more digits than a double holds | `{"type": "number"}` |
 | `ENUM`, `CHECK (x IN (...))`; `enum`; a CSV column with a few repeated values | an enum, when every value is a GraphQL name (letters, digits, `_`; not `in-progress`), else `String` | `{"type": "string", "enum": [...]}` |
 | an `ARRAY` column; a JSON array; `a;b` in a CSV cell; columns `tag1`, `tag2` | a list: `[String]`, `[Address]` | `{"type": "array", "items": ...}` |
 | `JSONB` with a known shape; a nested JSON object | an embedded type | a definition in `$defs` |
@@ -155,7 +155,7 @@ All three were answered `201`, and GraphQL followed the links both ways (`VenueB
 gave the event).
 
 With several samples, merge them: a field in some samples only is optional; a field with `null` in a sample is
-optional, and its `null` is left out when the data is loaded.
+optional (LDS writes a field that is `null` as a field that is not there).
 
 ## CSV
 
@@ -217,8 +217,9 @@ curl -X PUT 'http://localhost:9090/ns/Member/M-17?sync=true' -H 'Content-Type: a
      }'
 ```
 
-Answered `201`. Here `joined` (a `Date`) and `address` (a single embedded object) are not checked; say so, and
-offer `addresses: [Address]` or JSON Schema files if that matters. Turning every row into a request is `lds:data`.
+Answered `201`; `"joined": "2024-03-01T00:00:00Z"` was refused, as not a date. Here `address` (a single embedded
+object) is not checked; say so, and offer `addresses: [Address]` or JSON Schema files if that matters. Turning every
+row into a request is `lds:data`.
 
 ## SQL DDL
 
@@ -418,7 +419,7 @@ scalar DateTime
 ```
 
 A pet written with `"owner": "/Owner/o-1"` was answered `201`, and `OwnerById(id: "o-1") { pets { ... } }` gave it.
-The same as JSON Schema files, which check `birthDate` too, is the example in
+The same as JSON Schema files, which also check the single embedded objects a model may have, is the example in
 [json-schema.md](json-schema.md#a-whole-example).
 
 ## After converting

@@ -7,7 +7,7 @@
 # mounted read-only at /lds/schemas. LDS runs in memory on localhost:<port> (9098 when not given) in a container
 # named lds-model-try. The script waits until LDS answers, ends or hangs, and prints what LDS read or why it did
 # not start. Without --keep the container is removed at the end; with it, LDS keeps running for test writes.
-# The image is descoped/lds:3.0.0, or the one named in the variable LDS_IMAGE; the container name can be set
+# The image is descoped/lds:3.0.1, or the one named in the variable LDS_IMAGE; the container name can be set
 # in LDS_TRY_NAME.
 # Exit status: 0 when LDS read the model and answers, 1 when it did not, 2 on wrong use.
 
@@ -16,7 +16,7 @@ if [ "$1" = --keep ]; then keep=1; shift; fi
 [ -d "$1" ] || { echo "usage: try-model.sh [--keep] <model-folder> [port]" >&2; exit 2; }
 folder=$(cd "$1" && pwd)
 port=${2:-9098}
-image=${LDS_IMAGE:-descoped/lds:3.0.0}
+image=${LDS_IMAGE:-descoped/lds:3.0.1}
 name=${LDS_TRY_NAME:-lds-model-try}
 command -v docker >/dev/null 2>&1 || { echo "docker is not installed or not on the PATH" >&2; exit 2; }
 
@@ -48,7 +48,6 @@ result=hang
 i=0
 while [ $i -lt 30 ]; do
   if [ "$(docker inspect -f '{{.State.Status}}' "$name" 2>/dev/null)" = exited ]; then result=ended; break; fi
-  if docker logs "$name" 2>&1 | grep -q 'No schemas configured!'; then result=empty; break; fi
   if [ "$(curl -s -o /dev/null -m 1 -w '%{http_code}' "http://localhost:$port/ping")" = 200 ]; then
     result=up; break
   fi
@@ -73,8 +72,6 @@ case $result in
     [ $status -eq 0 ] && echo "Every entity type answers." ;;
   ended)
     echo "LDS ended at start. The reason, from its log:"; reason ;;
-  empty)
-    echo "LDS found no entity type in the model (No schemas configured!)." ;;
   hang)
     echo "LDS did not answer within 30 seconds and did not end: it hangs. From its log:"; reason ;;
 esac

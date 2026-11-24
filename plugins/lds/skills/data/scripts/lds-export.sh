@@ -1,7 +1,7 @@
 #!/bin/sh
 # Exports the documents of one entity type of LDS as they were at one instant, as JSON or CSV.
 # Usage: LDS=http://localhost:9090 NS=ns sh lds-export.sh Entity [instant] [json|csv] > out
-#   instant: a time in UTC ending in Z, such as 2024-01-01T00:00:00Z. Default: now.
+#   instant: a time with Z or an offset, such as 2024-01-01T00:00:00Z or 2024-01-01T01:00:00+01:00. Default: now.
 # JSON: [{"id": "...", "document": {...}}, ...] in the order of the ids.
 # CSV: one row per document; nested fields as a.b, lists as JSON text; a field "id" of the document as document.id.
 # The ids come from the GraphQL API. A model of JSON Schema files has none: the documents then come without ids.
@@ -17,7 +17,6 @@ for tool in curl jq; do
   command -v "$tool" >/dev/null 2>&1 || { echo "lds-export.sh needs $tool, which is not installed." >&2; exit 2; }
 done
 case $entity in *[!A-Za-z0-9_]*|[0-9]*|'') echo "Not an entity type name: $entity" >&2; exit 2 ;; esac
-case $at in *Z) ;; *) echo "Give the instant in UTC ending in Z, such as 2024-01-01T00:00:00Z." >&2; exit 2 ;; esac
 case $format in json|csv) ;; *) echo "The format is json or csv." >&2; exit 2 ;; esac
 at_q=$(printf '%s' "$at" | jq -sRr @uri)
 

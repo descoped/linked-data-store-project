@@ -2,7 +2,7 @@
 
 With JSON Schema files LDS checks every value the schema describes, and has **no GraphQL API, no reverse links and
 no search**: `/graphql` is answered `400 Unsupported namespace: "graphql"`. Use this form when the user asks for it,
-or when strict checking matters more than querying. Everything here was run against `descoped/lds:3.0.0`; the
+or when strict checking matters more than querying. Everything here was run against `descoped/lds:3.0.1`; the
 shapes that break are in [checklist.md](checklist.md). Depth:
 [The model](https://lds.descoped.io/docs/user/model/#a-model-as-json-schema-files).
 
@@ -61,7 +61,10 @@ has the same name as the file. `$schema` may be left out.
 - What JSON Schema 2020-12 says about a value is checked on write. Tried and working: `type` (one name or a list),
   `required`, `enum`, `minLength`, `minimum`, `pattern`, `format` (`date-time`, `date`, `time`, `email`), `items`,
   `$ref`, `anyOf` and `additionalProperties`.
-- `"type": ["string", "null"]` accepts `null`. Without `null` in the type, a `null` is refused.
+- A field that is `null` is left out before the document is checked, whatever its type says: `"phone": null` is
+  written as a document without `phone`, and refused only when `phone` is required (as missing). So `"null"` in a
+  `type` matters only for the items of an array: `{"type": "array", "items": {"type": ["string", "null"]}}` takes
+  `["a", null]` and keeps the `null`.
 - `"additionalProperties": false` refuses fields the schema does not name; without it they are stored.
 - `default` gives a document nothing: a field that is left out stays out.
 - `displayName` may be written anywhere and is given out in `?schema`. Any other word that is not JSON Schema
@@ -91,7 +94,7 @@ the field name, an object whose `properties` name the entity types the field may
 - A link in the document is `"/Owner/o-1"`, the same as with a GraphQL schema. LDS checks the form and the entity
   type, not that the document is there: `Schema validation error: Illegal linked-domain: "Pet". Navigation: owner:
   "/Pet/rex"`.
-- A link may be `null` where the type allows it (`"type": ["string", "null"]`).
+- A link that is `null` is left out, as any field that is `null`.
 - Links inside the items of a list of embedded objects are not checked.
 
 ## Paths
@@ -109,7 +112,7 @@ run [checklist.md](checklist.md):
 |---|---|
 | `definitions` (draft-07 and earlier), `$schema` of an earlier draft | `$defs`, and `$schema` 2020-12 or none |
 | `#/components/schemas/Owner` or `other.json#/...` | a link field with `_link_property_` when `Owner` is an entity type; a copy of the definition in this file's `$defs` when it is an embedded type |
-| `nullable: true` (OpenAPI 3.0) | `"type": ["string", "null"]` |
+| `nullable: true` (OpenAPI 3.0) | removed: a field that is `null` is left out; for items of an array that may be `null`, `"type": ["string", "null"]` |
 | the entity at the root (`type`, `properties` at the top) | moved into `$defs`, with a root `$ref` to it |
 | `id` property | the id in the address; keep it as a field only when the user wants it in the document |
 | `readOnly`, `example`, `xml`, `discriminator` | removed (unknown words only log a warning, but they say nothing to LDS) |

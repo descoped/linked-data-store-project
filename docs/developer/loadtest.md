@@ -1,7 +1,7 @@
 ---
 title: "The load test"
 description: "What a run of the load test does and what it is made of."
-order: 14
+order: 15
 ---
 
 # The load test
@@ -13,7 +13,9 @@ run the load test or change it. How to start a run is in the `README.md` of the 
 ## What this part is for
 
 The load test starts one LDS with one [persistence provider](../glossary.md#persistence-provider), fills it, and sends
-reads and writes at it from 1 to 50 threads. It then draws throughput and latency by the number of threads. It answers
+reads and writes at it from 1 to 50 threads. One of its runs also keeps the [saga log](../glossary.md#saga-log) and
+the [transaction log](../glossary.md#transaction-log) in PostgreSQL, so that it measures a write as a whole LDS makes
+it. It then draws throughput and latency by the number of threads. It answers
 two questions: does LDS stay correct under load, and where does its throughput stop growing.
 
 It is run by hand on a developer's machine. The build and CI do not start it. Maven compiles and tests the
@@ -27,11 +29,12 @@ Everything is in the module `linked-data-store-loadtest`.
 
 | File | What it is |
 |---|---|
-| `ldsmemory.sh`, `ldsneo4j.sh`, `ldspostgres.sh` | A whole run with one provider. Each calls `run-loadtest.sh` with the name of the provider. |
+| `ldsmemory.sh`, `ldsneo4j.sh`, `ldspostgres.sh` | A whole run with one provider, the saga log in memory and no transaction log. Each calls `run-loadtest.sh` with the name of the provider. |
+| `ldspostgres-logs.sh` | A whole run with the PostgreSQL provider, and the saga log and the transaction log in PostgreSQL as well. It calls `run-loadtest.sh` with `postgres-logs`. |
 | `run-loadtest.sh` | The steps of a run in order. |
 | `interactive.sh` | The same steps one at a time: `up`, `configure`, `prepopulate`, `warmup`, `run`, `plot`, `down`. |
 | `functions.sh` | The steps as shell functions, used by both scripts. |
-| `compose.yaml` | The containers of a run: `lds`, `neo4j` (profile `neo4j`), `postgres` (profile `postgres`), `httploadtest` and `controller`. |
+| `compose.yaml` | The containers of a run: `lds`, `neo4j` (profile `neo4j`), `postgres` (profile `postgres`), `httploadtest` and `controller`. Its project name is `lds-loadtest`. |
 | `Dockerfile`, `.dockerignore` | The image of the controller: `eclipse-temurin:27-jre-alpine` with `bash`, `curl`, `gnuplot`, `jq`, `perl` and `zip`, the jars of the statistics program, and `prepopulate.sh`. |
 | `prepopulate.sh` | Fills LDS. It runs inside the controller. |
 | `httploadtest/service_override.properties` | The start options of the load tester, mounted over the file its image comes with. |
@@ -43,14 +46,16 @@ Everything is in the module `linked-data-store-loadtest`.
 
 ## How a run works
 
-`use_provider` in `functions.sh` sets three variables for `compose.yaml`: `LDS_PERSISTENCE_PROVIDER` (`mem`,
-`neo4j` or `postgres`), `COMPOSE_PROFILES` (which engine is started) and `RESULTS_FOLDER`
-(`lds<provider>/results`).
+`use_provider` in `functions.sh` takes `memory`, `neo4j`, `postgres` or `postgres-logs`, and sets the variables
+`compose.yaml` reads: `LDS_PERSISTENCE_PROVIDER` (`mem`, `neo4j` or `postgres`), `COMPOSE_PROFILES` (which engine is
+started) and `RESULTS_FOLDER` (`lds<name>/results`, such as `ldspostgres-logs/results`). For `postgres-logs` it also
+sets `LDS_SAGALOG_PROVIDER` to the saga log in PostgreSQL and `LDS_TXLOG_RAWDATA_PROVIDER` to `postgres`; for the
+others it unsets them, so the compose file gives the saga log in memory and the transaction log `discard`.
 
 1. `start_test_containers` checks that Maven has built the server module and this module, removes what an
    earlier run left (`docker compose down --volumes`), and starts the containers with `--build --wait`. It
    returns when every container is healthy.
-2. `check_health_of_lds` asks `/ping` from inside the controller.
+2. `check_health_of_lds` asks `/ping` from inside the controller, and fails the run unless LDS answers 200.
 3. `prepopulate_data` runs `prepopulate.sh` in the controller: for each of the 20 entity types it writes 256
    documents with `PUT /ns/<Entity>/<id>`, the ids `00C8D2B7-...` to `FFC8D2B7-...`. It fails the run when LDS
    does not accept a document.
@@ -74,13 +79,18 @@ type and one of the 256 ids at random for every request (`#fizzle(option:...)` a
 - `lds`:
   Built from `../linked-data-store-server`, so it is the image a user runs. It is configured by environment
   variables only: an empty `LDS_GRAPHQL_SCHEMA` and `LDS_SPECIFICATION_SCHEMA=schemas` make it read the JSON
-  Schema files, which are mounted at `/lds/schemas`. The [saga log](../glossary.md#saga-log) is in memory, the
-  [transaction log](../glossary.md#transaction-log) is `discard`, and search is off. So a run measures LDS and
-  the persistence provider.
+  Schema files, which are mounted at `/lds/schemas`. Search is off. In the runs of `ldsmemory.sh`, `ldsneo4j.sh`
+  and `ldspostgres.sh` the saga log is in memory and the transaction log is `discard`, so a run measures LDS and the
+  persistence provider. In the run of `ldspostgres-logs.sh` the saga log (database `sagalog`) and the transaction
+  log (database `txlog`) are in the same PostgreSQL as the documents (database `lds`), as in the compose file of the
+  server, with the owner `development` and the name `lds` of the cluster of the saga log. The image declares no
+  health check, so the service has one of its own: the `wget` of busybox on `/ping`, which `--wait` waits for.
 
 - `neo4j`, `postgres`:
   The images the tests of the providers use, with the development passwords of the server's compose file.
-  `depends_on` with `required: false` makes LDS wait for the one that is started.
+  `depends_on` with `required: false` makes LDS wait for the one that is started. `postgres` runs the
+  `postgres-init.sql` of the server module at its first start, which makes the databases `sagalog` and `txlog`; they
+  stay empty unless the run is `postgres-logs`.
 
 - `httploadtest`:
   `cantara/httploadtest-baseline:latest`, an image from 2021 for amd64. Three things are done to it in
@@ -129,10 +139,11 @@ Keep the files it writes the same when changing it: a plot of today can then be 
 
 - The load test is not part of the build. Nothing in `verify` or in CI starts a container of it.
 - It tests the image of the server module, not a build of its own.
-- The module is not in the BOM and is not released: the `central` profile of the root POM leaves it out
-  (`excludeArtifacts`).
+- The module is not in the BOM and is not released, and CI does not publish it as a SNAPSHOT: its POM sets
+  `maven.deploy.skip`.
 - The images of the engines are those the tests of the providers use. PostgreSQL stays at 18.
-- The results folders (`ldsmemory`, `ldsneo4j`, `ldspostgres`) are ignored by git. A run leaves about 2 GB.
+- The results folders (`ldsmemory`, `ldsneo4j`, `ldspostgres`, `ldspostgres-logs`) are ignored by git. A run
+  leaves about 2 GB.
 
 ## Tests
 
@@ -147,12 +158,6 @@ Not finished: the load tester is an image that is not maintained. It runs under 
 is not amd64, which lowers the highest throughput it can ask for. It logs an exception every time its health
 check is asked, which is harmless.
 
-Not finished: three faults of LDS that the load test found are not corrected.
-
-- With the PostgreSQL provider, of two writes of one document in the same millisecond one is answered 500. The
-  log of LDS has `duplicate key value violates unique constraint "fragment_pkey"`.
-- With the Neo4j provider, two writes of one document at the same moment can lock each other in Neo4j. The
-  callers get no answer, and a later write of that document is not answered either.
-- With the Neo4j provider, a read of a document while it is written was answered 404 four times.
-
-A run with PostgreSQL can therefore show a few failed writes. They are these, not a fault of the load test.
+Not finished: in some runs the throughput dropped, from some number of threads on, to about 700 to 900 requests
+a second and stayed there, with most of the workers of the load tester idle, LDS answering in a few milliseconds and
+nothing in the log of LDS. A run again did not show it. The cause is not found.

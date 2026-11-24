@@ -43,6 +43,17 @@ resource.
 
 The identifier of a document within its entity type. The client chooses it; LDS generates none.
 
+### Limits
+
+The largest names, ids and paths LDS keeps, the same in every store, in bytes of UTF-8: a namespace 64, an entity type
+128, an id 1024, the path of a value 1024, and a value in at most 32 arrays. A write past them is refused with 400,
+and a model or namespace past them stops the start. Code: `Limits`.
+
+### Order of ids
+
+The order of the ids of a list and of a page: the order of their Unicode code points, which is the order of their
+bytes in UTF-8, in every store. An id is whole text, without an unpaired surrogate. Code: `IdOrder`.
+
 ### Document key
 
 The identity of a document: namespace, entity type and id. Its address is `/{namespace}/{entityType}/{id}`. With
@@ -131,14 +142,45 @@ as written; [The model](user/model.md#shapes-that-do-not-work-as-written) lists 
 The unit of work of one write: an ordered set of steps that LDS records in the saga log as it runs them, so that a write
 that did not complete, because a step failed or LDS stopped before the end, is run again later; a step that was done
 is not undone (forward recovery). A saga that fails again when it is run again is set aside and its write is not done
-([Concepts](user/concepts.md#what-a-write-goes-through)). The first step
-writes the transaction log entry; the steps for persistence and for the search index follow it, in parallel. Code:
+([Concepts](user/concepts.md#what-a-write-goes-through)). The steps run one after another: the transaction log entry,
+then the version in the store, then, with search, the update in the index queue. Code: `SagaRepository`,
 `SagaExecutionCoordinator`, on Cantara distributed saga.
 
 ### Saga log
 
 The log in which a saga records each of its steps as it begins and completes it. Recovery reads it to complete
-the sagas that were left unfinished. It is kept in PostgreSQL or in memory.
+the sagas that were left unfinished. It is kept in memory (lost when LDS stops) or in PostgreSQL. LDS has a pool of
+them, `saga.number-of-logs`, and a saga holds one from its start to its end. Code: `SagaLog`, `SagaLogPool`.
+
+### Saga recovery
+
+Running a saga that did not complete again from its saga log, with the input it was started with: a step the log
+says ended is not run again, every other step is. It is done when a write is handed a saga log that holds entries,
+when LDS starts, and by a timer (`saga.recovery.enabled`). Code: `SagaExecutionCoordinator`,
+`SagaRecoveryTrigger`.
+
+### Dead-saga log
+
+The saga log `dead-saga` of an instance, which no saga is given. When a recovery started by a write fails, the
+entries of the saga log are moved there, and the write they stand for is not done. Nothing reads it.
+
+### Cluster instance
+
+One LDS of several that share a saga log in PostgreSQL. They have the same cluster owner and cluster name
+(`sagalog.config.cluster.owner`, `sagalog.config.cluster.name`), and each has an instance id of its own
+(`sagalog.config.cluster.instance-id`), which names its saga logs. Each instance recovers the sagas the others left
+unfinished.
+
+### Document lock
+
+The lock that lets one write at a time change a document, in one LDS: a write holds it from before it reads the
+document until its saga has completed. A write that waits for it longer than 30 seconds is answered `503`. Code:
+`DocumentLocks`.
+
+### Searchable write
+
+A write with the query parameter `searchable=true`: it is answered when a search finds it, or after 10 seconds, with
+the header `LDS-Searchable: true` or `false`. Code: `SearchWait`.
 
 ### Transaction log
 
@@ -147,11 +189,10 @@ An append-only log of every write handed to a saga, with its document, method, a
 
 ### Synchronous write
 
-A write answered when its saga has completed: a read that follows it sees the write (read-your-writes). A write
-of a whole document is synchronous unless the query parameter `sync=false` is given. A write of a part of a
-document or of a link is synchronous only with `sync=true`. Any other write is answered at the hand-off, when the
-saga log has recorded the start of the saga, and a read that follows at once may not see it yet (eventual
-consistency).
+A write answered when its saga has completed: a read that follows it sees the write (read-your-writes). A write of a
+document, of a part of a document or of a link is synchronous unless the query parameter `sync=false` is given, and
+always when it is a searchable write. A write with `sync=false` is answered at the hand-off, when the saga log has
+recorded the start of the saga, and a read that follows at once may not see it yet (eventual consistency).
 
 ### Source and source id
 
@@ -184,6 +225,48 @@ technology compatibility kit (TCK) of the persistence interface.
 
 ### Search index provider
 
-An implementation of the search interface (`SearchIndexProvider`): `solr`. The saga indexes each write. The index
-is eventually consistent: a write can be found within the five seconds that the provider gives Solr to commit it.
-A write made while search is off or Solr does not answer is not indexed later.
+An implementation of the search interface (`SearchIndexProvider`): `solr`. The index is eventually consistent: a
+write reaches it through the index queue, and can be found within the second that the provider gives Solr to commit
+it (`search.index.commit-within`). A write made while search is off is not indexed until the index is rebuilt
+(`search.index.rebuild`).
+
+### Index queue
+
+The updates the search index has not taken yet: for each write with search, the namespace, the entity type, the id
+and the version, written or deleted. The last step of a saga adds the update; a worker sends it to the index, with the
+document read from the store at that version, and removes it when the index has taken it, so no update is lost when
+the index does not answer. It is kept in PostgreSQL, in the database of the transaction log, or in memory when the
+transaction log is. Code: `IndexQueue`, `IndexQueueWorker`.
+
+### Index entry
+
+What the search index holds of one version of one document: its texts, each with the language it is searched in, or,
+for a deletion, that the document is deleted from that version on. An entry is never changed: a new version is a new
+entry. Code: `IndexEntry`.
+
+### Index rebuild
+
+The start option `search.index.rebuild`: LDS adds every version of every document of every entity type, deleted
+ones included, to the index queue, and the worker sends them to the index. The index is not cleared first, so search
+answers meanwhile. When every version is added and the queue is then empty, the index removes the entries of the
+namespace it took before the rebuild started, less a minute: what storage no longer holds. Code: `IndexRebuild`.
+
+### Stem
+
+The form of a word that its inflections share in a language, as `hus` of `husene`. A text in an object with a
+`languageCode` and a `languageText` is searched by the stems of its words in that language (Norwegian, Swedish,
+English, German, French); any other text word for word. Code: `Language`.
+
+## Running
+
+### Lifecycle
+
+A subsystem of LDS (the code says both) that is started and stopped with it: the store, a pool of threads, a client,
+a worker, the HTTP server. LDS starts its subsystems in the order they were made, each after what it needs, and stops
+them in the reverse order, also when a start fails part of the way. Code: `Lifecycle`, `Lifecycles`.
+
+### Readiness
+
+Whether LDS can take writes: `/health/ready` asks the store, the saga log, the transaction log and, with search, the
+index and the index queue, each within 2 seconds, and answers `UP`, `DEGRADED` (only search fails or lags) or `DOWN`
+(`503`). Code: `Readiness`.

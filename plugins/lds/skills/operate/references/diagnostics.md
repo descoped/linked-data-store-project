@@ -1,9 +1,9 @@
 # Diagnostics with the debug image
 
 For a hang, high CPU, growing memory or a slow request. The tools of the JDK are only in the debug image,
-`descoped/lds:3.0.0-debug`: the regular image has no `jcmd` (`exec: "jcmd": executable file not found`), and the
+`descoped/lds:3.0.1-debug`: the regular image has no `jcmd` (`exec: "jcmd": executable file not found`), and the
 distroless image has nothing but `java`. The debug image is the regular one plus these tools, with the same LDS,
-user, port, health check and configuration.
+user, port and configuration.
 
 ## Run LDS on the debug image
 
@@ -12,7 +12,7 @@ Stop the running one in order first (`docker stop -t 60 <container>`); two LDS o
 instance ids (see [writes-and-recovery.md](writes-and-recovery.md#several-lds-on-one-saga-log)).
 
 ```sh
-docker run -d --name lds-debug -p 127.0.0.1:9090:9090 descoped/lds:3.0.0-debug
+docker run -d --name lds-debug -p 127.0.0.1:9090:9090 descoped/lds:3.0.1-debug
 ```
 
 With the compose file, add the variant in an override file next to it and start the service again:
@@ -21,7 +21,7 @@ With the compose file, add the variant in an override file next to it and start 
 services:
   lds:
     build: !reset null
-    image: descoped/lds:3.0.0-debug
+    image: descoped/lds:3.0.1-debug
 ```
 
 ```sh
@@ -54,8 +54,8 @@ Heap dump file created [18737384 bytes in 0.029 secs]
 
 - **A hang or a slow request**: take `jstack 1` three times, a few seconds apart, and compare: threads that stay in
   the same place are the ones to read. An LDS as it comes had 73 threads. `XNIO-1 task-...` threads handle requests,
-  `sec-...` threads run sagas, `saga-recovery-...` threads look for unfinished writes; the log names the thread of
-  each line in `[...]`. `jcmd 1 Thread.print` gives the same dump.
+  `sec-...` threads run sagas, `saga-recovery-...` threads look for unfinished writes, `lds-store-read-...` threads
+  read the store; the log names the thread of each line in `[...]`. `jcmd 1 Thread.print` gives the same dump.
 - **Memory**: `jstat -gcutil 1` shows how full each part of the heap is and how much time went to garbage
   collection; take it a few times. A heap dump shows what holds the memory: open the `.hprof` in a heap analyser
   (Eclipse MAT, VisualVM, IntelliJ). The dump of an idle LDS was 18 MB; the file is written in the container's
@@ -80,15 +80,14 @@ The busybox tools of the regular image are there too (`ps`, `top`): `docker exec
 
 Give the options in `JDK_JAVA_OPTIONS`, which only the `java` that starts LDS reads, not in `JAVA_TOOL_OPTIONS`,
 which every JDK tool reads as well (a tool would then try to open the same port and fail). This run opened JMX on
-9010 and a debugger on 5005, both on localhost of the machine; the container stayed healthy and `jcmd` still
-worked:
+9010 and a debugger on 5005, both on localhost of the machine; LDS answered and `jcmd` still worked:
 
 ```sh
 docker run --rm -p 127.0.0.1:9090:9090 -p 127.0.0.1:9010:9010 -p 127.0.0.1:5005:5005 \
   -e JDK_JAVA_OPTIONS="-Dcom.sun.management.jmxremote.port=9010 -Dcom.sun.management.jmxremote.rmi.port=9010 \
     -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false \
     -Djava.rmi.server.hostname=127.0.0.1 -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005" \
-  descoped/lds:3.0.0-debug
+  descoped/lds:3.0.1-debug
 ```
 
 The log then starts with `NOTE: Picked up JDK_JAVA_OPTIONS: ...` and `Listening for transport dt_socket at address:
@@ -96,8 +95,7 @@ The log then starts with `NOTE: Picked up JDK_JAVA_OPTIONS: ...` and `Listening 
 
 JMX without a password and a debugger give whoever reaches the port the whole process and its data. Publish them on
 localhost only, as here; on a remote machine reach them through an SSH tunnel, never an open port. Remove them when
-the investigation is done. Do not put them in the distroless image: its health check is a `java` of its own that
-reads the same options, tries the same port, fails, and the container is called unhealthy.
+the investigation is done.
 
 ## Another log level
 
@@ -119,7 +117,7 @@ No key sets the level of the log; it is `INFO`. Give LDS a logback file of your 
 
 ```sh
 docker run -d --name lds -p 127.0.0.1:9090:9090 -v "$PWD/logconf:/lds/logconf:ro" \
-  -e JAVA_TOOL_OPTIONS=-Dlogback.configurationFile=/lds/logconf/logback.xml descoped/lds:3.0.0
+  -e JAVA_TOOL_OPTIONS=-Dlogback.configurationFile=/lds/logconf/logback.xml descoped/lds:3.0.1
 ```
 
 A start and a stop then logged `Picked up JAVA_TOOL_OPTIONS: ...` and one line, `ShutdownHook triggered..`. With

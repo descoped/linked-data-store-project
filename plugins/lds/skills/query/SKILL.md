@@ -11,6 +11,7 @@ description: >
   errors and limits in plain words. Writing data is lds:data; the model is lds:model.
 compatibility: LDS 3.0; Claude Code
 metadata:
+  lds-version: 3.0.1
   docs: https://lds.descoped.io/docs/user/graphql-api/
 ---
 
@@ -97,7 +98,7 @@ curl http://localhost:9090/graphql -H 'Content-Type: application/graphql' \
          name
        }
      }'
-curl http://localhost:9090/graphql -H 'Content-Type: application/json; charset=utf-8' \
+curl http://localhost:9090/graphql -H 'Content-Type: application/json' \
      -d '{
        "query": "query One($id: ID!) { PersonById(id: $id) { name } }",
        "variables": {"id": "ola"}
@@ -115,14 +116,14 @@ curl http://localhost:9090/graphql -H 'Content-Type: application/json; charset=u
 - `application/graphql`: the body is the query, with no variables. `application/json`: the body is
   `{"query", "variables", "operationName"}`. Any other content type, or none, is answered `415`. Write the content
   type in small letters; `APPLICATION/JSON` is answered `415`.
-- Write `charset=utf-8` in the content type. Without it LDS reads the body as ISO-8859-1, and a letter outside
-  ASCII (`å`, `é`) in the query or in the variables is read wrongly: the document is not found. Many HTTP clients
-  leave the charset out, so the scripts and the snippets of [clients.md](references/clients.md) name it.
+- The body is read as UTF-8, whatever charset the content type names: `PersonById(id: "åse")` finds `åse` with
+  or without `charset=utf-8`.
 - The time of an as-of read is the query parameter `snapshot` of the address (`?snapshot=2021-06-01T00:00:00Z`),
-  or the variable `__snapshot`, which the query does not declare. Write it with `Z`. More in
-  [time-machine.md](references/time-machine.md).
+  or the variable `__snapshot`, which the query does not declare. Write it with `Z`; a time LDS cannot read is
+  refused with an error. More in [time-machine.md](references/time-machine.md).
 - The answer is `200` with JSON on one line whenever LDS could read the request, also when the query is wrong:
-  what went wrong is in `errors`, and `data` holds what could be read.
+  what went wrong is in `errors`, and `data` holds what could be read. A request LDS cannot read (no body, no
+  `query`, `variables` that are not an object) is answered `400` with the reason in `errors`.
 - When the key `http.prefix` is set, the address is under it (`/api/graphql`). The GraphQL API reads one namespace,
   the one of `namespace.default` (`ns` as LDS comes); a query cannot name another.
 
@@ -130,18 +131,18 @@ curl http://localhost:9090/graphql -H 'Content-Type: application/json; charset=u
 
 | In the model | In the GraphQL API |
 |---|---|
-| an entity type `X` (a type with `@domain`) | `XById(id: ID!): X!` and `X(after, before, first, last): XConnection` in `Query` |
+| an entity type `X` (a type with `@domain`) | `XById(id: ID!): X` and `X(after, before, first, last): XConnection` in `Query` |
 | an embedded type (no `@domain`) | the same type, read inside the document that holds it |
 | a field with `@link` to one document | the same field; it gives the document the link points at |
 | a field with `@link` to a list | a connection field with `after`, `before`, `first`, `last` |
 | a list with `@link(pagination: false)` | a plain list, in the order of the links, no arguments |
 | any field with `@link` | a reverse link on the target: its `reverseName`, else `reverse` + entity type + field (`Person.friends` gives `reversePersonFriends`) |
 | a link to a union | `__typename` and `... on Cat { }` in the query pick the fields of each entity type |
-| search on (`graphql.search.enabled`) | `Search(query, filter, first, after, ...)`, with the union `SearchResult` and the enum `TypeFilters` |
+| search on (`graphql.search.enabled`) | `Search(query, filter, history, first, after, ...)`, with the union `SearchResult` and the enum `TypeFilters` |
 
 A connection has `edges { cursor node }` and `pageInfo { hasNextPage hasPreviousPage }`. In a list of documents
 the cursor is the id. There is no count, no `startCursor` or `endCursor`, and the edges come in the order of the
-ids.
+ids, letter by letter as Unicode numbers them.
 
 ## What the GraphQL API cannot do
 
@@ -150,37 +151,37 @@ Say these plainly when the user asks for them, and offer what comes closest.
 | The user asks for | LDS | Closest |
 |---|---|---|
 | write, change or delete | no mutations | the REST API, `lds:data` |
-| documents whose field has a value ("persons in Oslo") | no argument filters by a field | read the list and filter on the client; for texts in `languageText` fields, search |
+| documents whose field has a value ("persons in Oslo") | no argument filters by a field | read the list and filter on the client; for a word in a text, search |
 | another order than by id | no sort argument | sort on the client |
 | how many | no count | count the edges of a full read |
 | two times in one request | one `snapshot` for the whole request | two requests, compared on the client: `scripts/compare.sh` |
 | what changed between two times | no diff | `scripts/compare.sh`, see [time-machine.md](references/time-machine.md) |
-| search in a name, a number, any field | search covers only text fields named `languageText`, and needs Solr | rename the field in the model (`lds:model`), or filter on the client |
+| search in a number, a date, a link or the id | search covers texts only, and needs Solr | filter on the client |
 | another namespace | one namespace per LDS | another LDS |
 | a changed model | the model is read at start | change it and restart LDS (`lds:model`) |
 
 Not finished: reading backwards (`last`, `before` alone) gives the edges in the wrong order and a wrong
-`pageInfo`; read forwards with `first` and `after`. Not finished: a page does not make a list less work for LDS;
-with LDS in memory or on PostgreSQL every document of the entity type is read before the page is given.
+`pageInfo`; read forwards with `first` and `after`.
 
 ## Errors the user meets most
 
 | In `errors` | What it means | What to do |
 |---|---|---|
-| `The field at path '/PersonById' was declared as a non null type ...` | No document with that id at the time of the query: never written, written for a later time, or deleted. `data` is `null` for the whole request, the other fields too | Check the id and the time. Ask for a document that may be missing in a request of its own |
-| `Exception while fetching data (/PersonById/employer) : ...` | Not finished: the document does not have that link field. The rest of the answer is there | Read it as "no employer" |
+| `"PersonById": null`, no error | No document with that id at the time of the query: never written, written for a later time, or deleted then. The rest of the answer is there | Check the id and the time |
+| `The query parameter snapshot '...' is not an ISO-8601 time` | The time of the query cannot be read; the query was not run | A date, a time and `Z`: `2021-06-01T00:00:00Z` |
 | `Field 'nmae' in type 'Person' is undefined` | A name the schema does not have | Read the schema again (`scripts/schema.sh`) |
 | `Field 'Search' in type 'Query' is undefined` | Search is off | Search needs Solr and `graphql.search.enabled`; the compose stack has it on (`lds:start`) |
 | `The 'Mutation' operation is not supported by the schema` | GraphQL in LDS only reads | Write with REST, `lds:data` |
 | `This request is not asking for introspection in good faith` | `__type` or `__schema` twice, or `fields` inside `fields` | One introspection field per request; `scripts/schema.sh` stays inside the limit |
-| status `500` with no body | LDS could not read the request: no `query`, JSON that is not an object, `variables` not an object | Check the body; the reason is only in the log of LDS |
+| status `400` with `The body has no "query" text`, `The variables are not a JSON object`, ... | LDS could not read the request | Check the body |
 
 The full list, the limits (depth 100, 15000 tokens) and every `Not finished:` are in
 [query-shapes.md](references/query-shapes.md#errors-and-limits).
 
 A link may point at a document that does not exist, or not yet: LDS does not check links when they are written,
 by design, since a document may be written for a later time than the one that links to it. Such a link gives
-`null` (one link) or is left out (a list read in pages). That is not an error.
+`null` (one link) or is left out (a list). That is not an error. A document without the link field gives `null`
+too.
 
 ## References
 

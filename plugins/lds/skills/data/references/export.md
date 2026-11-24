@@ -2,7 +2,7 @@
 
 Read this when the user wants the data out of LDS: a file of all customers as they were on a date, a CSV for
 a spreadsheet, a copy before a change. The exporter is `scripts/lds-export.sh` in this skill's directory. Every
-run below was against `descoped/lds:3.0.0`.
+run below was against `descoped/lds:3.0.1`.
 
 ## Why it is a script and not one request
 
@@ -22,26 +22,24 @@ sh "$X" Person 2020-06-01T00:00:00Z csv > persons.csv
 sh "$X" Company > companies-now.json
 ```
 
-- The instant is in UTC and ends in `Z`. Convert a local time first (`2020-06-01T00:00:00+02:00` is
-  `2020-05-31T22:00:00Z`): the GraphQL API does not read other offsets correctly, and the script refuses them.
+- The instant is a date and a time with `Z` or an offset (`2022-01-01T00:00:00+01:00`). A time LDS cannot read
+  is refused: the script prints `The query parameter snapshot '2022-01-01' is not an ISO-8601 time. ...` and ends
+  with 1. Without an instant it takes the time of the start, to the second, so a write made in that same second
+  may be left out.
 - It needs `curl` and `jq` and says so when one is missing.
 - Documents that are deleted at the instant, or not yet written, are not in the export.
 
-JSON, in the order of the ids (the first two documents):
+JSON, in the order of the ids, by Unicode code point (the first two documents):
 
 ```json
 [
   {
-    "id": "anne",
-    "document": {
-      "employer": "/Company/acme",
-      "name": "Anne",
-      "address": {"city": "Bergen"}
-    }
+    "id": "100%",
+    "document": {"name": "Percent"}
   },
   {
-    "id": "bo",
-    "document": {"name": "Bo"}
+    "id": "a+b",
+    "document": {"name": "Plus"}
   }
 ]
 ```
@@ -51,12 +49,13 @@ objects) is one cell of JSON text, and a field named `id` in the document become
 clash with the id of LDS (the first rows):
 
 ```
-"id","about","address.city","address.street","born","employer","name"
-"anne",,"Bergen",,,"/Company/acme","Anne"
-"bo",,,,,,"Bo"
-"id with space","{}",,,,,"Spaced, ""quoted"""
-"kari",,,,"1990-05-17T00:00:00Z",,"Kari"
-"ola",,"Bergen","Storgata 1",,"/Company/acme","Ola"
+"id","about","address.city","address.street","born","document.id","employer","name"
+"100%",,,,,,,"Percent"
+"a+b",,,,,,,"Plus"
+"anne",,"Bergen",,,,"/Company/acme","Anne"
+"id with space","{}",,,,,,"Spaced, ""quoted"""
+"kari",,,,"1990-05-17T00:00:00Z","k-1",,"Kari"
+"ola",,"Bergen","Storgata 1",,,"/Company/acme","Ola"
 ```
 
 Columns are the union of the fields of all documents, sorted after `id`; a document without a field has an
@@ -64,7 +63,7 @@ empty cell.
 
 ## Speed
 
-One request per document: 505 documents took 16 seconds (memory provider, a laptop). For the documents alone,
+One request per document: 657 documents took 18 seconds (memory provider, a laptop). For the documents alone,
 without ids, one request is enough: `curl -s "$LDS/ns/Person?timestamp=2020-06-01T00:00:00Z" > persons.json`.
 
 ## Limits
@@ -72,8 +71,6 @@ without ids, one request is enough: `curl -s "$LDS/ns/Person?timestamp=2020-06-0
 - **A model of JSON Schema files has no GraphQL API** (`/graphql` answers 400 `Unsupported namespace:
   "graphql"`). The script then says so and exports the documents with `"id": null`. Ids are then only
   available when the documents hold their own key in a field.
-- **With the memory provider**, documents whose id begins with `~` or a letter outside ASCII are left out of
-  every list, GraphQL included, so they are not exported. They can be read one by one with their id.
 - **The history** is not in an export at an instant. For every version of one document use
   `GET /ns/<Entity>/<id>?timeline`; for an export at several dates run the script once per date.
 - **Without jq**, read the JSON list with whatever the user has (Python's `json` module) or, for a few

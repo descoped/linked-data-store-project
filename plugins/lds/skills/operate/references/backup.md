@@ -1,8 +1,8 @@
 # Backup and restore
 
-LDS has no backup tool: each store is backed up with the tools of its engine. Every command here was run against
-the compose stack of the repository (project `lds`, so its volumes are `lds_neo4j`, `lds_postgres` and
-`lds_solr`), and each restore was checked by reading a document written before the backup (`200`) and one written
+LDS has no backup tool: each store is backed up with the tools of its engine. The commands here were run against
+the compose stacks of `lds:start` (the full stack is project `lds`, so its volumes are `lds_neo4j`, `lds_postgres`
+and `lds_solr`), and a restore was checked by reading a document written before the backup (`200`) and one written
 after it (`404`). For another deployment, keep the engine command and change how it is reached.
 
 ## What to back up
@@ -11,8 +11,8 @@ after it (`404`). For another deployment, keep the engine command and change how
 |---|---|---|
 | The documents (PostgreSQL table `fragment`, or the Neo4j database) | Always | This is the data: every version of every document. Nothing in LDS can build it again. |
 | The saga log (PostgreSQL database `sagalog` in the stack) | When LDS runs with writes under way; not needed after a stop in order with an empty saga log | It holds the writes under way and the writes given up (`dead-saga`). It is empty when every write is done. |
-| The transaction log (PostgreSQL database `txlog` in the stack) | If callers use `GET /source/{source}`, or the record of every write matters to you | LDS runs without it and cannot rebuild the documents from it. |
-| The search index (the Solr core) | If search is used | LDS cannot rebuild it from the documents: a document lost from the index is found again only when written again. |
+| The transaction log (PostgreSQL database `txlog` in the stack) | If callers use `GET /source/{source}`, or the record of every write matters to you | LDS runs without it and cannot rebuild the documents from it. The same database holds the index queue (`lds_index_queue`), the updates Solr has not taken. |
+| The search index (the Solr core) | If search is used and a rebuild would take too long | LDS builds it again from the documents with `search.index.rebuild` (see `SKILL.md`). |
 | The model and the configuration (your files) | Always, in version control | LDS reads them at start and stores them nowhere. |
 | Memory (`mem`, the default) | Cannot be | Nothing is kept; everything is gone when LDS stops. Move to PostgreSQL or Neo4j (`lds:start`). |
 
@@ -20,7 +20,7 @@ Back up every store at the same moment, so that they agree: stop LDS in order fi
 that the saga log is empty (`scripts/sagalog-entries.sql`, see
 [writes-and-recovery.md](writes-and-recovery.md#a-write-that-keeps-failing-dead-saga)), back up, start LDS. A Solr
 index restored from an earlier moment than the documents misses the documents written in between, and LDS does
-not notice.
+not notice: start LDS once with `search.index.rebuild=true` after such a restore.
 
 Restore in the same order: stop LDS, restore each store, start LDS, read a document you know.
 
@@ -44,9 +44,9 @@ docker compose exec -T postgres \
   pg_restore -U lds -d lds < lds-documents.dump
 ```
 
-The compose stack keeps the documents in Neo4j; this was run with an LDS whose documents were in the stack's
-database `lds` (`LDS_PERSISTENCE_PROVIDER=postgres`, `LDS_POSTGRES_DRIVER_HOST=postgres`,
-`LDS_POSTGRES_DRIVER_PASSWORD=lds`).
+This was run with the PostgreSQL compose file of `lds:start`, whose documents are in the database `lds`; there the
+stop of LDS before the restore is `docker compose stop -t 60 lds`, and `docker compose up -d --wait` starts it
+again.
 
 ## Saga log and transaction log in PostgreSQL
 
@@ -60,8 +60,9 @@ docker compose exec -T postgres \
 ```
 
 Restore each with `pg_restore -U lds -d <database>` into an empty database, LDS stopped. The saga log is in a
-schema named by `sagalog.config.cluster.owner` (`development` in the stack); the transaction log is the tables
-`rawdata_message`, `rawdata_content` and `rawdata_metadata`. These databases need to be there before LDS starts:
+schema named by `sagalog.config.cluster.owner` (`development` in the stack, `lds` when it is not set); the
+transaction log is the tables `rawdata_message`, `rawdata_content` and `rawdata_metadata`, and the index queue the
+table `lds_index_queue`. These databases need to be there before LDS starts:
 LDS makes tables, never databases.
 
 ## Documents in Neo4j
@@ -80,7 +81,7 @@ docker compose up -d --wait
 ```
 
 ```
-Done: 40 files, 258.1MiB processed in 0.258 seconds.
+Done: 42 files, 1.241MiB processed in 0.053 seconds.
 ... INFO  [o.n.c.d.DumpCommand] Dump completed successfully
 ```
 

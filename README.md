@@ -8,10 +8,10 @@ data.
 Every document version has a "valid from" time, and a read returns the document as it was at the time asked for.
 Persistence and search are pluggable.
 
-**Status: 3.0.0 is released** as images of the server on Docker Hub,
+**Status: 3.0.1 is released** as images of the server on Docker Hub,
 [`descoped/lds`](https://hub.docker.com/r/descoped/lds), for Linux on amd64 and arm64; see the
-[release notes](RELEASE-NOTES.md#300). This repository was put together in
-November 2026 from the 14 repositories LDS used to live in, with their full history. What 3.0.0 does not have yet
+[release notes](RELEASE-NOTES.md#301). This repository was put together in
+November 2026 from the 14 repositories LDS used to live in, with their full history. What 3.0.1 does not have yet
 is said in the release notes and in the documentation, in paragraphs that start with "Not finished:".
 
 ## Modules
@@ -25,6 +25,7 @@ is said in the release notes and in the documentation, in paragraphs that start 
 | `linked-data-store-persistence-provider-memory` | In memory, for tests and trials |
 | `linked-data-store-search-provider-api` | The interface a search index implements |
 | `linked-data-store-search-provider-solr` | Apache Solr |
+| `linked-data-store-index-queue-postgres` | The index queue in PostgreSQL: the updates the search index has not taken yet |
 | `linked-data-store-core` | The application: REST, GraphQL, sagas, transaction log |
 | `linked-data-store-server` | The main class, configuration and container image |
 | `linked-data-store-bom` | Aligns the versions of the modules above |
@@ -50,7 +51,7 @@ The quickest way is the image on Docker Hub. As it comes, LDS keeps everything i
 (`linked-data-store-server/schemas/schema.graphql`, a person and a company); it answers on port 9090.
 
 ```sh
-docker run --rm -p 127.0.0.1:9090:9090 descoped/lds:3.0.0
+docker run --rm -p 127.0.0.1:9090:9090 descoped/lds:3.0.1
 ```
 
 From the repository, build first, then start LDS in one of three ways.
@@ -107,17 +108,23 @@ The configuration is read with dynamic-configuration 3, which has these rules:
   `LDS_HTTP_PORT` sets `http.port`, `LDS_NEO4J_DRIVER_URL` sets `neo4j.driver.url`.
 - An environment variable or a system property (`-Dhttp.port=8080`) sets only a key that one of the properties
   files has. The defaults of the server have the keys LDS is usually configured with; any other key of a provider
-  is given in `conf/application.properties`, and can then be set from outside as well.
+  is given in `conf/application.properties`, and can then be set from outside as well. An environment variable that
+  starts with `LDS_` and sets no key, such as one spelled wrong, stops LDS at start with its name.
 - `${key}` in a value is the value of another key, and `${key:default}` gives it a default.
 - A boolean is `true` or `false`; anything else stops LDS at start with the name of the key.
 
 In the image, the model is read from `/lds/schemas` (mount your own there), options of the JVM are given in
-`JAVA_TOOL_OPTIONS`, and LDS runs as the user `lds`. Its health check asks `/ping` on the port of `LDS_HTTP_PORT`,
-so move the port with that variable and not in a mounted file, and leave `http.prefix` as it is. The image is
-published on Docker Hub as `descoped/lds` in three variants: the regular image with a shell (`3.0.0`), one without
-(`3.0.0-distroless`) and one with the tools of the JDK for diagnostics (`3.0.0-debug`).
+`JAVA_TOOL_OPTIONS`, and LDS runs as the user `lds`. The image declares no health check: LDS answers `/ping` and
+`/health/alive` whenever it runs, and `/health/ready` with 200 when it can take writes and 503 when it cannot, under
+`http.prefix` and on its port, and whoever runs it asks there (the compose file asks `/health/ready`). The image is
+published on Docker Hub as `descoped/lds` in three variants: the regular image with a shell (`3.0.1`), one without
+(`3.0.1-distroless`) and one with the tools of the JDK for diagnostics (`3.0.1-debug`).
 
-Search finds a document by the texts of its fields named `languageText`, which is what the Solr provider indexes.
+Search finds a document by every text in it. A text in an object with a `languageCode` and a `languageText` is found
+by the stems of its words in its language (Norwegian bokmål and nynorsk, Swedish, English, German or French), and
+every other text word for word; a word is also found when it is typed without its special letters or accents. Links,
+dates, times, numbers and booleans are not searched. A write does not wait for search unless it asks to
+(`searchable=true`).
 
 ## With Claude Code
 

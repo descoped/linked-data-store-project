@@ -23,7 +23,11 @@ jq -n -c --argjson a "$a" --argjson b "$b" '
 def norm: walk(if type == "object" and has("edges")
   then reduce .edges[] as $e ({}; . + {($e.cursor): $e.node}) else . end);
 def leaves: [paths(type != "object" and type != "array")];
-($a.data | norm) as $a | ($b.data | norm) as $b | ($a | leaves) as $la | ($b | leaves) as $lb
+def under($p): length > ($p | length) and .[0:($p | length)] == $p;
+# a null that is an object at the other time (a document missing at one time) is not a value of its own
+def values($other): map(. as $p | select(any($other[]; under($p)) | not));
+($a.data | norm) as $a | ($b.data | norm) as $b | ($a | leaves) as $la0 | ($b | leaves) as $lb0
+| ($la0 | values($lb0)) as $la | ($lb0 | values($la0)) as $lb
 | ($la + $lb | unique)[] as $p
 | any($la[]; . == $p) as $ina | any($lb[]; . == $p) as $inb
 | {path: ($p | map(tostring) | join(".")),

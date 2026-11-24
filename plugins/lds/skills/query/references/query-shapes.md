@@ -1,7 +1,7 @@
 # Query shapes
 
-Every shape of query the GraphQL API of LDS answers, each with a request that was run on `descoped/lds:3.0.0`
-and the answer it gave.
+Every shape of query the GraphQL API of LDS answers, each with a request that was run on LDS 3.0.1
+(`descoped/lds:3.0.1`) and the answer it gave.
 
 ## Contents
 
@@ -83,12 +83,27 @@ section of the skill. The answers are formatted here; LDS sends them on one line
 }
 ```
 
-- A field the document does not have is `null`.
+- A field the document does not have is `null`. LDS keeps no `null` values: a field written as `null` is left
+  out of the document, and is `null` here.
 - An embedded object (`address`) is an object inside the document; ask for its fields.
-- When there is no document with the id at the time of the query, the answer is the error
-  `The field at path '/PersonById' was declared as a non null type, ...` and `"data": null`, for the whole
-  request. Every other field of the same request is lost with it. So ask for a document that may be missing in a
-  request of its own, or check first with the REST API (`GET /ns/Person/<id>` answers `404`; `lds:data`).
+- When there is no document with the id at the time of the query (never written, written for a later time, or
+  deleted then), `XById` is `null`, with no error. The rest of the answer is there:
+
+```graphql
+{
+  PersonById(id: "nosuch") { name }
+  k: PersonById(id: "kari") { name }
+}
+```
+
+```json
+{
+  "data": {
+    "PersonById": null,
+    "k": {"name": "Kari"}
+  }
+}
+```
 
 ## Several things in one request
 
@@ -136,7 +151,8 @@ keep the user's values out of the query text, which is what a program should do.
 ## The documents of an entity type, and pages
 
 `X` gives the documents of entity type `X` as a connection: `edges`, each with `cursor` and `node`, and
-`pageInfo`. The edges come in the order of the ids, compared as text; the cursor of an edge is the id.
+`pageInfo`. The edges come in the order of the ids, letter by letter as Unicode numbers them (`Z` before `a`,
+`~` before `ø`); the cursor of an edge is the id.
 
 ```graphql
 {
@@ -203,7 +219,7 @@ The next page: the cursor of the last edge as `after`, until `hasNextPage` is `f
 | none | every document |
 | `first: 2` | the first two |
 | `first: 2, after: "kari"` | the first two with an id after `kari` |
-| `after: "anne", before: "per"` | the documents with an id between the two, without the two |
+| `after: "anne", before: "per"` | the documents with an id between the two, without the two (`kari`, `ola`) |
 | `first: 0` | no edges, and `false` for both fields of `pageInfo` |
 | `first: -1` | the error `The page size must not be negative: 'first'=-1`, and `null` for the field |
 | `first: "2"` | refused: `first` is a number |
@@ -214,11 +230,8 @@ The next page: the cursor of the last edge as `after`, until `hasNextPage` is `f
   to sort another way, and none to choose documents by the value of a field: filter on the client.
 
 Not finished: reading backwards does not work as it should. `Person(last: 2)` gave `per` then `ola`, the last
-id first, and `true` for both fields of `pageInfo`. Read forwards with `first` and `after`.
-
-Not finished: with LDS in memory or on PostgreSQL every document of the entity type is read before a page is
-given, so a page of a large entity type takes as long as the whole list. With LDS in memory a document whose id
-begins with a letter outside ASCII is left out of the list (on Neo4j it was there); `XById` finds it.
+id first, and `true` for both fields of `pageInfo`; `Person(before: "ola")` gave `kari` then `anne`. Read forwards
+with `first` and `after`.
 
 ## Links
 
@@ -268,34 +281,16 @@ A field that holds one link gives the document it points at; ask for its fields,
 
 - A list of links is a connection, with the arguments of pages. Its edges come in the order of the ids, not in
   the order of the links in the document.
+- A document without the link field gives `null`, with no error: Anne has no `employer`, and
+  `PersonById(id: "anne") { name employer { name } }` gave `{"name": "Anne", "employer": null}`.
 - A link to a document that does not exist at the time of the query (never written, written for later, or
-  deleted) gives `null` for one link, and is left out of a list read in pages. LDS does not check links when
-  they are written; this is how a time machine works, not a fault.
-- A link to one document whose field has `!` in the model cannot give `null`: the document that holds the link is
-  lost from the answer with the error of [One document](#one-document).
-
-Not finished: when the document does not have the link field at all, the field is `null` and the answer has an
-error for it; the rest of the answer is there. Anne has no `employer`:
-
-```json
-{
-  "errors": [
-    {
-      "message": "Exception while fetching data (/PersonById/employer) : Cannot invoke \"java.lang. ...",
-      "locations": [
-        {"line": 1, "column": 33}
-      ],
-      "path": ["PersonById", "employer"],
-      "extensions": {"classification": "DataFetchingException"}
-    }
-  ],
-  "data": {
-    "PersonById": {"name": "Anne", "employer": null}
-  }
-}
-```
-
-Tell the user it means "no employer", not that something is broken in their data.
+  deleted) gives `null` for one link, and is left out of a list read in pages: a person with
+  `"employer": "/Company/nosuch"` and `"friends": ["/Person/nosuch", "/Person/anne"]` gave `"employer": null` and
+  the one edge `anne`. LDS does not check links when they are written; this is how a time machine works, not a
+  fault.
+- A link to one document whose field has `!` in the model cannot give `null`. When its target is not there, the
+  document that holds the link is `null` in the answer, with the error `The field at path '/TagById/owner' was
+  declared as a non null type, ...`; the rest of the answer is there.
 
 Not finished: with LDS in memory the pages of a list of links are wrong: `friends(first: 1, after: "anne")` gave
 `anne` again, and `pageInfo` says `true` for both fields. Read a list of links whole.
@@ -347,12 +342,13 @@ Ola is not among them now: from 2022 Ola works at Globex. Forward pages work: `e
 GraphQL model.
 
 Not finished: with LDS in memory, a write or a delete at the exact valid time of a version that is there can
-leave the old link followed backwards, and a query for a reverse link after such deletes once stopped LDS from
-answering at all; see https://lds.descoped.io/docs/user/graphql-api/#reverse-links.
+leave the old link followed backwards, and a query for a reverse link after such deletes stopped LDS from
+answering any read or write (nine persons with one employer, each deleted at the time of its version; `/ping`
+still answered); see https://lds.descoped.io/docs/user/graphql-api/#reverse-links.
 
 ## Unions and plain lists of links
 
-These were run on LDS started with this model:
+These were run on LDS in memory, started with this model:
 
 ```graphql
 type Owner @domain {
@@ -360,6 +356,7 @@ type Owner @domain {
   favourite: Pet @link
   pets: [Pet] @link
   cars: [Car] @link(pagination: false)
+  animals: [Pet] @link(pagination: false)
 }
 
 type Cat @domain {
@@ -377,13 +374,19 @@ type Car @domain {
 }
 ```
 
-The owner `eva` has `"favourite": "/Cat/tom"`, `"pets": ["/Dog/fido", "/Cat/tom"]` and
-`"cars": ["/Car/a1", "/Car/zz", "/Car/b2"]`; `/Car/zz` was never written.
+The owner `eva` has `"favourite": "/Cat/tom"`, `"pets": ["/Dog/fido", "/Cat/tom"]`,
+`"cars": ["/Car/a1", "/Car/zz", "/Car/b2"]` and `"animals": ["/Dog/fido", "/Cat/nosuch", "/Cat/tom"]`; `/Car/zz`
+and `/Cat/nosuch` were never written.
 
 ```graphql
 {
   OwnerById(id: "eva") {
     cars { plate }
+    animals {
+      __typename
+      ... on Cat { name }
+      ... on Dog { name }
+    }
     favourite {
       __typename
       ... on Cat { name }
@@ -409,8 +412,11 @@ The owner `eva` has `"favourite": "/Cat/tom"`, `"pets": ["/Dog/fido", "/Cat/tom"
     "OwnerById": {
       "cars": [
         {"plate": "A1"},
-        null,
         {"plate": "B2"}
+      ],
+      "animals": [
+        {"__typename": "Dog", "name": "Fido"},
+        {"__typename": "Cat", "name": "Tom"}
       ],
       "favourite": {"__typename": "Cat", "name": "Tom"},
       "pets": {
@@ -430,15 +436,16 @@ The owner `eva` has `"favourite": "/Cat/tom"`, `"pets": ["/Dog/fido", "/Cat/tom"
 }
 ```
 
-- A list with `@link(pagination: false)` is a plain list in the order of the links, and a missing target is a
-  `null` in it.
+- A list with `@link(pagination: false)` is a plain list in the order of the links, and a missing target is
+  left out of it. A document of a plain list can be asked for its links and reverse links like any other
+  (`cars { plate reverseOwnerCars { edges { cursor } } }` gave `eva` for each car).
 - A link to a union gives a document of any of its entity types: ask for `__typename` and for the fields of each
   with `... on`. Every entity type of the union gets the reverse link (`DogById(id: "fido") {
   reverseOwnerPets { edges { node { name } } } }` gave Eva).
 
-Not finished: the pages of a list of links to a union are wrong and can differ from one request to the next; read
-it without arguments. A list of links to a union with `@link(pagination: false)` is always empty. A document that
-comes from a plain list cannot be asked for its connections (they are `null` with an error).
+Not finished: the pages of a list of links to a union are wrong and can differ from one request to the next
+(`pets(first: 1, after: "fido")` gave `fido` once and `tom` twice, and `pets(first: 1)` said `false` for
+`hasNextPage`); read it without arguments, or as a plain list.
 
 ## At a time
 
@@ -453,19 +460,27 @@ scripts/query.sh ola.graphql '' 2021-06-01T00:00:00Z
 ## Search
 
 Search exists when `Query` has the field `Search`: the key `graphql.search.enabled` is `true` and LDS has a Solr
-index (the compose stack of `lds:start` has both). It finds a document by the texts of its fields named
-`languageText`, wherever they are in the document, and by nothing else: not a name, a number, a date or the id.
-A model meant for search therefore has an embedded type with a `languageText` field (`lds:model`).
+index (the compose stack of `lds:start` has both). It finds a document by every text in it, in any field,
+whatever its name: a name, a city, a `languageText`. It does not look at links, dates, times, numbers, `true` and
+`false`, or the id. An entity type marked `@domain(searchable: false)` in the model is never found.
+
+- A text in an object that has `languageCode` and `languageText` is searched in that language when the code is
+  `nb`, `nn` or `no` (Norwegian), `sv`, `en`, `de` or `fr` (any case, also with a region: `nb-NO`): another form of
+  a word finds it (`rocket` finds "rockets", `selling` finds "Sells"). Every other text is searched word for word.
+- A word is also found when it is typed without its special letters (`boker` finds "bøker", `Aase` the person
+  Åse); the word as it is written ranks first.
+- Capital letters do not matter.
 
 | Argument | Meaning |
 |---|---|
-| `query: String!` | the text, given to Solr as it is: a query in Solr's language |
+| `query: String!` | the words |
 | `filter: [TypeFilters]` | only these entity types, written without quotes: `filter: [Company]` |
+| `history: Boolean` | `true`: every version that has the words, not only the version at the time of the query |
 | `first`, `after`, `last`, `before` | the page; the cursors are those of the search |
 
 The result is a union of every entity type, so ask with `... on`. These ran on the compose stack, with Solr; the
 companies have the texts "Makes anvils and rockets" (Acme), "Sells rockets" (Globex) and "Writes software for
-rockets" (Initech).
+rockets" (Initech), each with `"languageCode": "en"`.
 
 ```graphql
 {
@@ -507,53 +522,58 @@ rockets" (Initech).
 }
 ```
 
-What Solr did with the query text on the stack:
+What the words found on the stack:
 
 | `query` | Found |
 |---|---|
-| `"rockets"`, `"Rockets"` | all three: capital letters do not matter |
-| `"rocket"` | nothing: another form of the word is not found |
-| `"anvils OR software"` | Initech and Acme |
-| `"\"sells rockets\""` (a phrase in quotes) | Globex |
-| `"Acme"` | nothing: the name is not a `languageText` field |
+| `"rockets"`, `"Rockets"`, `"rocket"` | all three |
+| `"anvils software"`, `"anvils OR software"` | Acme and Initech: a document with any of the words |
+| `"\"sells rockets\""` (a phrase in quotes) | Globex; `"\"rockets sells\""` found nothing |
+| `"-rockets"` | the documents without the word (here every person) |
+| `"Acme"` | Acme, by its `name` |
+| `"Oslo"` | the two persons whose `address` has the city Oslo |
+| `"1999"` | nothing: `founded` is a date, not a text |
+| `""`, `"   "` | nothing, and no error |
 
-- Without `first` and `last` a search gives at most 10 documents. The cursors are places in the result
-  (`cWM6MA` is the first), not ids; an id as cursor is refused with `expecting a valid cursor value, got acme`.
+- The words are never refused: an open quote, a bracket, a `\` or an operator alone (`OR`) is read as words, and
+  found what those words found, or nothing.
+- Without `first` and `last` a search gives at most 10 documents; `first` and `last` give at most 100. The cursors
+  are places in the result (`cWM6MA` is the first), not ids; an id as cursor is refused with
+  `expecting a valid cursor value, got acme`.
+- The page after a cursor starts after it: `Search(query: "rockets", first: 2, after: "cWM6MA")` gave Acme and
+  Initech, with `hasPreviousPage` `true`. `last: 1` gave the last place (Initech), `last: 2, before: "cWM6Mg"`
+  Globex and Acme.
 - A `filter` value that is not an entity type is refused (`... is not a valid 'TypeFilters' ...`).
-- The order is Solr's. There is no count.
-- A write is found within about five seconds; a search right after a write may miss it. Documents written while
-  search was off are never found.
-- Every document of the result is read at the time of the query; one that does not exist then is left out.
-- When LDS cannot reach Solr, `Search` is `null` with an error such as `... java.net.ConnectException ...`
+- The order is Solr's: the best match first. There is no count.
+- A write is found within about a second; a search right after a write may miss it. A write sent with
+  `?searchable=true` is answered when search finds it (`lds:data`).
+- Documents written while search was off are found after the index is rebuilt (`lds:operate`).
+- When LDS cannot reach Solr, `Search` is `null` with an error `Exception while fetching data (/Search) : ...`
   (`lds:operate`).
 
-Not finished: the page after a cursor starts at the cursor, not after it: `Search(query: "rockets", first: 2,
-after: "cWM6MQ")` gave `cWM6MQ` (Acme) again, then Initech. Drop the first edge of each next page. `last`
-without `before` counts back from the tenth place. Every entity type is searched; `@domain(searchable: false)`
-changes nothing.
-
-Not finished: every version of a document is in the index by itself. When Acme had a second version with the
-same text, `Search(query: "anvils")` gave Acme twice, and at `snapshot=2022-01-01T00:00:00Z`, before that version,
-still twice. A document is also found by a text that only another version of it has, and comes as it is at the
-time of the query. Remove duplicates by `__typename` and id on the client; ask for a field that identifies the
-document, since the cursor is not the id.
+A search is at the time of the query, as every read is: of each document the version valid then is tested for the
+words, and a hit is read at that version. A company written with
+`{"languageCode": "nb", "languageText": "Vi selger bøker og gaver"}` was found by `boker`, `bok` and `gave`. After a
+later version with "Vi selger bøker", `gaver` found nothing at a time after it, and found the earlier version with
+`history: true`. `Search(query: "bøker", history: true)` gave both versions, the newest first, each with its own
+text. Without `history` a document comes once.
 
 ## Scalars
 
 | Scalar | In the answer |
 |---|---|
 | `String`, `ID` | a text |
-| `Int`, `Float` | a number |
+| `Int`, `Long`, `Float` | a number |
 | `Boolean` | `true` or `false` |
 | `DateTime` | RFC 3339 with the offset it was written with: `"2001-09-09T09:09:09.12+02:00"` |
-| `Date` | `"2019-03-11"` |
-| `Time` | `"06:30:00+01:00"` |
+| `Date` | `"2020-01-01"` |
+| `Time` | `"10:00:00+01:00"` |
 | an enum | the name of the value as a text |
 
 A `DateTime` is not turned into UTC; the fraction of a second loses its zeros at the end (`.120` comes out as
-`.12`; the REST API gives `.120`) and `+00:00` comes out as `Z`. A value that does not fit the type of its field
-gives `null` and an error such as `Can't serialize value (/OwnerById/age) : Expected a value that can be
-converted to type 'Int' but it was a 'String'`.
+`.12`; the REST API gives `.120`) and `+00:00` comes out as `Z`. `Long` is a whole number of 64 bits
+(`9223372036854775807` came back as written), `Int` one of 32 bits. A value that does not fit the type of its
+field is refused when it is written (`lds:data`), so a query gives back what was written.
 
 ## Errors and limits
 
@@ -562,31 +582,31 @@ converted to type 'Int' but it was a 'String'`.
 
 | Case | `message` (start) | `classification` |
 |---|---|---|
-| Not GraphQL, or empty | `Invalid syntax with offending token '<EOF>' at line 1 column 33` | `InvalidSyntax` |
+| Not GraphQL | `Invalid syntax with offending token '<EOF>' at line 1 column 32` | `InvalidSyntax` |
 | A field the schema does not have | `Validation error (FieldUndefined@[PersonById/nmae]) : Field 'nmae' in type 'Person' is undefined` | `ValidationError` |
 | A required argument left out | `Validation error (MissingFieldArgument@[PersonById]) : Missing field argument 'id'` | `ValidationError` |
 | An argument of the wrong type | `Validation error (WrongType@[Person]) : argument 'first' with value 'StringValue{value='2'}' is not a valid 'Int' ...` | `ValidationError` |
 | A mutation | `Validation error (UnknownOperation): The 'Mutation' operation is not supported by the schema` | `ValidationError` |
 | Several operations, no `operationName` | `Must provide operation name if query contains multiple operations.` | `ValidationError` |
-| No document with the id at the time | `The field at path '/PersonById' was declared as a non null type, ...` | `NullValueInNonNullableField` |
+| A `snapshot` that is not a time | `The query parameter snapshot 'yesterday' is not an ISO-8601 time. ...` | `ValidationError` |
 | A negative `first` or `last` | `Exception while fetching data (/Person) : The page size must not be negative: 'first'=-1` | `DataFetchingException` |
-| The document lacks the link field | `Exception while fetching data (/PersonById/employer) : ...` | `DataFetchingException` |
+| A link with `!` whose target is not there | `The field at path '/TagById/owner' was declared as a non null type, ...` | `NullValueInNonNullableField` |
 | `__type` or `__schema` twice | `This request is not asking for introspection in good faith - Query.__type is present too often!` | `BadFaithIntrospection` |
+| Fields too deep | `Query depth 101 exceeds maximum allowed depth 100` | `ValidationError` |
+| Too long | `More than 15,000 'grammar' tokens have been presented. ...` | `InvalidSyntax` |
 
 | Status | When |
 |---|---|
 | `200` | LDS read the request; see `errors` |
+| `400`, `{"errors":[{"message": ...}]}` | LDS could not read the request: `The body is empty`, `The body has no "query" text`, `The body is not a JSON object with the field "query"`, `The body cannot be read as JSON at line 1, column 1: ...`, `The variables are not a JSON object`, and for a GET `The request has no "query" parameter` or `more than one "query" parameter` |
 | `400`, text `Unsupported namespace: "graphql"` | no GraphQL API: a JSON Schema model, or `graphql.enabled` is `false` |
 | `404` | `/graphql` when `http.prefix` moves the API |
 | `405` | a method other than GET, POST, OPTIONS |
-| `415` | a POST with another content type, none, or one in capital letters |
-| `500`, no body | a request LDS could not read: no `query`, a JSON array or a body that is not JSON, `variables` that is not an object. Not finished: it should be `400`; the reason is only in the log |
+| `415`, `{"errors":[{"message": "Unsupported Content-Type: ..."}]}` | a POST with another content type, none, or one in capital letters |
+| `500`, no body | the query failed in a way LDS did not foresee; the reason is in the log |
 | `503` | LDS is stopping |
 
 Limits: at most 15000 tokens, 200000 spaces and line breaks and 1048576 characters in a query; fields at most
 100 deep (a link is one level, a list read in pages three: the field, `edges`, `node`); at most 100000 fields;
 `__type` and `__schema` once each, and no `fields` inside `fields` in a query for the schema. A query over a
-limit is not run. `first` has no limit.
-
-Not finished: a `snapshot` that is not a time is not refused: the query is answered as of now. See
-[time-machine.md](time-machine.md#the-rules-of-the-time).
+limit is not run. `first` has no limit in a list of documents; in a search it is at most 100.

@@ -415,7 +415,8 @@ changing it:
   a skill links the documentation of the site for depth instead of copying it. A change of behaviour that a skill
   shows changes the skill after the release that holds it, as the documents.
 - **Honest about the limits** where the user meets them: no authentication, a JSON Schema model gives no GraphQL
-  API, one namespace, the model is read at start, search only of `languageText` fields, links not checked.
+  API, one namespace, the model is read at start, search by the stems of a language only in an object with
+  `languageCode` and `languageText` (every other text word for word), links not checked.
 - **A GraphQL schema is the model it makes first**, JSON Schema on request.
 - `claude plugin validate .` passes (its warning that there is no version is meant). The plugin starts no CI: CI
   runs only for the Maven paths.

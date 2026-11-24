@@ -10,6 +10,8 @@ description: >
   "load this CSV into LDS", "export to CSV", "why was my write refused". For the model use lds:model, for
   GraphQL queries lds:query, to run LDS lds:start, to keep it running lds:operate.
 compatibility: LDS 3.0; Claude Code
+metadata:
+  lds-version: 3.0.1
 ---
 
 # Reading and writing data in LDS
@@ -65,18 +67,23 @@ curl -s -w '\n%{http_code}\n' -X PUT "$LDS/ns/Person/ola?timestamp=2020-01-01T00
 ```
 
 ```
-{"saga-execution-id":"01a1ff30-e5d3-732d-8518-c0651dc9af03"}
+{"saga-execution-id":"01a20fe2-e905-7e09-bb15-5f76c62a5f07"}
 201
 ```
 
 - `PUT` and `POST` do the same. The body is the **whole document**; there is no `PATCH`. The id is chosen by
   the writer; LDS makes none. 201 also when the document existed: the write added a version.
-- Always send `-H 'Content-Type: application/json'`: plain `curl -d` sends a form type, which LDS answers 500.
-- The answer is the id of the saga that carried the write, not the document.
+- Always send `-H 'Content-Type: application/json'`: plain `curl -d` sends a form type, which LDS answers 415
+  `Unsupported Content-Type: application/x-www-form-urlencoded. ...`.
+- The answer is the id of the saga that carried the write, not the document. It comes when the write is done.
+- A field written as `null` is left out: `{"name": "A", "employer": null}` is read back as `{"name": "A"}`.
 - Before writing, LDS checks the document against the model (400 when it does not fit, nothing written). It
   does **not** check that a link's target exists: LDS is a time machine, so a link may point at a document
   written later, or deleted. Do not treat such links as errors.
 - A field the model does not have is stored and given back (unless a JSON Schema model forbids it).
+- With search on, `?searchable=true` on a write answers when a search finds it, at most 10 seconds later, with the
+  header `LDS-Searchable: true` (or `false` when search did not find it in time). Use it when a search comes right
+  after the write.
 
 ## Time: valid time, as-of reads, history
 
@@ -97,7 +104,7 @@ curl -s -w '\n%{http_code}\n' -X PUT "$LDS/ns/Person/ola?timestamp=2020-01-01T00
 | Request | Answer |
 |---|---|
 | `GET /ns/<Entity>/<id>` | 200 the document, 404 (no body) when there is none at that time |
-| `GET /ns/<Entity>` | 200 every document as of the instant, in the order of the ids, **without ids**, no pages |
+| `GET /ns/<Entity>` | 200 every document as of the instant, in the order of the ids (by Unicode code point), **without ids**, no pages |
 | `GET /ns/<Entity>/<id>?timeline` | 200 every version, 404 when there is none |
 | `GET /ns/<Entity>/<id>/<field>` | 200 the part: an object as it is, a single value as `["Ola"]`, missing as `[null]` |
 
@@ -114,25 +121,23 @@ are. A delete of an id never written also writes a tombstone.
 ## Parts and links
 
 ```sh
-curl -s -w '\n%{http_code}\n' -X PUT "$LDS/ns/Person/ola/address?sync=true" -H "$J" \
+curl -s -w '\n%{http_code}\n' -X PUT "$LDS/ns/Person/ola/address" -H "$J" \
      -d '{"street": "Torggata 5", "city": "Oslo"}'
-curl -s -w '\n%{http_code}\n' -X PUT "$LDS/ns/Person/kari/employer/Company/acme?sync=true"
+curl -s -w '\n%{http_code}\n' -X PUT "$LDS/ns/Person/ola/employer/Company/globex"
 ```
 
-Both are answered `200` with `{"saga-execution-id":"..."}`.
+Both are answered `200` with `{"saga-execution-id":"..."}` when the write is done.
 
 - A part is a field by its path. `PUT` replaces that field (not a merge), checks the whole document, and writes
   the whole document as a new version. `DELETE` of a part removes the field (not checked against the model).
 - A link has its own address, `/<link field>/<TargetEntity>/<target id>`. `PUT` adds it (a list gets it at its
   end; a single link field is replaced), `GET` answers 200 when it is there and 404 when not, `DELETE` removes
-  it and is always 200. A link there already is answered 200 with no body, and nothing is written.
+  it and is always 200, with no body. A link there already is answered 200 with no body, and nothing is written.
 - Both read the document at the time of the request first: when it has none then, the answer is 404.
-- **Send `sync=true` with parts and links.** Whole documents wait for the write by default; parts and links do
-  not, so a read right after may not see the change. With `sync=true` they wait too.
+- Parts and links wait for the write, as whole documents do; `sync=false` answers before it is done.
 - Paths stop at a list (`/ns/Company/c/about/languageText` is 400) and, with a GraphQL schema as model, at an
   embedded object (`/ns/Person/ola/address/city` is 400): write the whole part instead.
-- Two writes to parts or links of **one** document at the same moment can lose one change (each rewrites the
-  whole document). Send them one after another.
+- Writes of one document are done one at a time, in the order they come.
 
 ## Sending again
 
@@ -167,8 +172,9 @@ Both take `LDS` (with the `http.prefix` when there is one) and `NS` from the env
   and a restart (`lds:model`).
 - The list of an entity type over REST has no ids and no pages; with a model of JSON Schema files there is no
   GraphQL API either, so ids come only from the documents themselves.
-- Ids with `+` or `%` cannot be used, and field names with `.` come back as nested objects. With the memory
-  provider ids starting with `~` or a letter outside ASCII are missing from lists, and everything is gone when
-  LDS stops (`lds:start` for keeping data).
-- Search (GraphQL only, needs Solr) covers only text fields named `languageText`.
-- A body that is not JSON gives 500 with no text, not 400; the reason is in the log of LDS.
+- An id is free text of at most 1024 bytes of UTF-8 with no `/` and no control character; percent-encode it in the
+  address (`jq -rn --arg id "a+b" '$id|@uri'`). Field names with `.` come back as nested objects. With the memory
+  provider everything is gone when LDS stops (`lds:start` for keeping data).
+- Search (GraphQL only, needs Solr) finds documents by the words of their texts; not by numbers, dates or links.
+- A body that is not JSON is answered 400 with the line and column where reading stopped; another content type
+  415.

@@ -13,10 +13,9 @@ Do not mention GraphQL, JSON Schema, directives or entity types to the user unle
    several other things refer to the same one?" Yes to either: it is a record of its own (an entity type). No to
    both, and it only ever lives inside one other thing: it is a part (an embedded type).
 3. "How do you tell two of them apart? Is there a number or code people already use?" That becomes the id in the
-   address (`/ns/Member/M-17`). Keep ids to ASCII letters, digits, `-`, `_` and `.`, and well under 200
-   characters: a `+` or a `%` in an id cannot be used, and with LDS in memory an id that starts with `~` or a
-   letter outside ASCII is left out of the list of documents. If there is no natural key, suggest one the user's
-   system can make (a UUID, a running number).
+   address (`/ns/Member/M-17`). An id is any text without a `/` or a control character, of at most 1024 bytes in
+   UTF-8; ASCII letters, digits, `-`, `_` and `.` are the easiest to write in an address. If there is no natural
+   key, suggest one the user's system can make (a UUID, a running number).
 
 ## Round 2: the facts of each thing
 
@@ -27,8 +26,9 @@ For each thing, ask: "What do you write down about one of them?" For each fact:
 | "Is it a word or a text?" | `String` |
 | "A yes/no?" | `Boolean` |
 | "A moment in time (date and clock time)?" | `DateTime`, written `2026-11-20T10:00:00Z` |
-| "A calendar date only?" | `Date` (`2026-11-20`, not checked in a GraphQL schema) or a `DateTime` at midnight UTC (checked) |
-| "A number? Whole or with decimals? Can it be above about two billion?" | `Int` for whole numbers up to 2147483647; `Float` for decimals and larger whole numbers. Neither is checked in a GraphQL schema. |
+| "A calendar date only?" | `Date`, written `2026-11-20` |
+| "A clock time only?" | `Time`, written `10:00:00Z` or `10:00:00+01:00` |
+| "A number? Whole or with decimals? Can it be above about two billion?" | `Int` for whole numbers up to 2147483647; `Long` for larger whole numbers; `Float` for decimals |
 | "Is it one of a fixed set of values?" Ask for the list. | an enum |
 | "Can there be several?" | a list: `[String]`, `[Address]` |
 | "Must every one have it?" | `!` (required) |
@@ -39,7 +39,7 @@ Leave out facts that only say when the record was made or changed, or whether it
 version with the time it holds from (round 4).
 
 Ask "Must every one have it?" with care: a required field must be in every document written, also in old data that
-lacks it, and a `null` in a checked field is refused. When in doubt, leave it optional.
+lacks it, and a field sent as `null` counts as missing. When in doubt, leave it optional.
 
 ## Round 3: how things point at each other
 
@@ -69,9 +69,11 @@ lacks it, and a `null` in a checked field is refused. When in doubt, leave it op
 
 ## Round 5: search and use
 
-1. "Do you need to find records by words in a text?" Search covers only fields named `languageText`, needs a
-   GraphQL schema, search turned on and Solr. Model such texts as `[Text]` with `languageCode` and
-   `languageText` (see [graphql-schema.md](graphql-schema.md#search)).
+1. "Do you need to find records by words in a text?" Search finds a record by every text in it; it needs a GraphQL
+   schema, search turned on and Solr. "Is the text in a language, such as a description?" Model it as `[Text]`
+   with `languageCode` and `languageText`, so search finds other forms of its words (see
+   [graphql-schema.md](graphql-schema.md#search)). "Are there kinds of records no one searches for?" Mark them
+   `@domain(searchable: false)`.
 2. "Will programs query this, following links both ways?" Yes: a GraphQL schema. "Must every value be checked
    strictly, with limits such as a smallest number, and is querying less important?" Then JSON Schema files. Say what
    each gives up ([SKILL.md](../SKILL.md#the-two-forms)).
