@@ -3,6 +3,8 @@ package io.descoped.lds.core.domain;
 import io.descoped.lds.core.utils.RequestTime;
 import io.undertow.server.HttpServerExchange;
 import io.undertow.util.AttachmentKey;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -39,12 +41,15 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public final class DocumentLocks {
 
+    private static final Logger LOG = LoggerFactory.getLogger(DocumentLocks.class);
     private static final AttachmentKey<Held> HELD = AttachmentKey.create(Held.class);
+    private static final Duration BEHIND = Duration.ofSeconds(1);
 
     private final Stripe[] stripes;
     private final Duration timeout;
     private final Clock clock;
     private final AtomicReference<Instant> lastTurn = new AtomicReference<>(Instant.MIN);
+    private final AtomicBoolean clockBehind = new AtomicBoolean();
 
     /**
      * Locks with 1024 stripes, waited for at most 30 seconds.
@@ -95,6 +100,17 @@ public final class DocumentLocks {
         Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
         Instant turn = lastTurn.accumulateAndGet(now,
                 (last, current) -> current.isAfter(last) ? current : last.plus(1, ChronoUnit.MICROS));
+        // a clock that has gone back by more than a moment (or one that ran ahead and was put right) puts every write
+        // at the time of the last turn until the clock has caught up, and a restart forgets that time: say so, once
+        boolean behind = now.plus(BEHIND).isBefore(turn);
+        if (clockBehind.compareAndSet(!behind, behind)) {
+            if (behind) {
+                LOG.warn("The clock is at {}, behind the time of the last write ({}): writes that name no time are "
+                        + "given a time a microsecond after the write before until the clock has caught up", now, turn);
+            } else {
+                LOG.info("The clock has caught up with the time of the writes ({})", now);
+            }
+        }
         return ZonedDateTime.ofInstant(turn, RequestTime.UTC);
     }
 
