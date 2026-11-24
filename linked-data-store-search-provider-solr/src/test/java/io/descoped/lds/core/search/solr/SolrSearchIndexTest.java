@@ -31,6 +31,7 @@ import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
@@ -534,24 +535,54 @@ class SolrSearchIndexTest {
 
     /**
      * The schema is put in by the first index that uses the core, and an index that finds it there leaves it; one
-     * that finds another mark puts it in again over the fields that are there. Two indexes that put it in at the
-     * same time both end with it.
+     * that finds another mark puts it in again over the fields that are there. Several indexes that put it in at the
+     * same time, as several LDS starting at once, all end with it: Solr changes its configuration with no lock, so
+     * one may read it while another writes it, or write over what another wrote.
      */
     @Test
     void theSchemaIsPutInWhenTheCoreDoesNotHaveIt() throws Exception {
         setMark("not-this-schema");
-        SearchIndex first = new SolrSearchIndex(Solr10.url());
-        SearchIndex second = new SolrSearchIndex(Solr10.url());
+        List<String> ids = List.of("first", "second", "third", "fourth", "fifth", "sixth");
         List<Throwable> errors = java.util.Collections.synchronizedList(new ArrayList<>());
-        Thread a = Thread.ofVirtual().start(() -> put(first, "first", errors));
-        Thread b = Thread.ofVirtual().start(() -> put(second, "second", errors));
-        a.join();
-        b.join();
+        CountDownLatch ready = new CountDownLatch(ids.size());
+        List<Thread> threads = new ArrayList<>();
+        for (String id : ids) {
+            SearchIndex index = new SolrSearchIndex(Solr10.url());
+            threads.add(Thread.ofVirtual().start(() -> {
+                ready.countDown();
+                try {
+                    ready.await(); // every index puts the schema in at the same time
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                put(index, id, errors);
+            }));
+        }
+        for (Thread thread : threads) {
+            thread.join();
+        }
 
         assertThat(errors).isEmpty();
-        assertThat(mark()).isEqualTo(new SolrSchema().markOfThisSchema());
-        assertThat(ids(awaitHits(() -> search("mark", at(2000)), 2))).containsExactlyInAnyOrder("first", "second");
+        assertThat(userProperty(SolrSchema.MARK)).isEqualTo(new SolrSchema().markOfThisSchema());
+        assertThat(userProperty(SolrSearchIndex.AUTO_CREATE_FIELDS)).isEqualTo("false");
+        assertThat(ids(awaitHits(() -> search("mark", at(2000)), ids.size()))).containsExactlyInAnyOrderElementsOf(ids);
         // a field the schema does not have is refused: Solr does not make one
+        assertThat(post("/update?commit=true", "[{\"id\": \"x\", \"unknown_field\": \"y\"}]")).isEqualTo(400);
+    }
+
+    /**
+     * A core with the mark of this schema whose default chain of updates makes fields again (another wrote over the
+     * configuration) is not taken as having the schema: the index puts it in again.
+     */
+    @Test
+    void aCoreWithTheMarkThatMakesFieldsAgainIsPutInAgain() throws Exception {
+        setMark(new SolrSchema().markOfThisSchema());
+        assertThat(post("/config", "{\"set-user-property\": {\"" + SolrSearchIndex.AUTO_CREATE_FIELDS
+                + "\": \"true\"}}")).isEqualTo(200);
+
+        put(new SolrSearchIndex(Solr10.url()), "again", new ArrayList<>());
+
+        assertThat(userProperty(SolrSearchIndex.AUTO_CREATE_FIELDS)).isEqualTo("false");
         assertThat(post("/update?commit=true", "[{\"id\": \"x\", \"unknown_field\": \"y\"}]")).isEqualTo(400);
     }
 
@@ -682,12 +713,12 @@ class SolrSearchIndexTest {
                 .isEqualTo(200);
     }
 
-    private static String mark() throws Exception {
+    private static String userProperty(String name) throws Exception {
         HttpURLConnection connection = (HttpURLConnection) URI.create(Solr10.url() + "/config/overlay").toURL()
                 .openConnection();
         try (InputStream in = connection.getInputStream()) {
             return tools.jackson.databind.json.JsonMapper.builder().build().readTree(in)
-                    .path("overlay").path("userProps").path(SolrSchema.MARK).asString();
+                    .path("overlay").path("userProps").path(name).asString();
         } finally {
             connection.disconnect();
         }
