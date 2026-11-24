@@ -71,10 +71,9 @@ Decided by the owner (D1, D2): a write does not wait for the search index, and n
 One exception, asked for by the client (D7, "only when asked"): a write with `searchable=true` waits after its
 saga, with the lock of its document let go, until the queue holds no update of its document, then for the index to
 make it searchable (`SearchWait`, `IndexQueue.holds`, `SearchIndex.refresh`), at most 10 s, and is then answered
-as any write is, with `LDS-Searchable: true` or `false` (exposed by CORS). At most half of the request threads wait
-at once (owner's decision); a write past that is answered when it is done, with `false`. A write reads its body
-blocking, on the worker thread it was handed to (`startBlocking`): Undertow's read without blocking gives a body that
-comes in parts to an I/O thread, which the saga and the wait would block.
+as any write is, with `LDS-Searchable: true` or `false` (exposed by CORS). The wait holds no thread; at most half as
+many writes as there are request threads wait at once (owner's decision), and a write past that is answered when it
+is done, with `false`.
 The last step of the saga adds the update (namespace, entity, id, version with its zone, written or deleted) to
 the index queue (`IndexQueue`, in the search API) and is done. `IndexQueueWorker` in core takes updates in
 batches of at most 100, reads each written document from persistence at its version, sends the batch and waits
@@ -177,6 +176,14 @@ which validates the Jackson tree of the document). A schema that at its root say
   bytes; the bridge and core compare with `IdOrder.CODE_POINTS`, never `String.compareTo` (UTF-16, which puts a
   letter above U+FFFF before one of U+E000 to U+FFFF); Neo4j orders and bounds by the property `idOrder`
   (`IdOrder.key`, indexed with the namespace) of every document node. An id is whole text, no unpaired surrogate.
+- **No thread waits** (owner's rule, 2026-11-24: "No blocking calls should ever be made"). A request is read and
+  answered without a thread that waits for it: a body is read as it comes (`AsyncAnswer.withBody`), a write waits for
+  the lock of its document as a future (`DocumentLocks`), is answered from the completion of its saga and of its wait
+  for search (`AsyncAnswer.afterSaga`), and GraphQL runs with `executeAsync`. A read of the store that is composed
+  runs on a thread of the store's (`StoreReads`), which opens and closes its transaction (the store in memory holds
+  a lock of the thread). A client that only blocks (JDBC, the saga log, the transaction log) is called on a thread of
+  its own, never on an I/O or request thread. No `blockingGet`, `blockingAwait`, `join`, `sleep` or blocking read is
+  added; what is left is listed in the dossier (`blocking-calls-2026-11-24.md`) and goes as its part is revised.
 - **Time.** Document versions are stored and compared as UTC instants.
 - **Transactions** commit only when asked and roll back otherwise.
 - **Always the latest stable version** of every library, plugin, action, image and engine (Neo4j 2026, Solr 10).

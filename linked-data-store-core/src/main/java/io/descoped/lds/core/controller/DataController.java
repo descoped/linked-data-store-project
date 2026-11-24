@@ -13,11 +13,13 @@ import io.descoped.lds.core.saga.SagaExecutionCoordinator;
 import io.descoped.lds.core.saga.SagaRepository;
 import io.descoped.lds.core.schema.SchemaRepository;
 import io.descoped.lds.core.utils.RequestTime;
+import io.undertow.server.Connectors;
 import io.undertow.server.HttpHandler;
 import io.undertow.server.HttpServerExchange;
 import io.undertow.util.Headers;
 import io.undertow.util.HttpString;
 import io.undertow.util.Methods;
+import io.undertow.util.SameThreadExecutor;
 import io.undertow.util.StatusCodes;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,6 +27,8 @@ import org.slf4j.LoggerFactory;
 import java.time.ZonedDateTime;
 import java.util.Arrays;
 import java.util.Deque;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.stream.Collectors;
 
 import static java.util.Optional.ofNullable;
@@ -72,28 +76,18 @@ class DataController implements HttpHandler {
             }
             resourceContext = ResourceContext.createResourceContext(specification, rawRelativePath(exchange), timestamp);
             if (isWrite(exchange)) {
-                // One write at a time to a document, from before it reads the document to the end of its saga. The
-                // version of a write without a timestamp is the time it got the lock, so it is after the version of
-                // the write before it.
-                if (!documentLocks.acquire(exchange, resourceContext.getNamespace(), resourceContext.getFirstElement().name(),
-                        resourceContext.getFirstElement().id())) {
-                    // A saga that does not complete keeps the lock of its document (and of the others of its stripe)
-                    // until LDS is restarted; this says where.
-                    LOG.warn("A write of /{}/{}/{} waited {} for the lock of the document and was answered 503",
-                            resourceContext.getNamespace(), resourceContext.getFirstElement().name(),
-                            resourceContext.getFirstElement().id(), documentLocks.timeout());
-                    exchange.setStatusCode(StatusCodes.SERVICE_UNAVAILABLE);
-                    exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, TEXT_PLAIN);
-                    exchange.getResponseSender().send("The document is being written by another request. Try again.");
-                    return;
+                // One write at a time to a document, from before it reads the document to the end of its saga. A
+                // write that waits for the lock holds no thread: it goes on, on a worker thread, when it has it.
+                ResourceContext requested = resourceContext;
+                CompletableFuture<Boolean> taken = documentLocks.acquire(exchange, requested.getNamespace(),
+                        requested.getFirstElement().name(), requested.getFirstElement().id());
+                if (taken.isDone()) {
+                    write(exchange, requested, taken.getNow(false));
+                } else {
+                    exchange.dispatch(SameThreadExecutor.INSTANCE,
+                            () -> taken.thenAccept(got -> goOn(exchange, ex -> write(ex, requested, got))));
                 }
-                if (searchWait != null) {
-                    searchWait.attachIfAsked(exchange);
-                }
-                if (!hasTimestamp(exchange)) {
-                    resourceContext = ResourceContext.createResourceContext(specification, rawRelativePath(exchange),
-                            ZonedDateTime.now(RequestTime.UTC));
-                }
+                return;
             }
         } catch (ResourceException e) {
             exchange.setStatusCode(StatusCodes.BAD_REQUEST);
@@ -101,7 +95,66 @@ class DataController implements HttpHandler {
             exchange.getResponseSender().send(e.getMessage());
             return;
         }
+        handle(exchange, resourceContext);
+    }
 
+    /*
+     * Goes on with a write that has waited for the lock of its document, on a worker thread, as a handler of the
+     * request. A request whose connection is gone, or that the worker refuses (LDS is stopping), lets the lock go.
+     */
+    private static void goOn(HttpServerExchange exchange, HttpHandler handler) {
+        try {
+            // the request is not in a call of a handler here, so Undertow runs this on a worker thread at once
+            exchange.dispatch(() -> {
+                if (!exchange.getConnection().isOpen()) {
+                    DocumentLocks.letGoAfterSaga(exchange);
+                    return;
+                }
+                Connectors.executeRootHandler(handler, exchange);
+            });
+        } catch (RejectedExecutionException e) {
+            DocumentLocks.letGoAfterSaga(exchange);
+            exchange.setStatusCode(StatusCodes.SERVICE_UNAVAILABLE);
+            exchange.endExchange();
+        }
+    }
+
+    /*
+     * A write, when it has asked for the lock of its document: refused when it did not get it in time, else handled.
+     * The version of a write without a timestamp is the time it got the lock, so it is after the version of the
+     * write before it.
+     */
+    private void write(HttpServerExchange exchange, ResourceContext resourceContext, boolean taken) throws Exception {
+        if (!taken) {
+            // A saga that does not complete keeps the lock of its document (and of the others of its stripe) until
+            // LDS is restarted; this says where.
+            LOG.warn("A write of /{}/{}/{} waited {} for the lock of the document and was answered 503",
+                    resourceContext.getNamespace(), resourceContext.getFirstElement().name(),
+                    resourceContext.getFirstElement().id(), documentLocks.timeout());
+            exchange.setStatusCode(StatusCodes.SERVICE_UNAVAILABLE);
+            exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, TEXT_PLAIN);
+            exchange.getResponseSender().send("The document is being written by another request. Try again.");
+            return;
+        }
+        if (searchWait != null) {
+            searchWait.attachIfAsked(exchange);
+        }
+        ResourceContext context = resourceContext;
+        if (!hasTimestamp(exchange)) {
+            try {
+                context = ResourceContext.createResourceContext(specification, rawRelativePath(exchange),
+                        ZonedDateTime.now(RequestTime.UTC));
+            } catch (ResourceException e) {
+                exchange.setStatusCode(StatusCodes.BAD_REQUEST);
+                exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, TEXT_PLAIN);
+                exchange.getResponseSender().send(e.getMessage());
+                return;
+            }
+        }
+        handle(exchange, context);
+    }
+
+    private void handle(HttpServerExchange exchange, ResourceContext resourceContext) throws Exception {
         /*
          * NOTE: Must check reference before embedded, because ref is also an embedded resource.
          */

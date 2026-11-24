@@ -57,6 +57,15 @@ public class NamespaceController implements HttpHandler {
         this.sec = writes.sec();
     }
 
+    /**
+     * The locks that let one write at a time to a document.
+     *
+     * @return the locks of the documents
+     */
+    public DocumentLocks documentLocks() {
+        return documentLocks;
+    }
+
     @Override
     public void handleRequest(HttpServerExchange exchange) throws Exception {
         String requestPath = exchange.getRelativePath();

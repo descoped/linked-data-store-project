@@ -15,6 +15,7 @@ import io.descoped.lds.core.controller.CORSHandler;
 import io.descoped.lds.core.health.Readiness;
 import io.descoped.lds.core.health.ReadinessHandler;
 import io.descoped.lds.core.controller.NamespaceController;
+import io.descoped.lds.core.domain.DocumentLocks;
 import io.descoped.lds.core.domain.SearchWait;
 import io.descoped.lds.core.persistence.PersistenceConfigurator;
 import io.descoped.lds.core.saga.SagaExecutionCoordinator;
@@ -85,6 +86,7 @@ public class UndertowApplication {
 
     private static final Logger LOG = LoggerFactory.getLogger(UndertowApplication.class);
     private final RxJsonPersistence persistence;
+    private final DocumentLocks documentLocks;
     private final Specification specification;
     private final Undertow server;
     /** In front of every handler but the CORS handler: counts the requests in flight, and refuses new ones when the application stops. */
@@ -142,6 +144,7 @@ public class UndertowApplication {
                         NamespaceController namespaceController, Indexing indexing,
                         DynamicConfiguration configuration) {
         this.specification = specification;
+        this.documentLocks = namespaceController.documentLocks();
         this.sagaRecoveryTrigger = sagas.recoveryTrigger();
         this.host = configuration.find("http.host").orElse(null);
         this.port = port;
@@ -741,6 +744,19 @@ public class UndertowApplication {
 
     public SagaRecoveryTrigger getSagaRecoveryTrigger() {
         return sagaRecoveryTrigger;
+    }
+
+    /**
+     * How many requests LDS handles at once: the worker threads of Undertow.
+     *
+     * @return the request threads
+     */
+    public int getRequestThreads() {
+        return REQUEST_THREADS;
+    }
+
+    public DocumentLocks getDocumentLocks() {
+        return documentLocks;
     }
 
     public Undertow getUndertowServer() {

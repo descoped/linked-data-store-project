@@ -1,10 +1,10 @@
 package io.descoped.lds.core.health;
 
-import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.reactivex.Range;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.api.search.IndexQueue;
 import io.descoped.lds.api.search.SearchIndex;
+import io.descoped.lds.core.persistence.StoreReads;
 import io.descoped.lds.core.txlog.TxlogRawdataPool;
 import io.reactivex.rxjava3.core.Flowable;
 import io.reactivex.rxjava3.core.Scheduler;
@@ -80,8 +80,8 @@ public final class Readiness implements AutoCloseable {
     }
 
     /**
-     * The store answers a read of one document of an entity type, in a read transaction opened and closed on the
-     * check's thread.
+     * The store answers a read of one document of an entity type, in a read transaction opened and closed on a
+     * thread of the store's ({@link StoreReads}); no thread waits for it.
      *
      * @param persistence the store
      * @param namespace   the namespace
@@ -89,13 +89,10 @@ public final class Readiness implements AutoCloseable {
      * @return this
      */
     public Readiness persistence(RxJsonPersistence persistence, String namespace, String entity) {
-        return check(new ReadinessCheck("persistence", Single.fromCallable(() -> {
-            try (Transaction transaction = persistence.createTransaction(true)) {
-                persistence.readDocuments(transaction, ZonedDateTime.now(Clock.systemUTC()), namespace, entity,
-                        Range.first(1)).count().blockingGet();
-            }
-            return ReadinessCheck.Result.up();
-        }).subscribeOn(blocking), Health.DOWN));
+        return check(new ReadinessCheck("persistence", StoreReads.single(persistence,
+                        transaction -> persistence.readDocuments(transaction, ZonedDateTime.now(Clock.systemUTC()),
+                                namespace, entity, Range.first(1)).count())
+                .map(_ -> ReadinessCheck.Result.up()), Health.DOWN));
     }
 
     /**

@@ -9,6 +9,7 @@ import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.json.JsonDocument;
 import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
+import io.descoped.lds.core.domain.DocumentLocks;
 import io.descoped.lds.test.client.ResponseHelper;
 import io.descoped.lds.test.client.TestClient;
 import io.descoped.lds.test.server.TestServer;
@@ -27,13 +28,17 @@ import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
+import static org.awaitility.Awaitility.await;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
@@ -128,6 +133,51 @@ public class ManagedResourceHandlerTest {
         assertTrue(refused.getFormattedMessage().contains("$.name: integer found, string expected"),
                 refused.getFormattedMessage());
         assertFalse(refused.getThreadName().contains("I/O"), refused.getThreadName());
+    }
+
+    /**
+     * Writes that wait, for the rest of their body or for the lock of their document, hold no request thread: more
+     * writes of one document than LDS has request threads, each with a part of its body sent, wait, and a read is
+     * answered meanwhile. Then each write is sent the rest of its body, and each is answered.
+     */
+    @Test
+    public void thatWritesThatWaitHoldNoRequestThread() throws Exception {
+        DocumentLocks locks = server.getApplication().getDocumentLocks();
+        int writes = server.getApplication().getRequestThreads() + 8;
+        byte[] body = "{\"contacts\":[],\"name\":\"waits\"}".getBytes(StandardCharsets.UTF_8);
+        byte[] head = ("PUT /data/provisionagreement/waits?sync=true HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n"
+                + "Content-Type: application/json\r\nContent-Length: " + body.length + "\r\n\r\n")
+                .getBytes(StandardCharsets.US_ASCII);
+        List<Socket> sockets = new ArrayList<>();
+        try {
+            for (int i = 0; i < writes; i++) {
+                Socket socket = new Socket("localhost", server.getTestServerServicePort());
+                sockets.add(socket);
+                socket.getOutputStream().write(head);
+                socket.getOutputStream().write(body, 0, 10);
+                socket.getOutputStream().flush();
+            }
+            // one has the lock and waits for the rest of its body; each of the others waits for the lock
+            await().atMost(Duration.ofSeconds(10)).pollInterval(Duration.ofMillis(5))
+                    .until(() -> locks.waiting() == writes - 1);
+
+            CompletableFuture.runAsync(() -> client.get("/data/provisionagreement/waits-not").expect404NotFound())
+                    .get(5, TimeUnit.SECONDS);
+
+            for (Socket socket : sockets) {
+                socket.getOutputStream().write(body, 10, body.length - 10);
+                socket.getOutputStream().flush();
+            }
+            for (Socket socket : sockets) {
+                String answer = new String(socket.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+                assertEquals(answer.substring(0, answer.indexOf("\r\n")), "HTTP/1.1 201 Created");
+            }
+        } finally {
+            for (Socket socket : sockets) {
+                socket.close();
+            }
+        }
+        assertEquals(locks.waiting(), 0);
     }
 
     /*

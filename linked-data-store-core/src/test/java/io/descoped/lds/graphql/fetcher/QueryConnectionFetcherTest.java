@@ -87,10 +87,10 @@ class QueryConnectionFetcherTest {
     void theNextPageStartsAfterTheLastEdgeOfThePageBefore() {
         QueryConnectionFetcher fetcher = new QueryConnectionFetcher(index(5), persistence(Set.of()), "ns", "Search");
 
-        Connection<Map<String, Object>> page1 = fetcher.search("text", null, false, SNAPSHOT, Range.first(2));
-        Connection<Map<String, Object>> page2 = fetcher.search("text", null, false, SNAPSHOT,
+        Connection<Map<String, Object>> page1 = page(fetcher, Range.first(2));
+        Connection<Map<String, Object>> page2 = page(fetcher,
                 Range.firstAfter(2, page1.getPageInfo().getEndCursor().getValue()));
-        Connection<Map<String, Object>> page3 = fetcher.search("text", null, false, SNAPSHOT,
+        Connection<Map<String, Object>> page3 = page(fetcher,
                 Range.firstAfter(2, page2.getPageInfo().getEndCursor().getValue()));
 
         assertThat(ids(page1)).containsExactly("d0", "d1");
@@ -104,14 +104,14 @@ class QueryConnectionFetcherTest {
     void lastWithoutBeforeGivesTheEndOfTheResult() {
         QueryConnectionFetcher fetcher = new QueryConnectionFetcher(index(25), persistence(Set.of()), "ns", "Search");
 
-        assertThat(ids(fetcher.search("text", null, false, SNAPSHOT, Range.last(2)))).containsExactly("d23", "d24");
+        assertThat(ids(page(fetcher, Range.last(2)))).containsExactly("d23", "d24");
     }
 
     @Test
     void aResultThatIsLeftOutDoesNotMoveTheCursorsAfterIt() {
         QueryConnectionFetcher fetcher = new QueryConnectionFetcher(index(4), persistence(Set.of("d1")), "ns", "Search");
 
-        Connection<Map<String, Object>> page = fetcher.search("text", null, false, SNAPSHOT, Range.first(4));
+        Connection<Map<String, Object>> page = page(fetcher, Range.first(4));
 
         assertThat(ids(page)).containsExactly("d0", "d2", "d3");
         assertThat(page.getEdges()).extracting(edge -> QueryConnectionCursor.fromValue(edge.getCursor().getValue()).getIndex())
@@ -122,19 +122,24 @@ class QueryConnectionFetcherTest {
     void aPageWhoseResultsAreAllLeftOutStillLeadsToTheNextPage() {
         QueryConnectionFetcher fetcher = new QueryConnectionFetcher(index(4), persistence(Set.of("d0", "d1")), "ns", "Search");
 
-        Connection<Map<String, Object>> page = fetcher.search("text", null, false, SNAPSHOT, Range.first(2));
+        Connection<Map<String, Object>> page = page(fetcher, Range.first(2));
 
         assertThat(page.getEdges()).isEmpty();
         assertThat(page.getPageInfo().isHasNextPage()).isTrue();
         assertThat(page.getPageInfo().isHasPreviousPage()).isFalse();
         String endCursor = page.getPageInfo().getEndCursor().getValue();
         assertThat(QueryConnectionCursor.fromValue(endCursor).getIndex()).isEqualTo(1L);
-        assertThat(ids(fetcher.search("text", null, false, SNAPSHOT, Range.firstAfter(2, endCursor)))).containsExactly("d2", "d3");
+        assertThat(ids(page(fetcher, Range.firstAfter(2, endCursor)))).containsExactly("d2", "d3");
         // past the end of the result there is no page
-        Connection<Map<String, Object>> beyond = fetcher.search("text", null, false, SNAPSHOT, Range.firstAfter(2,
+        Connection<Map<String, Object>> beyond = page(fetcher, Range.firstAfter(2,
                 new QueryConnectionCursor(3).getValue()));
         assertThat(beyond.getEdges()).isEmpty();
         assertThat(beyond.getPageInfo().isHasNextPage()).isFalse();
+    }
+
+    /* The page the fetcher gives for the words "text" at the snapshot. */
+    private static Connection<Map<String, Object>> page(QueryConnectionFetcher fetcher, Range<String> range) {
+        return fetcher.search("text", null, false, SNAPSHOT, range).blockingGet();
     }
 
     private static List<String> ids(Connection<Map<String, Object>> connection) {
@@ -183,7 +188,7 @@ class QueryConnectionFetcherTest {
     void aHitIsReadAtTheVersionThatMatched() {
         QueryConnectionFetcher fetcher = new QueryConnectionFetcher(index(2), persistence(Set.of()), "ns", "Search");
 
-        assertThat(fetcher.search("text", null, false, SNAPSHOT, Range.first(2)).getEdges()).extracting(Edge::getNode)
+        assertThat(page(fetcher, Range.first(2)).getEdges()).extracting(Edge::getNode)
                 .extracting(node -> ((DocumentKey) node.get("__graphql_internal_document_key")).timestamp())
                 .containsExactly(SNAPSHOT.minusSeconds(1), SNAPSHOT.minusSeconds(2));
     }
