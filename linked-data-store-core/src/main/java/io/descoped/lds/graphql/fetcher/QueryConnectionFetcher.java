@@ -22,7 +22,6 @@ import io.descoped.lds.core.persistence.StoreReads;
 import io.descoped.lds.graphql.GraphQLContext;
 import io.reactivex.rxjava3.core.Flowable;
 import io.reactivex.rxjava3.core.Single;
-import io.reactivex.rxjava3.schedulers.Schedulers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -62,6 +61,7 @@ public class QueryConnectionFetcher implements DataFetcher<CompletableFuture<Con
 
     private final SearchIndex searchIndex;
     private final RxJsonPersistence persistence;
+    private final StoreReads storeReads;
     private final String nameSpace;
     private final String entity;
 
@@ -70,20 +70,23 @@ public class QueryConnectionFetcher implements DataFetcher<CompletableFuture<Con
      *
      * @param searchIndex the searchIndex to use.
      * @param persistence the persistence provider to use
+     * @param storeReads  the threads the store is read on, and a query goes on on
      * @param nameSpace   the namespace.
      * @param entity      the entity name.
      */
-    public QueryConnectionFetcher(SearchIndex searchIndex, RxJsonPersistence persistence, String nameSpace, String entity) {
+    public QueryConnectionFetcher(SearchIndex searchIndex, RxJsonPersistence persistence, StoreReads storeReads,
+                                  String nameSpace, String entity) {
         this.searchIndex = Objects.requireNonNull(searchIndex);
         this.persistence = Objects.requireNonNull(persistence);
+        this.storeReads = Objects.requireNonNull(storeReads);
         this.nameSpace = Objects.requireNonNull(nameSpace);
         this.entity = Objects.requireNonNull(entity);
     }
 
     /**
      * Searches, and gives the page of results when the index and storage have answered; no thread waits for them. The
-     * query goes on, with the fields of the results, on a thread of RxJava's io scheduler: a field may still read
-     * storage and wait for it, which a thread of the index or of storage is not kept for.
+     * query goes on, with the fields of the results, on a thread of queries ({@link StoreReads#queries()}): a field
+     * may still read storage and wait for it, which a thread of the index or of storage is not kept for.
      */
     @Override
     public CompletableFuture<Connection<Map<String, Object>>> get(DataFetchingEnvironment environment) {
@@ -98,7 +101,7 @@ public class QueryConnectionFetcher implements DataFetcher<CompletableFuture<Con
         return search(environment.getArgument("query"), filter,
                 Boolean.TRUE.equals(environment.getArgument("history")), context.getSnapshot(),
                 connectionParameters.getRange())
-                .observeOn(Schedulers.io())
+                .observeOn(storeReads.queries())
                 .toCompletionStage().toCompletableFuture();
     }
 
@@ -219,7 +222,7 @@ public class QueryConnectionFetcher implements DataFetcher<CompletableFuture<Con
      * emptied or restored and the index was not rebuilt; such a hit is left out.
      */
     private Single<Optional<JsonDocument>> readDocument(DocumentKey key) {
-        return StoreReads.maybe(persistence, tx -> persistence.readDocument(tx, key.timestamp(), key.namespace(),
+        return storeReads.maybe(persistence, tx -> persistence.readDocument(tx, key.timestamp(), key.namespace(),
                         key.entity(), key.id()))
                 .map(Optional::of)
                 .defaultIfEmpty(Optional.empty())

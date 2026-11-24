@@ -185,10 +185,14 @@ which validates the Jackson tree of the document). A schema that at its root say
   its own, never on an I/O or request thread. The steps of a saga are synchronous and may block, on the saga's own
   bounded pool (owner's decision, 2026-11-24): an asynchronous step only moves a blocking JDBC call to an unbounded
   pool and loses the back-pressure of the bounded one. Never block an event loop, a request thread or an Rx
-  scheduler other than these: a thread of the store's (`StoreReads`) and RxJava's io scheduler, on which a GraphQL
-  query goes on after a search, because a field may still read the store. No `blockingGet`, `blockingAwait`, `join`,
-  `sleep` or blocking read is added elsewhere; what is left is
-  listed in the dossier (`blocking-calls-2026-11-24.md`) and goes as its part is revised.
+  scheduler other than the application's own in `StoreReads`: its threads of the store, and its threads of queries,
+  on which a GraphQL query goes on after a search, because a field may still read the store. No `blockingGet`,
+  `blockingAwait`, `join`, `sleep` or blocking read is added elsewhere; what is left is listed in the dossier
+  (`blocking-calls-2026-11-24.md`) and goes as its part is revised.
+- **Graceful stop, nothing left behind** (owner's rule, 2026-11-24: LDS is a platform, not a library). Every thread
+  pool, client and connection LDS starts belongs to the application (or, for what is shared in the process, to the
+  server) and is stopped in `UndertowApplication.stop`, in the order the parts need each other; a new one is added
+  there, and to `ApplicationStopTest`. The server shuts RxJava's shared schedulers down after the application.
 - **Time.** Document versions are stored and compared as UTC instants.
 - **Transactions** commit only when asked and roll back otherwise.
 - **Always the latest stable version** of every library, plugin, action, image and engine (Neo4j 2026, Solr 10).
@@ -262,7 +266,7 @@ module makes that module meet them.
   writes, recovery of an unfinished saga by the next write, after a restart and by another instance of the cluster.
 - Core's `ApplicationStopTest` checks the order in which the application stops (`UndertowApplication.stop`): new
   requests are answered 503 while those being handled complete, the running sagas complete, then their thread
-  pool, the saga log pool and the stores.
+  pool, the saga log pool, the index queue and the search index, the threads the store is read on, and the stores.
 - The server's tests are the tests of the image (`*IT`, run by Failsafe after the jars are made, so by `verify`
   and not by `test`). `ServerImageIT` builds the three images with `docker build` and starts each as it is: the
   example model in memory, `/ping` under the prefix and on the port it is given, no health check declared, the

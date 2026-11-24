@@ -7,6 +7,7 @@ import io.descoped.lds.api.persistence.json.JsonDocument;
 import io.descoped.lds.api.persistence.json.JsonTools;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.api.search.IndexQueue;
+import io.descoped.lds.core.persistence.StoreReads;
 import io.descoped.lds.core.persistence.memory.MemoryInitializer;
 import io.reactivex.rxjava3.core.Single;
 import org.junit.jupiter.api.AfterEach;
@@ -39,10 +40,12 @@ class ReadinessTest {
 
     private final RxJsonPersistence persistence = new MemoryInitializer().initialize("ns", Map.of(), Set.of("Person"));
     private Readiness readiness = new Readiness(Duration.ofMillis(300));
+    private final StoreReads storeReads = new StoreReads(2);
 
     @AfterEach
-    void close() {
+    void close() throws InterruptedException {
         readiness.close();
+        storeReads.close(Duration.ofSeconds(5));
     }
 
     private static ReadinessCheck answering(String name, ReadinessCheck.Result result, Health whenItFails) {
@@ -133,7 +136,7 @@ class ReadinessTest {
 
     @Test
     void theStoreIsUpWhenItAnswersAReadAndTakesWritesAfterwards() {
-        readiness.persistence(persistence, "ns", "Person");
+        readiness.persistence(persistence, storeReads, "ns", "Person");
 
         assertThat(report().health()).isEqualTo(Health.UP);
 
@@ -159,7 +162,7 @@ class ReadinessTest {
                         throw e.getCause();
                     }
                 });
-        readiness.persistence(broken, "ns", "Person");
+        readiness.persistence(broken, storeReads, "ns", "Person");
 
         Readiness.Report report = report();
 
@@ -186,7 +189,7 @@ class ReadinessTest {
                     }
                     throw new UnsupportedOperationException(method.getName());
                 });
-        readiness.persistence(hanging, "ns", "Person");
+        readiness.persistence(hanging, storeReads, "ns", "Person");
 
         assertThat(report().health()).isEqualTo(Health.DOWN);
         assertThat(interrupted.await(5, TimeUnit.SECONDS)).as("the check's thread was interrupted").isTrue();

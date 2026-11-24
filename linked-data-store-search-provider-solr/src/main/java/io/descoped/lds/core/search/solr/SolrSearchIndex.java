@@ -26,6 +26,7 @@ import org.apache.solr.common.util.NamedList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -225,6 +226,18 @@ public class SolrSearchIndex implements SearchIndex {
     @Override
     public Completable health() {
         return send(new QueryRequest(new SolrQuery("*:*").setRows(0)));
+    }
+
+    /*
+     * The client holds the JDK's HTTP client and a pool of threads of its own, which close lets go of.
+     */
+    @Override
+    public void close() {
+        try {
+            solrClient.close();
+        } catch (IOException e) {
+            LOG.warn("The client of Solr was not closed cleanly", e);
+        }
     }
 
     @Override

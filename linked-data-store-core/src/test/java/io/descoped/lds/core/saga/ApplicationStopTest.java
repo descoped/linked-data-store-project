@@ -3,9 +3,13 @@ package io.descoped.lds.core.saga;
 import io.descoped.config.DynamicConfiguration;
 import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.json.JsonTools;
+import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.core.UndertowApplication;
+import io.descoped.lds.core.health.ReadinessHandler;
+import io.descoped.lds.core.persistence.StoreReads;
 import io.descoped.lds.test.server.TestServer;
 import io.descoped.lds.test.server.TestServerListener;
+import io.reactivex.rxjava3.core.Single;
 import no.cantara.saga.api.Saga;
 import no.cantara.saga.execution.SagaHandoffResult;
 import no.cantara.saga.execution.adapter.Adapter;
@@ -92,6 +96,28 @@ class ApplicationStopTest {
         server.getApplication().stop();
 
         assertThat(indexQueueThreads()).doesNotContainAnyElementsOf(started);
+    }
+
+    /**
+     * The threads the store is read on, which the readiness check reads it on, have ended when the application has
+     * stopped: after the requests and the index worker, and before the store. A read asked for after that fails at
+     * once.
+     */
+    @Test
+    void theThreadsTheStoreIsReadOnHaveEndedWhenTheApplicationHasStopped() throws Exception {
+        server = start();
+        HttpRequest ready = HttpRequest.newBuilder(URI.create(server.testURL(ReadinessHandler.PATH)))
+                .timeout(Duration.ofSeconds(10)).build();
+        assertThat(http.send(ready, HttpResponse.BodyHandlers.discarding()).statusCode()).isIn(200, 503);
+        StoreReads storeReads = server.getApplication().getStoreReads();
+        assertThat(storeReads.isTerminated()).isFalse();
+
+        server.getApplication().stop();
+
+        assertThat(storeReads.isTerminated()).isTrue();
+        RxJsonPersistence persistence = server.getApplication().getPersistence();
+        assertThatThrownBy(() -> storeReads.single(persistence, _ -> Single.just(1)).blockingGet())
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("stopping");
     }
 
     /* The live threads of index queue workers, by name: each worker names its own. */

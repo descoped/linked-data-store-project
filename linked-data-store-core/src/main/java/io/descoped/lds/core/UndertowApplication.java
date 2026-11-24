@@ -18,6 +18,7 @@ import io.descoped.lds.core.controller.NamespaceController;
 import io.descoped.lds.core.domain.DocumentLocks;
 import io.descoped.lds.core.domain.SearchWait;
 import io.descoped.lds.core.persistence.PersistenceConfigurator;
+import io.descoped.lds.core.persistence.StoreReads;
 import io.descoped.lds.core.saga.SagaExecutionCoordinator;
 import io.descoped.lds.core.saga.SagaRecoveryTrigger;
 import io.descoped.lds.core.saga.SagaRepository;
@@ -103,6 +104,8 @@ public class UndertowApplication {
     private final TxlogRawdataPool txlogRawdataPool;
     private final Indexing indexing;
     private final Readiness readiness;
+    // the threads the store is read on, closed when the application stops (stop)
+    private final StoreReads storeReads = new StoreReads();
 
     /**
      * The parts of the write path the application runs and stops.
@@ -173,7 +176,7 @@ public class UndertowApplication {
 
             LOG.info("Initializing GraphQL Web API ...");
 
-            GraphQLSchemaBuilder schemaBuilder = new GraphQLSchemaBuilder(namespace, persistence, searchIndex);
+            GraphQLSchemaBuilder schemaBuilder = new GraphQLSchemaBuilder(namespace, persistence, searchIndex, storeReads);
             TypeDefinitionRegistry definitionRegistry;
             File graphQLFile = new File(graphQLSchemaPath.get());
             definitionRegistry = parseSchemaFile(graphQLFile);
@@ -198,7 +201,7 @@ public class UndertowApplication {
         pathHandler.addExactPath(ReadinessHandler.PING_PATH, answers);
         // a field of the application, closed when it stops (stop)
         this.readiness = new Readiness();
-        readiness.persistence(persistence, namespace, new TreeSet<>(specification.getManagedDomains()).first())
+        readiness.persistence(persistence, storeReads, namespace, new TreeSet<>(specification.getManagedDomains()).first())
                 .sagaLog(sagaLogPool)
                 .transactionLog(txlogRawdataPool);
         if (indexing != null) {
@@ -638,6 +641,9 @@ public class UndertowApplication {
      * <li>The thread pool of the sagas is shut down. A saga that branches hands steps to this pool, so such a saga
      * fails if it is running when the pool is shut down.</li>
      * <li>The saga log pool is shut down. After that it gives out no log.</li>
+     * <li>With search, the index queue worker stops, the queue is closed, and the search index lets go of its
+     * client.</li>
+     * <li>The threads the store is read on are closed, once the reads on them have completed.</li>
      * <li>The stores the sagas wrote to are closed.</li>
      * </ol>
      * A part that fails to stop is logged, and the parts after it are stopped all the same. The application is
@@ -692,7 +698,11 @@ public class UndertowApplication {
             }
             stop("Index queue worker", () -> indexing.worker().stop(timeout, unit));
             stop("Index queue", indexing.queue()::close);
+            stop("Search index", indexing.index()::close);
         }
+
+        // after the requests and the index worker, the last that read the store, and before the store
+        stop("Store reads", () -> storeReads.close(Duration.of(timeout, unit.toChronoUnit())));
 
         stop("Persistence provider", persistence::close);
         stop("Transaction log (rawdata client)", () -> txlogRawdataPool.getClient().close());
@@ -754,6 +764,15 @@ public class UndertowApplication {
      */
     public int getRequestThreads() {
         return REQUEST_THREADS;
+    }
+
+    /**
+     * The threads the store is read on.
+     *
+     * @return the threads the store is read on
+     */
+    public StoreReads getStoreReads() {
+        return storeReads;
     }
 
     /**

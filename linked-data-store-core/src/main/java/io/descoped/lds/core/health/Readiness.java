@@ -84,12 +84,14 @@ public final class Readiness implements AutoCloseable {
      * thread of the store's ({@link StoreReads}); no thread waits for it.
      *
      * @param persistence the store
+     * @param storeReads  the threads the store is read on
      * @param namespace   the namespace
      * @param entity      an entity type of the model
      * @return this
      */
-    public Readiness persistence(RxJsonPersistence persistence, String namespace, String entity) {
-        return check(new ReadinessCheck("persistence", StoreReads.single(persistence,
+    public Readiness persistence(RxJsonPersistence persistence, StoreReads storeReads, String namespace,
+                                 String entity) {
+        return check(new ReadinessCheck("persistence", storeReads.single(persistence,
                         transaction -> persistence.readDocuments(transaction, ZonedDateTime.now(Clock.systemUTC()),
                                 namespace, entity, Range.first(1)).count())
                 .map(_ -> ReadinessCheck.Result.up()), Health.DOWN));

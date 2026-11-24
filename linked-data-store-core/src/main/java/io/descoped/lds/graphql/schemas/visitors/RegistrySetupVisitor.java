@@ -20,6 +20,7 @@ import graphql.util.TraverserContext;
 import io.descoped.lds.api.json.JsonNavigationPath;
 import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
+import io.descoped.lds.core.persistence.StoreReads;
 import io.descoped.lds.api.search.SearchIndex;
 import io.descoped.lds.graphql.directives.LinkDirective;
 import io.descoped.lds.graphql.directives.ReverseLinkDirective;
@@ -55,21 +56,16 @@ public class RegistrySetupVisitor extends GraphQLTypeVisitorStub {
     private final GraphQLCodeRegistry.Builder registry;
     private final RxJsonPersistence persistence;
     private final SearchIndex searchIndex;
+    private final StoreReads storeReads;
     private final String namespace;
 
-    public RegistrySetupVisitor(RxJsonPersistence persistence, String namespace, SearchIndex searchIndex) {
-        this(GraphQLCodeRegistry.newCodeRegistry(), persistence, namespace, searchIndex);
-    }
-
-    public RegistrySetupVisitor(GraphQLCodeRegistry registry, RxJsonPersistence persistence, String namespace, SearchIndex searchIndex) {
-        this(GraphQLCodeRegistry.newCodeRegistry(registry), persistence, namespace, searchIndex);
-    }
-
-    public RegistrySetupVisitor(GraphQLCodeRegistry.Builder registry, RxJsonPersistence persistence, String namespace, SearchIndex searchIndex) {
-        this.registry = registry;
+    public RegistrySetupVisitor(RxJsonPersistence persistence, String namespace, SearchIndex searchIndex,
+                                StoreReads storeReads) {
+        this.registry = GraphQLCodeRegistry.newCodeRegistry();
         this.persistence = persistence;
         this.namespace = namespace;
         this.searchIndex = searchIndex;
+        this.storeReads = storeReads;
     }
 
     private static boolean isMany(GraphQLOutputType type) {
@@ -158,7 +154,7 @@ public class RegistrySetupVisitor extends GraphQLTypeVisitorStub {
 
     private TraversalControl visitSearchLink(GraphQLFieldDefinition field, TraverserContext<GraphQLSchemaElement> context) {
         registry.dataFetcher(FieldCoordinates.coordinates((GraphQLFieldsContainer) context.getParentNode(), field),
-                new QueryConnectionFetcher(searchIndex, persistence, namespace, name(field.getType()))
+                new QueryConnectionFetcher(searchIndex, persistence, storeReads, namespace, name(field.getType()))
         );
         return TraversalControl.CONTINUE;
     }

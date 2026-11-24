@@ -2,6 +2,7 @@ package io.descoped.lds.server;
 
 import io.descoped.config.DynamicConfiguration;
 import io.descoped.lds.core.UndertowApplication;
+import io.reactivex.rxjava3.schedulers.Schedulers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,7 +53,7 @@ public class Server {
         try {
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 LOG.warn("ShutdownHook triggered..");
-                application.stop();
+                stop(application);
             }));
 
             application.start();
@@ -69,7 +70,16 @@ public class Server {
                 Thread.currentThread().interrupt();
             }
         } finally {
-            application.stop();
+            stop(application);
         }
+    }
+
+    /*
+     * Stops the application, then RxJava's shared threads (the timers of the waits, the grouping of fragments into
+     * documents), which the process owns: nothing uses them once the application has stopped.
+     */
+    private static void stop(UndertowApplication application) {
+        application.stop();
+        Schedulers.shutdown();
     }
 }

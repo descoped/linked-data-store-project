@@ -6,11 +6,13 @@ import graphql.schema.idl.errors.SchemaProblem;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.api.search.SearchIndex;
 import io.descoped.lds.api.specification.Specification;
+import io.descoped.lds.core.persistence.StoreReads;
 import io.descoped.lds.core.schema.JsonSchema;
 import io.descoped.lds.core.schema.JsonSchemaBuilder;
 import io.descoped.lds.core.specification.JsonSchemaBasedSpecification;
 import io.descoped.lds.core.specification.SpecificationJsonSchemaBuilder;
 import io.descoped.lds.graphql.jsonschema.GraphQLToJsonConverter;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -27,6 +29,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.time.Duration;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -42,6 +45,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * its clients, and is to be understood before an expected file is changed.
  */
 class GraphQLSchemaGoldenTest {
+
+    /* The threads a search reads the store on; a schema is only built here, so none is read. */
+    private static final StoreReads STORE_READS = new StoreReads(1);
+
+    @AfterAll
+    static void closeStoreReads() throws InterruptedException {
+        STORE_READS.close(Duration.ofSeconds(5));
+    }
 
     private static final String GOLDEN = "graphql-golden/";
 
@@ -162,7 +173,7 @@ class GraphQLSchemaGoldenTest {
 
     private static GraphQLSchema build(String schemaFile, boolean search) {
         GraphQLSchemaBuilder schemaBuilder = new GraphQLSchemaBuilder("ns", stub(RxJsonPersistence.class, "persistence"),
-                search ? stub(SearchIndex.class, "searchIndex") : null);
+                search ? stub(SearchIndex.class, "searchIndex") : null, search ? STORE_READS : null);
         return schemaBuilder.getGraphQL(parse(schemaFile));
     }
 

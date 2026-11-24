@@ -12,9 +12,11 @@ import io.descoped.lds.api.search.IndexEntry;
 import io.descoped.lds.api.search.SearchHit;
 import io.descoped.lds.api.search.SearchPage;
 import io.descoped.lds.api.search.SearchQuery;
+import io.descoped.lds.core.persistence.StoreReads;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Maybe;
 import io.reactivex.rxjava3.core.Single;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Proxy;
@@ -34,11 +36,17 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class QueryConnectionFetcherTest {
 
+    private static final StoreReads STORE_READS = new StoreReads(2);
     private static final ZonedDateTime SNAPSHOT = ZonedDateTime.parse("2026-11-22T12:00:00Z");
     private static final LongSupplier SIXTY = () -> 60;
     private static final LongSupplier NOT_ASKED = () -> {
         throw new AssertionError("the total is not needed");
     };
+
+    @AfterAll
+    static void closeStoreReads() throws InterruptedException {
+        STORE_READS.close(Duration.ofSeconds(5));
+    }
 
     private static String cursor(long place) {
         return new QueryConnectionCursor(place).getValue();
@@ -85,7 +93,7 @@ class QueryConnectionFetcherTest {
 
     @Test
     void theNextPageStartsAfterTheLastEdgeOfThePageBefore() {
-        QueryConnectionFetcher fetcher = new QueryConnectionFetcher(index(5), persistence(Set.of()), "ns", "Search");
+        QueryConnectionFetcher fetcher = new QueryConnectionFetcher(index(5), persistence(Set.of()), STORE_READS, "ns", "Search");
 
         Connection<Map<String, Object>> page1 = page(fetcher, Range.first(2));
         Connection<Map<String, Object>> page2 = page(fetcher,
@@ -102,14 +110,14 @@ class QueryConnectionFetcherTest {
 
     @Test
     void lastWithoutBeforeGivesTheEndOfTheResult() {
-        QueryConnectionFetcher fetcher = new QueryConnectionFetcher(index(25), persistence(Set.of()), "ns", "Search");
+        QueryConnectionFetcher fetcher = new QueryConnectionFetcher(index(25), persistence(Set.of()), STORE_READS, "ns", "Search");
 
         assertThat(ids(page(fetcher, Range.last(2)))).containsExactly("d23", "d24");
     }
 
     @Test
     void aResultThatIsLeftOutDoesNotMoveTheCursorsAfterIt() {
-        QueryConnectionFetcher fetcher = new QueryConnectionFetcher(index(4), persistence(Set.of("d1")), "ns", "Search");
+        QueryConnectionFetcher fetcher = new QueryConnectionFetcher(index(4), persistence(Set.of("d1")), STORE_READS, "ns", "Search");
 
         Connection<Map<String, Object>> page = page(fetcher, Range.first(4));
 
@@ -120,7 +128,7 @@ class QueryConnectionFetcherTest {
 
     @Test
     void aPageWhoseResultsAreAllLeftOutStillLeadsToTheNextPage() {
-        QueryConnectionFetcher fetcher = new QueryConnectionFetcher(index(4), persistence(Set.of("d0", "d1")), "ns", "Search");
+        QueryConnectionFetcher fetcher = new QueryConnectionFetcher(index(4), persistence(Set.of("d0", "d1")), STORE_READS, "ns", "Search");
 
         Connection<Map<String, Object>> page = page(fetcher, Range.first(2));
 
@@ -154,6 +162,11 @@ class QueryConnectionFetcherTest {
     private static SearchIndex index(long total) {
         return new SearchIndex() {
             @Override
+            public void close() {
+                // nothing to let go of
+            }
+
+            @Override
             public Single<SearchPage> search(SearchQuery query) {
                 List<SearchHit> hits = LongStream.range(query.from(), Math.min(total, query.from() + query.size()))
                         .mapToObj(place -> new SearchHit(new DocumentKey("ns", "Thing", "d" + place,
@@ -186,7 +199,7 @@ class QueryConnectionFetcherTest {
 
     @Test
     void aHitIsReadAtTheVersionThatMatched() {
-        QueryConnectionFetcher fetcher = new QueryConnectionFetcher(index(2), persistence(Set.of()), "ns", "Search");
+        QueryConnectionFetcher fetcher = new QueryConnectionFetcher(index(2), persistence(Set.of()), STORE_READS, "ns", "Search");
 
         assertThat(page(fetcher, Range.first(2)).getEdges()).extracting(Edge::getNode)
                 .extracting(node -> ((DocumentKey) node.get("__graphql_internal_document_key")).timestamp())

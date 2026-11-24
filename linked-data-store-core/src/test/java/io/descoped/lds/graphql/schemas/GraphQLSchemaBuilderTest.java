@@ -26,7 +26,7 @@ class GraphQLSchemaBuilderTest {
              Reader reader = new InputStreamReader(in, StandardCharsets.UTF_8)) {
             registry = new SchemaParser().parse(reader);
         }
-        GraphQLSchemaBuilder builder = new GraphQLSchemaBuilder("namespace", new EmptyPersistence(), null);
+        GraphQLSchemaBuilder builder = new GraphQLSchemaBuilder("namespace", new EmptyPersistence(), null, null);
 
         GraphQLSchema schema = builder.getGraphQL(GraphQLSchemaBuilder.parseSchema(registry));
 
