@@ -4,8 +4,8 @@ import io.descoped.lds.api.search.IndexEntry;
 import io.descoped.lds.api.search.Language;
 import io.descoped.lds.api.search.SearchHit;
 import io.descoped.lds.api.search.SearchIndex;
-import io.descoped.lds.api.search.SearchPage;
 import io.descoped.lds.api.search.SearchIndexProvider;
+import io.descoped.lds.api.search.SearchPage;
 import io.descoped.lds.api.search.SearchQuery;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Single;
@@ -27,14 +27,15 @@ import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.ServiceLoader;
 import java.util.Map;
+import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 
@@ -310,7 +311,7 @@ class SolrSearchIndexTest {
         }
         for (String words : List.of("\"", "(", ")", "[", "]", "{", "}", "AND", "OR", "NOT", "&&", "||", "!", "\\", ":",
                 "^", "~", "+", "-", "/", "*", "?", "[* TO *]", "{!}", "\"\"", "()")) {
-            assertThat(search(words, at(2000))).as(words).isNotNull();
+            assertThat(search(words, at(2000)).total()).as(words).isGreaterThanOrEqualTo(0);
         }
     }
 
@@ -367,7 +368,7 @@ class SolrSearchIndexTest {
         assertThat(ids(search("القاهرة", at(2000)))).containsExactly("cairo");
         assertThat(ids(search("ירושלים", at(2000)))).containsExactly("jerusalem");
         assertThat(ids(search("party", at(2000)))).containsExactly("party");
-        assertThat(search("🎉", at(2000))).isNotNull();
+        assertThat(ids(search("🎉", at(2000)))).containsExactly("party");
     }
 
     /**
@@ -421,7 +422,9 @@ class SolrSearchIndexTest {
     void nothingToPutAsksNothingOfSolr() throws IOException {
         SearchIndex unreachable = new SolrSearchIndex("http://127.0.0.1:" + closedPort() + "/solr/lds-index");
 
-        unreachable.put(List.of()).blockingAwait();
+        Completable nothing = unreachable.put(List.of());
+
+        assertThatCode(nothing::blockingAwait).doesNotThrowAnyException();
     }
 
     /**
@@ -446,8 +449,10 @@ class SolrSearchIndexTest {
      */
     @Test
     void aNegativeAgeIsRefused() {
-        assertThatThrownBy(() -> searchIndex.removeOlderThan(namespace, Duration.ofSeconds(-1)))
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("age");
+        Completable removal = searchIndex.removeOlderThan(namespace, Duration.ofSeconds(-1));
+
+        assertThatThrownBy(removal::blockingAwait).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("age");
     }
 
     @Test

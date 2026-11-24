@@ -191,7 +191,8 @@ public class SolrSearchIndex implements SearchIndex {
     @Override
     public Completable removeOlderThan(String namespace, Duration age) {
         if (age.isNegative()) {
-            throw new IllegalArgumentException("The age of the entries to remove is below none: " + age);
+            return Completable.error(new IllegalArgumentException(
+                    "The age of the entries to remove is below none: " + age));
         }
         return schemaPutIn().andThen(Completable.defer(() -> {
             UpdateRequest request = new UpdateRequest();
@@ -228,7 +229,7 @@ public class SolrSearchIndex implements SearchIndex {
 
     @Override
     public Single<SearchPage> search(SearchQuery query) {
-        if (query.text() == null || query.text().isBlank()) {
+        if (query.text().isBlank()) {
             // no words find nothing; Solr refuses a query of no words
             return Single.just(new SearchPage(0, List.of()));
         }

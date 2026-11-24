@@ -9,6 +9,7 @@ import io.descoped.lds.api.search.SearchQuery;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Single;
 
+import java.text.Normalizer;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -63,7 +64,8 @@ public class SimpleSearchIndex implements SearchIndex {
     @Override
     public Completable removeOlderThan(String namespace, Duration age) {
         if (age.isNegative()) {
-            throw new IllegalArgumentException("The age of the entries to remove is below none: " + age);
+            return Completable.error(new IllegalArgumentException(
+                    "The age of the entries to remove is below none: " + age));
         }
         return Completable.fromAction(() -> {
             Instant before = clock.instant().minus(age);
@@ -110,15 +112,23 @@ public class SimpleSearchIndex implements SearchIndex {
                 .values());
     }
 
+    /*
+     * A text and the words in one Unicode form (NFC), as the Solr index puts them: a letter and an accent written as a
+     * mark of its own match the letter written whole.
+     */
+    private static String composed(String text) {
+        return Normalizer.normalize(text, Normalizer.Form.NFC);
+    }
+
     private static boolean matches(IndexEntry entry, String text) {
-        if (text == null || text.isBlank()) {
+        if (text.isBlank()) {
             return false; // no words find nothing, as in Solr
         }
         if ("*:*".equals(text)) {
             return true;
         }
-        String words = text.toLowerCase(Locale.ROOT);
+        String words = composed(text).toLowerCase(Locale.ROOT);
         return entry.texts().values().stream().flatMap(List::stream).filter(Objects::nonNull)
-                .anyMatch(value -> value.toLowerCase(Locale.ROOT).contains(words));
+                .anyMatch(value -> composed(value).toLowerCase(Locale.ROOT).contains(words));
     }
 }
