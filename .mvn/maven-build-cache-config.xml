@@ -33,6 +33,19 @@
          or -Dgroups, or one that skipped them, is not taken for one that ran them all. A run that skips the tests
          may take any result. -->
     <executionControl>
+        <!-- The libraries the server's image is made of (target/lib, copy-dependencies) are copied in every build,
+             also of a module taken from the cache: the cache keeps the jar but not that folder, and an image built
+             after a build that took the server from the cache found no libraries. Copying them from the local
+             repository is quick, and they are always the ones the build resolved. -->
+        <runAlways>
+            <goalsLists>
+                <goalsList artifactId="maven-dependency-plugin">
+                    <goals>
+                        <goal>copy-dependencies</goal>
+                    </goals>
+                </goalsList>
+            </goalsLists>
+        </runAlways>
         <reconcile>
             <plugins>
                 <plugin artifactId="maven-surefire-plugin" goal="test">
