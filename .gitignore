@@ -21,3 +21,6 @@ hs_err_pid*
 
 # Local run state of the providers
 /linked-data-store-search-provider-solr/data/
+
+# screenshots of the Playwright browser tool, made while the documentation was checked
+.playwright-mcp/
