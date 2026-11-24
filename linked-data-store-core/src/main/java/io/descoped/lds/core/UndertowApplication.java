@@ -160,21 +160,17 @@ public class UndertowApplication implements Lifecycle {
     }
 
     UndertowApplication(Parts parts, int port, DynamicConfiguration configuration) {
-        Specification specification = parts.specification();
-        RxJsonPersistence persistence = parts.persistence();
-        StoreReads storeReads = parts.storeReads();
         SagaParts sagas = parts.sagas();
         NamespaceController namespaceController = parts.namespaceController();
         Indexing indexing = parts.indexing();
-        Lifecycles lifecycles = parts.lifecycles();
-        this.specification = specification;
-        this.storeReads = storeReads;
-        this.lifecycles = lifecycles;
+        this.specification = parts.specification();
+        this.storeReads = parts.storeReads();
+        this.lifecycles = parts.lifecycles();
         this.documentLocks = namespaceController.documentLocks();
         this.sagaRecoveryTrigger = sagas.recoveryTrigger();
         this.host = configuration.find("http.host").orElse(null);
         this.port = port;
-        this.persistence = persistence;
+        this.persistence = parts.persistence();
         this.sec = sagas.sec();
         this.sagaRepository = sagas.repository();
         this.sagasObserver = sagas.observer();

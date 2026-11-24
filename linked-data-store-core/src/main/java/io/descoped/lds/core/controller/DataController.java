@@ -124,7 +124,7 @@ class DataController implements HttpHandler {
      * The version of a write without a timestamp is the time it got the lock, so it is after the version of the
      * write before it.
      */
-    private void write(HttpServerExchange exchange, ResourceContext resourceContext, boolean taken) throws Exception {
+    private void write(HttpServerExchange exchange, ResourceContext resourceContext, boolean taken) {
         if (!taken) {
             // A saga that does not complete keeps the lock of its document (and of the others of its stripe) until
             // LDS is restarted; this says where.
