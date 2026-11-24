@@ -589,8 +589,14 @@ public class SagaExecutionCoordinator {
     }
 
     /**
-     * Regulary controls thread-pool to see if it is deadlocked, i.e. all threads are occupied in saga-traversal or
-     * otherwise waiting for more available saga threadpool workers.
+     * Looks at the saga thread pool every second, and grows it when it is stuck: every thread is busy, nothing has
+     * completed since the last look, and the pool could still grow. A thread pool grows past its core size only when
+     * its queue is full, so sagas that wait in the queue behind steps that hold every core thread (a store or a log
+     * that hangs) would otherwise wait for those steps, with room in the pool. The watchdog submits empty tasks until
+     * the queue overflows, and the pool takes on threads for the sagas in the queue.
+     * <p>
+     * The saga engine no longer holds a thread while a step waits for the steps before it, so the pool does not get
+     * stuck that way any more; steps that hang still can.
      */
     class ThreadPoolWatchDog extends Thread {
 
