@@ -38,6 +38,7 @@ import io.descoped.lds.graphql.schemas.GraphQLSchemaBuilder;
 import io.descoped.rawdata.api.RawdataClient;
 import io.undertow.Handlers;
 import io.undertow.Undertow;
+import io.undertow.UndertowOptions;
 import io.undertow.server.HttpHandler;
 import io.undertow.server.handlers.GracefulShutdownHandler;
 import io.undertow.server.handlers.PathHandler;
@@ -239,6 +240,9 @@ public class UndertowApplication {
                 .addHttpListener(port, host)
                 .setIoThreads(IO_THREADS)
                 .setWorkerThreads(REQUEST_THREADS)
+                // the stop has already waited for the requests (stop(timeout)); a request still reading its body,
+                // blocking, would otherwise hold the stop until Undertow's read timeout of ten minutes
+                .setServerOption(UndertowOptions.SHUTDOWN_TIMEOUT, 1000)
                 .setHandler(corsHandler)
                 .build();
     }

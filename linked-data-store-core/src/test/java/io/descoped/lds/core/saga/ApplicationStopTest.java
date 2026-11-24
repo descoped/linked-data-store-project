@@ -235,8 +235,11 @@ class ApplicationStopTest {
     void aRequestThatIsNotCompletedInTimeDoesNotKeepTheApplicationFromStopping() throws Exception {
         server = start();
         try (Socket inFlight = requestWithHalfItsBody()) {
+            long before = System.nanoTime();
             server.getApplication().stop(200, TimeUnit.MILLISECONDS);
 
+            // the wait for the requests, then a second for the threads of Undertow; not its read timeout of ten minutes
+            assertThat(Duration.ofNanos(System.nanoTime() - before)).isLessThan(Duration.ofSeconds(5));
             assertStopped(server);
             inFlight.setSoTimeout(5000);
             assertThat(inFlight.getInputStream().read()).as("the connection is closed, without an answer").isEqualTo(-1);
