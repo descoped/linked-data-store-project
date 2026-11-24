@@ -63,7 +63,7 @@
         <testcontainers.version>2.0.5</testcontainers.version>
         <rxjava.version>3.1.12</rxjava.version>
         <reactive-streams.version>1.0.4</reactive-streams.version>
-        <cantara-saga.version>2.1.4</cantara-saga.version>
+        <cantara-saga.version>2.1.5-SNAPSHOT</cantara-saga.version>
         <dynamic-configuration.version>3.0.2</dynamic-configuration.version>
         <graphql-java.version>26.2</graphql-java.version>
         <graphql-java-extended-scalars.version>24.0</graphql-java-extended-scalars.version>
