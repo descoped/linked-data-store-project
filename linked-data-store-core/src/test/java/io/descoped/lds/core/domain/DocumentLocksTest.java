@@ -138,6 +138,25 @@ class DocumentLocksTest {
                 Instant.parse("2026-11-25T00:00:02Z"));
     }
 
+    /**
+     * A clock that has gone back by more than a second keeps the writes after the last one until it has caught up,
+     * and then gives its own time again (LDS says so in its log, once each way).
+     */
+    @Test
+    void aClockFarBehindKeepsTheWritesAfterTheLastUntilItHasCaughtUp() {
+        DocumentLocks timed = new DocumentLocks(1, Duration.ofSeconds(30), clock(
+                "2026-11-25T00:00:10Z", "2026-11-25T00:00:05Z", "2026-11-25T00:00:06Z", "2026-11-25T00:00:11Z",
+                "2026-11-25T00:00:12Z"));
+
+        assertThat(List.of(timed.timeOfTurn(), timed.timeOfTurn(), timed.timeOfTurn(), timed.timeOfTurn(),
+                timed.timeOfTurn())).extracting(ZonedDateTime::toInstant).containsExactly(
+                Instant.parse("2026-11-25T00:00:10Z"),
+                Instant.parse("2026-11-25T00:00:10.000001Z"),
+                Instant.parse("2026-11-25T00:00:10.000002Z"),
+                Instant.parse("2026-11-25T00:00:11Z"),
+                Instant.parse("2026-11-25T00:00:12Z"));
+    }
+
     /* A clock that gives the instants in turn. */
     private static Clock clock(String... instants) {
         Deque<Instant> next = new ArrayDeque<>();
