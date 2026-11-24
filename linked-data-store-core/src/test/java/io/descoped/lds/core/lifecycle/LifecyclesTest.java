@@ -84,7 +84,9 @@ class LifecyclesTest {
     void aSubsystemIsNotAddedWhenTheSubsystemsAreStopping() {
         lifecycles.stop(TIMEOUT);
 
-        assertThatThrownBy(() -> lifecycles.add(recorded("late")))
+        Lifecycle late = recorded("late");
+
+        assertThatThrownBy(() -> lifecycles.add(late))
                 .isInstanceOf(IllegalStateException.class);
     }
 

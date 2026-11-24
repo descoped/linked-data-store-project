@@ -144,9 +144,29 @@ public class UndertowApplication implements Lifecycle {
     /* How long the worker of the index queue waits for updates when there were none. */
     static final Duration INDEX_QUEUE_POLL = Duration.ofMillis(200);
 
-    UndertowApplication(Specification specification, RxJsonPersistence persistence, StoreReads storeReads,
-                        SagaParts sagas, int port, NamespaceController namespaceController, Indexing indexing,
-                        DynamicConfiguration configuration, Lifecycles lifecycles) {
+    /**
+     * What the application is made of, made before it.
+     *
+     * @param specification       the model
+     * @param persistence         the store
+     * @param storeReads          the threads the store is read on
+     * @param sagas               the parts of the write path
+     * @param namespaceController the handler of the documents
+     * @param indexing            search, or null
+     * @param lifecycles          the subsystems made so far, to which the application adds its own
+     */
+    record Parts(Specification specification, RxJsonPersistence persistence, StoreReads storeReads, SagaParts sagas,
+                 NamespaceController namespaceController, Indexing indexing, Lifecycles lifecycles) {
+    }
+
+    UndertowApplication(Parts parts, int port, DynamicConfiguration configuration) {
+        Specification specification = parts.specification();
+        RxJsonPersistence persistence = parts.persistence();
+        StoreReads storeReads = parts.storeReads();
+        SagaParts sagas = parts.sagas();
+        NamespaceController namespaceController = parts.namespaceController();
+        Indexing indexing = parts.indexing();
+        Lifecycles lifecycles = parts.lifecycles();
         this.specification = specification;
         this.storeReads = storeReads;
         this.lifecycles = lifecycles;
@@ -295,12 +315,16 @@ public class UndertowApplication implements Lifecycle {
     public static UndertowApplication initializeUndertowApplication(DynamicConfiguration configuration, int port) {
         LOG.info("Initializing Linked Data Store (LDS) server ...");
         Lifecycles lifecycles = new Lifecycles();
+        boolean made = false;
         try {
-            return initialize(configuration, port, lifecycles);
-        } catch (RuntimeException | Error e) {
-            LOG.error("LDS could not be made; what was made is stopped");
-            lifecycles.stop(STOP_TIMEOUT);
-            throw e;
+            UndertowApplication application = initialize(configuration, port, lifecycles);
+            made = true;
+            return application;
+        } finally {
+            if (!made) {
+                LOG.error("LDS could not be made; what was made is stopped");
+                lifecycles.stop(STOP_TIMEOUT);
+            }
         }
     }
 
@@ -362,29 +386,8 @@ public class UndertowApplication implements Lifecycle {
 
         LOG.info("Initializing search-index ...");
 
-        SearchIndex searchIndex = SearchIndexConfigurator.configureSearchIndex(configuration);
-        Indexing indexing = null;
-        if (searchIndex != null) {
-            lifecycles.add(Lifecycle.of("Search index", _ -> searchIndex.close()));
-            LOG.info("Initializing index queue ...");
-            IndexQueue indexQueue = IndexQueueConfigurator.configureIndexQueue(configuration);
-            lifecycles.add(Lifecycle.of("Index queue", _ -> indexQueue.close()));
-            sagaRepositoryBuilder.indexQueue(indexQueue);
-            IndexRebuild rebuild = configuration.getBoolean("search.index.rebuild", false)
-                    ? new IndexRebuild(persistence, indexQueue, searchIndex,
-                    configuration.find("namespace.default").orElseThrow(),
-                    List.copyOf(specification.getManagedDomains()))
-                    : null;
-            IndexQueueWorker worker = new IndexQueueWorker(indexQueue, searchIndex, persistence,
-                    new IndexEntries(specification, notSearched), INDEX_QUEUE_POLL);
-            // after the queue and the index it sends to, and before the sagas, which add to the queue
-            lifecycles.add(Lifecycle.of("Index queue worker", worker::start,
-                    timeout -> worker.stop(timeout.toMillis(), TimeUnit.MILLISECONDS)));
-            if (rebuild != null) {
-                lifecycles.add(Lifecycle.of("Index rebuild", rebuild::start, _ -> rebuild.stop()));
-            }
-            indexing = new Indexing(searchIndex, indexQueue, worker, rebuild);
-        }
+        Indexing indexing = indexing(configuration, specification, notSearched, persistence, sagaRepositoryBuilder,
+                lifecycles);
 
         LOG.info("Initializing transaction-log ...");
 
@@ -410,25 +413,7 @@ public class UndertowApplication implements Lifecycle {
 
         LOG.info("Initializing saga thread-pool ...");
 
-        final AtomicLong nextWorkerId = new AtomicLong(1);
-        int sagaThreadPoolQueueCapacity = configuration.getInt("saga.threadpool.queue.capacity");
-        int sagaThreadPoolCoreSize = configuration.getInt("saga.threadpool.core");
-        if (sagaThreadPoolQueueCapacity >= sagaThreadPoolCoreSize) {
-            LOG.warn("Configuration: saga.threadpool.core ({}) must be greater than saga.threadpool.queue.capacity ({}) in order to avoid potential deadlocks.",
-                    sagaThreadPoolCoreSize, sagaThreadPoolQueueCapacity);
-        }
-        SelectableThreadPoolExecutor sagaThreadPool = new SelectableThreadPoolExecutor(
-                sagaThreadPoolCoreSize, configuration.getInt("saga.threadpool.max"),
-                configuration.getInt("saga.threadpool.keepalive.seconds"), TimeUnit.SECONDS,
-                new ArrayBlockingQueue<>(sagaThreadPoolQueueCapacity),
-                runnable -> {
-                    Thread thread = new Thread(runnable);
-                    thread.setName("sec-" + nextWorkerId.getAndIncrement());
-                    thread.setUncaughtExceptionHandler((_, e) -> LOG.error("Uncaught exception in thread {}", thread.getName(), e));
-                    return thread;
-                },
-                new ThreadPoolExecutor.AbortPolicy()
-        );
+        SelectableThreadPoolExecutor sagaThreadPool = sagaThreadPool(configuration);
         // a saga that branches hands steps to this pool, so such a saga fails if it runs when the pool is shut down
         lifecycles.add(Lifecycle.of("Saga thread pool", _ -> shutdownAndAwaitTermination(sagaThreadPool)));
         int numberOfSagaLogs = configuration.getInt("saga.number-of-logs");
@@ -472,8 +457,63 @@ public class UndertowApplication implements Lifecycle {
 
         SagaParts sagas = new SagaParts(sec, sagaRepository, sagasObserver, sagaRecoveryTrigger, sagaLogPool,
                 sagaThreadPool, txlogRawdataPool);
-        return new UndertowApplication(specification, persistence, storeReads, sagas, port, namespaceController,
-                indexing, configuration, lifecycles);
+        return new UndertowApplication(new Parts(specification, persistence, storeReads, sagas, namespaceController,
+                indexing, lifecycles), port, configuration);
+    }
+
+    /*
+     * Search, when the configuration names an index: the index, its queue, the worker that sends the queue to it,
+     * and the rebuild when the start asks for it; null without an index.
+     */
+    private static Indexing indexing(DynamicConfiguration configuration, Specification specification,
+                                     Set<String> notSearched, RxJsonPersistence persistence,
+                                     SagaRepository.Builder sagaRepositoryBuilder, Lifecycles lifecycles) {
+        SearchIndex searchIndex = SearchIndexConfigurator.configureSearchIndex(configuration);
+        if (searchIndex == null) {
+            return null;
+        }
+        lifecycles.add(Lifecycle.of("Search index", _ -> searchIndex.close()));
+        LOG.info("Initializing index queue ...");
+        IndexQueue indexQueue = IndexQueueConfigurator.configureIndexQueue(configuration);
+        lifecycles.add(Lifecycle.of("Index queue", _ -> indexQueue.close()));
+        sagaRepositoryBuilder.indexQueue(indexQueue);
+        IndexQueueWorker worker = new IndexQueueWorker(indexQueue, searchIndex, persistence,
+                new IndexEntries(specification, notSearched), INDEX_QUEUE_POLL);
+        // after the queue and the index it sends to, and before the sagas, which add to the queue
+        lifecycles.add(Lifecycle.of("Index queue worker", worker::start,
+                timeout -> worker.stop(timeout.toMillis(), TimeUnit.MILLISECONDS)));
+        IndexRebuild rebuild = null;
+        if (configuration.getBoolean("search.index.rebuild", false)) {
+            IndexRebuild started = new IndexRebuild(persistence, indexQueue, searchIndex,
+                    configuration.find("namespace.default").orElseThrow(),
+                    List.copyOf(specification.getManagedDomains()));
+            lifecycles.add(Lifecycle.of("Index rebuild", started::start, _ -> started.stop()));
+            rebuild = started;
+        }
+        return new Indexing(searchIndex, indexQueue, worker, rebuild);
+    }
+
+    /* The bounded pool the steps of the sagas run on. */
+    private static SelectableThreadPoolExecutor sagaThreadPool(DynamicConfiguration configuration) {
+        final AtomicLong nextWorkerId = new AtomicLong(1);
+        int sagaThreadPoolQueueCapacity = configuration.getInt("saga.threadpool.queue.capacity");
+        int sagaThreadPoolCoreSize = configuration.getInt("saga.threadpool.core");
+        if (sagaThreadPoolQueueCapacity >= sagaThreadPoolCoreSize) {
+            LOG.warn("Configuration: saga.threadpool.core ({}) must be greater than saga.threadpool.queue.capacity ({}) in order to avoid potential deadlocks.",
+                    sagaThreadPoolCoreSize, sagaThreadPoolQueueCapacity);
+        }
+        return new SelectableThreadPoolExecutor(
+                sagaThreadPoolCoreSize, configuration.getInt("saga.threadpool.max"),
+                configuration.getInt("saga.threadpool.keepalive.seconds"), TimeUnit.SECONDS,
+                new ArrayBlockingQueue<>(sagaThreadPoolQueueCapacity),
+                runnable -> {
+                    Thread thread = new Thread(runnable);
+                    thread.setName("sec-" + nextWorkerId.getAndIncrement());
+                    thread.setUncaughtExceptionHandler((_, e) -> LOG.error("Uncaught exception in thread {}", thread.getName(), e));
+                    return thread;
+                },
+                new ThreadPoolExecutor.AbortPolicy()
+        );
     }
 
     /*

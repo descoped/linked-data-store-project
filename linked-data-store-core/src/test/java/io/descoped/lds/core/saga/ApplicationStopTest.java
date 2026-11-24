@@ -117,7 +117,8 @@ class ApplicationStopTest {
 
         assertThat(storeReads.isTerminated()).isTrue();
         RxJsonPersistence persistence = server.getApplication().getPersistence();
-        assertThatThrownBy(() -> storeReads.single(persistence, _ -> Single.just(1)).blockingGet())
+        Single<Integer> read = storeReads.single(persistence, _ -> Single.just(1));
+        assertThatThrownBy(read::blockingGet)
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("stopping");
     }
 

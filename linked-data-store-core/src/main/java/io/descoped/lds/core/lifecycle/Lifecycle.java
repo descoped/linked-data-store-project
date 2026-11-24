@@ -18,22 +18,22 @@ public interface Lifecycle {
 
     /**
      * Starts the subsystem. Called once, after the subsystems it needs have started. A subsystem that is live once it
-     * is made (a store, a client) does nothing here.
-     *
-     * @throws Exception when it cannot start; the subsystems started before it are then stopped
+     * is made (a store, a client) does nothing here. A subsystem that cannot start throws; the subsystems are then
+     * stopped.
      */
-    default void start() throws Exception {
+    default void start() {
         // live once it is made
     }
 
     /**
      * Stops the subsystem and lets go of what it holds: threads, connections, clients. Called once, after the
-     * subsystems that need it have stopped, also when it was made and not started.
+     * subsystems that need it have stopped, also when it was made and not started. A subsystem that cannot stop
+     * cleanly throws; the subsystems after it are stopped all the same.
      *
      * @param timeout how long the work it is doing may take to complete, at most
-     * @throws Exception when it cannot stop cleanly; the subsystems after it are stopped all the same
+     * @throws InterruptedException when interrupted while waiting for its work to complete
      */
-    void stop(Duration timeout) throws Exception;
+    void stop(Duration timeout) throws InterruptedException;
 
     /**
      * A subsystem that is live once it is made, and is stopped by the action given.
@@ -50,7 +50,7 @@ public interface Lifecycle {
             }
 
             @Override
-            public void stop(Duration timeout) throws Exception {
+            public void stop(Duration timeout) throws InterruptedException {
                 stop.stop(timeout);
             }
         };
@@ -64,7 +64,7 @@ public interface Lifecycle {
      * @param stop  how it is stopped
      * @return the subsystem
      */
-    static Lifecycle of(String name, Start start, Stop stop) {
+    static Lifecycle of(String name, Runnable start, Stop stop) {
         return new Lifecycle() {
             @Override
             public String name() {
@@ -72,28 +72,15 @@ public interface Lifecycle {
             }
 
             @Override
-            public void start() throws Exception {
-                start.start();
+            public void start() {
+                start.run();
             }
 
             @Override
-            public void stop(Duration timeout) throws Exception {
+            public void stop(Duration timeout) throws InterruptedException {
                 stop.stop(timeout);
             }
         };
-    }
-
-    /**
-     * How a subsystem is started.
-     */
-    @FunctionalInterface
-    interface Start {
-        /**
-         * Starts it.
-         *
-         * @throws Exception when it cannot start
-         */
-        void start() throws Exception;
     }
 
     /**
@@ -105,8 +92,8 @@ public interface Lifecycle {
          * Stops it.
          *
          * @param timeout how long the work it is doing may take to complete, at most
-         * @throws Exception when it cannot stop cleanly
+         * @throws InterruptedException when interrupted while waiting for its work to complete
          */
-        void stop(Duration timeout) throws Exception;
+        void stop(Duration timeout) throws InterruptedException;
     }
 }

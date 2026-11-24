@@ -112,7 +112,7 @@ class DataController implements HttpHandler {
                 }
                 Connectors.executeRootHandler(handler, exchange);
             });
-        } catch (RejectedExecutionException e) {
+        } catch (RejectedExecutionException _) {
             DocumentLocks.letGoAfterSaga(exchange);
             exchange.setStatusCode(StatusCodes.SERVICE_UNAVAILABLE);
             exchange.endExchange();
@@ -154,7 +154,7 @@ class DataController implements HttpHandler {
         handle(exchange, context);
     }
 
-    private void handle(HttpServerExchange exchange, ResourceContext resourceContext) throws Exception {
+    private void handle(HttpServerExchange exchange, ResourceContext resourceContext) {
         /*
          * NOTE: Must check reference before embedded, because ref is also an embedded resource.
          */

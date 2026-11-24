@@ -148,11 +148,9 @@ public class ManagedResourceHandlerTest {
         byte[] head = ("PUT /data/provisionagreement/waits?sync=true HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n"
                 + "Content-Type: application/json\r\nContent-Length: " + body.length + "\r\n\r\n")
                 .getBytes(StandardCharsets.US_ASCII);
-        List<Socket> sockets = new ArrayList<>();
-        try {
+        try (Sockets sockets = new Sockets()) {
             for (int i = 0; i < writes; i++) {
-                Socket socket = new Socket("localhost", server.getTestServerServicePort());
-                sockets.add(socket);
+                Socket socket = sockets.open(server.getTestServerServicePort());
                 socket.getOutputStream().write(head);
                 socket.getOutputStream().write(body, 0, 10);
                 socket.getOutputStream().flush();
@@ -164,17 +162,13 @@ public class ManagedResourceHandlerTest {
             CompletableFuture.runAsync(() -> client.get("/data/provisionagreement/waits-not").expect404NotFound())
                     .get(5, TimeUnit.SECONDS);
 
-            for (Socket socket : sockets) {
+            for (Socket socket : sockets.all()) {
                 socket.getOutputStream().write(body, 10, body.length - 10);
                 socket.getOutputStream().flush();
             }
-            for (Socket socket : sockets) {
+            for (Socket socket : sockets.all()) {
                 String answer = new String(socket.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
                 assertEquals(answer.substring(0, answer.indexOf("\r\n")), "HTTP/1.1 201 Created");
-            }
-        } finally {
-            for (Socket socket : sockets) {
-                socket.close();
             }
         }
         assertEquals(locks.waiting(), 0);
@@ -352,5 +346,27 @@ public class ManagedResourceHandlerTest {
     @Test
     public void thatTimelineReturns404ForNonExistentResource() {
         client.get("/data/provisionagreement/non-existent-resource?timeline").expect404NotFound();
+    }
+
+    /* The connections of a test, closed together. */
+    private static final class Sockets implements AutoCloseable {
+        private final List<Socket> sockets = new ArrayList<>();
+
+        Socket open(int port) throws IOException {
+            Socket socket = new Socket("localhost", port);
+            sockets.add(socket);
+            return socket;
+        }
+
+        List<Socket> all() {
+            return sockets;
+        }
+
+        @Override
+        public void close() throws IOException {
+            for (Socket socket : sockets) {
+                socket.close();
+            }
+        }
     }
 }

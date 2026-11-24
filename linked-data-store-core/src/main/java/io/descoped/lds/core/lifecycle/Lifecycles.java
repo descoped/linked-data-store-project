@@ -51,16 +51,13 @@ public final class Lifecycles {
      */
     public void start(Duration timeout) {
         for (Lifecycle subsystem : snapshot()) {
+            String name = subsystem.name();
             try {
-                LOG.info("Starting {} ...", subsystem.name());
+                LOG.info("Starting {} ...", name);
                 subsystem.start();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+            } catch (RuntimeException e) {
                 stop(timeout);
-                throw new IllegalStateException("Interrupted while starting " + subsystem.name(), e);
-            } catch (Exception e) {
-                stop(timeout);
-                throw new IllegalStateException(subsystem.name() + " could not start", e);
+                throw new IllegalStateException(name + " could not start", e);
             }
         }
     }
@@ -76,16 +73,17 @@ public final class Lifecycles {
             return false; // stopped, or being stopped by another caller
         }
         for (Lifecycle subsystem : snapshot().reversed()) {
+            String name = subsystem.name();
             try {
                 subsystem.stop(timeout);
-                LOG.debug("{} stopped", subsystem.name());
+                LOG.debug("{} stopped", name);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                LOG.error("Interrupted while stopping {}", subsystem.name(), e);
-            } catch (Exception e) {
-                LOG.error("{} did not stop cleanly", subsystem.name(), e);
+                LOG.error("Interrupted while stopping {}", name, e);
+            } catch (RuntimeException e) {
+                LOG.error("{} did not stop cleanly", name, e);
             }
-            stopped.add(subsystem.name());
+            stopped.add(name);
         }
         return true;
     }

@@ -155,7 +155,7 @@ public final class DocumentLocks {
             }
             taken.completeOnTimeout(false, timeout.toMillis(), TimeUnit.MILLISECONDS);
             taken.thenAccept(got -> {
-                if (!got) {
+                if (Boolean.FALSE.equals(got)) {
                     synchronized (this) {
                         waiting.remove(taken);
                     }
