@@ -243,8 +243,9 @@ public class UndertowApplication {
                 .addHttpListener(port, host)
                 .setIoThreads(IO_THREADS)
                 .setWorkerThreads(REQUEST_THREADS)
-                // the stop has already waited for the requests (stop(timeout)); a request still reading its body,
-                // blocking, would otherwise hold the stop until Undertow's read timeout of ten minutes
+                // the stop has already waited for the requests (stop(timeout)); a connection still open (a client
+                // that sends its body slowly or not at all, or keeps the connection) would otherwise hold the stop
+                // until Undertow's read timeout of ten minutes
                 .setServerOption(UndertowOptions.SHUTDOWN_TIMEOUT, 1000)
                 .setHandler(corsHandler)
                 .build();
@@ -755,6 +756,11 @@ public class UndertowApplication {
         return REQUEST_THREADS;
     }
 
+    /**
+     * The locks of the documents: the writes of one document take turns.
+     *
+     * @return the locks of the documents
+     */
     public DocumentLocks getDocumentLocks() {
         return documentLocks;
     }

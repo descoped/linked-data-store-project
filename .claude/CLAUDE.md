@@ -185,7 +185,9 @@ which validates the Jackson tree of the document). A schema that at its root say
   its own, never on an I/O or request thread. The steps of a saga are synchronous and may block, on the saga's own
   bounded pool (owner's decision, 2026-11-24): an asynchronous step only moves a blocking JDBC call to an unbounded
   pool and loses the back-pressure of the bounded one. Never block an event loop, a request thread or an Rx
-  scheduler. No `blockingGet`, `blockingAwait`, `join`, `sleep` or blocking read is added there; what is left is
+  scheduler other than these: a thread of the store's (`StoreReads`) and RxJava's io scheduler, on which a GraphQL
+  query goes on after a search, because a field may still read the store. No `blockingGet`, `blockingAwait`, `join`,
+  `sleep` or blocking read is added elsewhere; what is left is
   listed in the dossier (`blocking-calls-2026-11-24.md`) and goes as its part is revised.
 - **Time.** Document versions are stored and compared as UTC instants.
 - **Transactions** commit only when asked and roll back otherwise.

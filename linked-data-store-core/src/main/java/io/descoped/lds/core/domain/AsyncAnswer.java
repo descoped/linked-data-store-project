@@ -31,7 +31,7 @@ public final class AsyncAnswer {
      *
      * @param exchange the request
      * @param then     what is done with it, given the request and its body
-     * @param error    called when the body could not be read
+     * @param error    called when the body could not be read, on the I/O thread: it only sends a short answer
      */
     public static void withBody(HttpServerExchange exchange, BiConsumer<HttpServerExchange, String> then,
                                 Receiver.ErrorCallback error) {
