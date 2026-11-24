@@ -21,6 +21,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * A write that is to be searchable when it is answered: the query parameter {@code searchable=true} (decided by the
@@ -144,7 +145,17 @@ public final class SearchWait {
                         + "may are waiting for search", namespace, entity, id);
                 return Single.just(false);
             }
-            return until(namespace, entity, id).doFinally(waiting::release);
+            // the room is given back before the answer is (doFinally would give it after), once, also when the wait
+            // is given up
+            AtomicBoolean held = new AtomicBoolean(true);
+            Runnable giveBack = () -> {
+                if (held.compareAndSet(true, false)) {
+                    waiting.release();
+                }
+            };
+            return until(namespace, entity, id)
+                    .doOnEvent((searchable, failure) -> giveBack.run())
+                    .doOnDispose(giveBack::run);
         });
     }
 
