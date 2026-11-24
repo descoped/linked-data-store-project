@@ -552,7 +552,7 @@ class SolrSearchIndexTest {
                 ready.countDown();
                 try {
                     ready.await(); // every index puts the schema in at the same time
-                } catch (InterruptedException e) {
+                } catch (InterruptedException _) {
                     Thread.currentThread().interrupt();
                 }
                 put(index, id, errors);
@@ -580,8 +580,10 @@ class SolrSearchIndexTest {
         assertThat(post("/config", "{\"set-user-property\": {\"" + SolrSearchIndex.AUTO_CREATE_FIELDS
                 + "\": \"true\"}}")).isEqualTo(200);
 
-        put(new SolrSearchIndex(Solr10.url()), "again", new ArrayList<>());
+        List<Throwable> errors = new ArrayList<>();
+        put(new SolrSearchIndex(Solr10.url()), "again", errors);
 
+        assertThat(errors).isEmpty();
         assertThat(userProperty(SolrSearchIndex.AUTO_CREATE_FIELDS)).isEqualTo("false");
         assertThat(post("/update?commit=true", "[{\"id\": \"x\", \"unknown_field\": \"y\"}]")).isEqualTo(400);
     }

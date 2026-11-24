@@ -373,9 +373,12 @@ public class SolrSearchIndex implements SearchIndex {
             if (isPutIn(properties)) {
                 return Completable.complete();
             }
+            // the core had another schema when it has another mark; none is the first put in, or another LDS's at once
+            Object mark = SolrSchema.get(properties, SolrSchema.MARK);
+            boolean anotherSchema = mark != null && !schema.markOfThisSchema().equals(mark);
             return Single.zip(names("/schema/fieldtypes", "fieldTypes"), names("/schema/fields", "fields"),
                             (types, fields) -> {
-                                if (schema.replaces(types, fields)) {
+                                if (anotherSchema && schema.replaces(types, fields)) {
                                     LOG.warn("The schema of the search index is changed: what was indexed before "
                                             + "is searched as it was indexed until the index is rebuilt "
                                             + "(search.index.rebuild)");
@@ -390,7 +393,8 @@ public class SolrSearchIndex implements SearchIndex {
                     .flatMapCompletable(after -> isPutIn(after)
                             ? Completable.complete()
                             : Completable.error(new IllegalStateException("The configuration of the search index "
-                            + "was changed by another at the same time: " + after)))
+                            + "does not hold the properties after the change (another changed it at the same time, "
+                            + "or the core's configuration does not use " + AUTO_CREATE_FIELDS + "): " + after)))
                     .doOnComplete(() -> LOG.info("The schema of the search index is put in ({})",
                             schema.markOfThisSchema()));
         });
