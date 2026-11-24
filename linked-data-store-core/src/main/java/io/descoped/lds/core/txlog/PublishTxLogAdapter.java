@@ -15,7 +15,10 @@ import java.util.concurrent.CompletionStage;
  * The step of a saga that writes the write to the transaction log, without a thread of the saga that waits for it:
  * the entry is published asynchronously, and the step is done when the transaction log has it. The id of the entry
  * is the transaction id of the write, so the order in which entries are stored does not depend on when each
- * publish completes.
+ * publish completes. A step that recovery runs again (its End is not in the saga log: the process stopped after the
+ * publish, or the saga pool refused the step's continuation) publishes the same message again, built from the input
+ * the saga log gives back; the transaction log takes the same message under a stored id as a no-op, so the entry is
+ * stored once.
  * <p>
  * A client of the transaction log that only blocks (PostgreSQL) publishes on a thread of its own; the saga goes on
  * on its own pool when the publish has completed. The step has no time limit, as the transaction log has none: a
