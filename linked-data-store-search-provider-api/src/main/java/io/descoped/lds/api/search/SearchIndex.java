@@ -55,4 +55,10 @@ public interface SearchIndex {
      * @return the page of hits the query asks for, and the number of hits in all
      */
     Single<SearchPage> search(SearchQuery query);
+
+    /**
+     * Lets go of what the index holds to reach the search engine (its client, connections and threads). Called once,
+     * when LDS stops, after the last update and search; the index is not used after.
+     */
+    void close();
 }

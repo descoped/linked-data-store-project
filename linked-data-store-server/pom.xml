@@ -101,6 +101,11 @@
             <version>${project.version}</version>
         </dependency>
         <dependency>
+            <groupId>io.reactivex.rxjava3</groupId>
+            <artifactId>rxjava</artifactId>
+            <version>${rxjava.version}</version>
+        </dependency>
+        <dependency>
             <groupId>no.cantara.saga</groupId>
             <artifactId>sagalog-postgres</artifactId>
             <version>${cantara-saga.version}</version>

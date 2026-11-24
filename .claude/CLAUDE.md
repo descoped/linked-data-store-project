@@ -71,10 +71,9 @@ Decided by the owner (D1, D2): a write does not wait for the search index, and n
 One exception, asked for by the client (D7, "only when asked"): a write with `searchable=true` waits after its
 saga, with the lock of its document let go, until the queue holds no update of its document, then for the index to
 make it searchable (`SearchWait`, `IndexQueue.holds`, `SearchIndex.refresh`), at most 10 s, and is then answered
-as any write is, with `LDS-Searchable: true` or `false` (exposed by CORS). At most half of the request threads wait
-at once (owner's decision); a write past that is answered when it is done, with `false`. A write reads its body
-blocking, on the worker thread it was handed to (`startBlocking`): Undertow's read without blocking gives a body that
-comes in parts to an I/O thread, which the saga and the wait would block.
+as any write is, with `LDS-Searchable: true` or `false` (exposed by CORS). The wait holds no thread; at most half as
+many writes as there are request threads wait at once (owner's decision), and a write past that is answered when it
+is done, with `false`.
 The last step of the saga adds the update (namespace, entity, id, version with its zone, written or deleted) to
 the index queue (`IndexQueue`, in the search API) and is done. `IndexQueueWorker` in core takes updates in
 batches of at most 100, reads each written document from persistence at its version, sends the batch and waits
@@ -177,6 +176,25 @@ which validates the Jackson tree of the document). A schema that at its root say
   bytes; the bridge and core compare with `IdOrder.CODE_POINTS`, never `String.compareTo` (UTF-16, which puts a
   letter above U+FFFF before one of U+E000 to U+FFFF); Neo4j orders and bounds by the property `idOrder`
   (`IdOrder.key`, indexed with the namespace) of every document node. An id is whole text, no unpaired surrogate.
+- **No thread waits** (owner's rule, 2026-11-24: "No blocking calls should ever be made"). A request is read and
+  answered without a thread that waits for it: a body is read as it comes (`AsyncAnswer.withBody`), a write waits for
+  the lock of its document as a future (`DocumentLocks`), is answered from the completion of its saga and of its wait
+  for search (`AsyncAnswer.afterSaga`), and GraphQL runs with `executeAsync`. A read of the store that is composed
+  runs on a thread of the store's (`StoreReads`), which opens and closes its transaction (the store in memory holds
+  a lock of the thread). A client that only blocks (JDBC, the saga log, the transaction log) is called on a thread of
+  its own, never on an I/O or request thread. The steps of a saga are synchronous and may block, on the saga's own
+  bounded pool (owner's decision, 2026-11-24): an asynchronous step only moves a blocking JDBC call to an unbounded
+  pool and loses the back-pressure of the bounded one. Never block an event loop, a request thread or an Rx
+  scheduler other than the application's own in `StoreReads`: its threads of the store, and its threads of queries,
+  on which a GraphQL query goes on after a search, because a field may still read the store. No `blockingGet`,
+  `blockingAwait`, `join`, `sleep` or blocking read is added elsewhere; what is left is listed in the dossier
+  (`blocking-calls-2026-11-24.md`) and goes as its part is revised.
+- **Graceful stop, nothing left behind** (owner's rule, 2026-11-24: LDS is a platform, not a library). Every
+  subsystem (a store, a pool of threads, a client, a worker, the HTTP server) is a `Lifecycle` (package
+  `core.lifecycle`), added to the application's `Lifecycles` as it is made, after what it needs. They start in that
+  order and stop in the reverse order, also when the start fails part of the way (what was made is stopped). The
+  server keeps the process's own: RxJava's shared schedulers, then the application. A new subsystem is added there,
+  never as a static or global pool, and `ApplicationStopTest` holds the order of the stop.
 - **Time.** Document versions are stored and compared as UTC instants.
 - **Transactions** commit only when asked and roll back otherwise.
 - **Always the latest stable version** of every library, plugin, action, image and engine (Neo4j 2026, Solr 10).
@@ -249,8 +267,8 @@ module makes that module meet them.
 - Core's `SagaLogPostgresTest` runs the write path with the saga log in a PostgreSQL 18 container: concurrent
   writes, recovery of an unfinished saga by the next write, after a restart and by another instance of the cluster.
 - Core's `ApplicationStopTest` checks the order in which the application stops (`UndertowApplication.stop`): new
-  requests are answered 503 while those being handled complete, the running sagas complete, then their thread
-  pool, the saga log pool and the stores.
+  requests are answered 503 while those being handled complete, the running sagas complete, then every subsystem
+  in the reverse order of the one it was made in (`Lifecycles`), the store last.
 - The server's tests are the tests of the image (`*IT`, run by Failsafe after the jars are made, so by `verify`
   and not by `test`). `ServerImageIT` builds the three images with `docker build` and starts each as it is: the
   example model in memory, `/ping` under the prefix and on the port it is given, no health check declared, the
@@ -407,7 +425,9 @@ changing it:
 `linked-data-store-loadtest` is the load test LDS had before 3.0, brought up to date and kept as it was: the same
 steps, the same load (80 reads to 20 writes, 1 to 50 threads, ten seconds each), the same model and templates
 (`setup/gsim`, the schemas now JSON Schema 2020-12) and the same statistics and plots. `./ldsmemory.sh`,
-`./ldsneo4j.sh` and `./ldspostgres.sh` run it; its README says what a run does. Keep these when changing it:
+`./ldsneo4j.sh` and `./ldspostgres.sh` run it with the saga log in memory and no transaction log;
+`./ldspostgres-logs.sh` (owner's request, 2026-11-24) runs it with PostgreSQL as the store, the saga log and the
+transaction log, to test the saga under load. Its README says what a run does. Keep these when changing it:
 
 - **It is not part of the build**: nothing in `verify` or in CI starts it. Maven compiles and tests the
   statistics program with the reactor, and that is all.

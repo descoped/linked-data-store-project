@@ -1,6 +1,6 @@
 package io.descoped.lds.core.domain.managed;
 
-import io.descoped.lds.core.domain.SearchWait;
+import io.descoped.lds.core.domain.AsyncAnswer;
 import io.descoped.lds.core.domain.SyncParameter;
 import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.Limits;
@@ -156,10 +156,8 @@ public class ManagedResourceHandler implements HttpHandler {
         String managedDomain = topLevelElement.name();
         String managedDocumentId = topLevelElement.id();
 
-        // the body is read here, on the worker thread the request was handed to: read without blocking, a body that
-        // came in parts would be given to the callback on an I/O thread, which the saga and a wait for search block
-        exchange.startBlocking();
-        exchange.getRequestReceiver().receiveFullString(
+        // the body is read as it comes; the write goes on on a worker thread when it has all come
+        AsyncAnswer.withBody(exchange,
                 (httpServerExchange, requestBody) -> {
                     // check if we received an empty payload
                     if ("".equals(requestBody)) {
@@ -226,20 +224,18 @@ public class ManagedResourceHandler implements HttpHandler {
                     SagaInput sagaInput = new SagaInput(sec.generateTxId(), "PUT", "TODO", new DocumentKey(namespace, managedDomain, managedDocumentId, resourceContext.getTimestamp()), source, sourceId, requestData);
                     SelectableFuture<SagaHandoffResult> handoff = sec.handoff(sync, adapterLoader, saga, sagaInput, SagaCommands.getSagaAdminParameterCommands(httpServerExchange),
                             completion -> DocumentLocks.holdUntil(httpServerExchange, completion));
-                    SagaHandoffResult handoffResult = handoff.join();
-                    SearchWait.awaitIfAsked(httpServerExchange, resourceContext);
-
-                    exchange.setStatusCode(StatusCodes.CREATED);
-                    exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, APPLICATION_JSON);
-                    exchange.getResponseSender().send("{\"saga-execution-id\":\"" + handoffResult.getExecutionId() + "\"}");
+                    AsyncAnswer.afterSaga(httpServerExchange, resourceContext, handoff, (answered, handoffResult) -> {
+                        answered.setStatusCode(StatusCodes.CREATED);
+                        answered.getResponseHeaders().put(Headers.CONTENT_TYPE, APPLICATION_JSON);
+                        answered.getResponseSender().send("{\"saga-execution-id\":\"" + handoffResult.getExecutionId() + "\"}");
+                    });
                 },
                 (_, e) -> {
                     exchange.setStatusCode(StatusCodes.INTERNAL_SERVER_ERROR);
                     exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, TEXT_PLAIN);
                     exchange.getResponseSender().send("Error: " + e.getMessage());
                     LOG.warn("", e);
-                },
-                StandardCharsets.UTF_8);
+                });
     }
 
     private void deleteManaged(HttpServerExchange exchange) {
@@ -265,21 +261,20 @@ public class ManagedResourceHandler implements HttpHandler {
         SagaInput sagaInput = new SagaInput(sec.generateTxId(), "DELETE", "TODO", new DocumentKey(resourceContext.getNamespace(), managedDomain, topLevelElement.id(), resourceContext.getTimestamp()), source, sourceId, null);
         SelectableFuture<SagaHandoffResult> handoff = sec.handoff(sync, adapterLoader, saga, sagaInput, SagaCommands.getSagaAdminParameterCommands(exchange),
                 completion -> DocumentLocks.holdUntil(exchange, completion));
-        SagaHandoffResult handoffResult = handoff.join();
-        SearchWait.awaitIfAsked(exchange, resourceContext);
-
-        HeaderMap responseHeaders = exchange.getResponseHeaders();
-        if (sync) {
-            // Workaround https://bugs.openjdk.java.net/browse/JDK-8211437
-            // 204 MUST come with a content-size of 0.
-            responseHeaders.add(Headers.CONTENT_LENGTH, 0);
-            exchange.setStatusCode(StatusCodes.NO_CONTENT);
-            exchange.endExchange();
-        } else {
-            exchange.setStatusCode(StatusCodes.ACCEPTED);
-            responseHeaders.put(Headers.CONTENT_TYPE, APPLICATION_JSON);
-            exchange.getResponseSender().send("{\"saga-execution-id\":\"" + handoffResult.getExecutionId() + "\"}");
-        }
+        AsyncAnswer.afterSaga(exchange, resourceContext, handoff, (answered, handoffResult) -> {
+            HeaderMap responseHeaders = answered.getResponseHeaders();
+            if (sync) {
+                // Workaround https://bugs.openjdk.java.net/browse/JDK-8211437
+                // 204 MUST come with a content-size of 0.
+                responseHeaders.add(Headers.CONTENT_LENGTH, 0);
+                answered.setStatusCode(StatusCodes.NO_CONTENT);
+                answered.endExchange();
+            } else {
+                answered.setStatusCode(StatusCodes.ACCEPTED);
+                responseHeaders.put(Headers.CONTENT_TYPE, APPLICATION_JSON);
+                answered.getResponseSender().send("{\"saga-execution-id\":\"" + handoffResult.getExecutionId() + "\"}");
+            }
+        });
 
 
     }

@@ -1,6 +1,7 @@
 # Linked Data Store Load Test
 
-A load test of LDS with each persistence provider: memory, Neo4j and PostgreSQL. It starts LDS from the image of
+A load test of LDS with each persistence provider: memory, Neo4j and PostgreSQL, and with PostgreSQL also as the
+saga log and the transaction log. It starts LDS from the image of
 the server module, fills it, sends reads and writes from 1 to 50 threads, and draws throughput and latency by the
 number of threads.
 
@@ -14,12 +15,11 @@ It needs Docker with Compose, bash, and LDS built:
 ```sh
 ./mvnw package -DskipTests        # in the root of the repository
 cd linked-data-store-loadtest
-./ldsmemory.sh                    # or ./ldsneo4j.sh, ./ldspostgres.sh
+./ldsmemory.sh                    # or ./ldsneo4j.sh, ./ldspostgres.sh, ./ldspostgres-logs.sh
 ```
 
 A run takes about ten minutes and leaves about 2 GB, because the load tester records every request. The results
-are in `ldsmemory/results`, `ldsneo4j/results` or
-`ldspostgres/results`:
+are in `ldsmemory/results`, `ldsneo4j/results`, `ldspostgres/results` or `ldspostgres-logs/results`:
 
 | File | What it is |
 |---|---|
@@ -50,7 +50,9 @@ are in `ldsmemory/results`, `ldsneo4j/results` or
 7. Stops and removes the containers and their data.
 
 LDS runs with the saga log in memory and without a transaction log and a search index, so the test measures
-LDS and the persistence provider.
+LDS and the persistence provider. `ldspostgres-logs.sh` runs it with the PostgreSQL provider and the saga log and
+the transaction log in PostgreSQL as well, each in a database of its own in the same PostgreSQL, as the compose
+file of the server has them, so the test measures a write as a whole LDS makes it. Search stays off.
 
 ## The model
 

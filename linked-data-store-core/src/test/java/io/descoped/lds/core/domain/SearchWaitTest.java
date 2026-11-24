@@ -19,6 +19,7 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -70,6 +71,11 @@ class SearchWaitTest {
         }
 
         @Override
+        public void close() {
+            // nothing to let go of
+        }
+
+        @Override
         public Single<SearchPage> search(SearchQuery query) {
             throw new UnsupportedOperationException();
         }
@@ -77,7 +83,7 @@ class SearchWaitTest {
 
     @Test
     void aWriteWhoseUpdateIsSentIsMadeSearchableAtOnce() {
-        assertThat(wait.until("ns", "Person", "ola")).isTrue();
+        assertThat(answer(wait.until("ns", "Person", "ola"))).isTrue();
         assertThat(index.refreshes).hasValue(1);
     }
 
@@ -91,7 +97,7 @@ class SearchWaitTest {
         }, CompletableFuture.delayedExecutor(100, TimeUnit.MILLISECONDS));
 
         long start = System.nanoTime();
-        assertThat(wait.until("ns", "Person", "ola")).isTrue();
+        assertThat(answer(wait.until("ns", "Person", "ola"))).isTrue();
 
         assertThat(Duration.ofNanos(System.nanoTime() - start)).isGreaterThanOrEqualTo(Duration.ofMillis(100));
         assertThat(sent).isDone();
@@ -104,7 +110,7 @@ class SearchWaitTest {
         add("ola");
 
         long start = System.nanoTime();
-        assertThat(wait.until("ns", "Person", "ola")).isFalse();
+        assertThat(answer(wait.until("ns", "Person", "ola"))).isFalse();
 
         assertThat(Duration.ofNanos(System.nanoTime() - start)).isBetween(LONGEST, LONGEST.multipliedBy(4));
         assertThat(index.refreshes).hasValue(0);
@@ -120,14 +126,13 @@ class SearchWaitTest {
         DocumentLocks locks = new DocumentLocks(1, Duration.ofMillis(200));
         HttpServerExchange searchable = new HttpServerExchange(null);
         searchable.addQueryParam("searchable", "true");
-        assertThat(locks.acquire(searchable, "ns", "Person", "ola")).isTrue();
+        assertThat(locks.acquire(searchable, "ns", "Person", "ola")).isCompletedWithValue(true);
         DocumentLocks.holdUntil(searchable, CompletableFuture.completedFuture(null)); // its saga has completed
         wait.attachIfAsked(searchable);
         add("ola"); // not sent until the end, so the write waits
-        CompletableFuture<Void> waiting = CompletableFuture.runAsync(
-                () -> SearchWait.awaitIfAsked(searchable, "ns", "Person", "ola"));
+        CompletableFuture<Void> waiting = SearchWait.whenAsked(searchable, "ns", "Person", "ola").toCompletableFuture();
 
-        assertThat(locks.acquire(new HttpServerExchange(null), "ns", "Person", "ola")).isTrue();
+        assertThat(locks.acquire(new HttpServerExchange(null), "ns", "Person", "ola")).isCompletedWithValue(true);
         assertThat(waiting).isNotDone();
 
         sendAll();
@@ -141,17 +146,17 @@ class SearchWaitTest {
     @Test
     void theAnswerSaysWhetherASearchFindsTheWrite() {
         HttpServerExchange found = asking();
-        SearchWait.awaitIfAsked(found, "ns", "Person", "ola");
+        answered(SearchWait.whenAsked(found, "ns", "Person", "ola"));
         assertThat(found.getResponseHeaders().getFirst(SearchWait.SEARCHABLE)).isEqualTo("true");
 
         index.down = true; // the index cannot make it searchable, so the write is answered at once
         HttpServerExchange notFound = asking();
-        SearchWait.awaitIfAsked(notFound, "ns", "Person", "kari");
+        answered(SearchWait.whenAsked(notFound, "ns", "Person", "kari"));
         assertThat(notFound.getResponseHeaders().getFirst(SearchWait.SEARCHABLE)).isEqualTo("false");
 
         HttpServerExchange notAsked = new HttpServerExchange(null);
         wait.attachIfAsked(notAsked);
-        SearchWait.awaitIfAsked(notAsked, "ns", "Person", "ola");
+        answered(SearchWait.whenAsked(notAsked, "ns", "Person", "ola"));
         assertThat(notAsked.getResponseHeaders().contains(SearchWait.SEARCHABLE)).isFalse();
     }
 
@@ -163,13 +168,13 @@ class SearchWaitTest {
     void aWritePastTheMostThatMayWaitAtOnceIsAnsweredAtOnce() throws Exception {
         // two may wait at once
         add("ola"); // not sent until the two wait, so they wait
-        CompletableFuture<Boolean> first = CompletableFuture.supplyAsync(() -> wait.ifFree("ns", "Person", "ola"));
-        CompletableFuture<Boolean> second = CompletableFuture.supplyAsync(() -> wait.ifFree("ns", "Person", "ola"));
+        CompletableFuture<Boolean> first = wait.ifFree("ns", "Person", "ola").toCompletionStage().toCompletableFuture();
+        CompletableFuture<Boolean> second = wait.ifFree("ns", "Person", "ola").toCompletionStage().toCompletableFuture();
         // both wait
         await().atMost(Duration.ofSeconds(5)).pollInterval(Duration.ofMillis(5)).until(() -> wait.free() == 0);
 
         long start = System.nanoTime();
-        assertThat(wait.ifFree("ns", "Person", "ola")).isFalse();
+        assertThat(answer(wait.ifFree("ns", "Person", "ola"))).isFalse();
         assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(LONGEST.dividedBy(2));
         assertThat(index.refreshes).hasValue(0);
 
@@ -183,6 +188,16 @@ class SearchWaitTest {
     void atLeastOneWriteMayWait() {
         assertThatThrownBy(() -> new SearchWait(queue, index, POLL, LONGEST, 0))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    /* What a wait answers, within five seconds. */
+    private static boolean answer(Single<Boolean> searchable) {
+        return searchable.timeout(5, TimeUnit.SECONDS).blockingGet();
+    }
+
+    /* A wait for search has completed, within five seconds. */
+    private static void answered(CompletionStage<Void> waited) {
+        assertThat(waited.toCompletableFuture()).succeedsWithin(Duration.ofSeconds(5));
     }
 
     /* The worker has sent every update in the queue. */
@@ -201,7 +216,7 @@ class SearchWaitTest {
     void aWriteIsAnsweredWhenTheIndexCannotMakeItSearchable() {
         index.down = true;
 
-        assertThat(wait.until("ns", "Person", "ola")).isFalse();
+        assertThat(answer(wait.until("ns", "Person", "ola"))).isFalse();
     }
 
     @Test

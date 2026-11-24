@@ -1,7 +1,7 @@
 package io.descoped.lds.core.domain.reference;
 
 import io.descoped.lds.core.domain.DocumentLocks;
-import io.descoped.lds.core.domain.SearchWait;
+import io.descoped.lds.core.domain.AsyncAnswer;
 import io.descoped.lds.core.domain.SyncParameter;
 import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.Transaction;
@@ -26,7 +26,6 @@ import org.slf4j.LoggerFactory;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ArrayNode;
 
-import java.nio.charset.StandardCharsets;
 import java.util.Deque;
 
 import static io.descoped.lds.api.persistence.json.JsonTools.mapper;
@@ -95,10 +94,8 @@ public class ReferenceResourceHandler implements HttpHandler {
         String managedDomain = topLevelElement.name();
         String managedDocumentId = topLevelElement.id();
 
-        // the body is read here, on the worker thread the request was handed to: read without blocking, a body that
-        // came in parts would be given to the callback on an I/O thread, which the saga and a wait for search block
-        exchange.startBlocking();
-        exchange.getRequestReceiver().receiveFullString(
+        // the body is read as it comes; the write goes on on a worker thread when it has all come
+        AsyncAnswer.withBody(exchange,
                 (httpServerExchange, _) -> {
                     JsonDocument jsonDocument;
                     try (Transaction tx = persistence.createTransaction(true)) {
@@ -125,20 +122,18 @@ public class ReferenceResourceHandler implements HttpHandler {
                         SagaInput sagaInput = new SagaInput(sec.generateTxId(), "PUT", "TODO", new DocumentKey(namespace, managedDomain, managedDocumentId, resourceContext.getTimestamp()), source, sourceId, jsonDocument.jackson());
                         SelectableFuture<SagaHandoffResult> handoff = sec.handoff(sync, adapterLoader, saga, sagaInput, SagaCommands.getSagaAdminParameterCommands(httpServerExchange),
                                 completion -> DocumentLocks.holdUntil(httpServerExchange, completion));
-                        SagaHandoffResult sagaHandoffResult = handoff.join();
-                        SearchWait.awaitIfAsked(httpServerExchange, resourceContext);
-
-                        exchange.setStatusCode(200);
-                        exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/json");
-                        exchange.getResponseSender().send("{\"saga-execution-id\":\"" + sagaHandoffResult.getExecutionId() + "\"}");
+                        AsyncAnswer.afterSaga(httpServerExchange, resourceContext, handoff, (answered, sagaHandoffResult) -> {
+                            answered.setStatusCode(200);
+                            answered.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/json");
+                            answered.getResponseSender().send("{\"saga-execution-id\":\"" + sagaHandoffResult.getExecutionId() + "\"}");
+                        });
                     }
                 },
                 (_, e) -> {
                     exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "text/plain");
                     exchange.getResponseSender().send("Error: " + e.getMessage());
                     LOG.warn("", e);
-                },
-                StandardCharsets.UTF_8);
+                });
     }
 
     private void deleteReferenceTo(HttpServerExchange exchange) {
@@ -185,17 +180,14 @@ public class ReferenceResourceHandler implements HttpHandler {
         SagaInput sagaInput = new SagaInput(sec.generateTxId(), "PUT", "TODO", new DocumentKey(resourceContext.getNamespace(), resourceContext.getFirstElement().name(), resourceContext.getFirstElement().id(), resourceContext.getTimestamp()), source, sourceId, rootNode);
         SelectableFuture<SagaHandoffResult> handoff = sec.handoff(sync, adapterLoader, saga, sagaInput, SagaCommands.getSagaAdminParameterCommands(exchange),
                 completion -> DocumentLocks.holdUntil(exchange, completion));
-        SagaHandoffResult handoffResult = handoff.join();
-        SearchWait.awaitIfAsked(exchange, resourceContext);
-
-        if (sync) {
-            exchange.setStatusCode(200);
-            exchange.endExchange();
-        } else {
-            exchange.setStatusCode(200);
-            exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/json");
-            exchange.getResponseSender().send("{\"saga-execution-id\":\"" + handoffResult.getExecutionId() + "\"}");
-            exchange.endExchange();
-        }
+        AsyncAnswer.afterSaga(exchange, resourceContext, handoff, (answered, handoffResult) -> {
+            answered.setStatusCode(200);
+            if (sync) {
+                answered.endExchange();
+            } else {
+                answered.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/json");
+                answered.getResponseSender().send("{\"saga-execution-id\":\"" + handoffResult.getExecutionId() + "\"}");
+            }
+        });
     }
 }

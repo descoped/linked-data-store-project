@@ -20,6 +20,7 @@ import graphql.schema.idl.SchemaPrinter;
 import graphql.schema.idl.TypeDefinitionRegistry;
 import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.api.search.SearchIndex;
+import io.descoped.lds.core.persistence.StoreReads;
 import io.descoped.lds.graphql.directives.DomainDirective;
 import io.descoped.lds.graphql.directives.LinkDirective;
 import io.descoped.lds.graphql.directives.ReverseLinkDirective;
@@ -51,13 +52,15 @@ public class GraphQLSchemaBuilder {
     private static final String QUERY_NAME = "Query";
     private final RxJsonPersistence persistence;
     private final SearchIndex searchIndex;
+    private final StoreReads storeReads;
     private final String namespace;
     private final GraphQLObjectType.Builder query = SchemaElements.newObject().name(QUERY_NAME);
 
     public GraphQLSchemaBuilder(String namespace, RxJsonPersistence persistence,
-                                SearchIndex searchIndex) {
+                                SearchIndex searchIndex, StoreReads storeReads) {
         this.persistence = persistence;
         this.searchIndex = searchIndex;
+        this.storeReads = storeReads;
         this.namespace = namespace;
     }
 
@@ -208,7 +211,7 @@ public class GraphQLSchemaBuilder {
         GraphQLTypeResolvingVisitor typeResolvingVisitor = new GraphQLTypeResolvingVisitor(typeMap);
         TRAVERSER.depthFirst(typeResolvingVisitor, typeMap.values());
 
-        RegistrySetupVisitor fetcherSetupVisitor = new RegistrySetupVisitor(persistence, namespace, searchIndex);
+        RegistrySetupVisitor fetcherSetupVisitor = new RegistrySetupVisitor(persistence, namespace, searchIndex, storeReads);
         TRAVERSER.depthFirst(fetcherSetupVisitor, typeMap.values());
 
         GraphQLNamedType queryType = typeMap.remove(QUERY_NAME);

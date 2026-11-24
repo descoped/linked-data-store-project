@@ -2,6 +2,9 @@ package io.descoped.lds.server;
 
 import io.descoped.config.DynamicConfiguration;
 import io.descoped.lds.core.UndertowApplication;
+import io.descoped.lds.core.lifecycle.Lifecycle;
+import io.descoped.lds.core.lifecycle.Lifecycles;
+import io.reactivex.rxjava3.schedulers.Schedulers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,15 +50,18 @@ public class Server {
                 .systemProperties()
                 .build();
 
-        UndertowApplication application = UndertowApplication.initializeUndertowApplication(configuration);
-
+        // the process: RxJava's shared schedulers, which belong to it, then LDS, which uses them
+        Lifecycles process = new Lifecycles();
+        process.add(Lifecycle.of("RxJava schedulers", _ -> Schedulers.shutdown()));
         try {
+            UndertowApplication application = UndertowApplication.initializeUndertowApplication(configuration);
+            process.add(application);
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 LOG.warn("ShutdownHook triggered..");
-                application.stop();
+                process.stop(UndertowApplication.STOP_TIMEOUT);
             }));
 
-            application.start();
+            process.start(UndertowApplication.STOP_TIMEOUT);
 
             long time = System.currentTimeMillis() - now;
             LOG.info("Server started in {}ms..", time);
@@ -69,7 +75,7 @@ public class Server {
                 Thread.currentThread().interrupt();
             }
         } finally {
-            application.stop();
+            process.stop(UndertowApplication.STOP_TIMEOUT);
         }
     }
 }

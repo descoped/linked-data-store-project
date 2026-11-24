@@ -5,7 +5,7 @@ import io.descoped.lds.api.search.SearchIndex;
 import io.descoped.lds.core.domain.resource.ResourceContext;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Flowable;
-import io.reactivex.rxjava3.core.Maybe;
+import io.reactivex.rxjava3.core.Single;
 import io.undertow.server.HttpServerExchange;
 import io.undertow.util.AttachmentKey;
 import io.undertow.util.HttpString;
@@ -17,8 +17,11 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * A write that is to be searchable when it is answered: the query parameter {@code searchable=true} (decided by the
@@ -30,9 +33,9 @@ import java.util.concurrent.TimeUnit;
  * does. The wait is the same whichever LDS takes the update from a queue that several share.
  * <p>
  * The answer says whether a search finds the write: the header {@code LDS-Searchable}, {@code true} or
- * {@code false}. A wait holds a request thread, so at most half of them wait at once (decided by the owner): a write
- * past that is answered when it is done, with {@code LDS-Searchable: false}, and other requests are not slowed by
- * an index that does not answer.
+ * {@code false}. A wait holds no thread: the write is answered when the wait completes. At most half as many writes
+ * as there are request threads wait at once (decided by the owner): a write past that is answered when it is done,
+ * with {@code LDS-Searchable: false}, so that waits do not pile up on an index that does not answer.
  */
 public final class SearchWait {
 
@@ -55,7 +58,7 @@ public final class SearchWait {
      *
      * @param queue  the index queue
      * @param index  the search index
-     * @param atOnce how many writes may wait at once: half of the request threads
+     * @param atOnce how many writes may wait at once: half as many as the request threads
      */
     public SearchWait(IndexQueue queue, SearchIndex index, int atOnce) {
         this(queue, index, Duration.ofMillis(100), Duration.ofSeconds(10), atOnce);
@@ -92,7 +95,7 @@ public final class SearchWait {
     }
 
     /**
-     * Marks a write that asks to be searchable, so that its handler waits ({@link #awaitIfAsked}).
+     * Marks a write that asks to be searchable, so that its answer waits ({@link #whenAsked}).
      *
      * @param exchange the request
      */
@@ -103,26 +106,28 @@ public final class SearchWait {
     }
 
     /**
-     * Waits, when the request asked for it, until the document of the write is searchable, at most the longest wait,
-     * and says in the answer whether it is ({@link #SEARCHABLE}). Called on the worker thread of the request, after
-     * its saga, before the answer is sent.
+     * When the request asked for it, waits until the document of the write is searchable, at most the longest wait,
+     * and says in the answer whether it is ({@link #SEARCHABLE}); no thread waits. Called after the saga of the
+     * write, before it is answered.
      *
      * @param exchange the request
      * @param context  the document of the write
+     * @return complete when the answer may be sent
      */
-    public static void awaitIfAsked(HttpServerExchange exchange, ResourceContext context) {
-        awaitIfAsked(exchange, context.getNamespace(), context.getFirstElement().name(), context.getFirstElement().id());
+    public static CompletionStage<Void> whenAsked(HttpServerExchange exchange, ResourceContext context) {
+        return whenAsked(exchange, context.getNamespace(), context.getFirstElement().name(), context.getFirstElement().id());
     }
 
-    static void awaitIfAsked(HttpServerExchange exchange, String namespace, String entity, String id) {
+    static CompletionStage<Void> whenAsked(HttpServerExchange exchange, String namespace, String entity, String id) {
         SearchWait wait = exchange.getAttachment(ASKED);
-        if (wait != null) {
-            // the saga has completed (a searchable write waits for it), so no other write of the document waits for
-            // this one's search
-            DocumentLocks.letGoAfterSaga(exchange);
-            boolean searchable = wait.ifFree(namespace, entity, id);
-            exchange.getResponseHeaders().put(SEARCHABLE, Boolean.toString(searchable));
+        if (wait == null) {
+            return CompletableFuture.completedFuture(null);
         }
+        // the saga has completed (a searchable write waits for it), so no other write of the document waits for this
+        // one's search
+        DocumentLocks.letGoAfterSaga(exchange);
+        return wait.ifFree(namespace, entity, id).toCompletionStage()
+                .thenAccept(searchable -> exchange.getResponseHeaders().put(SEARCHABLE, Boolean.toString(searchable)));
     }
 
     /**
@@ -133,17 +138,25 @@ public final class SearchWait {
      * @param id        the id of the document
      * @return whether the document is searchable; false at once when as many writes as may are waiting
      */
-    boolean ifFree(String namespace, String entity, String id) {
-        if (!waiting.tryAcquire()) {
-            LOG.debug("A write of /{}/{}/{} that asked to be searchable is answered at once: as many writes as may "
-                    + "are waiting for search", namespace, entity, id);
-            return false;
-        }
-        try {
-            return until(namespace, entity, id);
-        } finally {
-            waiting.release();
-        }
+    Single<Boolean> ifFree(String namespace, String entity, String id) {
+        return Single.defer(() -> {
+            if (!waiting.tryAcquire()) {
+                LOG.debug("A write of /{}/{}/{} that asked to be searchable is answered at once: as many writes as "
+                        + "may are waiting for search", namespace, entity, id);
+                return Single.just(false);
+            }
+            // the room is given back before the answer is (doFinally would give it after), once, also when the wait
+            // is given up
+            AtomicBoolean held = new AtomicBoolean(true);
+            Runnable giveBack = () -> {
+                if (held.compareAndSet(true, false)) {
+                    waiting.release();
+                }
+            };
+            return until(namespace, entity, id)
+                    .doOnEvent((searchable, failure) -> giveBack.run())
+                    .doOnDispose(giveBack::run);
+        });
     }
 
     /* How many more writes may wait now. */
@@ -159,27 +172,25 @@ public final class SearchWait {
      * @param id        the id of the document
      * @return whether the document is searchable; false when the longest wait was not enough or the index failed
      */
-    boolean until(String namespace, String entity, String id) {
-        Throwable error = searchable(namespace, entity, id).blockingGet();
-        if (error == null) {
-            return true;
-        }
-        if (LOG.isWarnEnabled()) {
-            LOG.warn("A write of /{}/{}/{} that asked to be searchable is answered before it is ({})", namespace,
-                    entity, id, error.toString());
-        }
-        return false;
+    Single<Boolean> until(String namespace, String entity, String id) {
+        return searchable(namespace, entity, id)
+                .toSingleDefault(true)
+                .onErrorReturn(error -> {
+                    if (LOG.isWarnEnabled()) {
+                        LOG.warn("A write of /{}/{}/{} that asked to be searchable is answered before it is ({})",
+                                namespace, entity, id, error.toString());
+                    }
+                    return false;
+                });
     }
 
-    private Maybe<Throwable> searchable(String namespace, String entity, String id) {
+    private Completable searchable(String namespace, String entity, String id) {
         return Flowable.interval(0, poll.toMillis(), TimeUnit.MILLISECONDS)
                 .concatMapSingle(_ -> queue.holds(namespace, entity, id))
                 .filter(held -> !held)
                 .firstOrError()
                 .ignoreElement()
                 .andThen(Completable.defer(index::refresh))
-                .timeout(longest.toMillis(), TimeUnit.MILLISECONDS)
-                .<Throwable>toMaybe()
-                .onErrorReturn(error -> error);
+                .timeout(longest.toMillis(), TimeUnit.MILLISECONDS);
     }
 }

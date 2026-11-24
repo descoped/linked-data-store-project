@@ -81,6 +81,11 @@ class IndexQueueWorkerLifecycleTest {
         }
 
         @Override
+        public void close() {
+            // nothing to let go of
+        }
+
+        @Override
         public Single<SearchPage> search(SearchQuery query) {
             throw new UnsupportedOperationException();
         }

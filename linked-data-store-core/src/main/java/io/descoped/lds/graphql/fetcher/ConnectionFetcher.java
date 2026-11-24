@@ -60,9 +60,15 @@ public abstract class ConnectionFetcher<T> implements DataFetcher<Connection<T>>
 
     @Override
     public Connection<T> get(DataFetchingEnvironment environment) throws Exception {
-        ConnectionParameters parameters = new ConnectionParameters(getSnapshotFrom(environment), getAfterFrom(environment),
+        return getConnection(environment, parameters(environment));
+    }
+
+    /*
+     * The snapshot and the range a connection field is asked for.
+     */
+    static ConnectionParameters parameters(DataFetchingEnvironment environment) {
+        return new ConnectionParameters(getSnapshotFrom(environment), getAfterFrom(environment),
                 getBeforeFrom(environment), getLastFrom(environment), getFirstFrom(environment));
-        return getConnection(environment, parameters);
     }
 
     abstract Connection<T> getConnection(DataFetchingEnvironment environment, ConnectionParameters connectionParameters);

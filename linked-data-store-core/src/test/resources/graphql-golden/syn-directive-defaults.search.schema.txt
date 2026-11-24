@@ -149,7 +149,7 @@ GraphQLObjectType Query
     arg last: Int default=null description=null
     arg query: String! default=null description=null
     @search
-    fetcher=QueryConnectionFetcher{{entity=SearchResultConnection, nameSpace=ns, persistence=persistence, searchIndex=searchIndex}}
+    fetcher=QueryConnectionFetcher{{entity=SearchResultConnection, nameSpace=ns, persistence=persistence, searchIndex=searchIndex, storeReads=StoreReads}}
 GraphQLUnionType SearchResult
   description="Union type for possible search results"
   members=[B]

@@ -1,6 +1,6 @@
 package io.descoped.lds.core.domain.embedded;
 
-import io.descoped.lds.core.domain.SearchWait;
+import io.descoped.lds.core.domain.AsyncAnswer;
 import io.descoped.lds.core.domain.SyncParameter;
 import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.Limits;
@@ -111,10 +111,8 @@ public class EmbeddedResourceHandler implements HttpHandler {
     }
 
     private void putEmbedded(HttpServerExchange exchange) {
-        // the body is read here, on the worker thread the request was handed to: read without blocking, a body that
-        // came in parts would be given to the callback on an I/O thread, which the saga and a wait for search block
-        exchange.startBlocking();
-        exchange.getRequestReceiver().receiveFullString(
+        // the body is read as it comes; the write goes on on a worker thread when it has all come
+        AsyncAnswer.withBody(exchange,
                 (httpServerExchange, message) -> {
                     ResourceElement topLevelElement = resourceContext.getFirstElement();
                     String namespace = resourceContext.getNamespace();
@@ -181,26 +179,22 @@ public class EmbeddedResourceHandler implements HttpHandler {
                     SagaInput sagaInput = new SagaInput(sec.generateTxId(), "PUT", "TODO", new DocumentKey(namespace, managedDomain, managedDocumentId, resourceContext.getTimestamp()), source, sourceId, managedDocument);
                     SelectableFuture<SagaHandoffResult> handoff = sec.handoff(sync, adapterLoader, saga, sagaInput, SagaCommands.getSagaAdminParameterCommands(httpServerExchange),
                             completion -> DocumentLocks.holdUntil(httpServerExchange, completion));
-                    SagaHandoffResult handoffResult = handoff.join();
-                    SearchWait.awaitIfAsked(httpServerExchange, resourceContext);
-
-                    exchange.setStatusCode(200);
-                    exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, APPLICATION_JSON);
-                    exchange.getResponseSender().send("{\"saga-execution-id\":\"" + handoffResult.getExecutionId() + "\"}");
+                    AsyncAnswer.afterSaga(httpServerExchange, resourceContext, handoff, (answered, handoffResult) -> {
+                        answered.setStatusCode(200);
+                        answered.getResponseHeaders().put(Headers.CONTENT_TYPE, APPLICATION_JSON);
+                        answered.getResponseSender().send("{\"saga-execution-id\":\"" + handoffResult.getExecutionId() + "\"}");
+                    });
                 },
                 (_, e) -> {
                     exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, TEXT_PLAIN);
                     exchange.getResponseSender().send("Error putting embedded resource: " + e.getMessage());
                     LOG.warn("", e);
-                },
-                StandardCharsets.UTF_8);
+                });
     }
 
     private void deleteEmbedded(HttpServerExchange exchange) {
-        // the body is read here, on the worker thread the request was handed to: read without blocking, a body that
-        // came in parts would be given to the callback on an I/O thread, which the saga and a wait for search block
-        exchange.startBlocking();
-        exchange.getRequestReceiver().receiveFullString(
+        // the body is read as it comes; the write goes on on a worker thread when it has all come
+        AsyncAnswer.withBody(exchange,
                 (httpServerExchange, _) -> {
                     ResourceElement topLevelElement = resourceContext.getFirstElement();
                     String namespace = resourceContext.getNamespace();
@@ -231,19 +225,17 @@ public class EmbeddedResourceHandler implements HttpHandler {
                     SagaInput sagaInput = new SagaInput(sec.generateTxId(), "PUT", "TODO", new DocumentKey(namespace, managedDomain, managedDocumentId, resourceContext.getTimestamp()), source, sourceId, rootNode);
                     SelectableFuture<SagaHandoffResult> handoff = sec.handoff(sync, adapterLoader, saga, sagaInput, SagaCommands.getSagaAdminParameterCommands(httpServerExchange),
                             completion -> DocumentLocks.holdUntil(httpServerExchange, completion));
-                    SagaHandoffResult handoffResult = handoff.join();
-                    SearchWait.awaitIfAsked(httpServerExchange, resourceContext);
-
-                    exchange.setStatusCode(200);
-                    exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, APPLICATION_JSON);
-                    exchange.getResponseSender().send("{\"saga-execution-id\":\"" + handoffResult.getExecutionId() + "\"}");
+                    AsyncAnswer.afterSaga(httpServerExchange, resourceContext, handoff, (answered, handoffResult) -> {
+                        answered.setStatusCode(200);
+                        answered.getResponseHeaders().put(Headers.CONTENT_TYPE, APPLICATION_JSON);
+                        answered.getResponseSender().send("{\"saga-execution-id\":\"" + handoffResult.getExecutionId() + "\"}");
+                    });
                 },
                 (_, e) -> {
                     exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, TEXT_PLAIN);
                     exchange.getResponseSender().send("Error deleting embedded resource: " + e.getMessage());
                     LOG.warn("", e);
-                },
-                StandardCharsets.UTF_8);
+                });
     }
 
     public boolean mergeJson(ResourceContext resourceContext, JsonNode documentRootNode, JsonNode subTree) {

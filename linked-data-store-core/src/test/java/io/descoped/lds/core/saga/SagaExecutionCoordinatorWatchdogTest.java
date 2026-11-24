@@ -68,7 +68,9 @@ public class SagaExecutionCoordinatorWatchdogTest {
 
         {
             /*
-             * Configure a dummy slow node before saga fan-out in order to provoke deadlock.
+             * A slow node first in a saga without a join: each saga holds one pool thread in it. The saga is linear, as
+             * LDS's are, so the pool is held by the steps themselves, not by a walk that waits at a join (which the
+             * saga engine no longer does).
              */
             final ObjectNode empty = mapper.createObjectNode();
             sec.sagaRepository.getAdapterLoader().register(new Adapter<>(JsonNode.class, "SlowNodeAdapter", (_, _) -> {
@@ -79,28 +81,33 @@ public class SagaExecutionCoordinatorWatchdogTest {
                 }
                 return empty;
             }));
-            sec.sagaRepository.getAdapterLoader().register(new Adapter<>(JsonNode.class, "search", (_, _) -> empty));
             sec.sagaRepository.register(Saga
-                    .start(SagaRepository.SAGA_CREATE_OR_UPDATE_MANAGED_RESOURCE).linkTo("slownode", "search-index-update")
+                    .start(SagaRepository.SAGA_CREATE_OR_UPDATE_MANAGED_RESOURCE).linkTo("slownode")
                     .id("slownode").adapter("SlowNodeAdapter").linkTo("persistence")
                     .id("persistence").adapter(PersistenceCreateOrOverwriteSagaAdapter.ADAPTER_NAME).linkToEnd()
-                    .id("search-index-update").adapter("search").linkToEnd()
                     .end());
         }
 
+        /*
+         * More sagas than the pool has core threads: every core thread is held by a slow node, and the sagas after
+         * them wait in the queue, which is large enough that the pool does not grow by itself. Each write is of a
+         * document of its own, so the lock of a document does not put them one after the other.
+         */
         int sagaThreadPoolCoreSize = sec.threadPool.getCorePoolSize();
+        int writes = sagaThreadPoolCoreSize + 5;
 
-        final ExecutorService executor = Executors.newFixedThreadPool(sagaThreadPoolCoreSize);
+        final ExecutorService executor = Executors.newFixedThreadPool(writes);
 
         try {
             JsonNode provisionAgreementMoneyBin = resource("provisionagreement_money-bin.json");
 
-            CountDownLatch requestsHandled = new CountDownLatch(sagaThreadPoolCoreSize);
+            CountDownLatch requestsHandled = new CountDownLatch(writes);
             AtomicInteger requestsFailed = new AtomicInteger();
-            for (int i = 0; i < sagaThreadPoolCoreSize; i++) {
+            for (int i = 0; i < writes; i++) {
+                String path = "/data/provisionagreement/" + (100 + i);
                 CompletableFuture.runAsync(() -> {
                     try {
-                        client.put("/data/provisionagreement/100", provisionAgreementMoneyBin.toString()).expect201Created();
+                        client.put(path, provisionAgreementMoneyBin.toString()).expect201Created();
                     } catch (Throwable t) {
                         requestsFailed.incrementAndGet();
                         t.printStackTrace();

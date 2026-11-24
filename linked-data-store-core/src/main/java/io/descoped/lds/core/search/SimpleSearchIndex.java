@@ -86,6 +86,11 @@ public class SimpleSearchIndex implements SearchIndex {
     }
 
     @Override
+    public void close() {
+        // the index in memory holds nothing to let go of
+    }
+
+    @Override
     public Single<SearchPage> search(SearchQuery query) {
         return Single.fromCallable(() -> {
             List<IndexEntry> inScope = entries.values().stream().map(Taken::entry)
