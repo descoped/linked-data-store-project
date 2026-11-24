@@ -43,6 +43,20 @@ public class PersistenceConfiguratorTest {
     }
 
     @Test
+    public void thatAStartWithoutAProviderSaysSo() {
+        Specification specification = JsonSchemaBasedSpecification.create("spec/schemas/contact.json", "spec/schemas/provisionagreement.json");
+        for (Map<String, String> values : List.of(Map.<String, String>of(), Map.of("persistence.provider", " "))) {
+            DynamicConfiguration configuration = DynamicConfiguration.builder().values(values).build();
+            try {
+                PersistenceConfigurator.configurePersistence(configuration, specification);
+                Assert.fail("A start without a persistence provider must fail");
+            } catch (IllegalStateException e) {
+                Assert.assertTrue(e.getMessage().startsWith("persistence.provider is not set"), e.getMessage());
+            }
+        }
+    }
+
+    @Test
     public void thatAnUnknownProviderIsRejected() {
         DynamicConfiguration configuration = DynamicConfiguration.builder()
                 .values(Map.of("persistence.provider", "no-such-provider"))

@@ -28,8 +28,9 @@ public interface SearchIndex {
      * storage no longer holds.
      *
      * @param namespace the namespace
-     * @param age       how long ago the index took the entries that stay, at the most
-     * @return complete when the index has removed them
+     * @param age       how long ago the index took the entries that stay, at the most; none or more
+     * @return complete when the index has removed them; an error ({@link IllegalArgumentException}) when the age is
+     * below none, which would remove what the index takes from now on
      */
     Completable removeOlderThan(String namespace, Duration age);
 

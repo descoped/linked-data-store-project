@@ -4,6 +4,7 @@ import io.descoped.lds.api.search.IndexEntry;
 import io.descoped.lds.api.search.Language;
 import io.descoped.lds.api.search.SearchHit;
 import io.descoped.lds.api.search.SearchIndex;
+import io.descoped.lds.api.search.SearchIndexProvider;
 import io.descoped.lds.api.search.SearchPage;
 import io.descoped.lds.api.search.SearchQuery;
 import io.reactivex.rxjava3.core.Completable;
@@ -24,14 +25,17 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 
@@ -289,6 +293,168 @@ class SolrSearchIndexTest {
                 .blockingGet().total()).isEqualTo(1);
     }
 
+    /**
+     * Words a user types that are no well-formed query (an open quote or bracket, an operator alone, the escape
+     * character, a range, local parameters) are answered as words: a search never fails, and the word in them is
+     * found.
+     */
+    @Test
+    void wordsThatAreNoWellFormedQueryAreAnsweredAndNeverFail() {
+        searchIndex.put(List.of(text("Topic", "a", 1000, "the fjord at night"))).blockingAwait();
+        awaitHits(() -> search("fjord", at(2000)), 1);
+
+        for (String words : List.of("\"fjord", "fjord\"", "(fjord", "fjord)", "[fjord", "fjord]", "{fjord", "fjord}",
+                "fjord AND", "AND fjord", "fjord OR", "fjord &&", "|| fjord", "fjord\\", "\\fjord", "fjord:", ":fjord",
+                "fjord^", "fjord^2", "fjord~", "+fjord", "fjord!", "fjord/", "/fjord/", "fjord [a TO", "{!fjord}",
+                "fjord {!", "fjord $ldsText", "fjord ${x}")) {
+            assertThat(ids(search(words, at(2000)))).as(words).containsExactly("a");
+        }
+        for (String words : List.of("\"", "(", ")", "[", "]", "{", "}", "AND", "OR", "NOT", "&&", "||", "!", "\\", ":",
+                "^", "~", "+", "-", "/", "*", "?", "[* TO *]", "{!}", "\"\"", "()")) {
+            assertThat(search(words, at(2000)).total()).as(words).isGreaterThanOrEqualTo(0);
+        }
+    }
+
+    /**
+     * No words, or only spaces, find nothing.
+     */
+    @Test
+    void noWordsFindNothing() {
+        searchIndex.put(List.of(text("Topic", "a", 1000, "fjord"))).blockingAwait();
+        awaitHits(() -> search("fjord", at(2000)), 1);
+
+        assertThat(search("", at(2000)).total()).isZero();
+        assertThat(search("   ", at(2000)).total()).isZero();
+        assertThat(search("\t\n", at(2000)).total()).isZero();
+    }
+
+    /**
+     * A letter with its accent as a mark of its own (as macOS and many keyboards write it) is the same letter as the
+     * one written whole: a text written either way is found by words typed either way, and without the accent.
+     */
+    @Test
+    void aLetterWithItsAccentAsAMarkOfItsOwnIsTheSameLetter() {
+        String apart = "cafe\u0301 au lait"; // e and a combining acute accent
+        String whole = "na\u00efve art"; // ï as one letter
+        searchIndex.put(List.of(text("Topic", "apart", 1000, Language.NONE, apart),
+                text("Topic", "whole", 1000, Language.NONE, whole))).blockingAwait();
+        awaitHits(() -> search("lait", at(2000)), 1);
+
+        assertThat(ids(search("caf\u00e9", at(2000)))).as("café typed whole").containsExactly("apart");
+        assertThat(ids(search("cafe\u0301", at(2000)))).as("café typed apart").containsExactly("apart");
+        assertThat(ids(search("cafe", at(2000)))).as("cafe").containsExactly("apart");
+        assertThat(ids(search("nai\u0308ve", at(2000)))).as("naïve typed apart").containsExactly("whole");
+        assertThat(ids(search("naive", at(2000)))).as("naive").containsExactly("whole");
+    }
+
+    /**
+     * Texts of every script are found by their words: Chinese and Japanese, which have no spaces, Greek, Cyrillic,
+     * Arabic, Hebrew and a text with emoji.
+     */
+    @Test
+    void textsOfEveryScriptAreFound() {
+        searchIndex.put(List.of(
+                text("Topic", "tokyo", 1000, Language.NONE, "東京タワーに行きました"),
+                text("Topic", "athens", 1000, Language.NONE, "Η Αθήνα είναι όμορφη"),
+                text("Topic", "moscow", 1000, Language.NONE, "Москва зимой"),
+                text("Topic", "cairo", 1000, Language.NONE, "القاهرة مدينة كبيرة"),
+                text("Topic", "jerusalem", 1000, Language.NONE, "ירושלים של זהב"),
+                text("Topic", "party", 1000, Language.NONE, "a party 🎉 tonight"))).blockingAwait();
+        awaitHits(() -> search("*:*", at(2000)), 6);
+
+        assertThat(ids(search("東京", at(2000)))).containsExactly("tokyo");
+        assertThat(ids(search("αθήνα", at(2000)))).containsExactly("athens");
+        assertThat(ids(search("МОСКВА", at(2000)))).containsExactly("moscow");
+        assertThat(ids(search("القاهرة", at(2000)))).containsExactly("cairo");
+        assertThat(ids(search("ירושלים", at(2000)))).containsExactly("jerusalem");
+        assertThat(ids(search("party", at(2000)))).containsExactly("party");
+        assertThat(ids(search("🎉", at(2000)))).containsExactly("party");
+    }
+
+    /**
+     * A text of a megabyte, and a word longer than any word, are taken, and a word in them is found.
+     */
+    @Test
+    void aVeryLongTextAndAVeryLongWordAreTaken() {
+        String megabyte = "ocean ".repeat(100_000) + "needle " + "ocean ".repeat(75_000);
+        String longWord = "x".repeat(100_000);
+        searchIndex.put(List.of(text("Topic", "long", 1000, megabyte),
+                text("Topic", "word", 1000, Language.NONE, longWord + " beside"))).blockingAwait();
+
+        assertThat(ids(awaitHits(() -> search("needle", at(2000)), 1))).containsExactly("long");
+        assertThat(ids(awaitHits(() -> search("beside", at(2000)), 1))).containsExactly("word");
+    }
+
+    /**
+     * A hundred entries, the most the worker sends at once, are taken in one request.
+     */
+    @Test
+    void aHundredEntriesAreTakenInOneRequest() {
+        List<IndexEntry> entries = new ArrayList<>();
+        for (int i = 0; i < 100; i++) {
+            entries.add(text("Topic", "t" + i, 1000, "batch"));
+        }
+        searchIndex.put(entries).blockingAwait();
+
+        assertThat(awaitHits(() -> search("batch", at(2000)), 100).total()).isEqualTo(100);
+    }
+
+    /**
+     * A page of no hits gives the total only.
+     */
+    @Test
+    void aPageOfNoHitsGivesTheTotal() {
+        searchIndex.put(List.of(text("Topic", "a", 1000, "count"), text("Topic", "b", 1000, "count")))
+                .blockingAwait();
+        awaitHits(() -> search("count", at(2000)), 2);
+
+        SearchPage page = searchIndex.search(new SearchQuery(namespace, "count", Set.of(), at(2000), false, 0, 0))
+                .blockingGet();
+
+        assertThat(page.total()).isEqualTo(2);
+        assertThat(page.hits()).isEmpty();
+    }
+
+    /**
+     * Nothing to put asks nothing of Solr: it completes also when Solr cannot be reached.
+     */
+    @Test
+    void nothingToPutAsksNothingOfSolr() throws IOException {
+        SearchIndex unreachable = new SolrSearchIndex("http://127.0.0.1:" + closedPort() + "/solr/lds-index");
+
+        Completable nothing = unreachable.put(List.of());
+
+        assertThatCode(nothing::blockingAwait).doesNotThrowAnyException();
+    }
+
+    /**
+     * The provider is found by its name and names the keys it reads; a blank time to be searchable is the default.
+     */
+    @Test
+    void theProviderIsFoundByItsNameAndNamesItsKeys() {
+        SearchIndexProvider provider = ServiceLoader.load(SearchIndexProvider.class).stream()
+                .map(ServiceLoader.Provider::get).filter(p -> p.getProviderId().equals("solr"))
+                .findFirst().orElseThrow();
+
+        assertThat(provider.configurationKeys()).containsExactlyInAnyOrder("search.index.url",
+                "search.index.commit-within");
+        SearchIndex blank = provider.getSearchIndex(Map.of("search.index.url", Solr10.url(),
+                "search.index.commit-within", " "));
+        blank.put(List.of(text("Topic", "blank", 1000, "default"))).blockingAwait();
+        assertThat(ids(awaitHits(() -> search("default", at(2000)), 1))).containsExactly("blank");
+    }
+
+    /**
+     * An age below none is refused: it would remove what the index takes from now on.
+     */
+    @Test
+    void aNegativeAgeIsRefused() {
+        Completable removal = searchIndex.removeOlderThan(namespace, Duration.ofSeconds(-1));
+
+        assertThatThrownBy(removal::blockingAwait).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("age");
+    }
+
     @Test
     void aPagePastEveryPlaceSolrCanGiveIsEmpty() {
         searchIndex.put(List.of(text("Topic", "a", 1000, "far"))).blockingAwait();
@@ -376,7 +542,7 @@ class SolrSearchIndexTest {
         setMark("not-this-schema");
         SearchIndex first = new SolrSearchIndex(Solr10.url());
         SearchIndex second = new SolrSearchIndex(Solr10.url());
-        List<Throwable> errors = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+        List<Throwable> errors = java.util.Collections.synchronizedList(new ArrayList<>());
         Thread a = Thread.ofVirtual().start(() -> put(first, "first", errors));
         Thread b = Thread.ofVirtual().start(() -> put(second, "second", errors));
         a.join();
