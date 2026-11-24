@@ -34,7 +34,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * The write path with its saga log in PostgreSQL 18 (a container, so the tests need Docker): a saga log in a
  * database takes time to write and to truncate, which the memory and file saga logs of the other tests do not.
- * Every test starts its servers itself, with a cluster name of its own, so the tests share no saga log.
+ * Every test starts its servers itself, with a cluster name of its own, so the tests share no saga log, and with
+ * core's default owner of the cluster, the schema of the saga log, which PostgreSQL takes.
  */
 public class SagaLogPostgresTest {
 
@@ -182,7 +183,6 @@ public class SagaLogPostgresTest {
     private TestServer start(String cluster, String instanceId, String... overrides) {
         List<String> values = new ArrayList<>(List.of(
                 "sagalog.provider", "no.cantara.sagalog.postgres.PostgresSagaLogInitializer",
-                "sagalog.config.cluster.owner", "lds",
                 "sagalog.config.cluster.name", cluster,
                 "sagalog.config.cluster.instance-id", instanceId,
                 "sagalog.config.postgres.driver.host", postgres.getHost(),

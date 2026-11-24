@@ -27,8 +27,7 @@ services:
       LDS_POSTGRES_DRIVER_PASSWORD: lds
       LDS_POSTGRES_DRIVER_DATABASE: lds
       LDS_SAGALOG_PROVIDER: ${LDS_SAGALOG_PROVIDER:-no.cantara.sagalog.memory.MemorySagaLogInitializer}
-      # The saga log in PostgreSQL makes the owner a schema, and refuses core's default (my.org): the values of the
-      # server's compose file.
+      # The owner and the name of the saga log's cluster, as the server's compose file has them.
       LDS_SAGALOG_CONFIG_CLUSTER_OWNER: development
       LDS_SAGALOG_CONFIG_CLUSTER_NAME: lds
       LDS_SAGALOG_CONFIG_POSTGRES_DRIVER_HOST: postgres
