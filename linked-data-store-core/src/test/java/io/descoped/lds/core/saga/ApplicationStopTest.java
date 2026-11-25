@@ -254,6 +254,37 @@ class ApplicationStopTest {
     }
 
     /**
+     * A saga whose first walk waits in the queue of the thread pool when the stop interrupts the pool is never run.
+     * Its walk is cancelled, so it fails and gives back its saga log and its permit. Here the pool has one thread,
+     * which a saga holds in its first step, and the second saga waits.
+     */
+    @Test
+    void aSagaThatWaitsInTheQueueOfTheThreadPoolFailsWhenTheStopInterruptsThePool() throws Exception {
+        server = start(Map.of(
+                "saga.number-of-logs", "2",
+                "saga.threadpool.core", "1",
+                "saga.threadpool.max", "1",
+                "saga.threadpool.queue.capacity", "3"));
+        SagaExecutionCoordinator sec = server.getApplication().getSec();
+        int permits = sec.semaphore.availablePermits();
+        held = new HeldSaga(sec);
+        CompletableFuture<SagaHandoffResult> running = held.start();
+        assertThat(held.entered.await(10, TimeUnit.SECONDS)).isTrue();
+        CompletableFuture<SagaHandoffResult> waiting = held.start();
+        await("the second saga in the queue").atMost(Duration.ofSeconds(10))
+                .until(() -> !sec.getThreadPool().getQueue().isEmpty());
+
+        server.getApplication().stop(Duration.ofMillis(200));
+
+        assertThat(waiting).as("the saga that waited in the queue").isCompletedExceptionally();
+        assertThat(running).isCompletedExceptionally();
+        assertThat(sec.runningSagas).isEmpty();
+        assertThat(sec.executionIdBySagaLogId).isEmpty();
+        assertThat(sec.semaphore.availablePermits()).isEqualTo(permits);
+        assertStopped(server);
+    }
+
+    /**
      * While the application completes the requests it is handling, it answers a new request 503 Service
      * Unavailable: it is stopping, and the client may try again, here later or at another instance. The request
      * that is being handled, here one whose body has not all arrived, is completed and answered as always.
@@ -506,13 +537,20 @@ class ApplicationStopTest {
     }
 
     private TestServer start() {
+        return start(Map.of());
+    }
+
+    /* A server of its own, with the values given over those of the test. */
+    private TestServer start(Map<String, String> values) {
+        Map<String, String> all = new java.util.HashMap<>(Map.of(
+                "sagalog.provider", SlowTruncateSagaLogInitializer.class.getName(),
+                "saga.recovery.enabled", "false",
+                "saga.number-of-logs", "1"));
+        all.putAll(values);
         DynamicConfiguration configuration = DynamicConfiguration.builder()
                 .classpath(UndertowApplication.DEFAULT_CONFIGURATION_RESOURCE_PATH)
                 .classpath("application_test.properties")
-                .values(Map.of(
-                        "sagalog.provider", SlowTruncateSagaLogInitializer.class.getName(),
-                        "saga.recovery.enabled", "false",
-                        "saga.number-of-logs", "1"))
+                .values(all)
                 .build();
         TestServer started = new TestServer(configuration, TestServerListener.findFreePort(new Random(), 9500, 9999));
         started.getApplication().start();

@@ -4,7 +4,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -23,9 +25,10 @@ public final class Pools {
 
     /**
      * Shuts the pool down: it takes no more work, and the work it has taken, running or waiting, may complete
-     * within the timeout. Then what still runs is interrupted, and what waits is not run; the threads get
-     * {@link #GRACE} to end. A stop on a thread that is interrupted does not wait: the pool is interrupted at once,
-     * and the thread stays interrupted.
+     * within the timeout. Then what still runs is interrupted, and what waits is not run: a task that waits and is a
+     * {@link Future} is cancelled, so that whoever waits for it is told (a walk of a saga fails its saga, which gives
+     * back its saga log); the threads get {@link #GRACE} to end. A stop on a thread that is interrupted does not
+     * wait: the pool is interrupted at once, and the thread stays interrupted.
      *
      * @param name    the pool, as the log names it
      * @param pool    the pool
@@ -39,15 +42,31 @@ public final class Pools {
                 return true;
             }
             LOG.warn("{} still had work after {}; it is interrupted", name, timeout);
-            pool.shutdownNow();
+            cancel(name, pool.shutdownNow());
             if (!pool.awaitTermination(GRACE.toNanos(), TimeUnit.NANOSECONDS)) {
                 LOG.error("The threads of {} had not ended {} after they were interrupted", name, GRACE);
             }
             return false;
         } catch (InterruptedException _) {
-            pool.shutdownNow();
+            cancel(name, pool.shutdownNow());
             Thread.currentThread().interrupt();
             return false;
+        }
+    }
+
+    /* The tasks that waited and are not run: those that are futures are cancelled. */
+    private static void cancel(String name, List<Runnable> notRun) {
+        if (!notRun.isEmpty()) {
+            LOG.warn("{} had {} tasks that had not started; they are cancelled", name, notRun.size());
+        }
+        for (Runnable task : notRun) {
+            if (task instanceof Future<?> future) {
+                try {
+                    future.cancel(false);
+                } catch (RuntimeException e) {
+                    LOG.error("A task of {} that had not started failed when it was cancelled", name, e);
+                }
+            }
         }
     }
 }
