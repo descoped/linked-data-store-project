@@ -6,7 +6,7 @@
     <parent>
         <groupId>io.descoped.lds</groupId>
         <artifactId>linked-data-store-project</artifactId>
-        <version>3.0.1-SNAPSHOT</version>
+        <version>3.0.1</version>
     </parent>
 
     <artifactId>linked-data-store-persistence-provider-tck</artifactId>
