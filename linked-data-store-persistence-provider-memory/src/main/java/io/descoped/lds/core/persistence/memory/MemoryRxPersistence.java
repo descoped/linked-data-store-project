@@ -430,15 +430,15 @@ public class MemoryRxPersistence implements RxPersistence {
 
     private Completable doDelete(OrderedKeyValueTransaction transaction, String namespace, String
             entity, String resourceId, Tuple resourceVersion) {
-        return Single.defer(() -> getPrimary(namespace, entity).doOnSuccess(primary -> {
+        return Completable.defer(() -> getPrimary(namespace, entity).flatMapCompletable(primary -> {
             /*
-             * Get all fragments of given versioned resource.
+             * The index entry of each fragment of the version, then the version.
              */
             Range range = primary.range(Tuple.of(resourceId, resourceVersion));
-            Flowable.fromPublisher(new AsyncIterablePublisher<>(transaction.getRange(range, PRIMARY_INDEX, ROW_LIMIT_UNLIMITED)))
-                    .flatMapCompletable(kv -> deleteFragmentFromPathValueIndex(transaction, namespace, entity, primary, kv));
-            transaction.clearRange(range, PRIMARY_INDEX);
-        })).ignoreElement();
+            return Flowable.fromPublisher(new AsyncIterablePublisher<>(transaction.getRange(range, PRIMARY_INDEX, ROW_LIMIT_UNLIMITED)))
+                    .flatMapCompletable(kv -> deleteFragmentFromPathValueIndex(transaction, namespace, entity, primary, kv))
+                    .doOnComplete(() -> transaction.clearRange(range, PRIMARY_INDEX));
+        }));
     }
 
     private Completable deleteFragmentFromPathValueIndex(OrderedKeyValueTransaction transaction, String namespace, String entity, Subspace primary, KeyValue kv) {
