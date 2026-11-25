@@ -1,5 +1,103 @@
 # Release notes
 
+## 3.0.1
+
+The second release of Linked Data Store 3: the images of the server on Docker Hub, `descoped/lds:3.0.1`, for
+linux/amd64 and linux/arm64, in the same three variants as 3.0.0 (regular, `-distroless`, `-debug`), signed with
+cosign by the release workflow of this repository. What a client sees differently from 3.0.0 is said below.
+
+### Search
+
+- **Every text of a document is searched**, not only fields named `languageText`: texts in embedded objects, in
+  lists and in fields the model does not have. Links, dates, times, numbers and booleans are not searched, and
+  `@domain(searchable: false)` keeps an entity type out.
+- **By language:** a text in an object with `languageCode` and `languageText` is searched by the stems of its words
+  in Norwegian (bokmål and nynorsk), Swedish, English, German or French; every other text word for word. A word is
+  also found typed without its letters (`boker` finds "bøker", `Aase` finds "Åse"), and the word as written ranks
+  first. A letter and its accent written as a mark of its own are the same letter.
+- **At a moment:** a search looks at each document as it was at the snapshot, so a word only an older version had
+  does not find it; `history: true` gives every matching version, each read at that version.
+- **Found within about a second** (`search.index.commit-within`), and a write sent with `?searchable=true` is
+  answered when a search finds it, at most 10 seconds, with the header `LDS-Searchable: true` or `false`.
+- **No update of the index is lost:** a write does not wait for search; its update waits in an index queue (in
+  PostgreSQL with the transaction log, or in memory) until Solr has taken it.
+- **A rebuild:** the start option `search.index.rebuild` sends every version of every document to the index again,
+  while search answers, and then removes what storage no longer holds. A Solr core used by 3.0.0 needs it once.
+- LDS puts its own schema into the Solr core. No words find nothing; words that are no Solr query are read as words.
+
+### Writes
+
+- **One write at a time to a document**, in each LDS: writes of parts and links to one document at the same time no
+  longer lose changes. A write waits for its turn without holding a thread, at most 30 seconds, then 503.
+- **A write that names no time comes after the write before it** to the same document, also when the clock of the
+  machine goes back, so it is not written in the past and lost from the newest version.
+- **Parts and links wait** for their write, as documents do, unless `sync=false`.
+- **A failed write leaves nothing.** A `null` field is written as absent.
+- **Clear answers:** a body that is not JSON is 400 with the line, the column and the reason; another content type
+  415; ids and paths over the limits (an id is at most 1024 bytes of UTF-8) are 400 with a text that says which.
+  `/source` is 409 when no transaction log is kept.
+
+### Reads and GraphQL
+
+- **Lists stream** from the store, and a list is in the order of the code points of its ids in every store.
+- **`XById` is nullable:** an id no document has answers `null` for that field and the rest of the answer is kept.
+  An absent link is `null`; a list of links leaves out what is missing.
+- **Typed scalars:** `Int` is 32 bits, `Long` (new) 64 bits, `Float`, `Date` and `Time` are checked when written.
+- GraphQL answers 400 or 415 with a JSON error for a request it cannot read, and reads a body as UTF-8.
+
+### Running it
+
+- **Readiness:** `/health/ready` asks the store, the saga log, the transaction log, and with search Solr and the
+  index queue, each within 2 seconds, and answers `UP`, `DEGRADED` (200) or `DOWN` (503) with a JSON body.
+  `/ping` and `/health/alive` answer whenever the process does.
+- **The images declare no health check**: whoever runs LDS asks `/ping` or `/health/ready` at the port and prefix
+  it gave (the compose file asks `/health/ready`).
+- **A stop in order:** every part of LDS is stopped in the reverse order of its start; requests being handled
+  complete, new ones are answered 503. A start that fails part of the way stops what it made and ends the process.
+- **Configuration:** a variable `LDS_...` that sets no key stops the start; the saga log's owner defaults to `lds`,
+  which the saga log in PostgreSQL takes; LDS does not start when the saga log's pool is too small for its logs.
+- Saga 2.2.0, rawdata 3.1.0. SNAPSHOTs of the modules are published to <https://maven.descoped.io/>; no jar is
+  released.
+
+### From 3.0.0
+
+- **Solr:** a core used by 3.0.0 needs one start with `search.index.rebuild=true`: entries of 3.0.0 are not found by
+  the search of 3.0.1, and the rebuild removes them.
+- **Neo4j:** a document written by 3.0.0 has no place in the order of ids that 3.0.1 pages by, so GraphQL pages leave
+  it out until it is written again. A read by id and a list over REST find it. PostgreSQL and memory need nothing.
+- **Clients:** `XById` can be `null`; a part or a link written without `sync` waits for its write; a field written as
+  `null` is read back absent.
+- **Running it:** the images declare no health check; a misspelled `LDS_` variable stops the start.
+
+### Not finished
+
+The large items, each said where it is met in the documentation, in a paragraph that starts with "Not finished:":
+
+- Reads of the store still hold a request thread, and lists over REST are not paged.
+- LDS answers for one namespace over HTTP, the one in `namespace.default`.
+- A failed saga is answered 500 with no body, and the caller cannot tell whether recovery will do the write.
+- Several LDS in one cluster need an instance id each, which nothing derives, and cannot share a topic of the
+  transaction log in PostgreSQL. The turn of a write to a document is kept in each LDS.
+- No provider reads the delete policy.
+- A single field of an embedded type of a GraphQL schema is not validated inside.
+- The memory provider has known faults.
+- Modules still override the lint or the Javadoc rule, and 12 tests of core are disabled.
+
+### Run it
+
+```sh
+docker run --rm -p 127.0.0.1:9090:9090 descoped/lds:3.0.1
+```
+
+LDS then answers on port 9090, in memory, with an example model. [Getting started](https://lds.descoped.io/docs/user/getting-started/)
+goes on from there. To build it from the source you need JDK 27, and Docker with `docker compose` for the tests:
+
+```sh
+git clone --branch 3.0.1 https://github.com/descoped/linked-data-store-project.git
+cd linked-data-store-project
+./mvnw verify
+```
+
 ## 3.0.0
 
 The first release of Linked Data Store 3, and the first that is published: as images of the server on Docker Hub,
