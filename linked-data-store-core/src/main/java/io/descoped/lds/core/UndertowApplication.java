@@ -243,12 +243,13 @@ public class UndertowApplication implements Lifecycle {
 
         LOG.info("Initializing CORS-handler ...");
 
+        // an entry of a list is what is between two commas, without the blanks around it
         List<Pattern> corsAllowOrigin = Stream.of(configuration.find("http.cors.allow.origin").orElse(null)
-                .split(",")).map(Pattern::compile).toList();
-        Set<String> corsAllowMethods = Set.of(configuration.find("http.cors.allow.methods").orElse(null)
-                .split(","));
-        Set<String> corsAllowHeaders = Set.of(configuration.find("http.cors.allow.header").orElse(null)
-                .split(","));
+                .split(",")).map(String::trim).map(Pattern::compile).toList();
+        Set<String> corsAllowMethods = Stream.of(configuration.find("http.cors.allow.methods").orElse(null)
+                .split(",")).map(String::trim).collect(Collectors.toUnmodifiableSet());
+        Set<String> corsAllowHeaders = Stream.of(configuration.find("http.cors.allow.header").orElse(null)
+                .split(",")).map(String::trim).collect(Collectors.toUnmodifiableSet());
         boolean corsAllowCredentials = configuration.getBoolean("http.cors.allow.credentials", false);
         int corsMaxAge = configuration.getInt("http.cors.allow.max-age");
 

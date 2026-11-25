@@ -125,6 +125,14 @@ public class EmbeddedResourceHandlerTest {
     }
 
     @Test
+    public void thatDeleteOfAPartUnderAnObjectTheDocumentDoesNotHaveAddsNothing() throws JSONException {
+        String document = "{\"id\":\"e-missing\",\"name\":\"pa-test-name\",\"contacts\":[\"/contact/c1\"]}";
+        createTestResource("provisionagreement", "e-missing", document);
+        client.delete("/data/provisionagreement/e-missing/support/technicalSupport?sync=true").expect200Ok();
+        JSONAssert.assertEquals(document, client.get("/data/provisionagreement/e-missing").expect200Ok().body(), true);
+    }
+
+    @Test
     public void thatDELETELongResourcePathWorks() throws JSONException {
         createTestResource("provisionagreement", "e7", "{\"id\":\"e7\",\"name\":\"pa-test-name\",\"support\":{\"technicalSupport\":[\"/contact/s1\",\"/contact/s2\"],\"businessSupport\":[\"/contact/b1\"]}}");
         client.delete("/data/provisionagreement/e7/support/technicalSupport?sync=true").expect200Ok();

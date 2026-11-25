@@ -50,7 +50,8 @@ public class SourceHandler implements HttpHandler {
                         + "last source id of a source is not known");
                 return;
             }
-            String source = exchange.getRequestPath().substring("/source/".length());
+            // the path under http.prefix, as NamespaceController routes on it
+            String source = exchange.getRelativePath().substring("/source/".length());
             RawdataMessage lastMessage = txLogPool.getLastMessage(source);
             if (lastMessage == null) {
                 exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/json; charset=utf-8");
