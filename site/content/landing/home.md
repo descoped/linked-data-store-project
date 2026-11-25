@@ -79,7 +79,7 @@ $ curl 'http://localhost:9090/ns/Company/fjord?timestamp=2021-06-01T00:00:00Z'
 Without `timestamp` the same address gives the version valid now, and `?timeline` lists every version with its valid
 time. [Getting started](/docs/user/getting-started/) runs a session like it from the start.
 
-## With Claude Code
+## With Claude
 
 Never used LDS? Ask for it in plain words. The plugin `lds` for Claude Code starts LDS, makes a model of your
 domain with you from a description, sample data or an SQL schema, and writes, reads and queries the documents for

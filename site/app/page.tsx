@@ -49,13 +49,12 @@ function leadOf(html: string): { lead: string; rest: string } {
  */
 const layoutOf: Record<string, 'split' | 'panel' | 'fit' | 'quiet'> = {
   'What a document is made of': 'split',
-  'With Claude Code': 'panel',
   'When it fits': 'fit',
   Status: 'quiet',
 }
 
 /** Sections shown side by side in one band: the first names the second */
-const pairOf: Record<string, string> = { 'The problem': 'The time machine' }
+const pairOf: Record<string, string> = { 'The problem': 'The time machine', 'See it': 'With Claude' }
 
 /** The figure a section of the contract shows after its text; its words are the section's */
 const figureOf: Record<string, () => React.ReactElement> = {
@@ -138,6 +137,13 @@ export default async function Home(): Promise<React.ReactElement> {
                   <div key={part} id={idOf(part)} className="pair-part">
                     <h2>{part}</h2>
                     <div className="prose" dangerouslySetInnerHTML={{ __html: sections[part] ?? '' }} />
+                    {part === 'See it' && (
+                      <p className="actions">
+                        <Link className="button primary" href={f['primary-href']}>
+                          {f['primary-label']}
+                        </Link>
+                      </p>
+                    )}
                   </div>
                 ))}
               </section>
@@ -192,13 +198,6 @@ export default async function Home(): Promise<React.ReactElement> {
                 </div>
               )}
               {figureOf[name]?.()}
-              {name === 'See it' && (
-                <p className="actions">
-                  <Link className="button primary" href={f['primary-href']}>
-                    {f['primary-label']}
-                  </Link>
-                </p>
-              )}
             </section>
           )
         })}
