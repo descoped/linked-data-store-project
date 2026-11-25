@@ -19,6 +19,18 @@ code. `site/README.md` says how to run and build it.
 The plan and the state of each section of the landing page are kept outside the repository, in the owner's dossier
 for this repository (`site-plan-*.md`). Read it first: it says which section is being worked on and what was agreed.
 
+## Load the guides before designing or writing
+
+This skill is the LDS-specific layer. The craft underneath it lives in two other skills, and work done without them
+has gone wrong before (a page redesigned from memory, copy that read as generated). Before changing the look or the
+words of the site, load:
+
+- `krantho:site-design`, and read its `references/landing-page.md` (the order of a landing page, microcopy, visual
+  rhythm) and `references/quality.md` (accessibility, performance, motion);
+- `artifact-design`, for its fundamentals and above all "Writing the copy" and "Avoid AI-generated design".
+
+Where they and this skill differ, this skill wins: it holds the owner's decisions.
+
 ## Work one section at a time
 
 A change made on its own and left there is how the page went wrong before. So:
@@ -58,8 +70,16 @@ sells, made only of what LDS does.
 - Short: one idea a sentence, about 25 words at most; three sentences a paragraph on the landing page.
 - A telling sentence, not a list of facts: "LDS writes in steps and notes each one, so a crash halfway is finished
   when LDS starts again" rather than "Each step is recorded in a saga log."
+- Name things by what the reader recognises, not by how LDS is built: "a log of every change", "the search index",
+  before (if ever) "the transaction log", "the index queue". A part of the code earns a place on the landing page
+  only when the reader needs it to understand what they get.
+- No mannered devices, which read as generated: a colon that reveals the point ("The history is the data: no audit
+  tables"), "not X, but Y" framing, asides set off by dashes, stock phrases. Say it in a plain sentence.
 - No filler, no adjectives without a fact behind them, no claim of speed or scale without a measurement, nothing
   promised for later.
+
+The documentation (`docs/`) keeps its own established style, set in the project's `CLAUDE.md`; the voice above is
+for the landing page unless the owner extends it.
 
 ## The layout
 
@@ -75,7 +95,13 @@ page"):
 - One kind of row per section, never a one-off layout. No cards, no tinted grounds, no centred column that leaves
   the left edge.
 - One background; space parts the rows. Colour only for the primary button, links and what a figure highlights.
-- Text lines of about 85 characters at most (`max-width: 42rem`); code and figures take the whole column.
+  A border, fill or shadow sets off the one element that needs it, never every block.
+- Running text about 65 to 75 characters a line (`max-width: 38rem` at 16 px); code and figures take the whole
+  column. Headings use `text-wrap: balance`.
+- Numbering and other structure only where it is true of the content: the steps of a write are a sequence, a list
+  of store options is not.
+- The hero and its actions stay as the owner set them: Get started (the filled button) and Read the concepts, at the
+  top; the page has no closing call to action.
 
 ## Figures
 
