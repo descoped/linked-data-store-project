@@ -151,8 +151,8 @@ LDS fits data whose history is part of the data.
 
 These are facts of LDS 3.0.
 
-- **Recorded time** You need to know when a version was recorded as well as when it is valid. LDS keeps the valid
-  time only
+- **Recorded time** You need to ask what LDS knew at a past moment, as well as what was valid then. LDS reads by
+  valid time only. Its change log notes when each write was made, but no read or query asks by it
 - **Access control** LDS has no authentication, so anyone who reaches its port can read and write
 - **Checked links** You need a link checked on write, or a delete refused while other documents link to it. LDS
   does neither
