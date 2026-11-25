@@ -25,7 +25,7 @@ import java.util.stream.Stream;
  */
 public final class HTTPLoadTestBaselineStatistics {
 
-    private static final Pattern CSV_FILE_PATTERN = Pattern.compile("(.*)\\.csv");
+    private static final Pattern CSV_FILE_PATTERN = Pattern.compile("(.*)\\.csv", Pattern.CASE_INSENSITIVE);
     private static final Pattern READ_PATTERN = Pattern.compile("\\(Read-URL:");
     private static final Pattern WRITE_PATTERN = Pattern.compile("\\(Write-URL:");
 
@@ -40,8 +40,19 @@ public final class HTTPLoadTestBaselineStatistics {
      * @throws IOException when a file cannot be read or written
      */
     public static void main(String[] args) throws IOException {
+        int status = run(args);
+        if (status != 0) {
+            System.exit(status);
+        }
+    }
+
+    /*
+     * What main does, with the status it ends with: 0 when the plot files are written, 2 when the arguments are
+     * wrong (and nothing is written).
+     */
+    static int run(String[] args) throws IOException {
         if (!argumentsAreValid(args)) {
-            return;
+            return 2;
         }
         Path resultsPath = Path.of(args[0]);
         Path plotfilesFolder = Path.of(args[1]);
@@ -51,11 +62,11 @@ public final class HTTPLoadTestBaselineStatistics {
         ObjectMapper mapper = new ObjectMapper();
         List<Path> csvFiles;
         try (Stream<Path> files = Files.list(resultsPath)) {
-            csvFiles = files.filter(path -> CSV_FILE_PATTERN.matcher(path.getFileName().toString().toLowerCase()).matches()).toList();
+            csvFiles = files.filter(path -> CSV_FILE_PATTERN.matcher(path.getFileName().toString()).matches()).toList();
         }
 
         for (Path csvFile : csvFiles) {
-            Matcher csvFilenameMatcher = CSV_FILE_PATTERN.matcher(csvFile.getFileName().toString().toLowerCase());
+            Matcher csvFilenameMatcher = CSV_FILE_PATTERN.matcher(csvFile.getFileName().toString());
             csvFilenameMatcher.matches();
             String testBasename = csvFilenameMatcher.group(1);
 
@@ -71,6 +82,7 @@ public final class HTTPLoadTestBaselineStatistics {
         }
 
         GnuplotFileGenerator.writeStatisticsGnuplotAndDatafile(statistics, "clients", plotfilesFolder, outBasename);
+        return 0;
     }
 
     /*
