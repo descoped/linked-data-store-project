@@ -75,8 +75,9 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
                 fragments = fragments.takeWhile(fragment ->
                         order.compare(keyExtractor.apply(fragment), range.getAfter()) > 0);
             }
-            if (range.hasLast()) {
-                fragments = fragments.take(range.getLast());
+            // first with before and no after is read backward too, and keeps its limit as the stores do
+            if (range.isLimited()) {
+                fragments = fragments.take(range.getLimit());
             }
         } else {
             if (range.hasAfter()) {
