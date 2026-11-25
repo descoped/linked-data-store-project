@@ -628,6 +628,103 @@ a {
   max-width: 100%;
 }
 
+/* A figure opens large (components/figure-zoom.tsx): the corner says so, and the pointer shows a magnifier */
+.prose :is(.diagram, pre.mermaid)[role='button'] {
+  cursor: zoom-in;
+  position: relative;
+}
+
+.prose :is(.diagram, pre.mermaid)[role='button']::after {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  color: var(--color-text-muted);
+  content: '⤢ Enlarge';
+  font: var(--text-xs) / 1.4 var(--font-text);
+  opacity: 0.75;
+  padding: 0.1rem 0.4rem;
+  position: absolute;
+  right: var(--space-2);
+  top: var(--space-2);
+  transition: opacity var(--duration-fast);
+}
+
+.prose :is(.diagram, pre.mermaid)[role='button']:is(:hover, :focus-visible)::after {
+  color: var(--color-text);
+  opacity: 1;
+}
+
+.prose :is(.diagram, pre.mermaid)[role='button']:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* The dialog a figure opens in: as wide as the window allows, the drawing as wide as the dialog, and scrolled when
+   it is taller than the window */
+.figure-dialog {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  max-height: 94vh;
+  max-width: 96vw;
+  padding: 0;
+  width: 96vw;
+}
+
+.figure-dialog::backdrop {
+  background: rgb(0 0 0 / 0.6);
+}
+
+.figure-dialog-head {
+  align-items: center;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  gap: var(--space-4);
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-4);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.figure-dialog-head h2 {
+  font-size: var(--text-base);
+  margin: 0;
+}
+
+.figure-dialog-close {
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-sm);
+  padding: 0.2rem 0.7rem;
+}
+
+.figure-dialog-body {
+  padding: var(--space-4);
+}
+
+.figure-dialog-body .diagram {
+  margin: 0;
+}
+
+.figure-dialog-body svg {
+  display: block;
+  height: auto;
+  margin: 0 auto;
+  max-height: none;
+}
+
+/* The page under the dialog does not scroll */
+html:has(.figure-dialog[open]) {
+  overflow: hidden;
+}
+
 .prose blockquote {
   border-left: 3px solid var(--color-border);
   color: var(--color-text-muted);
@@ -673,7 +770,8 @@ a {
   min-width: 6rem;
 }
 
-/* A figure of docs/ (lib/html.ts): its SVG at most as wide as the text, coloured by the page's theme */
+/* A figure of docs/ (lib/html.ts): its SVG at most as wide as the text, coloured by the page's theme; also its copy
+   in the dialog it opens in */
 .diagram {
   --diagram-bg: var(--color-bg);
   --diagram-box: var(--color-sunken);

@@ -31,7 +31,7 @@ answered when a search finds it, at most 10 seconds after its saga (see
 [A write that asks to be searchable](#a-write-that-asks-to-be-searchable)).
 
 ```mermaid
-flowchart LR
+flowchart TB
     W[REST write] --> S1[saga: transaction log]
     S1 --> S2[saga: store]
     S2 --> S3[saga: index queue]

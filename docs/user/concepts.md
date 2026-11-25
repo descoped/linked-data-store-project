@@ -480,7 +480,7 @@ flowchart LR
 A write of a part or of a link is a write of the whole document:
 
 ```mermaid
-flowchart LR
+flowchart TB
     put["PUT /ns/Person/kari/employer/Company/acme"] --> read["read kari as it is<br/>at the time of the write"]
     read --> change["put /Company/acme<br/>in employer"]
     change --> write["write the whole of kari<br/>as a new version from that time"]
@@ -570,7 +570,7 @@ type Person @domain {
 This is the heart of a model. A field of a document holds one of three things:
 
 ```mermaid
-flowchart LR
+flowchart TB
     subgraph ola["Person/ola — a document: an id, an address and versions of its own"]
         direction TB
         values["<b>values</b><br/>name: Ola<br/>born: 1990-05-17T00:00:00Z"]:::value

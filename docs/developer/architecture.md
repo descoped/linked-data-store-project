@@ -129,12 +129,28 @@ clients as a [lifecycle](../glossary.md#lifecycle) to the application's `Lifecyc
 model with no entity type, or a name past its limit, stops the start before anything is made.
 
 ```mermaid
-flowchart LR
-    store["Store"] --> reads["Store reads"] --> sagalog["Saga log pool"]
-    sagalog --> index["Search index"] --> queue["Index queue"]
-    queue --> worker["Index queue worker"] --> rebuild["Index rebuild"]
-    rebuild --> txlog["Transaction log"] --> observer["Saga observer"] --> pool["Saga thread pool"]
-    pool --> sagas["Sagas"] --> ready["Readiness checks"] --> http["HTTP server"]
+flowchart TB
+    subgraph one[" "]
+        direction LR
+        store["Store"] --> reads["Store reads"] --> sagalog["Saga log pool"]
+    end
+    subgraph two[" "]
+        direction LR
+        index["Search index"] --> queue["Index queue"] --> worker["Index queue worker"] --> rebuild["Index rebuild"]
+    end
+    subgraph three[" "]
+        direction LR
+        txlog["Transaction log"] --> observer["Saga observer"] --> pool["Saga thread pool"] --> sagas["Sagas"]
+    end
+    subgraph four[" "]
+        direction LR
+        ready["Readiness checks"] --> http["HTTP server"]
+    end
+    one --> two --> three --> four
+    style one fill:none,stroke:none
+    style two fill:none,stroke:none
+    style three fill:none,stroke:none
+    style four fill:none,stroke:none
     style index stroke-dasharray: 4 3
     style queue stroke-dasharray: 4 3
     style worker stroke-dasharray: 4 3
