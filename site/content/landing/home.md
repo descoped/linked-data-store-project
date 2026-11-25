@@ -96,9 +96,9 @@ id of its saga, and the read gives the version that was valid on that date.
 docker run --rm -p 127.0.0.1:9090:9090 descoped/lds:3.0.1
 ```
 
-```console
-$ curl -fsSL https://raw.githubusercontent.com/descoped/linked-data-store-project/3.0.1/plugins/lds/skills/start/assets/compose-stack.yaml \
-    | docker compose -f - up -d --wait
+```sh
+curl -fsSL https://lds.descoped.io/compose.yaml \
+  | docker compose -f - up -d --wait
 ```
 
 ```console
