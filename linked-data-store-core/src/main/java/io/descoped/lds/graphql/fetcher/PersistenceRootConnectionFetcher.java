@@ -51,10 +51,10 @@ public class PersistenceRootConnectionFetcher extends ConnectionFetcher<Map<Stri
             Edge<Map<String, Object>> lastEdge = edges.get(edges.size() - 1);
 
             boolean hasPrevious = persistence.hasPrevious(tx, parameters.getSnapshot(), nameSpace, entityName,
-                    firstEdge.getCursor().getValue()).blockingGet();
+                    lowest(edges, parameters).getCursor().getValue()).blockingGet();
 
             boolean hasNext = persistence.hasNext(tx, parameters.getSnapshot(), nameSpace, entityName,
-                    lastEdge.getCursor().getValue()).blockingGet();
+                    highest(edges, parameters).getCursor().getValue()).blockingGet();
 
             PageInfo pageInfo = new DefaultPageInfo(
                     firstEdge.getCursor(),
