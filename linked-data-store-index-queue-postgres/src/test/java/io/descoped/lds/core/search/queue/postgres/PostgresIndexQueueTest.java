@@ -26,6 +26,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.awaitility.Awaitility.await;
 
 /**
  * The queue in PostgreSQL 18: found by the service loader under the name of the transaction log provider, durable,
@@ -123,7 +124,7 @@ class PostgresIndexQueueTest {
     }
 
     @Test
-    void updatesAreTakenInOrderAtMostTheNumberAskedAndNotAgainWhileTheirLeaseLasts() throws InterruptedException {
+    void updatesAreTakenInOrderAtMostTheNumberAskedAndNotAgainWhileTheirLeaseLasts() {
         for (String id : List.of("c", "a", "b")) {
             queue.add(update(id, IndexUpdate.Operation.CREATE_OR_OVERWRITE)).blockingAwait();
         }
@@ -131,8 +132,9 @@ class PostgresIndexQueueTest {
         assertThat(taken(queue, 2, Duration.ofMillis(500))).containsExactly("c", "a");
         assertThat(taken(queue, 10, Duration.ofMinutes(1))).containsExactly("b");
         assertThat(taken(queue, 10, Duration.ofMinutes(1))).isEmpty();
-        Thread.sleep(700);
-        assertThat(taken(queue, 10, Duration.ofMinutes(1))).containsExactly("c", "a");
+        assertThat(await().atMost(Duration.ofSeconds(10)).pollInterval(Duration.ofMillis(50))
+                .until(() -> taken(queue, 10, Duration.ofMinutes(1)), ids -> !ids.isEmpty()))
+                .containsExactly("c", "a");
     }
 
     @Test
@@ -153,7 +155,7 @@ class PostgresIndexQueueTest {
     }
 
     @Test
-    void anUpdateThatIsPutOffWaitsAndHasOneAttemptMoreAndOneThatIsRemovedIsGone() throws InterruptedException {
+    void anUpdateThatIsPutOffWaitsAndHasOneAttemptMoreAndOneThatIsRemovedIsGone() {
         queue.add(update("a", IndexUpdate.Operation.CREATE_OR_OVERWRITE)).blockingAwait();
         queue.add(update("b", IndexUpdate.Operation.CREATE_OR_OVERWRITE)).blockingAwait();
         List<IndexQueue.Entry> entries = queue.take(10, Duration.ofMinutes(1)).blockingGet();
@@ -162,8 +164,8 @@ class PostgresIndexQueueTest {
         queue.postpone(List.of(entries.getFirst()), Duration.ofMillis(500)).blockingAwait();
 
         assertThat(taken(queue, 10, Duration.ofMinutes(1))).isEmpty();
-        Thread.sleep(700);
-        assertThat(queue.take(10, Duration.ofMinutes(1)).blockingGet())
+        assertThat(await().atMost(Duration.ofSeconds(10)).pollInterval(Duration.ofMillis(50))
+                .until(() -> queue.take(10, Duration.ofMinutes(1)).blockingGet(), taken -> !taken.isEmpty()))
                 .extracting(entry -> entry.update().id(), IndexQueue.Entry::attempts)
                 .containsExactly(org.assertj.core.groups.Tuple.tuple("a", 1));
         queue.remove(List.of()).blockingAwait();
