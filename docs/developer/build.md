@@ -651,14 +651,15 @@ published to Maven Central. It is made with two pull requests and a start of the
    ```
 
    CI builds and tests it, as any pull request that changes code, and again on `master` when it is merged.
-2. The owner starts the release on `master`:
+2. The release is started on `master`, with the owner's go-ahead:
 
    ```sh
    gh workflow run release.yml -f version=3.0.0
    ```
 
-   `.github/workflows/release.yml` runs in the environment `release`, which waits for the owner's approval and
-   allows `master` only. It logs in to Docker Hub with the secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` of the
+   `.github/workflows/release.yml` runs in the environment `release`, which allows `master` only and asks for no
+   approval: the go-ahead is given before the run is started, and the run publishes when its checks pass. It logs
+   in to Docker Hub with the secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` of the
    organisation `descoped`, given to this repository. It checks first, and publishes
    nothing when a check fails: the version has the form `1.2.3`, the POMs on `master` have it, its tag does not
    exist, `RELEASE-NOTES.md` has its section, no dependency is a SNAPSHOT (the enforcer rule `requireReleaseDeps`,
