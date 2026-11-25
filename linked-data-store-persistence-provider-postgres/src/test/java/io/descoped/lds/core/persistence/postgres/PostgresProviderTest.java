@@ -441,6 +441,19 @@ class PostgresProviderTest {
         tx.cancel().join();
     }
 
+    @Test
+    void aCommitAfterAStatementFailedFailsAndWritesNothing() throws SQLException {
+        PostgresTransaction tx = fragments.transactionFactory.createTransaction(false);
+        persistence.createOrOverwrite(tx, document(NS, "FailedCommit", "f", T1, city("Oslo")), null).blockingAwait();
+        try (Statement statement = tx.connection.createStatement()) {
+            assertThatThrownBy(() -> statement.execute("SELECT 1 / 0")).isInstanceOf(SQLException.class);
+        }
+
+        assertThatThrownBy(() -> tx.commit().join()).hasCauseInstanceOf(PersistenceException.class);
+        assertThat(read(NS, "FailedCommit", "f", NOW)).isNull();
+        assertThat(fragments.transactionFactory.dataSource.getHikariPoolMXBean().getActiveConnections()).isZero();
+    }
+
     // ---- helpers
 
     private static ObjectNode city(String city) {

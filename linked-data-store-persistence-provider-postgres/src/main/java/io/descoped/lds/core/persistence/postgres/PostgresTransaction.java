@@ -3,6 +3,8 @@ package io.descoped.lds.core.persistence.postgres;
 import io.descoped.lds.api.persistence.PersistenceException;
 import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.TransactionStatistics;
+import org.postgresql.core.BaseConnection;
+import org.postgresql.core.TransactionState;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -12,6 +14,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * One connection of the pool with a transaction open on it. Committing or cancelling ends the transaction and
  * gives the connection back; whatever is asked after that does nothing.
+ * <p>
+ * A transaction in which a statement failed cannot be committed: PostgreSQL rolls it back. A commit then rolls it
+ * back and fails its future.
  */
 final class PostgresTransaction implements Transaction {
 
@@ -38,6 +43,12 @@ final class PostgresTransaction implements Transaction {
             return CompletableFuture.completedFuture(statistics);
         }
         try (Connection ending = connection) {
+            if (commit && failed(ending)) {
+                // PostgreSQL answers COMMIT with a rollback, and the driver does not say so
+                ending.rollback();
+                return CompletableFuture.failedFuture(new PersistenceException(
+                        "The transaction is rolled back, not committed: a statement in it failed"));
+            }
             if (commit) {
                 ending.commit();
             } else {
@@ -47,5 +58,11 @@ final class PostgresTransaction implements Transaction {
         } catch (SQLException e) {
             return CompletableFuture.failedFuture(new PersistenceException(e));
         }
+    }
+
+    /* Whether a statement of the transaction failed, as the driver last heard from the server; no round trip. */
+    private static boolean failed(Connection connection) throws SQLException {
+        return connection.isWrapperFor(BaseConnection.class)
+                && connection.unwrap(BaseConnection.class).getTransactionState() == TransactionState.FAILED;
     }
 }
