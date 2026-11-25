@@ -45,8 +45,6 @@ const landing = defineCollection({
     'Run it on your machine',
     'Write once, read any moment',
     'Or ask Claude to do it',
-    'Where LDS fits',
-    'Where LDS does not fit',
   ],
   archetype: defineDocumentArchetype({
     id: 'site/landing',

@@ -137,24 +137,3 @@ books, authors and loans, and load these members from members.csv". [With Claude
 ```text
 /plugin install lds --marketplace descoped/linked-data-store-project
 ```
-
-## Where LDS fits
-
-LDS fits data whose history is part of the data.
-
-- **Registers and master data** Data that changes over time and is read as it was
-- **Reports and audits** The data as it stood on a past date
-- **Linked models** Documents that link to each other, read together at one moment
-- **Planned changes** Written today, with a date in the future
-
-## Where LDS does not fit
-
-These are facts of LDS 3.0.
-
-- **Recorded time** You need to ask what LDS knew at a past moment, as well as what was valid then. LDS reads by
-  valid time only. Its change log notes when each write was made, but no read or query asks by it
-- **Access control** LDS has no authentication, so anyone who reaches its port can read and write
-- **Checked links** You need a link checked on write, or a delete refused while other documents link to it. LDS
-  does neither
-- **Several writers** Several LDS write the same document at the same time. Writes to one document take turns
-  within one LDS, not across several
