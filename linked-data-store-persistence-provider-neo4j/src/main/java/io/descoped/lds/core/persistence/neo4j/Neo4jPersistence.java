@@ -136,15 +136,18 @@ final class Neo4jPersistence implements RxJsonPersistence {
         };
     }
 
+    /*
+     * The path of a leaf. An item of an array is told by its index, which only an item has: a field may be named
+     * "[]" too, as an item is.
+     */
     static String computePath(List<Relationship> embeds) {
         StringBuilder completePath = new StringBuilder("$");
         for (Relationship embedRel : embeds) {
-            String pathElement = embedRel.get("path").asString();
-            if ("[]".equals(pathElement)) {
-                int index = embedRel.get("index").asNumber().intValue();
-                completePath.append("[").append(index).append("]");
+            Value index = embedRel.get("index");
+            if (index.isNull()) {
+                completePath.append(".").append(embedRel.get("path").asString());
             } else {
-                completePath.append(".").append(pathElement);
+                completePath.append("[").append(index.asNumber().intValue()).append("]");
             }
         }
         return completePath.toString();

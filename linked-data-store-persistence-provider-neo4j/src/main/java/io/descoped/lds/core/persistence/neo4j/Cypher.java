@@ -6,7 +6,7 @@ package io.descoped.lds.core.persistence.neo4j;
  * <p>
  * A label can be a parameter too ({@code (r:$($entity))}), and then Neo4j plans without the label: measured on
  * Neo4j 2026.10, a page of three from a list of 50,000 documents read all 50,000 and sorted them, where the label
- * in the statement gives a seek in the index of namespace and id, already in order. A constraint or an index
+ * in the statement gives a seek in the index of namespace and {@code idOrder}, already in order. A constraint or an index
  * cannot be created with a label as a parameter at all. So the label is quoted: whatever the name holds, it stays
  * a name.
  */
