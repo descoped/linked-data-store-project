@@ -91,7 +91,7 @@ and Solr for search. Your data is kept until the same line ending in `sh -s down
 
 <!-- label: LDS on its own, in memory -->
 ```sh
-docker run --rm -p 127.0.0.1:9090:9090 descoped/lds:3.0.1
+docker run --rm -p 127.0.0.1:9090:9090 descoped/lds
 ```
 
 <!-- label: LDS with Neo4j, PostgreSQL and Solr -->
