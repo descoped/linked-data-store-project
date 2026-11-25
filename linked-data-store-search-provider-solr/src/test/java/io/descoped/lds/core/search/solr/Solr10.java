@@ -35,7 +35,9 @@ final class Solr10 {
                 .withCommand("solr-precreate", CORE)
                 .withEnv("SOLR_OPTS", "-Dsolr.jetty.http.idleTimeout=" + IDLE_TIMEOUT.toMillis())
                 .withExposedPorts(PORT)
-                .waitingFor(Wait.forHttp("/solr/" + CORE + "/admin/ping").forStatusCode(200));
+                // the core answers a query of no rows, as the provider's health check asks it: Solr's ping is
+                // deprecated in Solr 10.1, and its health check is of the node, not the core
+                .waitingFor(Wait.forHttp("/solr/" + CORE + "/select?q=*:*&rows=0").forStatusCode(200));
         container.start();
         LoopbackPorts.check(container);
         return container;
