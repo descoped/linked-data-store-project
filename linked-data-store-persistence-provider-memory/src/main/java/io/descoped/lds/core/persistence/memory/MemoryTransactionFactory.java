@@ -44,7 +44,7 @@ public class MemoryTransactionFactory implements TransactionFactory {
     @Override
     public MemoryTransaction createTransaction(boolean readOnly) throws PersistenceException {
         try {
-            return new MemoryTransaction(executor, indexByIndex, readOnly ? readWriteLock.readLock() : readWriteLock.writeLock(), cancelTxOnClose);
+            return new MemoryTransaction(executor, indexByIndex, readOnly ? readWriteLock.readLock() : readWriteLock.writeLock(), readOnly, cancelTxOnClose);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new RuntimeException(e);

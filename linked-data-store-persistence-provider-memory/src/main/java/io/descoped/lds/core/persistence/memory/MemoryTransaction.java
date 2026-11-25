@@ -34,17 +34,22 @@ public class MemoryTransaction implements OrderedKeyValueTransaction {
     final Executor executor;
     final ConcurrentMap<String, ConcurrentNavigableMap<byte[], byte[]>> mapByIndex;
     final Lock lock;
+    final boolean readOnly;
     final boolean cancelTxOnClose;
     final AtomicBoolean locked = new AtomicBoolean(true);
     final TransactionStatistics statistics = new TransactionStatistics();
     final List<TransactionLogElement> transactionLog = new CopyOnWriteArrayList<>();
+    /* The thread that took the lock, which alone can let it go. */
+    final Thread owner;
 
-    public MemoryTransaction(Executor executor, ConcurrentMap<String, ConcurrentNavigableMap<byte[], byte[]>> mapByIndex, Lock lock, boolean cancelTxOnClose) throws InterruptedException {
+    public MemoryTransaction(Executor executor, ConcurrentMap<String, ConcurrentNavigableMap<byte[], byte[]>> mapByIndex, Lock lock, boolean readOnly, boolean cancelTxOnClose) throws InterruptedException {
         this.executor = executor;
         this.mapByIndex = mapByIndex;
         this.lock = lock;
+        this.readOnly = readOnly;
         this.cancelTxOnClose = cancelTxOnClose;
         lock.lockInterruptibly();
+        this.owner = Thread.currentThread();
     }
 
     ConcurrentNavigableMap<byte[], byte[]> getMapByIndex(String index) {
@@ -81,35 +86,53 @@ public class MemoryTransaction implements OrderedKeyValueTransaction {
 
     @Override
     public CompletableFuture<TransactionStatistics> commit() {
-        try {
-            return CompletableFuture.completedFuture(statistics);
-        } finally {
-            if (locked.compareAndSet(true, false)) {
-                lock.unlock();
-            }
-        }
+        return end(false);
     }
 
     @Override
     public CompletableFuture<TransactionStatistics> cancel() {
+        return end(true);
+    }
+
+    /*
+     * Ends the transaction, once: what it changed is put back when undo, the undo log is emptied and the lock let
+     * go. After that an end does nothing. The lock belongs to the thread that began the transaction, so an end on
+     * another thread fails and leaves the transaction as it was, for its own thread to end.
+     */
+    private CompletableFuture<TransactionStatistics> end(boolean undo) {
+        if (Thread.currentThread() != owner) {
+            return CompletableFuture.failedFuture(new IllegalStateException(
+                    "A transaction is ended on the thread that began it, which holds the lock of the store"));
+        }
+        if (!locked.get()) {
+            return CompletableFuture.completedFuture(statistics);
+        }
         try {
-            for (int i = transactionLog.size() - 1; i >= 0; i--) {
-                TransactionLogElement element = transactionLog.get(i);
-                ConcurrentNavigableMap<byte[], byte[]> mapByPrefix = getMapByIndex(element.index);
-                for (Map.Entry<byte[], byte[]> entry : element.map.entrySet()) {
-                    if (entry.getValue() == null) {
-                        mapByPrefix.remove(entry.getKey());
-                    } else {
-                        mapByPrefix.put(entry.getKey(), entry.getValue());
+            if (undo) {
+                for (int i = transactionLog.size() - 1; i >= 0; i--) {
+                    TransactionLogElement element = transactionLog.get(i);
+                    ConcurrentNavigableMap<byte[], byte[]> mapByPrefix = getMapByIndex(element.index);
+                    for (Map.Entry<byte[], byte[]> entry : element.map.entrySet()) {
+                        if (entry.getValue() == null) {
+                            mapByPrefix.remove(entry.getKey());
+                        } else {
+                            mapByPrefix.put(entry.getKey(), entry.getValue());
+                        }
                     }
                 }
             }
-            transactionLog.clear();
             return CompletableFuture.completedFuture(statistics);
         } finally {
-            if (locked.compareAndSet(true, false)) {
-                lock.unlock();
-            }
+            transactionLog.clear();
+            locked.set(false);
+            lock.unlock();
+        }
+    }
+
+    /* A read-only transaction holds the lock that readers share, so it must not write. */
+    private void checkWritable() {
+        if (readOnly) {
+            throw new IllegalStateException("A read-only transaction does not write.");
         }
     }
 
@@ -132,6 +155,7 @@ public class MemoryTransaction implements OrderedKeyValueTransaction {
 
     @Override
     public void clearRange(Range range, String index) {
+        checkWritable();
         NavigableMap<byte[], byte[]> subMap = getMapByIndex(index).subMap(range.begin(), true, range.end(), false);
         transactionLog.add(new TransactionLogElement(index, subMap));
         subMap.clear();
@@ -139,6 +163,7 @@ public class MemoryTransaction implements OrderedKeyValueTransaction {
 
     @Override
     public void clear(byte[] key, String index) {
+        checkWritable();
         byte[] previousValue = getMapByIndex(index).remove(key);
         LinkedHashMap<byte[], byte[]> map = new LinkedHashMap<>();
         map.put(key, previousValue);
@@ -147,6 +172,7 @@ public class MemoryTransaction implements OrderedKeyValueTransaction {
 
     @Override
     public void set(byte[] key, byte[] value, String index) {
+        checkWritable();
         byte[] previousValue = getMapByIndex(index).put(key, value);
         LinkedHashMap<byte[], byte[]> map = new LinkedHashMap<>();
         map.put(key, previousValue);
