@@ -183,16 +183,10 @@ public class Statistics {
 
         synchronized (workerConcurrencyStatistics) {
             sample(workerConcurrencyStatistics, "wc-", x, sampleWindowSeconds);
-            for (double value : workerConcurrencyStatistics.getValues()) {
-                combinedSuccessStats.addValue(value);
-            }
             workerConcurrencyStatistics.clear();
         }
         synchronized (commandConcurrencyStatistics) {
             sample(commandConcurrencyStatistics, "cc-", x, sampleWindowSeconds);
-            for (double value : commandConcurrencyStatistics.getValues()) {
-                combinedSuccessStats.addValue(value);
-            }
             commandConcurrencyStatistics.clear();
         }
     }
