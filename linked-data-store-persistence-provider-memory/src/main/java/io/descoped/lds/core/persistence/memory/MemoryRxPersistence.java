@@ -358,11 +358,8 @@ public class MemoryRxPersistence implements RxPersistence {
                 return Flowable.empty(); // false-positive index-match on older version
             }
             if (FragmentType.DELETED.equals(fragmentType)) {
-                // Version was overwritten in primary by a delete-marker, remove index fragment asynchronously in separate transaction.
-                transactionFactory().runAsyncInIsolatedTransaction(otherTx -> {
-                    ((OrderedKeyValueTransaction) otherTx).clear(aMatchingFragmentKv.key(), PATH_VALUE_INDEX);
-                    return null;
-                }, false);
+                // The version was replaced in primary by a delete marker: the entry is left out, as any false match
+                // is. A read does not write, so the entry stays.
                 return Flowable.empty();
             }
 
