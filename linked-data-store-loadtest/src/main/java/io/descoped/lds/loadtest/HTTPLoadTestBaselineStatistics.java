@@ -40,8 +40,19 @@ public final class HTTPLoadTestBaselineStatistics {
      * @throws IOException when a file cannot be read or written
      */
     public static void main(String[] args) throws IOException {
+        int status = run(args);
+        if (status != 0) {
+            System.exit(status);
+        }
+    }
+
+    /*
+     * What main does, with the status it ends with: 0 when the plot files are written, 2 when the arguments are
+     * wrong (and nothing is written).
+     */
+    static int run(String[] args) throws IOException {
         if (!argumentsAreValid(args)) {
-            return;
+            return 2;
         }
         Path resultsPath = Path.of(args[0]);
         Path plotfilesFolder = Path.of(args[1]);
@@ -71,6 +82,7 @@ public final class HTTPLoadTestBaselineStatistics {
         }
 
         GnuplotFileGenerator.writeStatisticsGnuplotAndDatafile(statistics, "clients", plotfilesFolder, outBasename);
+        return 0;
     }
 
     /*
