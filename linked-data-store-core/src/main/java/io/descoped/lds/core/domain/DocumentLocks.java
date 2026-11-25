@@ -1,9 +1,16 @@
 package io.descoped.lds.core.domain;
 
+import io.descoped.lds.core.utils.RequestTime;
 import io.undertow.server.HttpServerExchange;
 import io.undertow.util.AttachmentKey;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZonedDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Objects;
@@ -27,13 +34,22 @@ import java.util.concurrent.atomic.AtomicReference;
  * <p>
  * The locks are striped: a document key is hashed to one of a fixed number of locks, so the memory they take does
  * not grow with the documents, and two documents that share a stripe are written one after the other.
+ * <p>
+ * A write that names no time of its own is a version at the time of its turn ({@link #timeOfTurn()}), which is after
+ * the time of every turn before it, also when the clock goes back: so it is after the version of the write before it
+ * to the same document, and reads what that write wrote.
  */
 public final class DocumentLocks {
 
+    private static final Logger LOG = LoggerFactory.getLogger(DocumentLocks.class);
     private static final AttachmentKey<Held> HELD = AttachmentKey.create(Held.class);
+    private static final Duration BEHIND = Duration.ofSeconds(1);
 
     private final Stripe[] stripes;
     private final Duration timeout;
+    private final Clock clock;
+    private final AtomicReference<Instant> lastTurn = new AtomicReference<>(Instant.MIN);
+    private final AtomicBoolean clockBehind = new AtomicBoolean();
 
     /**
      * Locks with 1024 stripes, waited for at most 30 seconds.
@@ -49,6 +65,17 @@ public final class DocumentLocks {
      * @param timeout how long a write waits for the lock of its document
      */
     public DocumentLocks(int stripes, Duration timeout) {
+        this(stripes, timeout, Clock.systemUTC());
+    }
+
+    /**
+     * Locks with the given number of stripes, the longest wait and the clock the time of a turn is read from.
+     *
+     * @param stripes the number of locks
+     * @param timeout how long a write waits for the lock of its document
+     * @param clock   the clock of {@link #timeOfTurn()}
+     */
+    public DocumentLocks(int stripes, Duration timeout, Clock clock) {
         if (stripes < 1) {
             throw new IllegalArgumentException("stripes must be at least 1");
         }
@@ -57,6 +84,34 @@ public final class DocumentLocks {
             this.stripes[i] = new Stripe();
         }
         this.timeout = Objects.requireNonNull(timeout);
+        this.clock = Objects.requireNonNull(clock);
+    }
+
+    /**
+     * The time of a write that has its turn now and names no time of its own, the version it writes: now, to the
+     * microsecond (what the stores keep), or a microsecond after the time of the turn before it when the clock has
+     * not moved on since (two turns in one microsecond) or has gone back (a clock set back, or the clock of a virtual
+     * machine corrected). A write reads the document at this time; at a time before the turn before it, it would read
+     * what was there before that write and write a version in the past, and the newest version would not have it.
+     *
+     * @return the time of the turn, in UTC, after the time of every turn before it
+     */
+    public ZonedDateTime timeOfTurn() {
+        Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
+        Instant turn = lastTurn.accumulateAndGet(now,
+                (last, current) -> current.isAfter(last) ? current : last.plus(1, ChronoUnit.MICROS));
+        // a clock that has gone back by more than a moment (or one that ran ahead and was put right) puts every write
+        // at the time of the last turn until the clock has caught up, and a restart forgets that time: say so, once
+        boolean behind = now.plus(BEHIND).isBefore(turn);
+        if (clockBehind.compareAndSet(!behind, behind)) {
+            if (behind) {
+                LOG.warn("The clock is at {}, behind the time of the last write ({}): writes that name no time are "
+                        + "given a time a microsecond after the write before until the clock has caught up", now, turn);
+            } else {
+                LOG.info("The clock has caught up with the time of the writes ({})", now);
+            }
+        }
+        return ZonedDateTime.ofInstant(turn, RequestTime.UTC);
     }
 
     /**
