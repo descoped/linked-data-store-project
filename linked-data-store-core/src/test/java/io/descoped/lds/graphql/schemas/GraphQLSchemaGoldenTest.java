@@ -43,6 +43,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * {@code src/test/resources/graphql-golden} were written on 12 with the printer in {@link CanonicalText}; this
  * test builds the same things as the application does and compares. A difference is a change in what LDS gives
  * its clients, and is to be understood before an expected file is changed.
+ * <p>
+ * The JSON Schemas and specifications hold the faults of the walk corrected since, each with its own test: a single
+ * field of a type without {@code @domain} refers to its definition ({@code GraphQLModelValidationTest}).
  */
 class GraphQLSchemaGoldenTest {
 

@@ -104,6 +104,7 @@ ENTITY Person
           "type" : "string"
         },
         "zip" : {
+          "$ref" : "#/$defs/Zip",
           "displayName" : ""
         }
       },
@@ -113,6 +114,7 @@ ENTITY Person
     "Person" : {
       "properties" : {
         "home" : {
+          "$ref" : "#/$defs/Address",
           "displayName" : ""
         },
         "homes" : {
@@ -147,6 +149,7 @@ ENTITY Person
           "type" : "string"
         },
         "work" : {
+          "$ref" : "#/$defs/Address",
           "displayName" : ""
         }
       },

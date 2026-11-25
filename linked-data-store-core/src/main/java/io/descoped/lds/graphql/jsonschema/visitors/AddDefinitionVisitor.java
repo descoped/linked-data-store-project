@@ -112,6 +112,12 @@ public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
             }
         }
 
+        // One object of a type without @domain refers to its definition, as the items of a list of them do. The
+        // definition is written when the type is walked, under this field or under one before it.
+        if (GraphQLTypeUtil.unwrapNonNull(type) instanceof GraphQLObjectType objectType && !hasDomainDirective(objectType)) {
+            propertyElements.put("$ref", "#/$defs/" + objectType.getName());
+        }
+
         return visitGraphQLType(node.getType(), context);
     }
 

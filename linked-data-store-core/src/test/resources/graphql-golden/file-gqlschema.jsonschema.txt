@@ -703,6 +703,7 @@ ENTITY provisionagreement
           "type" : "object"
         },
         "address" : {
+          "$ref" : "#/$defs/address",
           "displayName" : ""
         },
         "contacts" : {
