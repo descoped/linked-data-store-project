@@ -393,11 +393,13 @@ one document for each part of the code). `docs/README.md` is the index. Keep the
   sentence, as in the index) and `order` (its place in its folder's group), then its own `# Title`. A new document gets
   it, and a row in `docs/README.md`.
 - **The documentation site** (`site/`, `site/README.md`) is a krantho static site (Next.js) that makes pages of
-  `docs/` and adds a landing page (`site/content/landing/home.md`, held to the same rules: only what the code does,
-  the status said plainly). `.github/workflows/pages.yml` publishes it to GitHub Pages (https://lds.descoped.io/,
-  its custom domain) when `docs/`, `site/` or the workflow changes on `master`, or when started by hand; CI does not
-  build it. Its mark is Descoped's (`|>o|`). Check a change with `cd site && pnpm build`, and look at it in light
-  and dark at phone and desktop widths.
+  `docs/` and adds a landing page (`site/content/landing/home.md`: a story that sells, in plain, forward-leaning
+  English, made only of what the code does). `.github/workflows/pages.yml` publishes it to GitHub Pages
+  (https://lds.descoped.io/, its custom domain) when `docs/`, `site/` or the workflow changes on `master`, or when
+  started by hand; CI does not build it. Its mark is Descoped's (`|>o|`). The skill `lds-site`
+  (`.claude/skills/lds-site/`) holds its standard (voice, the grid of 40/60, 50/50 and thirds rows, figures, the
+  measurements) and the way of working, one section at a time; follow it for every change of `site/`. Check a change
+  with `cd site && pnpm build`, and look at it in light and dark at phone and desktop widths.
 - Lines of at most 120 characters, except a row of a table. A link to another document is a relative path, and
   a link to a section names the id GitHub gives its heading, so a heading that is renamed has its links renamed.
 
