@@ -33,7 +33,6 @@
   --color-border: #dde1e4;
   --color-accent: #1f6f8b;
   --color-accent-contrast: #ffffff;
-  --color-accent-soft: #e4f1f5;
   --color-focus: #1f6f8b;
   --color-danger: #cf222e;
 }
@@ -49,7 +48,6 @@
     --color-border: #2a343a;
     --color-accent: #7cc4dc;
     --color-accent-contrast: #0f1417;
-    --color-accent-soft: #15303a;
     --color-focus: #7cc4dc;
     --color-danger: #ff7b72;
   }
@@ -65,7 +63,6 @@
   --color-border: #2a343a;
   --color-accent: #7cc4dc;
   --color-accent-contrast: #0f1417;
-  --color-accent-soft: #15303a;
   --color-focus: #7cc4dc;
   --color-danger: #ff7b72;
 }
@@ -239,7 +236,7 @@ a {
 
 /* The release the page is about, a line above the headline */
 .eyebrow {
-  color: var(--color-accent);
+  color: var(--color-text-muted);
   font-size: var(--text-sm);
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -295,15 +292,6 @@ a {
   padding: clamp(3rem, 2rem + 4vw, 5.5rem) 0;
 }
 
-/* Every other band on a ground of its own, as wide as the window: space and ground part the sections, not lines */
-.band-pair:not(.band-stack),
-.band:has(> .cards),
-.band-fit {
-  background: var(--color-surface);
-  box-shadow: 0 0 0 100vmax var(--color-surface);
-  clip-path: inset(0 -100vmax);
-}
-
 .band h2 {
   font-size: clamp(1.6rem, 1.3rem + 1.1vw, 2.2rem);
   letter-spacing: -0.015em;
@@ -326,13 +314,12 @@ a {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr));
 }
 
+/* One ground for the page and one kind of card: space parts the sections, colour is kept for what acts or answers */
 .pair-part {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   padding: clamp(1.5rem, 1rem + 2vw, 2.5rem);
-}
-
-.pair-part:first-child {
-  background: var(--color-sunken);
 }
 
 /* The cards of a section in one row, as many as there are, each as wide; one above the other on a narrow screen */
@@ -350,22 +337,13 @@ a {
   }
 }
 
-/* Two cards one above the other, each as wide as the page: the first on the page's ground, the second tinted */
+/* Two cards one above the other, each as wide as the page */
 .band-stack {
   grid-template-columns: minmax(0, 1fr);
 }
 
-.band-stack .pair-part:first-child {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-}
-
 .pair-part .actions {
   margin-top: var(--space-6);
-}
-
-.pair-part:last-child {
-  background: var(--color-accent-soft);
 }
 
 /* A section's text beside its figure or its code */
@@ -397,14 +375,6 @@ a {
   margin-top: var(--space-6);
 }
 
-/* A split on a tinted ground, in a panel of its own */
-.band-panel {
-  background: var(--color-accent-soft);
-  border-radius: calc(var(--radius-md) * 2);
-  margin: var(--space-6) 0;
-  padding: clamp(1.5rem, 1rem + 3vw, 3.5rem);
-}
-
 /* When it fits: where it does, beside where it does not yet */
 .band-fit {
   align-items: start;
@@ -428,6 +398,13 @@ a {
 .band-quiet > .prose {
   margin-inline: auto;
   max-width: 48rem;
+}
+
+/* A figure of the landing page stands on the page: its drawing has boxes of its own */
+.landing .figure {
+  background: none;
+  border: 0;
+  padding: 0;
 }
 
 /* A figure beside its text, under the cards of its section */

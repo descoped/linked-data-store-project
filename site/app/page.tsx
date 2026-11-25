@@ -43,11 +43,10 @@ function leadOf(html: string): { lead: string; rest: string } {
 }
 
 /**
- * How a section is laid out, by its name: `split` puts its text beside its figure or its code, `panel` is a split on
- * a tinted ground, `fit` puts its first paragraph beside the rest in a card, `quiet` is small print. A section with
- * no layout is its text, then its cards.
+ * How a section is laid out, by its name: `split` puts its text beside its figure or its code, `fit` puts its first
+ * paragraph beside the rest in a card, `quiet` is small print. A section with no layout is its text, then its cards.
  */
-const layoutOf: Record<string, 'split' | 'panel' | 'fit' | 'quiet'> = {
+const layoutOf: Record<string, 'split' | 'fit' | 'quiet'> = {
   'What a document is made of': 'split',
   'When it fits': 'fit',
   Status: 'quiet',
@@ -164,11 +163,11 @@ export default async function Home(): Promise<React.ReactElement> {
           const layout = layoutOf[name]
           const html = sections[name] ?? ''
           const title = <h2 id={`${id}-title`}>{name}</h2>
-          if (layout === 'split' || layout === 'panel') {
+          if (layout === 'split') {
             const { text, code } = codeOf(html)
             const figure = figureOf[name]?.()
             return (
-              <section key={name} id={id} className={`band band-split${layout === 'panel' ? ' band-panel' : ''}`} aria-labelledby={`${id}-title`}>
+              <section key={name} id={id} className="band band-split" aria-labelledby={`${id}-title`}>
                 <div className="split-text">
                   {title}
                   <div className="prose" dangerouslySetInnerHTML={{ __html: text }} />
