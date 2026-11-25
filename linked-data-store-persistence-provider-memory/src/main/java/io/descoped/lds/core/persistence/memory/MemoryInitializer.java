@@ -42,7 +42,7 @@ public class MemoryInitializer implements PersistenceInitializer {
         int fragmentCapacityBytes = Integer.parseInt(ofNullable(configuration.get("persistence.fragment.capacity")).orElse("8192"));
         boolean cancelTxOnClose = Boolean.parseBoolean(ofNullable(configuration.get("persistence.mem.transaction.cancel-on-close")).orElse("false"));
         TransactionFactory transactionFactory = new MemoryTransactionFactory(cancelTxOnClose);
-        persistence = new MemoryRxPersistence(transactionFactory, new MemoryDirectory(2));
+        persistence = new MemoryRxPersistence(transactionFactory, new MemoryDirectory());
         rxJsonPersistence = new RxJsonPersistenceBridge(persistence, fragmentCapacityBytes);
         return rxJsonPersistence;
     }

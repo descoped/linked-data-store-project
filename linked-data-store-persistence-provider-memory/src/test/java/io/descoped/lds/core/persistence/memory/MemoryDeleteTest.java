@@ -26,7 +26,7 @@ class MemoryDeleteTest {
     private static final ZonedDateTime V2 = ZonedDateTime.of(2023, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC);
 
     private final MemoryTransactionFactory factory = new MemoryTransactionFactory(false);
-    private final MemoryRxPersistence persistence = new MemoryRxPersistence(factory, new MemoryDirectory(2));
+    private final MemoryRxPersistence persistence = new MemoryRxPersistence(factory, new MemoryDirectory());
 
     @Test
     void aDeleteOfOneVersionClearsTheVersionAndLeavesItsIndexEntries() {
