@@ -5,6 +5,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import io.descoped.lds.api.persistence.DocumentKey;
+import io.descoped.lds.api.persistence.PersistenceDeletePolicy;
 import io.descoped.lds.api.persistence.Transaction;
 import io.descoped.lds.api.persistence.json.JsonDocument;
 import io.descoped.lds.api.persistence.json.JsonTools;
@@ -341,6 +342,30 @@ public class ManagedResourceHandlerTest {
         assertEquals(JsonTools.text(fourth.get("version")), "2020-04-30T15:04Z[Etc/UTC]");
         assertEquals(JsonTools.text(fourth.get("document").get("name")), "fourth");
         assertFalse(it.hasNext());
+    }
+
+    /**
+     * A deletion in the timeline is the version and "deleted": true, with no document; a version that is an empty
+     * document is that document.
+     */
+    @Test
+    public void thatADeletionInTheTimelineIsMarkedDeletedAndHasNoDocument() {
+        createTestResource("provisionagreement", "timeline-deleted",
+                ZonedDateTime.of(2018, 2, 12, 12, 1, 0, 0, ZoneOffset.UTC), "{\"name\":\"first\"}");
+        RxJsonPersistence persistence = server.getApplication().getPersistence();
+        try (Transaction tx = persistence.createTransaction(false)) {
+            persistence.markDocumentDeleted(tx, "data", "provisionagreement", "timeline-deleted",
+                    ZonedDateTime.of(2018, 5, 3, 13, 2, 0, 0, ZoneOffset.UTC), PersistenceDeletePolicy.FAIL_IF_INCOMING_LINKS).blockingAwait();
+        }
+        createTestResource("provisionagreement", "timeline-deleted",
+                ZonedDateTime.of(2019, 9, 28, 14, 3, 0, 0, ZoneOffset.UTC), "{}");
+
+        String body = client.get("/data/provisionagreement/timeline-deleted?timeline").expect200Ok().body();
+
+        assertEquals(JsonTools.toJsonNode(body), JsonTools.toJsonNode("["
+                + "{\"version\":\"2018-02-12T12:01Z[Etc/UTC]\",\"document\":{\"name\":\"first\"}},"
+                + "{\"version\":\"2018-05-03T13:02Z[Etc/UTC]\",\"deleted\":true},"
+                + "{\"version\":\"2019-09-28T14:03Z[Etc/UTC]\",\"document\":{}}]"));
     }
 
     @Test

@@ -83,7 +83,16 @@ public interface RxPersistence {
             PersistenceDeletePolicy policy
     );
 
-    Completable deleteAllEntities(Transaction tx, String namespace, String entity, Iterable<String> paths);
+    /**
+     * Deletes every version of every document of the entity in the namespace, and whatever the store keeps to find
+     * them by, at whatever path they hold a value.
+     *
+     * @param tx        the transaction
+     * @param namespace the namespace
+     * @param entity    the entity, also one that the specification does not have
+     * @return completes when it is done
+     */
+    Completable deleteAllEntities(Transaction tx, String namespace, String entity);
 
     Completable markDeleted(
             Transaction transaction,

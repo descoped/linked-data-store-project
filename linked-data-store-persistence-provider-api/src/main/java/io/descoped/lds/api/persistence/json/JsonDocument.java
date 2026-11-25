@@ -1,5 +1,6 @@
 package io.descoped.lds.api.persistence.json;
 
+import io.descoped.lds.api.json.FieldName;
 import io.descoped.lds.api.json.JsonNavigationPath;
 import io.descoped.lds.api.persistence.DocumentKey;
 import tools.jackson.databind.JsonNode;
@@ -49,7 +50,8 @@ public class JsonDocument {
      *
      * @param jsonNavigationPath the path, from the root of the document
      * @param visitCallback      is given what is at the path, and the path to it with the place of each array
-     *                           element: {@code $.name[1].first}
+     *                           element: {@code $.name[1].first}, a name written as in the path of a value
+     *                           ({@link FieldName})
      */
     public void traverseField(JsonNavigationPath jsonNavigationPath, BiConsumer<JsonNode, String> visitCallback) {
         LinkedList<String> path = new LinkedList<>();
@@ -80,7 +82,7 @@ public class JsonDocument {
         } else {
             // Object node; anything else has no field
             JsonNode childNode = node.get(childName);
-            path.addLast(childName);
+            path.addLast(FieldName.escape(childName));
             doTraverseField(childNode, schemaPath, index + 1, path, visitCallback);
             path.removeLast();
         }

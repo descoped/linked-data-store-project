@@ -978,11 +978,13 @@ public abstract class PersistenceIntegrationTest {
     }
 
     /**
-     * Every version of the address, in order of time: the city of a version, or "{}" for an empty document.
+     * Every version of the address, in order of time: the city of a version, the document when it has no city, or
+     * "deleted" for a mark of deletion, which is a deleted document with no content.
      */
     private List<String> versionsOf(Transaction tx, String id) {
         return persistence.readDocumentVersions(tx, namespace, "Address", id, Range.unbounded())
-                .map(document -> document.key().timestamp().getYear() + ":" + (document.jackson().has("city") ? document.jackson().get("city").asString() : document.jackson().toString()))
+                .map(document -> document.key().timestamp().getYear() + ":" + (document.deleted() ? "deleted"
+                        : document.jackson().has("city") ? document.jackson().get("city").asString() : document.jackson().toString()))
                 .toList().blockingGet();
     }
 
@@ -1047,7 +1049,8 @@ public abstract class PersistenceIntegrationTest {
 
     /**
      * A document that is marked as deleted is not there from the time of the mark until its next version: not
-     * when it is read, listed or searched for. With the versions of the document the mark is an empty document.
+     * when it is read, listed or searched for. With the versions of the document the mark is a deleted document,
+     * with no content: not an empty document, which is a version of its own.
      */
     @Test
     public void thatADocumentMarkedAsDeletedIsNotReadFromTheTimeOfTheMark() {
@@ -1057,12 +1060,16 @@ public abstract class PersistenceIntegrationTest {
             writeAddressVersion(tx, "marked", Y1702);
 
             markAddressDeleted(tx, "marked", Y1701);
+            persistence.createOrOverwrite(tx, toDocument(namespace, "Address", "marked", mapper.createObjectNode(), Y1703), specification).blockingAwait();
 
-            assertEquals(versionsOf(tx, "marked"), List.of("1700:1700", "1701:{}", "1702:1702"));
+            assertEquals(versionsOf(tx, "marked"), List.of("1700:1700", "1701:deleted", "1702:1702", "1703:{}"));
+            assertThat(persistence.readDocumentVersions(tx, namespace, "Address", "marked", Range.unbounded())
+                    .filter(JsonDocument::deleted).map(document -> String.valueOf(document.jackson())).toList().blockingGet())
+                    .containsExactly("null");
             assertEquals(cityAt(tx, "marked", Y1700.plusMonths(6)), "1700");
             assertNull(cityAt(tx, "marked", Y1701));
             assertNull(cityAt(tx, "marked", Y1701.plusMonths(6)));
-            assertEquals(cityAt(tx, "marked", Y1703), "1702");
+            assertEquals(cityAt(tx, "marked", Y1702.plusMonths(6)), "1702");
             assertEquals(idsOfAddressesAt(tx, Y1700.plusMonths(6), "marked"), List.of("marked"));
             assertEquals(idsOfAddressesAt(tx, Y1701.plusMonths(6), "marked"), List.of());
             assertEquals(persistence.findDocument(tx, Y1701.plusMonths(6), namespace, "Address", JsonNavigationPath.from("$.city"), "1700", Range.unbounded())
@@ -1070,7 +1077,7 @@ public abstract class PersistenceIntegrationTest {
 
             // the mark deleted: the version before it is the document again
             deleteAddressVersion(tx, "marked", Y1701);
-            assertEquals(versionsOf(tx, "marked"), List.of("1700:1700", "1702:1702"));
+            assertEquals(versionsOf(tx, "marked"), List.of("1700:1700", "1702:1702", "1703:{}"));
             assertEquals(cityAt(tx, "marked", Y1701.plusMonths(6)), "1700");
 
             forget(tx, "Address", "marked");
@@ -1091,7 +1098,7 @@ public abstract class PersistenceIntegrationTest {
 
             markAddressDeleted(tx, "sameTime", Y1701);
 
-            assertEquals(versionsOf(tx, "sameTime"), List.of("1700:1700", "1701:{}", "1702:1702"));
+            assertEquals(versionsOf(tx, "sameTime"), List.of("1700:1700", "1701:deleted", "1702:1702"));
             assertEquals(cityAt(tx, "sameTime", Y1700.plusMonths(6)), "1700");
             assertNull(cityAt(tx, "sameTime", Y1701));
             assertNull(cityAt(tx, "sameTime", Y1701.plusMonths(6)));
@@ -1124,14 +1131,14 @@ public abstract class PersistenceIntegrationTest {
 
             markAddressDeleted(tx, "markedFirst", Y1701);
 
-            assertEquals(versionsOf(tx, "markedFirst"), List.of("1701:{}"));
+            assertEquals(versionsOf(tx, "markedFirst"), List.of("1701:deleted"));
             assertNull(cityAt(tx, "markedFirst", Y1702));
             assertEquals(idsOfAddressesAt(tx, Y1702, "markedFirst"), List.of());
 
             writeAddressVersion(tx, "markedFirst", Y1700);
             writeAddressVersion(tx, "markedFirst", Y1702);
 
-            assertEquals(versionsOf(tx, "markedFirst"), List.of("1700:1700", "1701:{}", "1702:1702"));
+            assertEquals(versionsOf(tx, "markedFirst"), List.of("1700:1700", "1701:deleted", "1702:1702"));
             assertEquals(cityAt(tx, "markedFirst", Y1700.plusMonths(6)), "1700");
             assertNull(cityAt(tx, "markedFirst", Y1701.plusMonths(6)));
             assertEquals(cityAt(tx, "markedFirst", Y1703), "1702");
@@ -1512,6 +1519,49 @@ public abstract class PersistenceIntegrationTest {
         assertEquals(actualDocuments, expectedLinks);
     }
 
+    /**
+     * The documents that the links of a document point at are read in pages as a list of documents is: in the order
+     * of their ids, from the end for a backward range, strictly after after and before before, each once. The limit
+     * counts the documents that are there at the time: a link to a document that is not written, or not at that
+     * time, takes no place in the page.
+     */
+    @Test
+    public void thatThePagesOfLinkedDocumentsHoldTheDocumentsInsideTheirBoundsAndNoMissingOne() {
+        try (Transaction tx = persistence.createTransaction(false)) {
+            for (String id : List.of("page-a", "page-b", "page-c", "page-0ghost", "page-aghost", "page-zghost")) {
+                forget(tx, "Address", id);
+            }
+            writeAndRead(tx, specification, "Address", "page-a", json("{'city':'A'}"));
+            writeAndRead(tx, specification, "Address", "page-b", json("{'city':'B'}"));
+            writeAndRead(tx, specification, "Address", "page-c", json("{'city':'C'}"));
+            // a document of the time after the read: not there at the time
+            persistence.createOrOverwrite(tx, toDocument(namespace, "Address", "page-aghost", json("{'city':'later'}"), Y2020.plusYears(1)), specification).blockingAwait();
+            writeAndRead(tx, specification, "Person", "page-linker", json("{'history':{'previousAddresses':["
+                    + "'/Address/page-c','/Address/page-0ghost','/Address/page-a','/Address/page-aghost','/Address/page-b',"
+                    + "'/Address/page-a','/Address/page-zghost']}}"));
+
+            assertThat(targetIds(tx, "page-linker", Range.unbounded())).containsExactly("page-a", "page-b", "page-c");
+            assertThat(targetIds(tx, "page-linker", Range.first(1))).containsExactly("page-a");
+            assertThat(targetIds(tx, "page-linker", Range.first(2))).containsExactly("page-a", "page-b");
+            assertThat(targetIds(tx, "page-linker", Range.firstAfter(1, "page-a"))).containsExactly("page-b");
+            assertThat(targetIds(tx, "page-linker", Range.firstAfter(5, "page-a"))).containsExactly("page-b", "page-c");
+            assertThat(targetIds(tx, "page-linker", Range.firstAfter(1, "page-c"))).isEmpty();
+            assertThat(targetIds(tx, "page-linker", Range.between("page-a", "page-c"))).containsExactly("page-b");
+            assertThat(targetIds(tx, "page-linker", Range.firstBetween(1, "page-0", "page-c"))).containsExactly("page-a");
+            assertThat(targetIds(tx, "page-linker", Range.last(1))).containsExactly("page-c");
+            assertThat(targetIds(tx, "page-linker", Range.last(2))).containsExactly("page-c", "page-b");
+            assertThat(targetIds(tx, "page-linker", Range.lastBefore(1, "page-c"))).containsExactly("page-b");
+            assertThat(targetIds(tx, "page-linker", Range.lastBefore(1, "page-a"))).isEmpty();
+            assertThat(targetIds(tx, "page-linker", Range.first(0))).isEmpty();
+        }
+    }
+
+    private List<String> targetIds(Transaction tx, String personId, Range<String> range) {
+        return persistence.readTargetDocuments(tx, Y2020, new LinkQuery(namespace, "Person", personId,
+                        JsonNavigationPath.from("$.history.previousAddresses[]"), "Address"), range)
+                .map(document -> document.key().id()).toList().blockingGet();
+    }
+
     /*
      * A specification with an array of objects and an array of texts, for documents that hold more than it says.
      */
@@ -1582,6 +1632,32 @@ public abstract class PersistenceIntegrationTest {
             assertReadAsWritten(tx, specification, "Address", "more-arrays-in-arrays", "{'grid':[[1,2],[3]],'deep':[[[{'a':[[true]]}],[]],[],[null]]}");
             assertReadAsWritten(tx, specification, "Address", "more-names", "{'':'no name','7':'digits','007':'more digits','12345678901234567890123':'many digits','9':1,'10':2,'1a':3}");
             assertReadAsWritten(tx, specification, "Address", "nothing", "{}");
+        }
+    }
+
+    /**
+     * A provider gives a document back as it was written also when the name of a field holds what is the syntax of a
+     * path: a dot, a bracket, a place in an array, the escape of these, or all of a path. Two fields whose names
+     * would make the same path are two fields. Such a field is found by its text as any other is.
+     */
+    @Test
+    public void thatAFieldWhoseNameHoldsTheSyntaxOfAPathIsKept() throws JSONException {
+        try (Transaction tx = persistence.createTransaction(false)) {
+            assertReadAsWritten(tx, specification, "Address", "syntax-dot", "{'city':'Oslo','a.b':1,'a':{'b':2},'.':3,'..':4,'c.':5,'.d':6}");
+            assertReadAsWritten(tx, specification, "Address", "syntax-place", "{'x[3]':2,'x':[5],'[0]':0,'y[0][1]':1,'z[]':[{'[1]':'in'}]}");
+            assertReadAsWritten(tx, specification, "Address", "syntax-brackets", "{'[]':'items','[':1,']':2,'a[':3,'a]':4,'][':5,'[x]':6}");
+            assertReadAsWritten(tx, specification, "Address", "syntax-escape", "{'\\\\':1,'a\\\\.b':2,'a\\\\':{'b':3},'\\\\[0\\\\]':4,'e\\\\':[7]}");
+            assertReadAsWritten(tx, specification, "Address", "syntax-path", "{'$':1,'$.a':2,'$.a[0]':3,'a.b[1].c':{'d.e':['f.g']}}");
+            assertReadAsWritten(tx, specification, "Person", "syntax-known", "{'firstname':'A','history':{'a.b':'/Address/x','currentAddress':'/Address/syntax-dot'}}");
+
+            writeAndRead(tx, specification, "Address", "syntax-find", json("{'p.q':'dotted','r':{'s.t':['u']},'p':{'q':'nested'}}"));
+            assertThat(idsFound(tx, "Address", "$.p\\.q", "dotted")).containsExactly("syntax-find");
+            assertThat(idsFound(tx, "Address", "$.p\\.q", "nested")).isEmpty();
+            assertThat(idsFound(tx, "Address", "$.p.q", "nested")).containsExactly("syntax-find");
+            assertThat(idsFound(tx, "Address", "$.p.q", "dotted")).isEmpty();
+            assertThat(idsFound(tx, "Address", "$.r.s\\.t[]", "u")).containsExactly("syntax-find");
+            assertThat(persistence.findDocument(tx, Y2020, namespace, "Address", JsonNavigationPath.from("$", "p.q"), "dotted", Range.unbounded())
+                    .map(document -> document.key().id()).toList().blockingGet()).containsExactly("syntax-find");
         }
     }
 
@@ -1695,6 +1771,27 @@ public abstract class PersistenceIntegrationTest {
         try (Transaction tx = persistence.createTransaction(false)) {
             assertReadAsWritten(tx, specification, "Stranger", "stranger", "{'name':'S','at':'/Address/a','more':{'list':[1,'two',{'three':3}]}}");
             assertThat(idsFound(tx, "Stranger", "$.name", "S")).containsExactly("stranger");
+        }
+    }
+
+    /**
+     * Every document of an entity is deleted, every version of it, also of an entity that the specification does
+     * not have, and nothing of another entity or namespace.
+     */
+    @Test
+    public void thatAllDocumentsOfAnEntityAreDeletedAlsoOfAnEntityTheSpecificationDoesNotHave() {
+        try (Transaction tx = persistence.createTransaction(false)) {
+            writeAndRead(tx, specification, "Stranger", "gone-1", json("{'name':'S','more':{'list':[1,'two']}}"));
+            writeAndRead(tx, specification, "Stranger", "gone-2", json("{'name':'T'}"));
+            persistence.createOrOverwrite(tx, toDocument(namespace, "Stranger", "gone-2", json("{'name':'U'}"), Y2020.plusYears(1)), specification).blockingAwait();
+            writeAndRead(tx, specification, "Address", "kept", json("{'city':'S'}"));
+
+            persistence.deleteAllEntities(tx, namespace, "Stranger", specification).blockingAwait();
+
+            assertThat(persistence.readDocuments(tx, Y2020.plusYears(2), namespace, "Stranger", Range.unbounded()).toList().blockingGet()).isEmpty();
+            assertThat(persistence.readDocumentVersions(tx, namespace, "Stranger", "gone-2", Range.unbounded()).toList().blockingGet()).isEmpty();
+            assertThat(idsFound(tx, "Stranger", "$.name", "S")).isEmpty();
+            assertThat(cityAt(tx, "kept", Y2020)).isEqualTo("S");
         }
     }
 

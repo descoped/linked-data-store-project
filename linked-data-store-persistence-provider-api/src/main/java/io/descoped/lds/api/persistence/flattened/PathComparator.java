@@ -9,7 +9,9 @@ import java.util.regex.Pattern;
  * A path is taken apart at its dots and brackets. A path of fewer parts comes first. Paths of as many parts are
  * compared part by part: a part of digits comes before a part that is not, two parts of digits are compared as
  * the numbers they are, and two other parts as text. Two paths are the same only when they are the same text,
- * so no two leaves of a document take the place of each other.
+ * so no two leaves of a document take the place of each other. A dot or a bracket of a name, which follows an escape
+ * ({@link io.descoped.lds.api.json.FieldName}), cuts the path too: that places the path among the others, and the
+ * order is the same order of every path, whatever is in the names.
  */
 public class PathComparator implements Comparator<String> {
 
