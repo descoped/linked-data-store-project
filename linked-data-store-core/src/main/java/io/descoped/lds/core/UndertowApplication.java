@@ -608,14 +608,16 @@ public class UndertowApplication implements Lifecycle {
      * wait and fail. It is refused at start: the pool must have a connection for each of its logs, which stay open
      * once opened, one for each log of another instance that recovery opens at the same time (one for each recovery
      * thread), and one for the pool's own queries (listing the logs). The pool's size is the provider's key, or its
-     * default. Whether the database has room for the pool, the provider checks when it makes it.
+     * default. Whether the database has room for the pool, the provider checks when it makes it. A provider that does
+     * not name the key keeps its logs without a pool, and is not checked, also when the key is given (the server's
+     * defaults give it for every provider).
      */
     static void checkSagaLogPool(SagaLogInitializer initializer, Map<String, String> providerConfig, int numberOfLogs) {
-        String poolSize = providerConfig.getOrDefault(SAGA_LOG_POOL_SIZE,
-                initializer.configurationOptionsAndDefaults().get(SAGA_LOG_POOL_SIZE));
-        if (poolSize == null) {
+        Map<String, String> options = initializer.configurationOptionsAndDefaults();
+        if (!options.containsKey(SAGA_LOG_POOL_SIZE)) {
             return; // the provider keeps its logs without a pool of connections
         }
+        String poolSize = providerConfig.getOrDefault(SAGA_LOG_POOL_SIZE, options.get(SAGA_LOG_POOL_SIZE));
         int connections = Integer.parseInt(poolSize.trim());
         int needed = numberOfLogs + SAGA_RECOVERY_THREADS + 1;
         if (connections < needed) {
