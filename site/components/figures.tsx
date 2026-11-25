@@ -95,7 +95,7 @@ export function TimeMachineFigure(): React.ReactElement {
         </g>
       ))}
       <text className="fig-small" x={x(2019)} y={130}>
-        the versions of Company/fjord, each valid from its own time
+        three versions of Company/fjord, each valid from its own date
       </text>
       <Version from={2020} to={2023} y={142} name="Fjord Fish" at={[1]} />
       <Version from={2023} to={2030} y={142} name="Fjord Seafood" at={[2]} />
@@ -177,13 +177,13 @@ export function CompositionFigure(): React.ReactElement {
         </g>
       ))}
       <text className="fig-small" x={400} y={128}>
-        a link: another document, read
+        employer links to another document,
       </text>
       <text className="fig-small" x={400} y={142}>
-        at the same instant
+        read at the same moment
       </text>
       <text className="fig-small" x={36} y={178}>
-        the address is embedded: part of ola, versioned with it
+        address is part of ola and versioned with it
       </text>
       <text className="fig-small" x={62} y={234} textAnchor="end">
         ola
@@ -246,25 +246,25 @@ function SagaStep({
  */
 export function SagaFigure(): React.ReactElement {
   const steps = [
-    { x0: 40, name: 'transaction log' },
-    { x0: 234, name: 'store' },
-    { x0: 428, name: 'index queue' },
+    { x0: 40, name: 'change log' },
+    { x0: 234, name: 'document store' },
+    { x0: 428, name: 'search queue' },
   ]
   const told = [
-    'The first step is done, and the saga log says so.',
-    'The second step is done, and the saga log says so.',
-    'LDS stops before the last step. The write is not complete.',
-    'After the restart, recovery reads the saga log: it skips what is done and runs the rest.',
+    'Step 1 is done, and the saga log notes it.',
+    'Step 2 is done, and the saga log notes it.',
+    'LDS stops before step 3. The write is half done.',
+    'LDS runs again, reads the saga log and finishes step 3.',
   ]
   // The steps that are done at each stop, and the entries of the saga log then
   const done = [[0], [0, 1], [0, 1], [0, 1, 2]]
   return (
     <svg className="fig fig-c" viewBox="0 0 640 250" role="img" aria-labelledby="fig-c-title fig-c-desc">
-      <title id="fig-c-title">A write is a saga</title>
+      <title id="fig-c-title">A write run as a saga</title>
       <desc id="fig-c-desc">
-        A write of Person/ola goes through three steps: the transaction log, the store and the index queue. The saga
-        log records each step when it is done. LDS stops after the second step. After the restart, recovery reads the
-        saga log, skips the two steps that are done and runs the index queue, with the document of the request.
+        A write of Person/ola goes through three steps in order: the change log, the document store and the search
+        queue. The saga log notes each step when it is done. LDS stops after step 2, so the write is half done. When
+        LDS runs again, it reads the saga log, skips steps 1 and 2 and finishes step 3 with the data first sent.
       </desc>
       <text className="fig-request" x={40} y={40}>
         PUT /ns/Person/ola
@@ -284,23 +284,23 @@ export function SagaFigure(): React.ReactElement {
         LDS stops
       </text>
       <text className="fig-answer s3" x={514} y={136} textAnchor="middle">
-        run by recovery
+        finished on restart
       </text>
       <text className="fig-small" x={40} y={148}>
-        the saga log
+        saga log, the steps that are done
       </text>
       <rect className="fig-card" x={40} y={156} width={560} height={40} rx={8} />
       {done.map((entries, stop) => (
         <g key={stop} className={`s${stop}`}>
           {entries.map((i) => (
             <text key={i} className="fig-answer" x={(steps[i]?.x0 ?? 0) + 86} y={181} textAnchor="middle">
-              {i === 2 && stop === 3 ? '3 done' : `${i + 1} done`}
+              step {i + 1} done
             </text>
           ))}
         </g>
       ))}
       {told.map((text, stop) => (
-        <text key={text} className={`fig-small s${stop}`} x={40} y={228}>
+        <text key={text} className={`fig-told s${stop}`} x={40} y={230}>
           {text}
         </text>
       ))}

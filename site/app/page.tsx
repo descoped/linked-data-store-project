@@ -37,15 +37,15 @@ function columnsOf(html: string): { intro: string; columns: { title: string; htm
 
 /** The figure a section shows beside its text */
 const figureOf: Record<string, () => React.ReactElement> = {
-  'What a document is made of': () => <CompositionFigure />,
-  'A write is a saga': () => <SagaFigure />,
+  'Documents that link to each other': () => <CompositionFigure />,
+  'Writes that pick up where they stopped': () => <SagaFigure />,
 }
 
 /** Sections shown side by side in one row, half and half: the first names the second */
 const pairOf: Record<string, string> = {
-  'The problem': 'The solution',
-  'Describe your data once': 'Search',
-  'When it fits': 'When it does not fit',
+  'The problem': 'How LDS solves it',
+  'One model gives you both APIs': 'Search that travels in time too',
+  'Where LDS fits': 'Where LDS does not fit',
 }
 
 /** A section's heading and its text */
@@ -115,15 +115,7 @@ export default async function Home(): Promise<React.ReactElement> {
     const figure = figureOf[name]
     return (
       <section key={name} className="row row-wide">
-        <Part name={name} html={text}>
-          {name === 'See it' && (
-            <p className="actions">
-              <Link className="button primary" href={f['primary-href']}>
-                {f['primary-label']}
-              </Link>
-            </p>
-          )}
-        </Part>
+        <Part name={name} html={text} />
         <div className="row-side">
           {figure ? figure() : <div className="prose" dangerouslySetInnerHTML={{ __html: code }} />}
         </div>

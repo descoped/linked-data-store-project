@@ -260,6 +260,7 @@ a {
 
 .row h2 {
   font-size: var(--text-2xl);
+  text-wrap: balance;
   letter-spacing: -0.01em;
   line-height: var(--leading-tight);
   margin: 0 0 var(--space-4);
@@ -269,9 +270,9 @@ a {
   margin-bottom: 0;
 }
 
-/* Text keeps a line that reads easily, about 85 characters; code and figures take the whole column */
+/* Running text keeps a line of about 65 to 75 characters; code and figures take the whole column */
 .row-part > .prose {
-  max-width: 42rem;
+  max-width: 38rem;
 }
 
 
@@ -983,6 +984,11 @@ html:has(.figure-dialog[open]) {
   fill: var(--color-text-muted);
   font-family: var(--font-text);
   font-size: 11px;
+}
+
+.fig .fig-told {
+  font-family: var(--font-text);
+  font-size: 13px;
 }
 
 .fig .fig-title {

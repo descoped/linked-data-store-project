@@ -6,8 +6,8 @@ description: >-
 eyebrow: "LDS 3.0.1 is released"
 headline: "A time machine for your documents and the links between them"
 subline: >-
-  Linked Data Store (LDS) keeps every version of every document, each valid from its own time. Read any instant, past,
-  present or future, and every document comes back as it was then, with its links followed to the same instant.
+  LDS keeps every version of every JSON document you write. Ask for any moment, past, present or future, and your
+  data comes back as it was then, with every link followed to that same moment.
 primary-label: "Get started"
 primary-href: "/docs/user/getting-started/"
 secondary-label: "Read the concepts"
@@ -16,70 +16,75 @@ secondary-href: "/docs/user/concepts/"
 
 ## The problem
 
-In most databases an update overwrites the record, and the value before it is gone. Keeping the history takes
-triggers and audit tables, or versioned rows joined on ranges of dates. A question such as "where did this person
-live on 1 June 2021, and who employed them then" becomes a query across several histories that must line up at the
-same instant.
+When a record changes, most databases overwrite it and the old value is gone. To answer what was true last June,
+teams add audit tables, triggers or versioned rows, and every query then joins those histories on ranges of dates.
+When records refer to each other, every history has to line up at the same moment, and that is where it gets hard.
 
-## The solution
+## How LDS solves it
 
-LDS keeps every version of every document, each valid from its own time, in the past, the present or the future. Ask
-for an instant and every document comes back as it was then, with each link followed to the version that was valid
-at the same instant. The history is the data: no audit tables, and no joins on ranges of dates.
-[Concepts](/docs/user/concepts/)
+LDS makes history part of the data. Every write adds a version that is valid from a date you choose, in the past,
+now or in the future. Ask for a moment and every document comes back as it was then, with every link followed to the
+version valid at that same moment. There are no audit tables to maintain and no date-range joins to write.
+[Read the concepts](/docs/user/concepts/)
 
-## What a document is made of
+## Documents that link to each other
 
-A document is a JSON object at an address such as `/ns/Person/ola`. A field holds a value, an embedded object that is
-versioned with the document, or a link to another document, which has versions of its own. A read follows the link to
-the version that was valid at the same instant. [The model](/docs/user/model/)
+A document is JSON at an address such as `/ns/Person/ola`, shaped by your model. It holds plain values, embedded
+objects that are versioned with it, and links to other documents that keep versions of their own. Read Ola as of June
+2022, and LDS follows the employer link to the company as it was in June 2022 too. [The model](/docs/user/model/)
 
-## A write is a saga
+## Writes that pick up where they stopped
 
-A write reaches more than one place: the transaction log, the store and, with search, the index queue. No
-transaction spans them, so a crash between two of them would leave them disagreeing. Each write is therefore a saga:
-its steps run one after the other, and the saga log notes each step that is done. A write that was cut off is run
-again from the saga log, with the request as it was first sent: the steps that are done are skipped, and the rest
-are run. With the saga log in PostgreSQL this holds across a restart.
-[Writes that fail](/docs/user/operations/#writes-that-fail-crashes-and-recovery)
+Every write touches more than one system: a log of every change, the document store and, when search is on, the
+queue that feeds the search index. No single transaction covers all three, so LDS runs each write as a saga.
 
-## Describe your data once
+A saga is a write broken into steps that run in a fixed order, and each finished step is noted in a saga log before
+the next one starts. If LDS stops halfway, the saga log tells it where the write was. When LDS runs again, it skips
+the steps that are done and completes the rest with the data that was first sent.
 
-Describe your entity types as a GraphQL schema or as JSON Schema 2020-12 files. LDS makes its REST API from the
-model, and from a GraphQL schema its GraphQL API too, and checks every document against the model before it is
-written. [The model](/docs/user/model/)
+Keep the saga log in PostgreSQL, and this holds across restarts and across several LDS that share it.
+[When a write fails](/docs/user/operations/#writes-that-fail-crashes-and-recovery)
 
-## Search
+## One model gives you both APIs
 
-With Solr 10, every text of a document is searched through GraphQL. A text written with its language is found by
-the stems of its words in Norwegian, Swedish, English, German or French, a word typed without its special letters
-finds the word with them, and a search sees each document as it was at a moment.
-[Search](/docs/user/graphql-api/#search)
+Describe your entity types once, as a GraphQL schema or as JSON Schema files. LDS turns the model into a REST API
+and, from a GraphQL schema, a GraphQL API whose links you can follow in both directions. Every document is checked
+against the model before it is written, and a rejected write names the field that is wrong.
+[The model](/docs/user/model/)
 
-## Storage options
+## Search that travels in time too
 
-The documents are kept in one of three stores, chosen in the configuration, and every store passes the same suite of
-tests against the real engine. The saga log and the transaction log are kept in memory or in PostgreSQL, and a write
-that a restart cut off is completed only with the saga log in PostgreSQL.
+Turn on search, with a GraphQL model, and every text in your documents is indexed in Solr. Texts tagged with their
+language are matched by the stems of their words in Norwegian, Swedish, English, German and French, and a word typed
+without ø or å still finds the word that has them. Search as of any moment, or let a write wait until it can be
+found. [Search](/docs/user/graphql-api/#search)
+
+## Choose where your documents are stored
+
+Start in memory and move to PostgreSQL or Neo4j when you are ready. Every store passes the same suite of tests against
+the real database, so your requests and answers stay the same whichever you choose. Whichever store holds your
+documents, keep the saga log in PostgreSQL so that a write cut off by a restart is completed.
 [Configuration](/docs/user/configuration/#choosing-where-lds-keeps-its-data)
 
 ### In memory
 
-The default, for trying LDS and for tests. Nothing is kept when LDS stops.
+The default, made for trying LDS and for tests. Nothing is kept when LDS stops.
 
 ### PostgreSQL 18
 
-Every document in one table, which LDS makes when it starts.
+Every document in one table, which LDS creates when it starts. Reads are streamed from the database as you ask for
+them.
 
 ### Neo4j 2026
 
-Every document a graph of nodes, and every link a relationship to the document it points at. The community
-edition is enough.
+Your documents as a graph, where every link is a relationship to the document it points at. The community edition is
+enough.
 
-## See it
+## Run it on your machine
 
-Start LDS from its image on Docker Hub, in memory, with an example model. Write Company/fjord, valid from 1 January
-2020, and read it as of 1 June 2021.
+Start LDS with Docker. It runs in memory with an example model, so there is nothing to set up. Then write a company
+that is valid from 1 January 2020 and read it back as of 1 June 2021. The write answers with the id of its saga, and
+the read gives the version that was valid on that date. [Getting started](/docs/user/getting-started/) goes further.
 
 ```sh
 docker run --rm -p 127.0.0.1:9090:9090 descoped/lds:3.0.1
@@ -94,31 +99,31 @@ $ curl 'http://localhost:9090/ns/Company/fjord?timestamp=2021-06-01T00:00:00Z'
 {"name": "Fjord Fish"}
 ```
 
-## With Claude
+## Or ask Claude to do it
 
-Never used LDS? Ask for it in plain words. The plugin `lds` for Claude Code starts LDS, makes a model of your domain
-with you, and writes, reads and queries the documents for you. [With Claude Code](/docs/user/claude-code/)
+Never used LDS? Install the `lds` plugin for Claude Code and describe your domain in plain words. Claude starts LDS,
+builds the model with you, and writes, reads and queries your documents. Ask, for example, "model a library with
+books, authors and loans, and load these members from members.csv". [With Claude Code](/docs/user/claude-code/)
 
 ```text
 /plugin install lds --marketplace descoped/linked-data-store-project
 ```
 
-## When it fits
+## Where LDS fits
 
-LDS fits data whose history is part of the data:
+LDS fits data whose history is part of the data.
 
-- registers, master data and reference data that change over time and are read as they were;
-- reports and audits that must show the data as it stood at a past date;
-- models whose documents link to each other, read together at one instant;
-- changes known in advance, written now with a valid time in the future.
+- Registers, master data and reference data that change over time and are read as they were.
+- Reports and audits that must show the data as it stood on a past date.
+- Models whose documents link to each other and are read together at one moment.
+- Changes known in advance, written today with a date in the future.
 
-## When it does not fit
+## Where LDS does not fit
 
-- You need to know when a version was recorded as well as when it holds: LDS keeps valid time only, and a write at
-  the same valid time replaces the version that is there.
-- You need LDS to control who reads and writes: it has no authentication, and whoever reaches its port can read and
-  write every document.
-- A write must be refused when its link points at nothing: links are not checked, so a link can name a document that
-  is written later.
-- You need several namespaces over REST, or a model that changes while LDS runs: the REST API answers for one
-  namespace, and the model is read at start.
+These are facts of LDS 3.0.
+
+- You need to know when a version was recorded as well as when it is valid. LDS keeps the valid time only.
+- You need access control in the store. LDS has no authentication, so anyone who reaches its port can read and write.
+- You need a link checked on write, or a delete refused while other documents link to it. LDS does neither.
+- You run several LDS that write the same document at the same time. Writes to one document take turns within one
+  LDS, not across several.
