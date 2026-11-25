@@ -75,8 +75,9 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
                 fragments = fragments.takeWhile(fragment ->
                         order.compare(keyExtractor.apply(fragment), range.getAfter()) > 0);
             }
-            if (range.hasLast()) {
-                fragments = fragments.take(range.getLast());
+            // first with before and no after is read backward too, and keeps its limit as the stores do
+            if (range.isLimited()) {
+                fragments = fragments.take(range.getLimit());
             }
         } else {
             if (range.hasAfter()) {
@@ -174,15 +175,25 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
     @Override
     public Flowable<JsonDocument> findDocument(Transaction tx, ZonedDateTime snapshot, String namespace,
                                                String entityName, JsonNavigationPath navigationPath, String value, Range<String> range) {
+        // Without the limit: a false match the store gives is left out before the limit, so it takes no place in
+        // the page. The store gives the documents in the order of the range.
+        return limit(find(tx, snapshot, namespace, entityName, navigationPath, value, Range.unlimited(range)),
+                d -> d.key().id(), range, IdOrder.CODE_POINTS);
+    }
+
+    /*
+     * The documents that hold the text at the path. The store is asked with the first piece of the text, as it is
+     * stored, and can give a false match: a value of another type, a text that only begins the same, or a version
+     * that was written again at the same time with another value. Those are left out here.
+     */
+    private Flowable<JsonDocument> find(Transaction tx, ZonedDateTime snapshot, String namespace, String entityName,
+                                        JsonNavigationPath navigationPath, String value, Range<String> range) {
         // Only a text value is supported.
         Map<Integer, byte[]> valueByOffset = FlattenedDocumentLeafNode.valueByOffset(FragmentType.STRING, fragmentSize, value);
         byte[] bytesValue = valueByOffset.get(0);
-        // Without the limit: a false match the store gives is left out before the limit, so it takes no place in
-        // the page. The store gives the documents in the order of the range.
         Flowable<Fragment> fragments = persistence.find(tx, snapshot, namespace, entityName, navigationPath.serialize(), bytesValue,
-                Range.unlimited(range));
-        Flowable<JsonDocument> matches = toDocuments(fragments, fragmentSize, false).filter(document -> {
-            // A store can give a false match: a value of another type, or a text that only begins the same.
+                range);
+        return toDocuments(fragments, fragmentSize, false).filter(document -> {
             AtomicBoolean match = new AtomicBoolean(false);
             document.traverseField(navigationPath, (node, _) -> {
                 if (node.isString() && node.stringValue().equals(value)) {
@@ -191,7 +202,6 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
             });
             return match.get();
         });
-        return limit(matches, d -> d.key().id(), range, IdOrder.CODE_POINTS);
     }
 
     @Override
@@ -229,11 +239,11 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
     @Override
     public Flowable<JsonDocument> readSourceDocuments(Transaction tx, ZonedDateTime snapshot, LinkQuery query,
                                                       Range<String> range) {
-        // Uses find to implement back links.
-        byte[] idValue = String.format("/%s/%s", query.entity(), query.id()).getBytes();
-        Flowable<Fragment> fragments = persistence.find(tx, snapshot, query.namespace(), query.otherEntity(),
-                query.relationPath().serialize(), idValue, range);
-        return doReadDocuments(fragments, range, fragmentSize);
+        // A link is the text /Entity/id at the path of the link in the source document.
+        String link = String.format("/%s/%s", query.entity(), query.id());
+        Flowable<JsonDocument> sources = find(tx, snapshot, query.namespace(), query.otherEntity(),
+                query.relationPath(), link, range);
+        return limit(sources, d -> d.key().id(), range, IdOrder.CODE_POINTS);
     }
 
     @Override

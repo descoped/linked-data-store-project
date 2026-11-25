@@ -15,21 +15,19 @@ import java.time.ZonedDateTime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * What a delete of one version does to the store, as it is today: the version is cleared from {@code Primary}, and
- * what it put in the index of values ({@code PathValueIndex}) stays. Not finished: {@code doDelete} builds the clean-up
- * of the index entries and never runs it; {@code deleteAllVersions} does run it. When that is corrected, this test
- * changes with it.
+ * What a delete of one version does to the store: the version is cleared from {@code Primary}, and what it put in the
+ * index of values ({@code PathValueIndex}) with it.
  */
 class MemoryDeleteTest {
 
     private static final ZonedDateTime V1 = ZonedDateTime.of(2020, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC);
     private static final ZonedDateTime V2 = ZonedDateTime.of(2023, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC);
 
-    private final MemoryTransactionFactory factory = new MemoryTransactionFactory(false);
-    private final MemoryRxPersistence persistence = new MemoryRxPersistence(factory, new MemoryDirectory(2));
+    private final MemoryTransactionFactory factory = new MemoryTransactionFactory();
+    private final MemoryRxPersistence persistence = new MemoryRxPersistence(factory, new MemoryDirectory());
 
     @Test
-    void aDeleteOfOneVersionClearsTheVersionAndLeavesItsIndexEntries() {
+    void aDeleteOfOneVersionClearsTheVersionAndItsIndexEntries() {
         write(V1, "Bergen");
         write(V2, "Oslo");
         assertThat(entries(MemoryRxPersistence.PATH_VALUE_INDEX)).isEqualTo(2);
@@ -41,7 +39,7 @@ class MemoryDeleteTest {
         }
 
         assertThat(entries(MemoryRxPersistence.PRIMARY_INDEX)).isEqualTo(primary - 1);
-        assertThat(entries(MemoryRxPersistence.PATH_VALUE_INDEX)).isEqualTo(2);
+        assertThat(entries(MemoryRxPersistence.PATH_VALUE_INDEX)).isEqualTo(1);
     }
 
     private void write(ZonedDateTime version, String city) {
