@@ -55,9 +55,10 @@ function getHighlighter(): Promise<Highlighter> {
  * variables (`--shiki-light`, `--shiki-dark`), and the stylesheet picks one by the page's theme. A language that is
  * not known, and a block without one, is shown as plain text. The block is labelled with its language, and the page
  * adds a copy button to it. A block of HTTP is an answer, which scrolls when it is long; an answer, a console session and a
- * block of text wrap their lines.
+ * block of text wrap their lines. A block with an HTML comment right before it (`<!-- The whole stack -->`) is labelled with
+ * that text instead, saying what the block is for rather than what language it is in.
  */
-async function highlight(lang: string, escaped: string): Promise<string> {
+async function highlight(lang: string, escaped: string, title?: string): Promise<string> {
   const code = decode(escaped).replace(/\n$/, '')
   const label = languages[lang]
   const pre = label
@@ -71,7 +72,7 @@ async function highlight(lang: string, escaped: string): Promise<string> {
   // commands and their answers, and a block of text (a message, a log) wrap their long lines; code keeps its lines
   // and scrolls sideways.
   const kind = lang === 'http' ? ' code-answer code-wrap' : !label || lang === 'console' ? ' code-wrap' : ''
-  return `<div class="code-block${kind}"><div class="code-head"><span class="code-lang">${label ?? 'Text'}</span></div>${pre}</div>`
+  return `<div class="code-block${kind}"><div class="code-head"><span class="code-lang">${title ? escape(decode(title)) : (label ?? 'Text')}</span></div>${pre}</div>`
 }
 
 /** Replaces each match of a pattern by what an async function makes of it */
@@ -158,7 +159,7 @@ export async function prepareHtml(source: string): Promise<{ html: string; toc: 
 export async function highlightCode(html: string): Promise<string> {
   return replaceAsync(
     html,
-    /<pre><code(?: class="language-([\w-]+)")?>([\s\S]*?)<\/code><\/pre>/g,
-    (_, lang = '', code = '') => highlight(lang, code),
+    /(?:<!--\s*([^<>]*?)\s*-->\s*)?<pre><code(?: class="language-([\w-]+)")?>([\s\S]*?)<\/code><\/pre>/g,
+    (_, title = '', lang = '', code = '') => highlight(lang, code, title || undefined),
   )
 }

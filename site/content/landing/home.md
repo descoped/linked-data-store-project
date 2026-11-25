@@ -89,10 +89,12 @@ second starts the whole stack instead, with Neo4j for the documents, PostgreSQL 
 and Solr for search. Your data is kept until the same line ending in `sh -s down` stops it and removes it.
 [Getting started](/docs/user/getting-started/) goes further.
 
+<!-- LDS on its own, in memory -->
 ```sh
 docker run --rm -p 127.0.0.1:9090:9090 descoped/lds:3.0.1
 ```
 
+<!-- LDS with Neo4j, PostgreSQL and Solr -->
 ```sh
 curl -fsSL https://raw.githubusercontent.com/descoped/linked-data-store-project/master/stack.sh | sh
 ```
@@ -103,20 +105,24 @@ Write a company that is valid from 1 January 2020, then read it back as of 1 Jun
 of its saga, and the read gives the version that was valid on that date. Without a timestamp, the same address gives
 the version that is valid now.
 
+<!-- Write a version valid from 1 January 2020 -->
 ```sh
 curl -X PUT \
   'http://localhost:9090/ns/Company/fjord?timestamp=2020-01-01T00:00:00Z' \
   -H 'Content-Type: application/json' -d '{"name": "Fjord Fish"}'
 ```
 
+<!-- The id of the write's saga -->
 ```json
 {"saga-execution-id": "01a2122c-5cba-7ec9-8e6e-945bb7b8c700"}
 ```
 
+<!-- Read it as of 1 June 2021 -->
 ```sh
 curl 'http://localhost:9090/ns/Company/fjord?timestamp=2021-06-01T00:00:00Z'
 ```
 
+<!-- The version valid on that date -->
 ```json
 {"name": "Fjord Fish"}
 ```
@@ -127,6 +133,7 @@ Never used LDS? Install the `lds` plugin for Claude Code and describe your domai
 builds the model with you, and writes, reads and queries your documents. Ask, for example, "model a library with
 books, authors and loans, and load these members from members.csv". [With Claude Code](/docs/user/claude-code/)
 
+<!-- In Claude Code -->
 ```text
 /plugin install lds --marketplace descoped/linked-data-store-project
 ```
