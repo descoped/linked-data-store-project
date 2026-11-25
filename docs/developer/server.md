@@ -255,7 +255,7 @@ that part, such as [the application](core-application.md) and [search](search.md
 | `sagalog.config.postgres.driver.user` | `lds` | none | `PostgresSagaLogInitializer`. |
 | `sagalog.config.postgres.driver.password` | empty | none | `PostgresSagaLogInitializer`. |
 | `sagalog.config.postgres.driver.database` | `sagalog` | none | `PostgresSagaLogInitializer`. |
-| `sagalog.config.connection-pool.max-size` | `50` | none | `PostgresSagaLogInitializer`: its connection pool. Without the key the saga log takes 10. Core refuses at start a pool smaller than `saga.number-of-logs` + 11, so 41 with the server defaults (see [the application](core-application.md#the-saga-log-pool-checked-at-start)). The comment in the file says only to keep it at least as large as the number of saga logs. |
+| `sagalog.config.connection-pool.max-size` | `50` | none | `PostgresSagaLogInitializer`: its connection pool. Without the key the saga log takes 10. Core refuses at start a pool smaller than `saga.number-of-logs` + 11, so 41 with the server defaults (see [the application](core-application.md#the-saga-log-pool-checked-at-start)). The comment in the file says so. |
 | `txlog.split.sources` | `false` | `false` | `TxlogRawdataPool`: whether every source has a topic of its own. |
 | `txlog.default-source` | `default` | `default` | `TxlogRawdataPool`: the source of a write that names none. |
 | `txlog.rawdata.topic-prefix` | `txlog-` | `txlog-` | `TxlogRawdataPool`: put in front of the source to make the name of the topic. |
@@ -362,10 +362,8 @@ it here with scope `runtime` and add its keys to `application-server-defaults.pr
 ### The Dockerfile
 
 The context of the build is the module directory. `.dockerignore` leaves everything out of the context but
-`target/lib/`, the jar of the module (not its `-sources` and `-javadoc` jars) and `schemas/`. It also lets in
-`target/classes/io/descoped/lds/server/HealthCheck.class`, a class the module does not have (see
-[What is not finished](#what-is-not-finished-or-known-to-be-wrong)). The reactor is packaged first; the comment at the
-top of the Dockerfile gives the commands.
+`target/lib/`, the jar of the module (not its `-sources` and `-javadoc` jars) and `schemas/`. The reactor is
+packaged first; the comment at the top of the Dockerfile gives the commands.
 
 The Dockerfile makes three images of the same LDS, each the target of a stage. They differ only in their base and
 their Java runtime:
@@ -627,10 +625,3 @@ Not finished: the log level cannot be set with a key. `logback.xml` is fixed at 
 Not finished: nothing says whether the profiles of dynamic-configuration are meant to be used. They work:
 `CONFIG_PROFILES` or `-Dconfig.profiles` makes LDS read more files than the table of the sources lists. No
 file of the repository names them.
-
-Not finished: three comments in the module say less than, or other than, the files do. `.dockerignore` lets in
-`target/classes/io/descoped/lds/server/HealthCheck.class`, and its first line names the class of a health check;
-the module has no such class. The comment at the top of `compose.yaml` says that the port of LDS is moved with
-`LDS_PORT`; the file reads `SERVER_PORT`. The comment on `sagalog.config.connection-pool.max-size` in
-`application-server-defaults.properties` says to keep the pool at least as large as the number of saga logs; core
-asks for 11 connections more.
