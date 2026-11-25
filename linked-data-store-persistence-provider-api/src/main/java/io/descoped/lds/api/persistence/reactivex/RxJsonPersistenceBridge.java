@@ -32,8 +32,6 @@ import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import static java.util.Optional.ofNullable;
-
 /**
  *
  */
@@ -202,9 +200,28 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
         });
     }
 
+    /*
+     * The ids the links of the source document name, in the order of the range, each once, inside its bounds. Each is
+     * read in turn, and the limit counts the documents that are there at the snapshot: a link to a document that is
+     * not written (yet), or is deleted, takes no place in the page. Neo4j reads them the same way.
+     */
     @Override
     public Flowable<JsonDocument> readTargetDocuments(Transaction tx, ZonedDateTime snapshot, LinkQuery query,
                                                       Range<String> range) {
+        Range<String> page = range == null ? Range.unbounded() : range;
+        String ns = query.namespace();
+        String targetEntityName = query.otherEntity();
+        Flowable<JsonDocument> targets = limit(linkedIds(tx, snapshot, query, page), Function.identity(),
+                Range.unlimited(page), IdOrder.CODE_POINTS)
+                .concatMapMaybe(targetId -> readDocument(tx, snapshot, ns, targetEntityName, targetId));
+        return page.isLimited() ? targets.take(page.getLimit()) : targets;
+    }
+
+    /*
+     * The ids of the documents of the target entity that the links at the path of the source document name, sorted in
+     * the order of the range, each once.
+     */
+    private Flowable<String> linkedIds(Transaction tx, ZonedDateTime snapshot, LinkQuery query, Range<String> range) {
         String ns = query.namespace();
         JsonNavigationPath jsonNavigationPath = query.relationPath();
         String targetEntityName = query.otherEntity();
@@ -229,9 +246,9 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
                     });
                     return links;
                 })
-                .sorted((o1, o2) -> range.isBackward() ? IdOrder.compare(o2, o1) : IdOrder.compare(o1, o2))
-                .take(ofNullable(range).map(Range::getLimit).orElse(Integer.MAX_VALUE))
-                .concatMapMaybe(targetId -> readDocument(tx, snapshot, ns, targetEntityName, targetId));
+                // the links of one document, which is read whole
+                .sorted(range.isBackward() ? IdOrder.CODE_POINTS.reversed() : IdOrder.CODE_POINTS)
+                .distinctUntilChanged();
     }
 
     @Override

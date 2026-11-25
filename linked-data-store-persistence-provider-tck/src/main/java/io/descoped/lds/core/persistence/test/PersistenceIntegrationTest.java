@@ -1519,6 +1519,49 @@ public abstract class PersistenceIntegrationTest {
         assertEquals(actualDocuments, expectedLinks);
     }
 
+    /**
+     * The documents that the links of a document point at are read in pages as a list of documents is: in the order
+     * of their ids, from the end for a backward range, strictly after after and before before, each once. The limit
+     * counts the documents that are there at the time: a link to a document that is not written, or not at that
+     * time, takes no place in the page.
+     */
+    @Test
+    public void thatThePagesOfLinkedDocumentsHoldTheDocumentsInsideTheirBoundsAndNoMissingOne() {
+        try (Transaction tx = persistence.createTransaction(false)) {
+            for (String id : List.of("page-a", "page-b", "page-c", "page-0ghost", "page-aghost", "page-zghost")) {
+                forget(tx, "Address", id);
+            }
+            writeAndRead(tx, specification, "Address", "page-a", json("{'city':'A'}"));
+            writeAndRead(tx, specification, "Address", "page-b", json("{'city':'B'}"));
+            writeAndRead(tx, specification, "Address", "page-c", json("{'city':'C'}"));
+            // a document of the time after the read: not there at the time
+            persistence.createOrOverwrite(tx, toDocument(namespace, "Address", "page-aghost", json("{'city':'later'}"), Y2020.plusYears(1)), specification).blockingAwait();
+            writeAndRead(tx, specification, "Person", "page-linker", json("{'history':{'previousAddresses':["
+                    + "'/Address/page-c','/Address/page-0ghost','/Address/page-a','/Address/page-aghost','/Address/page-b',"
+                    + "'/Address/page-a','/Address/page-zghost']}}"));
+
+            assertThat(targetIds(tx, "page-linker", Range.unbounded())).containsExactly("page-a", "page-b", "page-c");
+            assertThat(targetIds(tx, "page-linker", Range.first(1))).containsExactly("page-a");
+            assertThat(targetIds(tx, "page-linker", Range.first(2))).containsExactly("page-a", "page-b");
+            assertThat(targetIds(tx, "page-linker", Range.firstAfter(1, "page-a"))).containsExactly("page-b");
+            assertThat(targetIds(tx, "page-linker", Range.firstAfter(5, "page-a"))).containsExactly("page-b", "page-c");
+            assertThat(targetIds(tx, "page-linker", Range.firstAfter(1, "page-c"))).isEmpty();
+            assertThat(targetIds(tx, "page-linker", Range.between("page-a", "page-c"))).containsExactly("page-b");
+            assertThat(targetIds(tx, "page-linker", Range.firstBetween(1, "page-0", "page-c"))).containsExactly("page-a");
+            assertThat(targetIds(tx, "page-linker", Range.last(1))).containsExactly("page-c");
+            assertThat(targetIds(tx, "page-linker", Range.last(2))).containsExactly("page-c", "page-b");
+            assertThat(targetIds(tx, "page-linker", Range.lastBefore(1, "page-c"))).containsExactly("page-b");
+            assertThat(targetIds(tx, "page-linker", Range.lastBefore(1, "page-a"))).isEmpty();
+            assertThat(targetIds(tx, "page-linker", Range.first(0))).isEmpty();
+        }
+    }
+
+    private List<String> targetIds(Transaction tx, String personId, Range<String> range) {
+        return persistence.readTargetDocuments(tx, Y2020, new LinkQuery(namespace, "Person", personId,
+                        JsonNavigationPath.from("$.history.previousAddresses[]"), "Address"), range)
+                .map(document -> document.key().id()).toList().blockingGet();
+    }
+
     /*
      * A specification with an array of objects and an array of texts, for documents that hold more than it says.
      */
