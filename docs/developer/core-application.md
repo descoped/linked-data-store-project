@@ -1,7 +1,8 @@
 ---
-title: "Core: the application"
+title: "The application"
 description: "How LDS is put together, started and stopped."
-order: 8
+order: 10
+section: Core
 ---
 
 # Core: how the application is put together, started and stopped
@@ -33,7 +34,7 @@ All of it is in `linked-data-store-core`, under `src/main/java/io/descoped/lds/c
 | `lifecycle.Lifecycle` | A subsystem: a name, `start` (nothing by default, for a subsystem that is live once it is made) and `stop(timeout)`. `Lifecycle.of` makes one from a name and the actions. |
 | `lifecycle.Lifecycles` | The subsystems in the order they were added. Starts them in that order and stops them in the reverse order, once. |
 | `persistence.PersistenceConfigurator` | Finds the persistence provider named in `persistence.provider`, checks that its keys are configured, and initializes it, trying again for a time. |
-| `persistence.StoreReads` | The threads the store is read on, so that no thread of a request waits for it: a read transaction is opened, read and closed on one of them. Also the threads a GraphQL query goes on on after a search. |
+| `persistence.StoreReads` | The threads the store is read on, so that no thread of a request waits for it: a read transaction is opened, read and closed on one of them. Also the threads a GraphQL query continues on after a search. |
 | `search.SearchIndexConfigurator` | Finds the search provider named in `search.index.provider` when `graphql.search.enabled` is true. Otherwise it returns null, and LDS runs without search. |
 | `search.IndexQueueConfigurator`, `search.MemoryIndexQueue` | Makes the index queue where the transaction log is kept: the queue of a provider with the name of the transaction log provider (`postgres`), or a queue in memory when the transaction log is `discard` or `memory`. |
 | `search.IndexQueueWorker`, `search.IndexEntries`, `search.IndexRebuild` | The worker that sends the updates of the index queue to the search index, what an update becomes in the index, and the rebuild of the index from storage. See [search](search.md). |
@@ -63,8 +64,8 @@ the order of the subsystems is the order in which they were made.
 |---|---|---|
 | 1 | **The model.** When `graphql.schema` is not empty, the GraphQL schema file is parsed (`parseSchemaFile`), `GraphQLToJsonConverter` writes a JSON Schema for every [entity type](../glossary.md#entity-type), and `createJsonSpecification` builds the `JsonSchemaBasedSpecification` from them. When it is empty, the [specification](../glossary.md#specification) is built from the JSON Schema files and folders named in `specification.schema`, separated by commas (`JsonSchemaBasedSpecification.create`). A model with no entity type stops the start here, and so do a namespace and a name of an entity type longer than the stores have room for (`checkNames`). See [the model](core-model.md). | none |
 | 2 | **The persistence provider.** `PersistenceConfigurator.configurePersistence` gives an `RxJsonPersistence`. | `Store` |
-| 3 | **The threads the store is read on.** `new StoreReads()`: as many threads as there are processors, at least two, named `lds-store-read-<n>`. | `Store reads` |
-| 4 | **The [saga log](../glossary.md#saga-log) pool.** `configureSagaLogProvider` checks the size of the pool of a saga log that has one (`checkSagaLogPool`) and gives a `SagaLogPool`. | `Saga log pool` |
+| 3 | **The threads the store is read on.** `new StoreReads()`: as many threads as there are processors, at least two, named `lds-store-read-0`, `lds-store-read-1` and so on. With them the threads a GraphQL query continues on after a search: a scheduler of RxJava's io kind, whose threads are named `lds-query-<n>` and are let go when they are not used. All of them are daemon threads. | `Store reads` |
+| 4 | **The [saga log](../glossary.md#saga-log) pool.** `configureSagaLogProvider` checks the size of the pool of a saga log that has one (`checkSagaLogPool`, see [below](#the-saga-log-pool-checked-at-start)) and gives a `SagaLogPool`. | `Saga log pool` |
 | 5 | **Search**, only when `SearchIndexConfigurator.configureSearchIndex` gives a `SearchIndex`: the search index, the index queue (`IndexQueueConfigurator`), its worker, and the rebuild when `search.index.rebuild` is true. The saga repository is given the queue. | `Search index`, `Index queue`, `Index queue worker`, `Index rebuild` |
 | 6 | **The [transaction log](../glossary.md#transaction-log).** `configureTxLogRawdataClient` gives a `RawdataClient`. It is wrapped in a `TxlogRawdataPool` with `txlog.split.sources`, `txlog.default-source` and `txlog.rawdata.topic-prefix`, and with whether it keeps messages: not when `txlog.rawdata.provider` is `discard`. | `Transaction log` |
 | 7 | **The saga repository.** `SagaRepository.Builder.build` registers the adapters and the two sagas, one for a write and one for a delete. Each saga has a step that adds to the index queue only when there is search. | none |
@@ -72,16 +73,16 @@ the order of the subsystems is the order in which they were made.
 | 9 | **The thread pool of the sagas.** A `SelectableThreadPoolExecutor` with `saga.threadpool.core`, `saga.threadpool.max`, `saga.threadpool.keepalive.seconds` and a queue of `saga.threadpool.queue.capacity`. Its threads are named `sec-1`, `sec-2`, and so on. A task that does not fit is refused (`AbortPolicy`). A warning is logged when the queue capacity is not less than the core size. | `Saga thread pool` |
 | 10 | **The recovery thread pool.** A scheduled pool of 10 threads (`SAGA_RECOVERY_THREADS`) named `saga-recovery-1` and so on. | in `Sagas` |
 | 11 | **The saga execution coordinator.** `SagaExecutionCoordinator` registers `saga.number-of-logs` saga logs in the pool. | in `Sagas` |
-| 12 | **The recovery trigger.** A `SagaRecoveryTrigger` when `saga.recovery.enabled` is true, with `saga.recovery.interval.seconds.min` and `saga.recovery.interval.seconds.max`. Otherwise there is none. | `Sagas`: the coordinator, the trigger and the recovery thread pool |
+| 12 | **The recovery trigger.** A `SagaRecoveryTrigger` when `saga.recovery.enabled` is true, with `saga.recovery.interval.seconds.min` and `saga.recovery.interval.seconds.max`, each from 1 to 86400 seconds and the max not below the min; another value ends the start with `IllegalArgumentException: illegal configuration: ...`. The trigger has a thread of its own, `saga-recovery-trigger-<n>`. Without recovery there is no trigger. | `Sagas`: the coordinator, the trigger and the recovery thread pool |
 | 13 | **The namespace controller.** `NamespaceController` with `namespace.default`, the sagas and, with search, the wait of a write that asks to be searchable (`SearchWait`), which lets at most half of the request threads wait at once. | none |
-| 14 | **The readiness checks** (in the constructor of `UndertowApplication`): the store, the saga log, the transaction log and, with search, the search index and the index queue. | `Readiness checks` |
-| 15 | **The HTTP handlers and the Undertow server** (in the constructor). The chain described in [The HTTP handler chain](#the-http-handler-chain) and an Undertow server with one HTTP listener on `http.host` and the port, an I/O thread for each processor (at least two) and eight request threads for each I/O thread. The server is not started yet. | `HTTP server` |
+| 14 | **The GraphQL handler and the readiness checks** (in the constructor of `UndertowApplication`). With GraphQL, the schema file is parsed again and the handlers of `/graphql` and `/graphiql` are made. Then the readiness checks: the store, the saga log, the transaction log and, with search, the search index and the index queue. | `Readiness checks` |
+| 15 | **The other HTTP handlers and the Undertow server** (in the constructor). The chain described in [The HTTP handler chain](#the-http-handler-chain) and an Undertow server with one HTTP listener on `http.host` and the port, an I/O thread for each processor (at least two) and eight request threads for each I/O thread. The server is not started yet. | `HTTP server` |
 
 The log of a start shows the order. This is the log of LDS started from its image, in memory with the example model,
 each line shown from its message on. The lines of the GraphQL schema builder are left out.
 
 ```sh
-docker run --rm -p 127.0.0.1:9090:9090 descoped/lds:3.0.1
+docker run --rm -p 127.0.0.1:9090:9090 descoped/lds
 ```
 
 ```
@@ -136,15 +137,19 @@ Listening on 0.0.0.0:9090
 Server started in 309ms..
 ```
 
-With search on, the log has `Search index provider configured: solr` after the saga log pool, and the start has
-`Starting Search index ...`, `Starting Index queue ...` and `Starting Index queue worker ...` between
-`Starting Saga log pool ...` and `Starting Transaction log ...`. With a transaction log that keeps nothing durable the
-index queue is in memory, and a warning says so:
+With search on, the log has `Search index provider configured: solr` and `Initializing index queue ...` after the
+saga log pool, and the start has `Starting Search index ...`, `Starting Index queue ...` and
+`Starting Index queue worker ...` between `Starting Saga log pool ...` and `Starting Transaction log ...`. With a
+transaction log that keeps nothing durable the index queue is in memory, and a warning says so:
 
 ```
 The index queue is in memory, as the transaction log (discard) is: updates the search index has not taken when LDS
 stops are lost, and are found again only by a rebuild of the index
 ```
+
+With a durable transaction log the log says `The index queue is kept in postgres, where the transaction log is`. When
+no index queue provider has the name of the transaction log provider, the start ends with `No index queue provider for
+the transaction log provider <name>: the queue is kept where the transaction log is`.
 
 The GraphQL schema file is parsed twice: once for the model, and once more in the constructor for the GraphQL
 API.
@@ -186,7 +191,7 @@ LDS started with the PostgreSQL provider and nothing listening on the port, with
 
 ```sh
 docker run --rm -e LDS_PERSISTENCE_PROVIDER=postgres -e LDS_POSTGRES_DRIVER_PORT=1 \
-  -e LDS_POSTGRES_DRIVER_PASSWORD=x -e LDS_PERSISTENCE_INITIALIZATION_MAX_WAIT_SECONDS=3 descoped/lds:3.0.1
+  -e LDS_POSTGRES_DRIVER_PASSWORD=x -e LDS_PERSISTENCE_INITIALIZATION_MAX_WAIT_SECONDS=3 descoped/lds
 ```
 
 ```
@@ -205,12 +210,14 @@ The process ended with exit code 1.
 
 The loop does not tell a store that is not up from a configuration that is wrong. A persistence provider or a
 saga log that is not found fails at once, before the loop, and so do a `persistence.provider` that is not set, a
-model with no entity type and a saga log pool that is too small. A transaction log provider that is not found, and a
-configuration that the provider refuses, are tried again until the wait is over:
+model with no entity type and a saga log pool that is too small. A `sagalog.provider` that names no class found ends
+the start with `java.util.NoSuchElementException: No value present`, which names neither the key nor the class; the
+line before it in the log, `Using saga-log-pool provider-class: <class>`, does. A transaction log provider that is
+not found, and a configuration that the provider refuses, are tried again until the wait is over:
 
 ```sh
 docker run --rm -e LDS_TXLOG_RAWDATA_PROVIDER=nosuch \
-  -e LDS_TXLOG_RAWDATA_PROVIDER_INITIALIZATION_MAX_WAIT_SECONDS=3 descoped/lds:3.0.1
+  -e LDS_TXLOG_RAWDATA_PROVIDER_INITIALIZATION_MAX_WAIT_SECONDS=3 descoped/lds
 ```
 
 ```
@@ -224,21 +231,9 @@ Exception in thread "main" ...ProviderException: No provider named 'nosuch'; ava
 
 ### The saga log pool, checked at start
 
-A saga log whose provider keeps its logs in a pool of connections (the saga log in PostgreSQL, whose
-`configurationOptionsAndDefaults()` has `connection-pool.max-size`) holds one connection for each log that is open.
-`checkSagaLogPool` refuses, before the provider is initialized, a pool that has fewer connections than
-`saga.number-of-logs` + 11: one for each saga log, one for each of the 10 recovery threads, which may each open a log
-of another instance at once, and one for the queries of the pool itself. The size is
-`sagalog.config.connection-pool.max-size`, or the default of the provider when the key is not set. The message
-names both keys:
-
-```
-The saga log has 10 connections in its pool (sagalog.config.connection-pool.max-size) for 30 saga logs
-(saga.number-of-logs): each open saga log holds a connection, recovery opens up to 10 logs of other instances at
-once, and the pool needs one for its own queries. Give the pool at least 41 connections, or use fewer saga logs.
-```
-
-The message is one line in the log. A saga log without a pool (in memory, in files) is not checked.
+Before the saga log provider is initialized, `checkSagaLogPool` refuses a pool of connections smaller than
+`saga.number-of-logs` + 11 (`sagalog.config.connection-pool.max-size`, or the provider's default of it; a saga log
+without a pool is not checked), as [the saga log in PostgreSQL](saga.md#the-saga-log-in-postgresql) explains.
 
 ### When the start fails
 
@@ -275,32 +270,31 @@ Caused by: java.net.BindException: Address already in use
 ```
 
 The process ended with exit code 1. That was a second LDS started in the network of a running one
-(`docker run --network container:<the first> descoped/lds:3.0.1`).
+(`docker run --network container:<the first> descoped/lds`).
 
 ## The HTTP handler chain
 
 The constructor of `UndertowApplication` builds one chain. A request passes it from the top:
 
-```
-Undertow listener (http.host, http.port)
-  CORSHandler                          answers a preflight request itself
-    GracefulShutdownHandler            counts the requests in flight; answers 503 while the application stops
-      PathHandler for http.prefix      404 for a path outside the prefix
-        request dump                   only when http.request.dump is true
-          PathHandler
-            /graphql        exact      GraphqlHttpHandler   (only with GraphQL)
-            /graphiql       exact      the GraphiQL page    (only with GraphQL)
-            /health/alive   exact      200
-            /health/ready   exact      ReadinessHandler
-            /ping           exact      200
-            /               prefix     NamespaceController
+```mermaid
+flowchart TD
+    L["Undertow listener<br/>http.host, http.port"] --> C["CORSHandler<br/>answers a preflight request itself"]
+    C --> G["GracefulShutdownHandler<br/>counts the requests in flight;<br/>answers 503 while the application stops"]
+    G --> P["PathHandler for http.prefix<br/>404 for a path outside the prefix"]
+    P --> D["request dump<br/>only when http.request.dump is true"]
+    D --> R[PathHandler]
+    R -->|"/graphql, exact, only with GraphQL"| GQ[GraphqlHttpHandler]
+    R -->|"/graphiql, exact, only with GraphQL"| GI[the GraphiQL page]
+    R -->|"/health/alive and /ping, exact"| OK[200]
+    R -->|"/health/ready, exact"| RH[ReadinessHandler]
+    R -->|"/, prefix"| N[NamespaceController]
 ```
 
 The `PathHandler` for the prefix is left out when `http.prefix` is empty. LDS then answers as with the prefix `/`.
 
 The `GracefulShutdownHandler` is inside the `CORSHandler`, so that its 503 has the CORS headers and a browser can
-read the answer. The comment in the constructor says so, and `ApplicationStopTest` checks it. A handler that
-must count as a request in flight goes inside the `GracefulShutdownHandler`.
+read the answer. `ApplicationStopTest` checks it. A handler that must count as a request in flight goes inside the
+`GracefulShutdownHandler`.
 
 There is no handler for authentication, and the listener is plain HTTP.
 
@@ -312,91 +306,17 @@ There is no handler for authentication, and the listener is plain HTTP.
 | `/health/ready` | `ReadinessHandler` | 200 when LDS is `UP` or `DEGRADED`, 503 when it is `DOWN`, with a JSON body, for every method. See [Readiness](#readiness). |
 | `/graphql` | `GraphqlHttpHandler` | Only when `graphql.enabled` is true and `graphql.schema` is not empty. See [GraphQL](core-graphql.md). |
 | `/graphiql` | Undertow resource handler | Only with `/graphql`. Redirects to `/graphiql/`, which gives `graphiql.html` from the class path. The page loads its scripts from `unpkg.com` and sends its queries to `/graphql` under the same prefix. |
-| Every other path | `NamespaceController` | See below. |
+| Every other path | `NamespaceController` | See [the way in](core-rest.md#the-way-in). |
 
 These paths are matched exactly, and the case of the letters counts. One `/` at the end is the same path:
 `/ping/` gives 200. `/ping/x` is not a health path. It goes to the `NamespaceController`, which answers 400
 `Unsupported namespace: "ping"`, and `/PING` is answered in the same way. So is `/graphql` when GraphQL is off.
 
-`NamespaceController.handleRequest` takes the path after the prefix (`exchange.getRelativePath()`) and tests it
-in this order. The namespace is `namespace.default`. LDS answers for this one namespace.
-
-1. The path is `/` or empty: 404 with no body.
-2. The path is the namespace and the query has `schema` with no value: 200 with a JSON array of the addresses of
-   the schemas of every entity type, sorted by name.
-3. The path is the namespace and the query has `schema=embed`: 200 with a JSON array of the JSON Schemas of every
-   entity type, sorted by name.
-4. The path is the namespace or begins with the namespace and `/`: a new `DataController` handles it.
-5. The path begins with `/source/`: a new `SourceHandler` handles it.
-6. Anything else: 400 with the text `Unsupported namespace: "<first part of the path>"`.
-
-```sh
-curl -s -i 'http://localhost:9090/ns?schema'
-```
-
-```http
-HTTP/1.1 200 OK
-Connection: keep-alive
-Content-Type: application/json; charset=utf-8
-Content-Length: 42
-Date: Tue, 24 Nov 2026 23:22:31 GMT
-
-["/ns/Company?schema", "/ns/Person?schema"]
-```
-
-```sh
-curl -s -i http://localhost:9090/bad/Person/1
-```
-
-```
-HTTP/1.1 400 Bad Request
-Connection: keep-alive
-Content-Type: text/plain
-Content-Length: 28
-Date: Tue, 24 Nov 2026 23:22:31 GMT
-
-Unsupported namespace: "bad"
-```
-
-`DataController.handleRequest` moves to a worker thread, then reads the time the request asks for (the
-[valid time](../glossary.md#valid-time) of a write, the instant of an [as-of read](../glossary.md#as-of-read))
-from the query parameter `timestamp`, or `t` when there is no `timestamp`. It takes the last value given. Without
-the parameter the time is now. The value is read by `RequestTime.parse`: with `ZonedDateTime.parse`, a second time
-after URL decoding when the first parse fails, and moved to UTC. A value that cannot be read is answered 400 with a
-text that names `timestamp`, also when the parameter was `t`. Undertow has decoded the query before the controller
-reads it, and it reads a `+` as a space. So the `+` of an offset is sent as `%2B`:
-`timestamp=2026-11-20T10:00:00+01:00` is answered 400, and `timestamp=2026-11-20T10%3A00%3A00%2B01%3A00` is read.
-
-Then `ResourceContext.createResourceContext` reads the path as it was sent (`rawRelativePath`), and a
-`ResourceException` from it is answered 400 with its message. A write (any method but `GET`, `HEAD` and `OPTIONS`)
-then takes the lock of its document (`DocumentLocks`), without holding a thread while it waits, and a write without a
-`timestamp` gets the time at which it took the lock. The request goes to `ReferenceResourceHandler`,
-`ManagedResourceHandler` or `EmbeddedResourceHandler`, tested in that order because a link is also a part of a
-document. These handlers and the lock are in [the REST handlers](core-rest.md) and
-[the write path](core-write-path.md).
-
-`SourceHandler` answers `GET /source/{source}` with `{"lastSourceId":...}`: the
-[`sourceId`](../glossary.md#source-and-source-id) in the last entry of the transaction log of that source, or
-null when there is none. Any other method is answered 400 with `Unsupported managed resource method: <method>`,
-`HEAD` included. When `txlog.split.sources` is false there is one transaction log, and only the source named in
-`txlog.default-source` has an answer other than null (`TxlogRawdataPool.getLastMessage`). That answer is the
-`sourceId` of the last write, whatever source the write named. For every other source the transaction log is not
-asked. The entry and its `sourceId` are in [the write path](core-write-path.md). With `txlog.rawdata.provider=discard`,
-the default, no entry is kept, and every source is answered 409:
-
-```sh
-curl -s -i http://localhost:9090/source/default
-```
-
-```
-HTTP/1.1 409 Conflict
-Connection: keep-alive
-Content-Type: text/plain
-Content-Length: 107
-Date: Tue, 24 Nov 2026 23:22:31 GMT
-
-No transaction log is kept (txlog.rawdata.provider=discard), so the last source id of a source is not known
-```
+What `NamespaceController` does with every other path (the namespace, `?schema`, `/source/`, the answer
+`Unsupported namespace`) and what `DataController` does then are in [the way in](core-rest.md#the-way-in), and how
+it reads the time a request names is in [the time of the request](core-rest.md#the-time-of-the-request).
+`GET /source/{source}`, answered by `SourceHandler`, is in [topics and sources](core-write-path.md#topics-and-sources);
+any other method there, `HEAD` included, is answered 400 `Unsupported managed resource method: <method>`.
 
 ### The CORS handler
 
@@ -477,7 +397,7 @@ each, in the order of the checks. It holds no thread while it waits for the answ
 | Check | What is asked | When it fails |
 |---|---|---|
 | `persistence` | A read of one document of the first entity type by name, in a read transaction opened and closed on a thread of `StoreReads`. | `DOWN` |
-| `sagaLog` | The ids of the saga logs of the cluster (`SagaLogPool.clusterWideLogIds`), which the database of the saga log is asked for. The entry has `logs`, their number. | `DOWN` |
+| `sagaLog` | The ids of the saga logs of the cluster (`SagaLogPool.clusterWideLogIds`): a query of its database for the saga log in PostgreSQL, an answer from memory or from its files for the others. The entry has `logs`, their number. See [the readiness of the saga log](saga.md#the-readiness-of-the-saga-log). | `DOWN` |
 | `transactionLog` | The last message of the topic of the default source. The entry has `keepsMessages`, false for `discard`. | `DOWN` |
 | `search` | Only with search: `SearchIndex.health()`, which the Solr provider answers with a query of no rows on its core. | `DEGRADED` |
 | `indexQueue` | Only with search: the number of updates in the index queue and the time the oldest was added (`IndexQueue.lag`). The entry has `durable` (false for the queue in memory), `updates` and, when there are updates, `oldest`. | `DOWN`. It is `DEGRADED` when it answers and the oldest update has waited more than a minute (`INDEX_LAG_DEGRADED`). |
@@ -562,22 +482,22 @@ Then `start` logs the process id and the address it listens on.
 (`Lifecycles.stop`), so that a subsystem stops before what it needs does. A saga hands each of its steps to the
 thread pool of the sagas, writes each step to its saga log and writes to the stores and the index queue; so the sagas
 that are running complete before any of those is stopped. Each subsystem is given the time of the stop,
-10 seconds (`STOP_TIMEOUT`), for the work it is doing.
+10 seconds (`STOP_TIMEOUT`). Not every one waits that time: the table says how long each one waits.
 
 | Order | Subsystem | What its stop does |
 |---|---|---|
-| 1 | `HTTP server` | `GracefulShutdownHandler.shutdown` makes every request from here on get 503 Service Unavailable, and the stop waits for the requests that are being handled, 10 seconds at most; after that a warning is logged. Then the Undertow server stops, closing a connection that is still open one second later (`SHUTDOWN_TIMEOUT`), so a client that sends its body slowly does not hold the stop. |
+| 1 | `HTTP server` | `GracefulShutdownHandler.shutdown` makes every request from here on get 503 Service Unavailable, and the stop waits for the requests that are being handled, the time of the stop at most; after that a warning is logged. Then the Undertow server stops, closing a connection that is still open one second later (`SHUTDOWN_TIMEOUT`), so a client that sends its body slowly does not hold the stop. |
 | 2 | `Readiness checks` | The threads of checks that still wait are ended. |
-| 3 | `Sagas` | The recovery stops: `SagaRecoveryTrigger.stop`, which also shuts the recovery thread pool down, or without a trigger the recovery thread pool alone, because a write also uses it for recovery. Then the stop waits for the sagas that are running, 10 seconds at most, and logs a warning after that. Then the coordinator and its watchdog stop (`SagaExecutionCoordinator.shutdown`). |
-| 4 | `Saga thread pool` | Shut down: 10 seconds, then `shutdownNow` and 10 seconds more. |
-| 5 | `Saga observer` | Shut down. |
+| 3 | `Sagas` | The recovery stops: `SagaRecoveryTrigger.stop` shuts down the thread of the trigger and then the recovery thread pool, or without a trigger the recovery thread pool alone, because a write also uses it for recovery. Each pool is given 10 seconds, then `shutdownNow` and 10 seconds more, whatever the time of the stop. Then the stop waits for the sagas that are running, the time of the stop at most, and logs a warning after that. Then the watchdog is told to stop (`SagaExecutionCoordinator.shutdown`). See [how LDS stops the sagas](saga.md#how-lds-stops-the-sagas). |
+| 4 | `Saga thread pool` | Shut down: 10 seconds, then `shutdownNow` and 10 seconds more, whatever the time of the stop. |
+| 5 | `Saga observer` | Shut down: the stop waits for its thread to end, without a time limit. |
 | 6 | `Transaction log` | Its client is closed. |
-| 7 | `Index rebuild` | Only when it was asked for. A rebuild that is not done is given up, with a warning, and the stop waits for its read transaction to be closed. |
-| 8 | `Index queue worker` | Stops after the round it is sending, 10 seconds at most; the updates it has not removed stay in the queue. |
+| 7 | `Index rebuild` | Only when it was asked for. A rebuild that is not done is given up, with a warning, and the stop waits for its read transaction to be closed, without a time limit. |
+| 8 | `Index queue worker` | Stops after the round it is sending, the time of the stop at most, and then waits as long again for its thread to end; the updates it has not removed stay in the queue. |
 | 9 | `Index queue` | Closed. |
 | 10 | `Search index` | Closed: the Solr provider closes its client. |
 | 11 | `Saga log pool` | Shut down. After that it gives out no log. |
-| 12 | `Store reads` | No read starts after this; the reads that run are given 10 seconds, and are then interrupted. |
+| 12 | `Store reads` | No read starts after this; the reads that run are given the time of the stop, and are then interrupted. The threads of queries are let go. |
 | 13 | `Store` | `RxJsonPersistence.close`. |
 
 The subsystems that were not made (search without a search index, the rebuild when it was not asked for) are not in
@@ -585,54 +505,34 @@ the list. `Server` stops RxJava's shared schedulers after the application (see [
 is still running when its thread pool is shut down fails if it hands a step to the pool. Its saga log holds what it
 did, and the saga is recovered from it later.
 
-`stop(timeout)` is the same with another time. Three more things hold:
+`stop(timeout)` is the same with another time. Only the waits the table gives the time of the stop follow it: for
+the requests, for the running sagas, for the index queue worker and for the reads of the store. The others wait as
+the table says whatever the time is, so with `stop(Duration.ofMillis(200))` the saga thread pool alone can still
+take 20 seconds. Four more things hold:
 
 - A subsystem that fails to stop is logged at level ERROR (`<name> did not stop cleanly`), and the subsystems after
-  it are stopped all the same.
+  it are stopped all the same. A stop that is interrupted is logged at level ERROR as `Interrupted while stopping
+  <name>`, and the subsystems after it are stopped as well, with the thread still interrupted.
 - The application is stopped once. A second call returns at once and does not wait for the first. `Server.main`
-  calls `stop` from its shutdown hook and from a `finally` block, so this matters.
-- A stop on a thread that is interrupted does not wait, and still stops every subsystem.
+  does not call it: it puts RxJava's shared schedulers and the application in a `Lifecycles` of its own, and stops
+  that from its shutdown hook, and from a `finally` block when the start fails. That too is stopped once.
+- No subsystem is added while the subsystems stop: `Lifecycles.add` then throws `IllegalStateException: The server
+  is stopping: <name> is not added`.
+- A stop on a thread that is interrupted does not wait: the stop of every subsystem is called, and each wait ends at
+  once, except that of `Index rebuild`, whose `ExecutorService.close` interrupts the rebuild and then waits for it
+  to end.
 
-This is what a client sees. A `PUT` was sent with half of its body, the process was then sent `SIGTERM`, and
-half a second later these requests were sent:
+Not finished: on a thread that is interrupted, two subsystems do not complete their stop. When a request is in
+flight, the wait of `HTTP server` for it (`GracefulShutdownHandler.awaitShutdown`) throws `InterruptedException`
+before `server.stop()`, so the listener and the threads of Undertow are not stopped. When a round of the index queue
+is running, the wait of `Index queue worker` for it throws before `executor.shutdownNow()`, so the thread of the
+worker is not ended. `ApplicationStopTest` stops with a request in flight on an interrupted thread, and checks only
+the saga thread pool and the saga log pool afterwards.
 
-```sh
-curl -s -i http://localhost:9090/ping
-```
-
-```
-HTTP/1.1 503 Service Unavailable
-Connection: keep-alive
-Content-Length: 0
-Date: Tue, 24 Nov 2026 23:22:41 GMT
-```
-
-```sh
-curl -s -i -H "Origin: https://app.example" http://localhost:9090/ns/Company/acme
-```
-
-```
-HTTP/1.1 503 Service Unavailable
-Connection: keep-alive
-Access-Control-Allow-Origin: https://app.example
-Vary: Origin
-Access-Control-Expose-Headers: Authorization,Content-Type,LDS-Searchable
-Content-Length: 0
-Date: Tue, 24 Nov 2026 23:22:41 GMT
-```
-
-The rest of the body was sent two seconds after the `SIGTERM`. The `PUT` was answered `HTTP/1.1 201 Created`,
-and then the application went on with its stop:
-
-```
-... 23:22:52.702Z [Thread-0] WARN  io.descoped.lds.server.Server - ShutdownHook triggered..
-... 23:22:54.700Z [Thread-0] INFO  io.undertow - stopping server: Undertow - 2.4.4.Final
-... 23:22:54.703Z [Thread-0] INFO  io.descoped.lds.core.UndertowApplication - Leaving.. Bye!
-```
-
-The process ends with exit code 143 after `SIGTERM`. `/health/alive` and `/health/ready` are answered 503 during
-the stop of the HTTP server as `/ping` is. A preflight request is answered 204 then as well, because the
-`CORSHandler` answers it before the `GracefulShutdownHandler` sees it.
+What a client and the log see while LDS stops (the 503 answers, the waits, the exit code 143) is in
+[stopping](../user/operations.md#stopping). The 503 of a request that has an `Origin` has the CORS headers, and a
+preflight request is answered 204 during the stop as well, because the `CORSHandler` answers it before the
+`GracefulShutdownHandler` sees it.
 
 ## Configuration
 
@@ -681,8 +581,8 @@ start with it (see [the server](server.md#the-rules-of-dynamic-configuration-3))
 | `txlog.rawdata.provider.initialization.retry-interval-seconds` | `1` | The time between two attempts, give or take half. |
 | `txlog.config.*` | none | Given to the transaction log provider without the prefix. |
 | `txlog.split.sources` | `false` | True gives every source a transaction log of its own. |
-| `txlog.default-source` | `default` | The source of a write that names none. The only source when `txlog.split.sources` is false. |
-| `txlog.rawdata.topic-prefix` | `txlog-` | Put before the source to make the name of a topic of the transaction log. |
+| `txlog.default-source` | `default` | The source of a write that names none. The only source when `txlog.split.sources` is false. A blank value counts as `default`. |
+| `txlog.rawdata.topic-prefix` | `txlog-` | Put before the source to make the name of a topic of the transaction log. Spaces around it are taken off. |
 
 The keys of the saga and the transaction log are explained in [the write path](core-write-path.md), and those of
 search in [search](search.md).
@@ -740,7 +640,8 @@ address of a path with `testURL`. The host of that address is `http.host`, which
 declares a field of type `TestServer` or `TestClient` with `@Inject`. Before every test method the listener:
 
 1. builds a configuration from `application-defaults.properties`, then `application_test.properties`, then the
-   pairs of key and value in the `@ConfigurationOverride` annotation of the method, if it has one;
+   pairs of key and value in the `@ConfigurationOverride` annotation of the method, if it has one, and keeps it
+   under the name of a profile: the value of the method's `@ConfigurationProfile` annotation, or `TEST_DEFAULT`;
 2. stops the server of the test before, when that one had another configuration;
 3. starts a server for the configuration if none is running, on a free port between 9000 and 9499
    (`findFreePort`), and puts it, or a `TestClient` for it, into the fields.
@@ -790,10 +691,11 @@ memory provider. It does not start as it stands: see [Not finished](#not-finishe
   order of the stop.
 - **A new handler goes inside the `GracefulShutdownHandler`**, or its requests are not counted and not completed
   before the stop goes on. The `CORSHandler` stays outside it.
-- **No thread waits.** A handler that calls a store moves off the I/O thread first (`exchange.isInIoThread()`, then
-  `exchange.dispatch(this)`), as `DataController` and `SourceHandler` do. A read of the store that is composed runs
-  on a thread of `StoreReads`, which opens and closes its transaction there. A client that only blocks is asked on a
-  thread of its own, as the readiness asks the saga log and the transaction log.
+- **No thread waits.** A handler never waits on an I/O thread: one that calls a store or a client moves off it first
+  (`exchange.isInIoThread()`, then `exchange.dispatch(this)`), as `DataController` and `SourceHandler` do. A read of
+  the store that is composed runs on a thread of `StoreReads`, which opens and closes its transaction there. A client
+  that only blocks is asked on a thread of its own, as the readiness asks the saga log and the transaction log.
+  Some handlers do not meet the rule yet: see [Not finished](#not-finished).
 - **A provider is registered in `META-INF/services` and with `provides`.** LDS runs on the class path, where only
   the file in `META-INF/services` is read.
 - **The process is configured from outside by environment variables**, which set only keys that a file has. A new
@@ -802,11 +704,11 @@ memory provider. It does not start as it stands: see [Not finished](#not-finishe
   or a hook that keeps `stop` from being reached.
 - **No name from a request goes into a key, a topic or a path without being checked.** See the source name below.
 - **The lint and Javadoc overrides in the POM of core are removed, not widened**, when core is revised.
-- **3.0.0 is a clean break.** No alias for a key that is renamed, and no code for an earlier configuration.
+- **No code for what came before.** No alias for a key that is renamed, and no code for an earlier configuration.
 
 ## Not finished
 
-Not finished: this part of core is not revised for 3.0 yet. What is known to be incomplete or wrong is listed
+Not finished: this part of core is not revised yet. What is known to be incomplete or wrong is listed
 here and where it belongs above.
 
 - `SourceHandler` and the answer to `?schema` do not follow `http.prefix`. See [The prefix and the request
@@ -815,11 +717,14 @@ here and where it belongs above.
   `txlog.split.sources=true` and the transaction log in memory, `GET /source/a/b` is answered 500 with no body; the
   client of the transaction log refuses the name.
 - `parseSchemaFile` opens what it finds on the class path as a file (`new File(systemResource.getPath())`). A
-  `graphql.schema` that names a resource inside a jar ends the start with `java.nio.file.NoSuchFileException`
-  for a path of the form `file:/.../lib/<jar>!/<resource>`.
+  `graphql.schema` that names a resource inside a jar ends the start with `java.lang.RuntimeException:
+  java.nio.file.NoSuchFileException` for a path of the form `file:/.../lib/<jar>!/<resource>`.
 - `SearchIndexConfigurator` does not read `SearchIndexProvider.configurationKeys()`, so core does not tell at
   start that a key of the search provider is missing, as it does for the persistence provider.
 - LDS answers for one namespace, `namespace.default`. Any other first part of a path is answered 400.
+- A REST read, a write of a link or of a part of a document (which reads the document first), and `SourceHandler`
+  wait on the request thread they move to: the first two for the store ([the way in](core-rest.md#the-way-in)),
+  `SourceHandler` for the transaction log.
 - `TestSearchIndex` is a search provider for tests that is in the main code. The module descriptor provides it,
   but its file in `META-INF/services` is among the test resources. A running LDS does not find it:
   `LDS_GRAPHQL_SEARCH_ENABLED=true LDS_SEARCH_INDEX_PROVIDER=testSearchIndex` ends the start with

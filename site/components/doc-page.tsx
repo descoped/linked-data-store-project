@@ -5,6 +5,7 @@ import { getCMSContent, resolveSeoContent, SeoJsonLd } from '@krantho/ui-react/s
 import { type DocCollection, docHref, docLinks, site } from '../lib/krantho'
 import { prepareHtml } from '../lib/html'
 import { CodeCopy } from './code-copy'
+import { FigureZoom } from './figure-zoom'
 import { Mermaid } from './mermaid'
 import { SectionHash } from './section-hash'
 
@@ -45,6 +46,7 @@ export async function DocPage({
         <div className="cms-markdown prose" dangerouslySetInnerHTML={{ __html: html }} />
         {hasFigures && <Mermaid />}
         <CodeCopy />
+        <FigureZoom />
         <SectionHash selector=".doc .prose :is(h2, h3)[id]" />
         <nav className="pager" aria-label="Pages">
           {previous && (

@@ -2,6 +2,7 @@
 title: "The build"
 description: "The reactor, the BOM, the rules of the build, the tests, CI."
 order: 1
+section: Overview
 ---
 
 # The build
@@ -16,10 +17,11 @@ The build makes every module of LDS from one repository, with one version, on on
 as named modules with compiler warnings as errors, runs the tests against the real engines in containers, checks
 the Javadoc, and puts together the jars the server image is made of.
 
-A build publishes nothing: no artifact and no image leaves the machine that builds. Two workflows publish. CI
+A build publishes nothing: no artifact and no image leaves the machine that builds. Three workflows publish. CI
 publishes the SNAPSHOTs of the modules to Descoped's Maven repository, read at <https://maven.descoped.io/> (see
 [CI](#ci)). A release is published by a workflow the owner starts by hand: the images of the server on Docker Hub, a
-tag and a release on GitHub (see [How a release is made](#how-a-release-is-made)). No jar is released, and nothing of
+tag and a release on GitHub (see [How a release is made](#how-a-release-is-made)). The documentation site is
+published to GitHub Pages (see [The documentation site](#the-documentation-site)). No jar is released, and nothing of
 LDS is published to Maven Central.
 
 ## Where things are
@@ -33,12 +35,12 @@ LDS is published to Maven Central.
 | `mvnw`, `mvnw.cmd`, `.mvn/wrapper/maven-wrapper.properties` | The Maven wrapper: which Maven is used, and the checksum of its download. |
 | `.github/workflows/ci.yml` | The build in GitHub Actions, and the publication of the SNAPSHOTs. |
 | `.github/workflows/release.yml` | The release: the images on Docker Hub, the tag and the release on GitHub. |
-| `.github/workflows/claude.yml` | The review of a pull request by Claude, and its answer to an `@claude` mention. It builds nothing by itself. |
+| `.github/workflows/claude.yml` | The review of a pull request by Claude, and its answer to an `@claude` mention. Only the answer may build, to check a fix. |
 | `.github/workflows/pages.yml` | The build of the [documentation site](#the-documentation-site) and its publication to GitHub Pages. |
 | `.github/renovate.json` | What Renovate moves, and the versions it is told to leave. |
 | `.mvn/extensions.xml`, `.mvn/maven-build-cache-config.xml` | The [build cache](#the-build-cache) and its settings. |
 | `site/` | The documentation site. |
-| `.gitignore`, `.gitattributes` | Build output, local configuration and release leftovers are ignored. Every text file is checked out with LF line ends, so that a checkout on any system makes the same sources jar. |
+| `.gitignore`, `.gitattributes` | Build output, the files of IDEs, `.DS_Store`, crash logs and `*.log`, the local configuration of the server (`conf/`, `conf_dev/`), the data of a local Solr and the screenshots of the Playwright tool are ignored. Every text file but `*.cmd` (CRLF) is checked out with LF line ends, so that a checkout on any system makes the same sources jar. |
 
 ## The modules
 
@@ -98,11 +100,11 @@ The descriptor of a built jar can be read with the `jar` tool. Here it is run in
 `lib`, as `linked-data-store-server/target` has after a build:
 
 ```sh
-jar --describe-module --file lib/linked-data-store-search-provider-solr-3.0.1-SNAPSHOT.jar
+jar --describe-module --file lib/linked-data-store-search-provider-solr-X.Y.Z.jar
 ```
 
 ```
-io.descoped.lds.search.provider.solr@3.0.1-SNAPSHOT jar:file:///.../module-info.class
+io.descoped.lds.search.provider.solr@X.Y.Z jar:file:///.../module-info.class
 requires io.descoped.lds.persistence.api
 requires io.descoped.lds.search.api
 requires io.reactivex.rxjava3
@@ -131,38 +133,29 @@ For each module, in reactor order:
 4. Surefire runs the tests on the class path (see [How the tests run](#how-the-tests-run)).
 5. The jar is made. Every entry of it has the time in `project.build.outputTimestamp` of the root POM, so the same
    sources give the same bytes.
-6. In the server module only: before the jar is made, the jars of an earlier build are removed (`target/*.jar` and
-   `target/lib`); after it, every library LDS runs with is copied to `target/lib` (`copy-dependencies`, scope
-   `runtime`), also when the build cache gives the module; then Failsafe runs the tests of the image (`*IT`).
+6. In the server module and the load test: before the jar is made, the jars of an earlier build are removed
+   (`target/*.jar` and `target/lib`); after it, every library the module runs with is copied to `target/lib`
+   (`copy-dependencies`, scope `runtime`), also when the build cache gives the module. In the server module,
+   Failsafe then runs the tests of the image (`*IT`).
 7. In the phase `verify`, the Javadoc of the module is checked (`javadoc-no-fork`, see [Javadoc](#javadoc)).
 
 Before these steps, the build cache looks the module up (see [The build cache](#the-build-cache)). When an earlier
-build of the same inputs is there, steps 2 to 7 are not run: the jar and the outputs the cache keeps are put back in
-`target`, and the log says `Skipping plugin execution (cached)` for each step.
+build of the same inputs is there, steps 2 to 7 are not run, except the copy to `target/lib` of step 6: the jar and
+the outputs the cache keeps are put back in `target`, and the log says `Skipping plugin execution (cached)` for each
+step.
 
 With `-T 1C`, as CI runs it, Maven builds the modules that do not depend on each other at the same time, one
-thread for each core: the three providers and core run their tests side by side.
+thread for each core: the Neo4j and PostgreSQL providers, the Solr provider and the index queue run their tests
+side by side with core. The memory provider, which the tests of core use, is built and tested before core.
 
 What goes out is one jar for each module in its `target` folder, and in `linked-data-store-server/target` the jar
 of the server and the folder `lib`. Those two are what the image is made of; see
 [the server and its image](server.md). The jar of the server has no `Main-Class`, so LDS is started with the
-class path and the name of the main class. In the module directory, after a build:
-
-```sh
-cd linked-data-store-server
-LDS_HTTP_PORT=19105 java -cp "target/*:target/lib/*" io.descoped.lds.server.Server
-curl -i http://127.0.0.1:19105/ping
-```
-
-```
-HTTP/1.1 200 OK
-Connection: keep-alive
-Content-Length: 0
-Date: Tue, 24 Nov 2026 23:34:45 GMT
-```
+class path and the name of the main class (see
+[Running LDS from the module directory](server.md#running-lds-from-the-module-directory)).
 
 These are the commands of the build. `./mvnw -T 1C clean verify` is what CI runs, and it needs Docker and
-JDK 27. The commands were not run for this document, and their output is not shown.
+JDK 27.
 
 ```sh
 ./mvnw -T 1C clean verify                      # what CI runs: build, tests, Javadoc
@@ -214,10 +207,13 @@ LDS is built, tested and run on JDK 27. The number is written in these places, a
 | Where | What |
 |---|---|
 | root `pom.xml`, `java.version` | Gives `maven.compiler.release`, so the class files are for Java 27 (class file version 71), and the version the enforcer rule `requireJavaVersion` asks for. |
-| `.github/workflows/ci.yml` | `actions/setup-java` with `java-version: '27'`, distribution `temurin`. |
+| `.github/workflows/ci.yml` | `actions/setup-java` with `java-version: '27'`, distribution `temurin`, in both jobs; the name of the job `Build (JDK 27)`. |
 | `.github/workflows/claude.yml` | The same, in the job `respond`, which may run the build. |
-| `linked-data-store-server/Dockerfile` | `FROM eclipse-temurin:27-jdk AS runtime`, the stage that links the runtime of the image. |
-| `.github/renovate.json` | Two rules that stop Renovate from raising the JDK of the workflows and of the image. |
+| `.github/workflows/release.yml` | The same, and the name of the check run of CI it asks for, `Build (JDK 27)`. |
+| `linked-data-store-server/Dockerfile` | `FROM eclipse-temurin:27-jdk@sha256:... AS runtime`, the stage that links the runtime of the image, named by its digest. |
+| `linked-data-store-loadtest/Dockerfile` | `FROM eclipse-temurin:27-jre-alpine`, the image of the load test. |
+| `ServerImageIT` | The test that the debug image runs on JDK 27 (`JDK 27` in the answer of `jcmd`). |
+| `.github/renovate.json` | Two rules that stop Renovate from raising the JDK of the workflows and of the images. |
 
 The enforcer rule gives the lowest JDK: a newer JDK passes it too, and the compiler then still writes class files
 for Java 27. The same execution asks for Maven from 3.9.0 and below 4 (`requireMavenVersion` `[3.9.0,4)`): 3.9 is
@@ -226,7 +222,7 @@ Renovate is told the same (see [Renovate](#renovate)).
 
 ### Every compiler warning is an error
 
-The root POM gives the compiler `-Xlint:all -Werror`. A module that has not been revised for 3.0 replaces these
+The root POM gives the compiler `-Xlint:all -Werror`. A module that has not been revised yet replaces these
 arguments (`combine.self="override"`) with a list that names the categories it is not clean of. When a module is
 revised, its exception is removed. An exception is never made wider.
 
@@ -253,7 +249,7 @@ path, gives these warnings in the categories of the lint rule:
 | core | `exports` 16, `deprecation` 13, `requires-automatic` 6, `rawtypes` 4, `serial` 2, `missing-explicit-ctor` 1 | `unchecked`, `cast`, `lossy-conversions`, `static` |
 
 The test sources, which the same arguments compile, and the TCK, whose main code needs TestNG, were not measured,
-so a category without a warning here may still be needed for them. This was measured with `javac` and not with Maven.
+so a category without a warning here may still be needed for them.
 Remove a category from a POM only after a build with Maven passes without it.
 
 The six automatic modules that core requires are `undertow.core`, `xnio.api`, `jackson.dataformat.msgpack`,
@@ -262,7 +258,9 @@ The six automatic modules that core requires are `undertow.core`, `xnio.api`, `j
 Not finished: the first three of them, and `solr.solrj` of the Solr provider, have no `Automatic-Module-Name` in
 the manifest of their jar, so the name of the module is made from the name of the jar file. The compiler plugin
 of Maven says so in every build, as a warning for core and as a line of information for the Solr provider and
-for the server:
+for the server. The jar of `commons.math3`, which the load test requires, has no `Automatic-Module-Name` either
+(`commons-math3-3.6.1.jar`), and Maven says so for the load test too, as a line of information. The message for
+core:
 
 ```
 Required filename-based automodules detected: [jackson-dataformat-msgpack-3.0.0.jar, undertow-core-2.4.4.Final.jar,
@@ -296,8 +294,8 @@ anywhere, and `javadoc` warns when a module on the class path (the TCK) links to
   `META-INF/services` is read. The `provides` line is checked by the compiler.
 - `uses` is declared by core, which is the module that calls `ServiceLoader` (`PersistenceConfigurator`,
   `SearchIndexConfigurator`, `IndexQueueConfigurator`, `UndertowApplication`). The two modules that define the
-  interfaces declare no `uses`. The rule of the project is worded the other way: the module that defines a service
-  interface declares `uses` for it. The code and the rule do not agree.
+  interfaces declare no `uses`. Not finished: so the JPMS rule of [the invariants](architecture.md#the-invariants),
+  that the module that defines a service interface declares `uses` for it, is not met.
 - The module descriptors are checked when the modules are compiled, and nowhere else: nothing in the build runs
   LDS on the module path.
 
@@ -322,20 +320,17 @@ POM.
 
 ### Other rules that show in the build
 
-- Always the latest stable version of every library, plugin, action, image and engine. Renovate moves them, and
-  CI is the gate (see [Renovate](#renovate)).
-- No secret but the documented development defaults of the tests and the compose file.
-- CI publishes SNAPSHOTs only, and never to Maven Central. The root POM has no `<distributionManagement>`, and
-  never gets one: the job that publishes the SNAPSHOTs names its target on its command line, for SNAPSHOTs only, so
-  a release version has nowhere to be deployed (see [CI](#ci)). A release is started by hand, with the owner's
-  go-ahead (see [How a release is made](#how-a-release-is-made)).
+The latest stable versions, no secret but the development defaults, and SNAPSHOTs only from CI with releases by
+hand are rules of [the invariants](architecture.md#the-invariants); [Renovate](#renovate), [CI](#ci) and
+[How a release is made](#how-a-release-is-made) say how the build keeps them.
 
 ## The profiles
 
 | Profile | What it does |
 |---|---|
-| `coverage` | Runs the tests with the JaCoCo agent (`prepare-agent`, which writes its data to `target/jacoco/jacoco.exec`, a folder the build cache keeps) and writes the report of each module in the phase `prepare-package`. In the phase `verify`, `linked-data-store-server` also writes one report of every module it is made of, from the tests of all of them (`report-aggregate`, in `target/site/jacoco-aggregate`): a class is covered by the tests of any module that runs it, as the shared suite runs the persistence API in each provider. The tests of the image run no code of the reactor in the JVM of the build and add nothing. |
+| `coverage` | Runs the tests with the JaCoCo agent (`prepare-agent`, which writes its data to `target/jacoco/jacoco.exec`, a folder the build cache keeps) and writes the report of each module in the phase `prepare-package`. In the phase `verify`, `linked-data-store-server` also writes one report of every module it is made of, from the tests of all of them (`report-aggregate`, in `target/site/jacoco-aggregate`): a class is covered by the tests of any module that runs it, as the shared suite runs the persistence API in each provider. `report-aggregate` takes only the modules the POM names, so the profile names the persistence API and the search API in the POM of the server, which otherwise gets them through core. The tests of the image run no code of the reactor in the JVM of the build and add nothing. |
 | `sonar` | Sets the address, the organisation (`descoped`) and the project key (`descoped_linked-data-store-project`) of SonarCloud, and the version of the scanner. There is one SonarCloud project for the whole reactor. Coverage is read from the joined report of the `coverage` profile, and from a module's own report for the load test, which is outside it. The rules that do not fit a file are switched off for that file (`sonar.issue.ignore.multicriteria`), and the comment above the profile gives the reason of each. The scanner runs only when its goal is named, as CI does. |
+
 No profile is active by default. No profile publishes: LDS is never published to Maven Central, and the POM has no
 profile, plugin or setting for it.
 
@@ -347,34 +342,7 @@ compares the download with `distributionSha256Sum`, and unpacks it under `~/.m2/
 differs, the script stops. CI runs `./mvnw`. Besides the properties of the wrapper, the folder `.mvn` holds the build
 cache: the extension that adds it (`extensions.xml`) and its settings (`maven-build-cache-config.xml`).
 
-## The build cache
-
-`maven-build-cache-extension` (in `.mvn/extensions.xml`) keeps the result of each module in `~/.m2/build-cache`,
-under a SHA-256 of the module's inputs:
-
-- its sources, test sources and resources, its effective POM (the profiles of the build count), and the
-  checksums of the modules and libraries it depends on;
-- in the server module, also the files the tests of the image read outside `src`: `Dockerfile`, `.dockerignore`,
-  `compose.yaml`, `postgres-init.sql` and `schemas` (the properties `maven.build.cache.input.*` of its POM).
-
-A build that finds a module's inputs unchanged does not compile, test or document it again. It puts back the jar and
-the folders of `target` that SonarCloud and the joined coverage report read: `classes`, `test-classes`, `jacoco`,
-`site`, `surefire-reports` and `failsafe-reports`. A module whose inputs changed, and every module that depends on
-it, is built and tested as always. So a change in core tests core and the server again, and takes the providers from
-the cache; a change in the persistence API tests every module.
-
-Only a build that starts with `clean` is kept (`mandatoryClean`): a build without it can take a plugin's result as
-up to date from what an earlier build left in `target`, as the Javadoc plugin does, and a success kept from it
-would not be one. A build that also names `javadoc:javadoc` on the command line keeps nothing.
-
-A result is used again only for a build that asks for the same tests (`executionControl` in the settings): one kept from
-a build limited with `-Dtest`, `-Dit.test`, `-Dgroups` or `-DexcludedGroups` is not taken for a build that runs them
-all, which builds the module again. A build that skips the tests (`-DskipTests`) may take any result.
-
-`-Dmaven.build.cache.skipCache=true` builds everything without looking the cache up, and keeps the result;
-`-Dmaven.build.cache.enabled=false` builds without the cache.
-
-The checksum in the file is the SHA-256 of the zip that `distributionUrl` names:
+The checksum in `maven-wrapper.properties` is the SHA-256 of the zip that `distributionUrl` names:
 
 ```sh
 curl -sS -f -L -o apache-maven-3.10.1-bin.zip \
@@ -390,6 +358,33 @@ When Maven is raised, by Renovate or by hand, Renovate does not change the check
 new download until it is set. Set `distributionSha256Sum` to the SHA-256 of the new
 `apache-maven-<version>-bin.zip`, after comparing that zip with the `.sha512` that Maven publishes next to it.
 A Maven 4 does not pass the enforcer rule, and Renovate does not offer one.
+
+## The build cache
+
+`maven-build-cache-extension` (in `.mvn/extensions.xml`) keeps the result of each module in `~/.m2/build-cache`,
+under a SHA-256 of the module's inputs:
+
+- its sources, test sources and resources, its effective POM (the profiles of the build count), and the
+  checksums of the modules and libraries it depends on;
+- in the server module, also the files the tests of the image read outside `src`: `Dockerfile`, `.dockerignore`,
+  `compose.yaml`, `postgres-init.sql` and `schemas` (the properties `maven.build.cache.input.*` of its POM).
+
+A build that finds a module's inputs unchanged does not compile, test or document it again. It puts back the jar and
+the folders of `target` that SonarCloud and the joined coverage report read: `classes`, `test-classes`, `jacoco`,
+`site`, `surefire-reports` and `failsafe-reports`. A module whose inputs changed, and every module that depends on
+it, is built and tested as always. So a change in core tests core and the server again, and takes the providers from
+the cache; a change in the persistence API tests every module but the load test, which does not depend on it.
+
+Only a build that starts with `clean` is kept (`mandatoryClean`): a build without it can take a plugin's result as
+up to date from what an earlier build left in `target`, as the Javadoc plugin does, and a success kept from it
+would not be one. A build that also names `javadoc:javadoc` on the command line keeps nothing.
+
+A result is used again only for a build that asks for the same tests (`executionControl` in the settings): one kept from
+a build limited with `-Dtest`, `-Dit.test`, `-Dgroups` or `-DexcludedGroups` is not taken for a build that runs them
+all, which builds the module again. A build that skips the tests (`-DskipTests`) may take any result.
+
+`-Dmaven.build.cache.skipCache=true` builds everything without looking the cache up, and keeps the result;
+`-Dmaven.build.cache.enabled=false` builds without the cache.
 
 ## How the tests run
 
@@ -428,13 +423,13 @@ code they test, and they run on the class path together with it. So a test finds
 
 ### Surefire and Failsafe
 
-Surefire runs the classes it finds by its default name patterns (`*Test`, which `*IntegrationTest` also matches)
-in the phase `test`. Failsafe is set up in the server module only. It runs `ServerImageIT` and `ServerStackIT`
-after the jars are made, so `verify` runs them and `test` and `package` do not.
+Surefire runs the classes it finds by its default name patterns (`Test*`, `*Test`, `*Tests` and `*TestCase`;
+`*IntegrationTest` matches `*Test`) in the phase `test`. Failsafe is set up in the server module only. It runs
+`ServerImageIT` and `ServerStackIT` after the jars are made, so `verify` runs them and `test` and `package` do not.
 
 Surefire finds no test to run in three modules: the TCK (its suite is an abstract class in `src/main/java`, and
 it runs in the providers), the search API (it has no tests) and the server (its tests are the `*IT` classes). The load
-test has one test, of the program that reads its results.
+test has one test class, of the program that reads its results.
 
 ### Containers
 
@@ -451,8 +446,9 @@ server module also the `docker` command with `compose`.
 | server | the image built from the `Dockerfile`; the images of `compose.yaml` | `ServerImageIT`, `ServerStackIT` |
 
 In the provider modules one container serves every test class of the module. It is started on first use and
-removed by Testcontainers when the JVM ends. In core, `SagaLogPostgresTest`, and in the index queue,
-`PostgresIndexQueueTest`, start a container before their tests and stop it after them.
+removed by Testcontainers when the JVM ends. In the index queue, `PostgresIndexQueueTest` starts its container when
+the class is loaded, and Testcontainers removes it when the JVM ends. In core, `SagaLogPostgresTest` starts a
+container before its tests and stops it after them.
 
 ### LoopbackPorts
 
@@ -485,7 +481,7 @@ and not as skipped.
 
 | Class | Disabled |
 |---|---|
-| `DataControllerTest` | `testGetEmptyDomainList`, `testPutDomain`, `testGetDomainList`, `testGetDomain`, `testGetMissingDomain` (`enabled = false`) |
+| `DataControllerTest` | `testGetEmptyDomainList`, `testPutDomain`, `testGetDomainList`, `testGetDomain`, `testGetMissingDomain` (`enabled = false`; `testGetDomainList` also `@Ignore`) |
 | `NamespaceControllerTest` | `thatPUTOnLegalNamespaceAndDocumentAcceptsWith200` (`enabled = false`) |
 | `PersistenceLinksConnectionFetcherTest` | `testForwardPagination`, `testBackwardPagination` (`@Ignore`; the comment says the method hangs) |
 | `PersistenceRootConnectionFetcherTest` | the whole class, four tests (`@Ignore`; the comment says the tests hang) |
@@ -516,7 +512,8 @@ A push or a pull request starts it only when it changes what can change the prod
 `mvnw`, `.mvn/`, a file in a module folder (`linked-data-store-*/`) that is not a Markdown file, or `ci.yml`
 itself. A change of the documentation (`docs/`, `README.md`, any Markdown file), the site (`site/`), the Claude Code
 plugin (`plugins/`, `.claude-plugin/`), `LICENSE`, `.claude/`, `claude.yml`, `renovate.json` or `.gitignore` alone
-does not start it. A tag starts it whatever it changes.
+does not start it. A tag starts it whatever it changes, when a person pushes it: the release workflow pushes its tag
+with the token of the workflow, and GitHub starts no workflow for a push made with that token.
 A newer push to the same pull request ends the run that is in progress. A run on a branch is not ended by the next,
 so a publication of SNAPSHOTs is not stopped halfway.
 
@@ -545,23 +542,28 @@ The job `build` has the permission `contents: read` and no step that deploys, pu
 The job `snapshot` publishes the SNAPSHOTs of every module but the load test (`maven.deploy.skip` in its POM), each
 jar with its sources jar, to Descoped's repository of SNAPSHOTs in AWS CodeArtifact, which is read publicly at
 <https://maven.descoped.io/>. It runs when `build` has passed, and only on a push to `master`, with the version of the
-POMs (`3.0.1-SNAPSHOT`), or on a start by hand on a branch, with a version of the branch's own,
-`<version>-<branch>-SNAPSHOT`, so that it never replaces the SNAPSHOT of `master`; never on a pull request or a
-tag. A version that is not a SNAPSHOT, which the commit a release is made from has, publishes nothing: the job says
-so in a notice and passes. It gets short-lived credentials of AWS by OpenID Connect, for a
-role whose name is the one input of the job, the organisation secret `CODEARTIFACT_SNAPSHOTS_ROLE_ARN`; the account
-and the address to publish to are looked up while it runs and are masked in the log, and are written nowhere in the
+POMs (`X.Y.Z-SNAPSHOT`), or on a start by hand on a branch, with a version of the branch's own,
+`X.Y.Z-<branch>-SNAPSHOT`, so that it never replaces the SNAPSHOT of `master` (every character of the name of the
+branch but a letter, a digit and `.` becomes `-`: `feature/x` gives `X.Y.Z-feature-x-SNAPSHOT`); never on a pull
+request or a tag. A version that is not a SNAPSHOT, which the commit a release is made from has, publishes nothing:
+the job says so in a notice and passes. It gets short-lived credentials of AWS by OpenID Connect, for a role whose
+name is the one input of the job, the organisation secret `CODEARTIFACT_SNAPSHOTS_ROLE_ARN`; the account and the
+address to publish to are looked up while it runs and are masked in the log, and are written nowhere in the
 repository. It deploys with `-DaltSnapshotDeploymentRepository`, which names the target on its command line and holds
 for SNAPSHOTs only: the root POM has no `<distributionManagement>`, so a release version has nowhere to be deployed.
-Two runs on one branch do not run at the same time. CI publishes no release and no image, and nothing to Maven
-Central.
+The job builds the modules again on its own runner, without the tests (`-DskipTests -DskipITs`), and deploys them all
+at the end (`-DdeployAtEnd=true`). The sources jar goes to `target/sources`, so that the server and the load test,
+which remove the jars in `target` before they package, do not remove it. Two runs on one branch do not run at the
+same time. CI publishes no release and no image, and nothing to Maven Central.
 
 The actions are pinned by commit, with the version in a comment. Renovate moves them.
 
 `.github/workflows/claude.yml` has two jobs. `review` reads a pull request when it is opened or reopened and
 posts one review; it does not run the tests, and its token cannot change the code. It reviews code: a pull
 request that changes nothing but Markdown files, `docs/`, `site/`, the Claude Code plugin (`plugins/`,
-`.claude-plugin/`), `LICENSE`, `.claude/`, `claude.yml`, `renovate.json` or `.gitignore` does not start it.
+`.claude-plugin/`), `LICENSE`, `.claude/`, `claude.yml`, `renovate.json` or `.gitignore` does not start it, and
+neither does one that `claude[bot]` opened. The job fails when the review was not posted: the comment it fills in
+still has a box that is not ticked.
 `respond` answers an `@claude` mention from the owner, a member or a collaborator, in a pull request or an issue,
 and may run `./mvnw ... verify` or `package` on JDK 27 before it pushes a fix. Both jobs need the secret
 `CLAUDE_CODE_OAUTH_TOKEN`.
@@ -590,8 +592,15 @@ The rule for `postgres` is about the image. The JDBC driver of PostgreSQL (`post
 dependency and moves like the others.
 
 The images of the tests are also written as text in Java classes (`Postgres18`, `Neo4j2026`, `Solr10`,
-`SagaLogPostgresTest`). `renovate.json` sets up no manager that reads Java sources. The rule is that the compose
-file uses the images the tests of the providers use, so compare the two by hand when one of them moves.
+`PostgresIndexQueueTest`, `SagaLogPostgresTest`). `renovate.json` sets up no manager that reads Java sources. The
+rule is that the compose files use the images the tests of the providers use: the server's `compose.yaml`, the load
+test's `compose.yaml` and the plugin's `plugins/lds/skills/start/assets/compose-stack.yaml` (and
+`compose-postgres.yaml`). Compare them by hand when one of them moves.
+
+The JDBC driver in `target/lib`, and so in the image, need not be the one of `postgresql.version`: the saga log in
+PostgreSQL (`sagalog-postgres`), which the POM of the server names before the providers, brings a version of its
+own, and Maven takes the one named first. The providers and the index queue are built and tested with
+`postgresql.version`.
 
 ## The documentation site
 
@@ -605,10 +614,10 @@ GitHub forwards `descoped.github.io/linked-data-store-project/` to it.
 
 `.github/workflows/pages.yml` builds the site with pnpm on Node 26 and publishes it to Pages on a push to `master`
 that changes `docs/`, `site/` or the workflow, and on a start by hand. It has two jobs: `build`, with the permission
-`contents: read`, and `deploy`, with `pages: write` and `id-token: write`, which only GitHub Pages is given.
+`contents: read`, and `deploy`, the one job with `pages: write` and `id-token: write`.
 
-Each document starts with front matter that the site reads: `title`, `description` and `order`. GitHub shows it as a
-table at the top of the file.
+Each document starts with front matter that the site reads: `title`, `description` and `order`, and `section`, the
+group of the sidebar the page is indented under, where it has one. GitHub shows it as a table at the top of the file.
 
 ## How a release is made
 
@@ -616,28 +625,28 @@ A milestone and a release are both made by hand, with the owner's go-ahead for e
 
 ### A milestone
 
-A milestone, such as `3.0.0-M1`, is a tag of the source and a release on GitHub with its notes. Nothing is built for
+A milestone, `X.Y.Z-M1`, is a tag of the source and a release on GitHub with its notes. Nothing is built for
 it and nothing is published: no jar, no image, nothing on Maven Central. It is made with two pull requests and a tag:
 
 1. The first sets the version of every POM to the milestone, sets `project.build.outputTimestamp` in the root POM
    to the time of the milestone, sets `softwareVersion` in `site/krantho.config.ts`, and adds the milestone's notes
    to `RELEASE-NOTES.md`, in a section of its own, with links that are whole addresses so they also lead somewhere
    in the release on GitHub. CI builds and tests it, as any pull request that changes code.
-2. Its commit on `master` is tagged with the version alone (`3.0.0-M1`), and the release on GitHub is made from the
+2. Its commit on `master` is tagged with the version alone (`X.Y.Z-M1`), and the release on GitHub is made from the
    tag with the milestone's section of the notes, without its heading:
 
    ```sh
-   git tag -a 3.0.0-M1 -m 3.0.0-M1 && git push origin 3.0.0-M1
-   awk '/^## 3.0.0-M1$/{f=1;next} /^## /{f=0} f' RELEASE-NOTES.md > notes.md
-   gh release create 3.0.0-M1 --prerelease --title "LDS 3.0.0-M1" --notes-file notes.md
+   git tag -a X.Y.Z-M1 -m X.Y.Z-M1 && git push origin X.Y.Z-M1
+   awk '/^## X.Y.Z-M1$/{f=1;next} /^## /{f=0} f' RELEASE-NOTES.md > notes.md
+   gh release create X.Y.Z-M1 --prerelease --title "LDS X.Y.Z-M1" --notes-file notes.md
    ```
-3. The second pull request sets the versions back to `3.0.0-SNAPSHOT`.
+3. The second pull request sets the versions back to `X.Y.Z-SNAPSHOT`.
 
 The push of a milestone's tag does not start CI: its tags are of the form `1.2.3` only.
 
 ### A release
 
-A release, such as `3.0.0`, is three images of the server on Docker Hub (`descoped/lds`), for linux/amd64 and
+A release, `X.Y.Z`, is three images of the server on Docker Hub (`descoped/lds`), for linux/amd64 and
 linux/arm64, a tag of the version and a release on GitHub with its notes. No jar is released, and nothing is
 published to Maven Central. It is made with two pull requests and a start of the release workflow by hand:
 
@@ -647,14 +656,14 @@ published to Maven Central. It is made with two pull requests and a start of the
    time with it:
 
    ```sh
-   ./mvnw versions:set -DnewVersion=3.0.0 -DgenerateBackupPoms=false -DprocessAllModules=true
+   ./mvnw versions:set -DnewVersion=X.Y.Z -DgenerateBackupPoms=false -DprocessAllModules=true
    ```
 
    CI builds and tests it, as any pull request that changes code, and again on `master` when it is merged.
 2. The release is started on `master`, with the owner's go-ahead:
 
    ```sh
-   gh workflow run release.yml -f version=3.0.0
+   gh workflow run release.yml -f version=X.Y.Z
    ```
 
    `.github/workflows/release.yml` runs in the environment `release`, which allows `master` only and asks for no
@@ -667,24 +676,27 @@ published to Maven Central. It is made with two pull requests and a start of the
    (JDK 27)`) passed on the commit. It then packages the jars without testing them again, builds the three images of the
    Dockerfile for both platforms with an SBOM and provenance, pushes them, signs each by its digest with cosign
    (keyless, by the identity of the workflow on GitHub), and at the end tags the commit with the version alone and makes
-   the release on GitHub from the notes.
+   the release on GitHub from the notes, marked as the latest release (`--latest`).
 3. The second pull request sets the versions to the next SNAPSHOT. The site (its landing page, and
    `softwareVersion` in `site/krantho.config.ts`) is changed for the release then, when the images are there: a
-   change of `site/` is published at once.
+   change of `site/` is published at once. So are `README.md` and the Claude Code plugin (its compose files and
+   skills), which name the image of the release.
 
 | Image | Tags | Target of the Dockerfile |
 |---|---|---|
-| regular | `3.0.0`, `3.0`, `3`, `latest` | `regular` |
-| distroless | `3.0.0-distroless`, `3.0-distroless`, `3-distroless`, `distroless` | `distroless` |
-| debug | `3.0.0-debug`, `3.0-debug`, `3-debug`, `debug` | `debug` |
+| regular | `X.Y.Z`, `X.Y`, `X`, `latest` | `regular` |
+| distroless | `X.Y.Z-distroless`, `X.Y-distroless`, `X-distroless`, `distroless` | `distroless` |
+| debug | `X.Y.Z-debug`, `X.Y-debug`, `X-debug`, `debug` | `debug` |
 
 A run can be repeated until the tag is made. The jars of one commit are the same bytes in every build
 (`project.build.outputTimestamp`), and so are the images: every image the Dockerfile starts from is named by its
 digest, and the workflow sets the time of every file and layer to the time of the commit (`SOURCE_DATE_EPOCH`,
-`rewrite-timestamp`). Two builds of one commit without a cache gave the same digest. A run again after a failure
-pushes the same images. The signatures, the SBOM and the provenance are made again.
+`rewrite-timestamp`), so a run again after a failure pushes the same image for each platform. The signatures, the
+SBOM and the provenance are made again, so the index that holds them, which is tagged and signed, can get another
+digest.
 
-The tags `3.0`, `3` and `latest` move to every release, so a release of an older line moves them backwards.
+The tags `X.Y`, `X` and `latest` move to every release, so a release of an older line moves them backwards, and so
+does the mark of the latest release on GitHub.
 
 ## Not finished
 
@@ -696,8 +708,9 @@ The tags `3.0`, `3` and `latest` move to every release, so a release of an older
   `java.xml`, which no class of core uses (see JPMS above).
 - The JPMS rule of the project says that the module that defines a service interface declares `uses` for it. In
   the code core declares `uses`, and the two modules that define the interfaces do not.
-- Core and the Solr provider require automatic modules whose names are made from the names of jar files, and Maven warns
-  against publishing such a project (see [Every compiler warning is an error](#every-compiler-warning-is-an-error)).
+- Core, the Solr provider and the load test require automatic modules whose names are made from the names of jar
+  files, and Maven warns against publishing such a project (see
+  [Every compiler warning is an error](#every-compiler-warning-is-an-error)).
 - 12 tests in core are disabled.
 - Some tests wait a fixed time with `Thread.sleep` (see [Two frameworks, one run](#two-frameworks-one-run)).
 - The search API declares `testng`, `assertj-core` and `jsonassert` as test dependencies and has no tests. Core

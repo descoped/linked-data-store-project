@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation'
 import { getCMSContent, resolveSeoContent, SeoJsonLd } from '@krantho/ui-react/server'
 import { collections } from '../krantho.collections'
 import { CodeCopy } from '../components/code-copy'
-import { CompositionFigure, TimeMachineFigure } from '../components/figures'
+import { CompositionFigure, SagaFigure, TimeMachineFigure } from '../components/figures'
 import { SectionHash } from '../components/section-hash'
 import { highlightCode } from '../lib/html'
 import { site } from '../lib/krantho'
@@ -14,37 +14,61 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: { absolute: seo.title }, description: seo.description, alternates: { canonical: '/' } }
 }
 
-/** A section's HTML cut at its `###` headings: the text before the first, and a card for each */
-function cardsOf(html: string): { intro: string; cards: { title: string; html: string }[] } {
+const idOf = (name: string): string => name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+
+/** A section's HTML cut in two: its text, and its code blocks (as `highlightCode` makes them) */
+function codeOf(html: string): { text: string; code: string } {
+  const blocks = html.match(/<div class="code-block[^"]*">[\s\S]*?<\/pre><\/div>/g) ?? []
+  let text = html
+  for (const block of blocks) text = text.replace(block, '')
+  return { text, code: blocks.join('') }
+}
+
+/** A section's HTML cut at its `###` headings: the text before the first, and a column for each */
+function columnsOf(html: string): { intro: string; columns: { title: string; html: string }[] } {
   const parts = html.split(/(?=<h3[\s>])/)
-  // A section that opens with a card has no text before it
   const intro = parts[0]?.startsWith('<h3') ? '' : (parts.shift() ?? '')
-  const cards = parts.map((part) => {
+  const columns = parts.map((part) => {
     const [, title = '', body = ''] = /^<h3[^>]*>([\s\S]*?)<\/h3>([\s\S]*)$/.exec(part) ?? []
     return { title, html: body }
   })
-  return { intro, cards }
+  return { intro, columns }
 }
 
-const idOf = (name: string): string => name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
-
-/** The figure a section of the contract shows after its text; its words are the section's */
+/** The figure a section shows beside its text */
 const figureOf: Record<string, () => React.ReactElement> = {
-  'What a document is made of': () => (
-    <figure className="figure">
-      <CompositionFigure />
-      <figcaption>
-        Person/ola holds an embedded address and a link to a company. A read at each instant gives ola as it was
-        then, and follows the link to the company as it was at the same instant.
-      </figcaption>
-    </figure>
-  ),
+  'Documents that link to each other': () => <CompositionFigure />,
+  'Writes that pick up where they stopped': () => <SagaFigure />,
+}
+
+/** Sections shown side by side in one row, half and half: the first names the second */
+const pairOf: Record<string, string> = {
+  'The problem': 'How LDS solves it',
+  'One model gives you both APIs': 'Query any moment with GraphQL',
+}
+
+/** A section's heading and its text */
+function Part({ name, html, children }: { name: string; html: string; children?: React.ReactNode }): React.ReactElement {
+  return (
+    <div className="row-part">
+      <h2 id={idOf(name)}>{name}</h2>
+      {html.trim() && <div className="prose" dangerouslySetInnerHTML={{ __html: html }} />}
+      {children}
+    </div>
+  )
 }
 
 /**
- * The landing page: the hero from the fields of landing/home, then each section of the section contract
- * (`collections.landing.sections`) as a band, in that order; a section the document lacks is left out. krantho has
- * given a link to a page of the site (`/docs/...`) the path the site is served under.
+ * The landing page: the hero from the fields of landing/home, then the sections of the section contract
+ * (`collections.landing.sections`), in that order, each a row of one of three kinds (globals.css, "The landing
+ * page"):
+ *
+ * - 40/60: a section's heading and text, beside its figure or its code;
+ * - 50/50: two sections of a pair, side by side;
+ * - thirds: a section whose `###` headings are columns, under its heading and text.
+ *
+ * A section the document lacks is left out. krantho has given a link to a page of the site (`/docs/...`) the path the
+ * site is served under.
  */
 export default async function Home(): Promise<React.ReactElement> {
   const doc = await site.loader.getPublished({ collection: 'landing', slug: 'home' })
@@ -55,11 +79,53 @@ export default async function Home(): Promise<React.ReactElement> {
   const sections = Object.fromEntries(
     await Promise.all(Object.entries(raw).map(async ([name, html]) => [name, await highlightCode(html)] as const)),
   )
+  // A second section of a pair is shown in the row of the first, when the document has the first
+  const shownWithFirst = new Set(
+    Object.entries(pairOf)
+      .filter(([first]) => sections[first])
+      .map(([, second]) => second),
+  )
+  const row = (name: string): React.ReactElement => {
+    const html = sections[name] ?? ''
+    const second = pairOf[name]
+    if (second && sections[second]) {
+      return (
+        <section key={name} className="row row-halves">
+          <Part name={name} html={html} />
+          <Part name={second} html={sections[second] ?? ''} />
+        </section>
+      )
+    }
+    const { intro, columns } = columnsOf(html)
+    if (columns.length > 0) {
+      return (
+        <section key={name} className="row row-thirds">
+          <Part name={name} html={intro} />
+          {columns.map((column) => (
+            <div key={column.title} className="row-column">
+              <h3 dangerouslySetInnerHTML={{ __html: column.title }} />
+              <div className="prose" dangerouslySetInnerHTML={{ __html: column.html }} />
+            </div>
+          ))}
+        </section>
+      )
+    }
+    const { text, code } = codeOf(html)
+    const figure = figureOf[name]
+    return (
+      <section key={name} className="row row-wide">
+        <Part name={name} html={text} />
+        <div className="row-side">
+          {figure ? figure() : <div className="prose" dangerouslySetInnerHTML={{ __html: code }} />}
+        </div>
+      </section>
+    )
+  }
   return (
     <main className="landing">
       <SeoJsonLd collection="landing" slug="home" />
-      <section className="hero">
-        <div>
+      <section className="row row-wide hero">
+        <div className="row-part">
           <p className="eyebrow">{f.eyebrow}</p>
           <h1>{f.headline}</h1>
           <p className="subline">{f.subline}</p>
@@ -72,39 +138,15 @@ export default async function Home(): Promise<React.ReactElement> {
             </Link>
           </p>
         </div>
-        <figure className="figure">
+        <div className="row-side">
           <TimeMachineFigure />
-          <figcaption>
-            Company/fjord has three versions. A read at each instant gets the version valid then, or nothing before
-            the first.
-          </figcaption>
-        </figure>
+        </div>
       </section>
       {(collections.landing.sections ?? [])
-        .filter((name) => sections[name])
-        .map((name) => {
-          const { intro, cards } = cardsOf(sections[name] ?? '')
-          const id = idOf(name)
-          return (
-            <section key={name} id={id} className="band" aria-labelledby={`${id}-title`}>
-              <h2 id={`${id}-title`}>{name}</h2>
-              {intro.trim() && <div className="prose" dangerouslySetInnerHTML={{ __html: intro }} />}
-              {figureOf[name]?.()}
-              {cards.length > 0 && (
-                <div className="cards">
-                  {cards.map((card) => (
-                    <div key={card.title} className="card">
-                      <h3 dangerouslySetInnerHTML={{ __html: card.title }} />
-                      <div className="prose" dangerouslySetInnerHTML={{ __html: card.html }} />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-          )
-        })}
+        .filter((name) => sections[name] && !shownWithFirst.has(name))
+        .map(row)}
       <CodeCopy />
-      <SectionHash selector="main section[id]" />
+      <SectionHash selector="main h2[id]" />
     </main>
   )
 }

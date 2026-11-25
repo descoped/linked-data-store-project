@@ -1,7 +1,8 @@
 ---
 title: "The server"
 description: "The main class, the defaults of the configuration, the image, the compose file."
-order: 14
+order: 31
+section: Search and the server
 ---
 
 # The server module, its image and the compose file
@@ -35,7 +36,7 @@ All paths are under `linked-data-store-server`.
 
 | File | What it holds |
 |---|---|
-| `src/main/java/io/descoped/lds/server/Server.java` | The main class. One method, `main`. |
+| `src/main/java/io/descoped/lds/server/Server.java` | The main class. One method, `main`, which takes no arguments. |
 | `src/main/java/module-info.java` | The module `io.descoped.lds.server`. It requires core, dynamic-configuration, RxJava, SLF4J and Commons Logging. The comment on the last says that the Solr search provider needs it; the POM brings it as `jcl-over-slf4j`. |
 | `src/main/resources/application-server-defaults.properties` | The defaults of the server: 49 keys, read over the 40 keys of core. |
 | `src/main/resources/logback.xml` | The log format: one line for each event on standard output, level `INFO`. |
@@ -53,7 +54,8 @@ developer can keep a local `conf/application.properties` there.
 
 ## How LDS starts and stops
 
-`Server.main` does this, in this order:
+`Server.main` takes no arguments (`main()`), so the configuration comes only from the files, the variables and the
+system properties. It does this, in this order:
 
 1. It builds the configuration (see [Configuration](#configuration)). A variable that starts with `LDS_` and sets no
    key stops the start here, before anything is made.
@@ -65,28 +67,28 @@ developer can keep a local `conf/application.properties` there.
    subsystem cannot be made, those made before it are stopped, and the call throws.
 4. It adds the application to the lifecycles of the process, after RxJava's schedulers, which it uses.
 5. It adds a shutdown hook that logs `ShutdownHook triggered..` and stops the lifecycles of the process.
-6. It starts the lifecycles of the process: the application starts its subsystems in order, the HTTP server last,
-   which opens the port, and the sagas, which, when `saga.recovery.enabled` is `true`, start the recovery of
-   unfinished [sagas](../glossary.md#saga). Then `main` logs `Server started in ...ms..`.
+6. It starts the lifecycles of the process: the application starts its subsystems in the order they were made.
+   The sagas, which, when `saga.recovery.enabled` is `true`, start the recovery of unfinished
+   [sagas](../glossary.md#saga), come before the HTTP server, which starts last and opens the port. Then `main` logs
+   `Server started in ...ms..`.
 7. It calls `application.enableSagaExecutionAutomaticDeadlockDetectionAndResolution()`, which starts the watchdog
    of the saga thread pool.
 8. The main thread waits for ever (`Thread.currentThread().join()`).
 
 When the process gets the signal to end, the JVM runs the shutdown hook, and the lifecycles of the process stop in
-the reverse order: the application first, then RxJava's schedulers. The application stops its subsystems in the
-reverse order of the one they were made in: new requests are answered 503 while those being handled complete, the
-running sagas complete, then their thread pool, the transaction log, search, the saga log pool and the store are
-stopped. The last log line is `Leaving.. Bye!`. The process then ends with 143, the code of a process ended by that
-signal. The stop waits 10 seconds at most for the requests, 10 seconds at most for the sagas, and 10 seconds at most
-for the work of each other subsystem (`UndertowApplication.STOP_TIMEOUT`). What `initializeUndertowApplication`,
-`start` and `stop` do inside is in [the application](core-application.md).
+the reverse order: the application first, then RxJava's schedulers. How the application stops its subsystems, in
+which order and how long each one waits, is in [the stop of the application](core-application.md#stop). The last log
+line is `Leaving.. Bye!`. The process then ends with 143, the code of a process ended by that signal. What
+`initializeUndertowApplication` and `start` do inside is in [the application](core-application.md).
 
 Steps 3 to 8 are in a `try`, and its `finally` also stops the lifecycles of the process. That is what stops them when
 the start fails: the subsystems already made are stopped, the exception is printed by the JVM on standard error as
 `Exception in thread "main" ...` with its stack trace, and the process ends with 1. When the port is taken the
 exception is `java.lang.IllegalStateException: Linked Data Store could not start`, caused by
 `HTTP server could not start` and in the end by `java.net.BindException: Address already in use`. The stop is done
-once; a second call returns at once.
+once; a second call returns at once. When the start fails in step 6, as when the port is taken, the shutdown hook is
+already in place: it logs `ShutdownHook triggered..` as the JVM ends with 1, and finds everything stopped.
+`Leaving.. Bye!` is not logged when the start fails.
 
 The shutdown hook is added in step 5, after the whole of step 3. A signal that comes while LDS is still being made,
 for example while it waits for an engine, ends the process at once with 143: nothing is stopped in order, and
@@ -113,77 +115,43 @@ environment and the system properties. A later source wins over an earlier one.
 | 10 | System properties | Set only keys that sources 1 to 8 have. |
 
 A source that is missing is skipped. On the class path only the first match of a name is read. The
-configuration is read once, at start; a change of a file or a variable has no effect on a running LDS.
+configuration is read once, at start; a change of a file or a variable has no effect on a running LDS. How a user
+puts the sources to use, and how a profile adds files to them, is in
+[the sources and their order](../user/configuration.md#the-sources-and-their-order).
 
 With the logger `io.descoped.config` at `DEBUG`, the library logs every source. `logback.xml` has no such
 logger, so another logback file is given for it (see [Logging](#logging)). This is the start of the image with
-`LDS_HTTP_PORT` set; its working directory is `/lds`, without `conf` and `conf_dev` (paths shortened):
+`LDS_HTTP_PORT` set; its working directory is `/lds`, without `conf` and `conf_dev`. Each line starts with the date
+and `[main] DEBUG io.descoped.config.internal.Resolver - `, which are left out here, and the paths of the jars are
+shortened:
 
 ```
-DEBUG i.d.c.i.Resolver - Loaded 40 key(s) from classpath jar:file:...!/application-defaults.properties
-DEBUG i.d.c.i.Resolver - Optional source not found: file /lds/application-defaults.properties
-DEBUG i.d.c.i.Resolver - Loaded 49 key(s) from classpath jar:file:...!/application-server-defaults.properties
-DEBUG i.d.c.i.Resolver - Optional source not found: file /lds/application-server-defaults.properties
-DEBUG i.d.c.i.Resolver - Optional source not found: classpath conf/application.properties
-DEBUG i.d.c.i.Resolver - Optional source not found: file /lds/conf/application.properties
-DEBUG i.d.c.i.Resolver - Optional source not found: classpath conf_dev/application.properties
-DEBUG i.d.c.i.Resolver - Optional source not found: file /lds/conf_dev/application.properties
-DEBUG i.d.c.i.Resolver - 1 override(s) of environment (prefix LDS_): [http.port]
+Loaded 40 key(s) from classpath jar:file:...!/application-defaults.properties
+Optional source not found: file /lds/application-defaults.properties
+Loaded 49 key(s) from classpath jar:file:...!/application-server-defaults.properties
+Optional source not found: file /lds/application-server-defaults.properties
+Optional source not found: classpath conf/application.properties
+Optional source not found: file /lds/conf/application.properties
+Optional source not found: classpath conf_dev/application.properties
+Optional source not found: file /lds/conf_dev/application.properties
+1 override(s) of environment (prefix LDS_): [http.port]
 ```
 
 ### The rules of dynamic-configuration 3
 
-These rules are the library's. `Server` chooses only the sources, the prefix `LDS_`, and that the environment is
-strict (`strictEnvironment`).
-
-- **A variable or a system property never adds a key.** It sets a key only when one of the properties files has
-  that key. A variable that starts with `LDS_` and is none of the names the library looks for any key, such as a
-  key spelled wrong, stops the start with a `ConfigurationException` that names every such variable.
-  `ServerImageIT` holds this. A system property for a key that no file has is ignored: LDS started with
-  `-Dno.such.key=1` in `JAVA_TOOL_OPTIONS`.
-
-  ```sh
-  docker run --rm -e LDS_NO_SUCH_KEY=1 -e LDS_HTTP_PROT=1 descoped/lds:3.0.1
-  ```
-
-  ```
-  Exception in thread "main" io.descoped.config.ConfigurationException: environment variable(s) LDS_HTTP_PROT,
-  LDS_NO_SUCH_KEY match no configuration key: a variable LDS_<KEY> overrides a key that a source defines, written as
-  the key, with every non-alphanumeric character as _, or that in upper case (LDS_SERVER_PORT for server.port)
-  ```
-
-  The process ended with 1. The message is one line; it is shown here on three.
-- **The name of the variable.** For the key `http.port` the library looks for `LDS_http.port`, then
-  `LDS_http_port`, then `LDS_HTTP_PORT`, and takes the first that is set. Every character of the key that is not
-  a letter or a digit becomes `_`: `sagalog.config.connection-pool.max-size` is
-  `LDS_SAGALOG_CONFIG_CONNECTION_POOL_MAX_SIZE`.
-- **Two keys, one variable.** When one variable matches two keys, the configuration is refused:
-  `environment variable LDS_MY_KEY matches both 'my.key' and 'my-key'`. Do not add a key to a defaults file
-  that differs from another key only in `.`, `-` or `_`.
-- **A system property has the name of the key**, without a prefix: `-Dhttp.port=8080`.
-- **A variable that is set and empty sets the key to an empty value.** `LDS_GRAPHQL_SCHEMA=` makes LDS read
-  JSON Schema files.
-- **References.** `${key}` in a value is the value of another key, and `${key:default}` gives a default for a
-  key that is missing. `$${` is a literal `${`. A reference to a missing key without a default, or a
-  cycle, stops LDS at start: `Invalid configuration references: 'postgres.driver.host' from file
-  .../conf/application.properties references missing key 'nowhere'`.
-- **Typed values.** A boolean is `true` or `false`, in any case. Anything else throws a `ConfigurationException`
-  that names the key and its source: `Configuration key 'graphql.enabled' from env LDS_GRAPHQL_ENABLED is not a
-  valid boolean: 'yes' (expected true or false)`. A number that is not a number fails the same way. A value is
-  checked when core reads the key, not when the configuration is built.
-- **Secrets.** A key whose last part contains `password`, `passwd`, `secret`, `token`, `credential`, `privatekey`
-  or `apikey` is a secret. Its value is written as `****` in `describe()` and in error messages. This also
-  holds for `http.cors.allow.credentials`, which is a boolean.
-- **Files are UTF-8.** A properties file that is not valid UTF-8 stops LDS at start.
-- **Profiles.** `Server` does not set profiles, so the library takes them from the system property
-  `config.profiles` or the variable `CONFIG_PROFILES`. With the profile `test`, each file is followed by a
-  sibling with `-test` in its name: `conf/application-test.properties` after `conf/application.properties`,
-  `application-server-defaults-test.properties` after the defaults of the server. Nothing in LDS uses this.
+How a key is set from these sources (the names of the variables, references, the form of a value, profiles) is the
+library's, and is in [how a key is set](../user/configuration.md#how-a-key-is-set); how a secret is hidden in a
+message is in [a value that is wrong](../user/configuration.md#a-value-that-is-wrong). `Server`
+chooses only the sources, the prefix `LDS_`, and that the environment is strict (`strictEnvironment`): a variable
+that starts with `LDS_` and sets no key, such as a key spelled wrong, stops the start with a `ConfigurationException`
+that names every such variable, and the process ends with 1. `ServerImageIT` holds this. One variable that matches
+two keys is refused too (`environment variable LDS_MY_KEY matches both 'my.key' and 'my-key'`), so do not add a
+key to a defaults file that differs from another key only in `.`, `-` or `_`.
 
 Core reads some keys with `getBoolean(key, false)` or `find(key)`. The default in such a call is for a key
 that is missing, and with the configuration `Server` builds no such key is missing: every key core reads is in
 `application-defaults.properties`. A default never covers a wrong value: `getBoolean("graphql.enabled", false)`
-throws for `yes`.
+throws for `yes`. A value is checked when core reads the key, not when the configuration is built.
 
 ### Why the keys of every provider are in the server defaults
 
@@ -224,7 +192,7 @@ that part, such as [the application](core-application.md) and [search](search.md
 | Key | Server | Core | What reads it |
 |---|---|---|---|
 | `graphql.enabled` | `true` | `true` | `UndertowApplication`: whether `/graphql` and `/graphiql` are served. They are served only when `graphql.schema` is also set. |
-| `graphql.schema` | `schemas/schema.graphql` | empty | `UndertowApplication`: the GraphQL schema that is the model. Looked for on the class path, then as a file under the working directory. Empty: the model is read from `specification.schema`. |
+| `graphql.schema` | `schemas/schema.graphql` | empty | `UndertowApplication`: the GraphQL schema that is the model. Looked for on the class path, then as a file under the working directory. On the class path only a schema in a folder can be read: one found inside a jar, or in a folder whose path has a character a URL escapes (a space), is not read, and LDS does not start. Empty: the model is read from `specification.schema`. |
 | `specification.schema` | `schemas` | empty | `JsonSchemaBasedSpecification.create`: folders and files with JSON Schema, separated by commas. Read only when `graphql.schema` is empty. |
 | `persistence.provider` | `mem` | empty | `PersistenceConfigurator`: `mem`, `neo4j` or `postgres`. |
 | `persistence.initialization.max-wait-seconds` | `60` | `0` | `PersistenceConfigurator`: how long it keeps trying to start the provider. It tries again after a second, give or take half. |
@@ -260,7 +228,7 @@ that part, such as [the application](core-application.md) and [search](search.md
 | `txlog.default-source` | `default` | `default` | `TxlogRawdataPool`: the source of a write that names none. |
 | `txlog.rawdata.topic-prefix` | `txlog-` | `txlog-` | `TxlogRawdataPool`: put in front of the source to make the name of the topic. |
 | `txlog.rawdata.provider` | `discard` | `discard` | `UndertowApplication.configureTxLogRawdataClient`: `discard`, `memory` or `postgres`. |
-| `txlog.rawdata.provider.initialization.max-wait-seconds` | `30` | `0` | The same method: how long it keeps trying. |
+| `txlog.rawdata.provider.initialization.max-wait-seconds` | `30` | `0` | The same method: how long it keeps trying. With search on, the index queue in PostgreSQL, in the same database, is made before the transaction log and is not tried again: when the database does not answer yet, the start fails at once (see [trying again at start](core-application.md#trying-again-at-start)). |
 | `txlog.rawdata.provider.initialization.retry-interval-seconds` | `2` | `1` | The same method: the wait between two tries, give or take half. |
 | `txlog.config.postgres.driver.host` | `localhost` | none | `PostgresRawdataClientInitializer`. Every key that starts with `txlog.config.` is given to the transaction log without that prefix. The index queue in PostgreSQL (`PostgresIndexQueueProvider`) reads the five keys `txlog.config.postgres.driver.*` as they are. |
 | `txlog.config.postgres.driver.port` | `5432` | none | `PostgresRawdataClientInitializer`. |
@@ -280,16 +248,9 @@ Together the two files have 62 keys.
 
 ### Keys that no file has
 
-These keys are read by a provider and are in neither defaults file. A variable cannot set them until
-`conf/application.properties` has them.
-
-- The saga log in PostgreSQL (`PostgresSagaLogInitializer`), each after `sagalog.config.`:
-  `postgres.driver.sslmode`, `postgres.driver.sslrootcert`, `postgres.driver.socket-timeout`,
-  `postgres.driver.tcp-keep-alive`, `postgres.statement-timeout`, `postgres.lock-timeout`,
-  `connection-pool.connection-timeout`, and `postgres.driver.property.<name>` for a property of the driver.
-- The transaction log in PostgreSQL (`PostgresRawdataClientInitializer`), each after `txlog.config.`:
-  `postgres.driver.max-pool-size`, `rawdata.postgres.consumer.prefetch-size`,
-  `rawdata.postgres.consumer.prefetch-poll-interval-when-empty`.
+The saga log and the transaction log in PostgreSQL also read keys that are in neither defaults file, so a variable
+cannot set them until `conf/application.properties` has them; they are listed in
+[keys that no file has](../user/configuration.md#keys-that-no-file-has).
 
 ## Logging
 
@@ -303,12 +264,12 @@ of the container. The level is `INFO` for every logger. No key of the configurat
 
 `logback.xml` is in the jar of the module, and no other jar of the class path has a logback file. Another
 file is given with the system property of logback, `logback.configurationFile`; in the image, in
-`JAVA_TOOL_OPTIONS`. That is how the `DEBUG` lines of the configuration above were made, with a file that sets the
-logger `io.descoped.config` to `DEBUG`, mounted in the container:
+`JAVA_TOOL_OPTIONS`. That is how the `DEBUG` lines of the configuration above were made, with a copy of
+`logback.xml` to which `<logger name="io.descoped.config" level="DEBUG"/>` is added, mounted in the container:
 
 ```sh
 docker run --rm -v "$PWD/cfg:/cfg:ro" -e JAVA_TOOL_OPTIONS=-Dlogback.configurationFile=/cfg/logback-debug.xml \
-    -e LDS_HTTP_PORT=9090 descoped/lds:3.0.1
+    -e LDS_HTTP_PORT=9090 descoped/lds
 ```
 
 On the JDK the same is `java -Dlogback.configurationFile=... -cp "target/*:target/lib/*" io.descoped.lds.server.Server`.
@@ -348,6 +309,11 @@ The image is made of files that Maven has made. Three executions in `pom.xml` ma
 | `maven-dependency-plugin`, `copy-runtime-dependencies` | `package` | Copies every dependency of scope `runtime` (which includes `compile`) to `target/lib`: core, the providers, and all they need. It runs in every build, also when the build cache gives the module (see [the build](build.md#the-build-cache)). |
 | `maven-failsafe-plugin` | `integration-test`, `verify` | Runs the tests named `*IT`, after the jars are made. |
 
+The POM also names the files that the tests of the image read outside `src` (`Dockerfile`, `.dockerignore`,
+`compose.yaml`, `postgres-init.sql` and `schemas`) as inputs of [the build cache](build.md#the-build-cache), so a
+change of one of them tests the module again; a new file that the tests read is added there. And it holds the part
+of the profile `coverage` that joins the coverage reports of every module (see [the profiles](build.md#the-profiles)).
+
 The jar of the module itself (`target/linked-data-store-server-<version>.jar`) holds `Server`, the module
 descriptor, `application-server-defaults.properties` and `logback.xml`.
 
@@ -368,15 +334,15 @@ packaged first; the comment at the top of the Dockerfile gives the commands.
 The Dockerfile makes three images of the same LDS, each the target of a stage. They differ only in their base and
 their Java runtime:
 
-| Target | Base | Runtime | Tag of a release |
+| Target | Base | Runtime | Tags of a release |
 |---|---|---|---|
-| `regular` (the last stage, built when no target is named) | `gcr.io/distroless/base-nossl-debian13:debug`: the distroless base with busybox in `/busybox` | `/jre` | `3.0.1` |
-| `distroless` | `gcr.io/distroless/base-nossl-debian13:latest`: glibc, CA certificates, time zones, `/etc/passwd` and `/etc/group`, from the packages of Debian 13, and no shell, package manager or other program | `/jre` | `3.0.1-distroless` |
-| `debug` | as `regular` | `/jre-debug` | `3.0.1-debug` |
+| `regular` (the last stage, built when no target is named) | `gcr.io/distroless/base-nossl-debian13:debug`: the distroless base with busybox in `/busybox` | `/jre` | `latest`, `X.Y.Z`, `X.Y`, `X` |
+| `distroless` | `gcr.io/distroless/base-nossl-debian13:latest`: glibc, CA certificates, time zones, `/etc/passwd` and `/etc/group`, from the packages of Debian 13, and no shell, package manager or other program | `/jre` | `distroless`, `X.Y.Z-distroless`, `X.Y-distroless`, `X-distroless` |
+| `debug` | as `regular` | `/jre-debug` | `debug`, `X.Y.Z-debug`, `X.Y-debug`, `X-debug` |
 
 | Stage or line | What it gives |
 |---|---|
-| `FROM gcr.io/distroless/base-nossl-debian13:latest@sha256:... AS base-distroless`, `FROM ...:debug@sha256:... AS base-shell` | The two bases, by digest. The bases have no versions of their own; Renovate moves the digests. |
+| `FROM gcr.io/distroless/base-nossl-debian13:latest@sha256:... AS base-distroless`, `FROM ...:debug@sha256:... AS base-shell` | The two bases, named by their tags `latest` and `debug` and pinned by digest. Renovate moves the digests. |
 | `FROM eclipse-temurin:27-jdk@sha256:... AS runtime` | The stage that makes the runtimes: the JDK of the baseline, on Ubuntu, built for glibc as the bases are, by digest. Nothing of it is in an image but the runtimes and the two files of users it makes. |
 | `COPY target/lib/ /lds/lib/` | The libraries, for `jdeps` to read. The jar of the module is left out: it uses nothing the libraries do not, and without it the runtimes are not linked again when only that jar changes. |
 | `RUN set -o pipefail && ... jdeps ... jlink ...` | `jdeps --print-module-deps` lists the modules of the JDK that the jars use (its last line of output; the lines before it warn of packages that two jars share); a failure of `jdeps`, or an empty list, stops the build. `jlink` links those modules, and `jdk.charsets` and `jdk.localedata`, which no class names, from the JDK itself (the image has no `jmods`), without man pages and header files, and not compressed. `/jre` is also without debug information. `/jre-debug` keeps it and has the modules of diagnostics as well: `java.instrument`, `java.management.rmi`, `jdk.attach`, `jdk.hotspot.agent`, `jdk.jcmd`, `jdk.jdi`, `jdk.jdwp.agent`, `jdk.jfr`, `jdk.jstatd`, `jdk.management`, `jdk.management.agent` and `jdk.management.jfr`, which give `jcmd`, `jstack`, `jmap`, `jstat`, `jhsdb`, `jfr`, `jdb`, remote JMX and the remote debugger. LDS stays on the class path, so its libraries need not be modules. |
@@ -454,7 +420,7 @@ are the 5432 of the server defaults. `./schemas` is mounted read-only as
 The health check of the service runs `wget` of busybox on `http://127.0.0.1:9090/health/ready`, the port LDS listens
 on in the container: healthy when the store, the saga log, the transaction log and the index queue answer, also when
 search is down or behind; unhealthy when one of them does not. It has a timeout of 5 seconds and 5 retries. The
-service has 60 seconds to stop (`stop_grace_period`), since a stop with a write held up takes 30 seconds or more.
+service has 60 seconds to stop (`stop_grace_period`), since a stop with a write held up can take 30 seconds or more.
 
 **`neo4j`.** The data is in the volume `neo4j` (`/data`). The health check runs `cypher-shell` with `RETURN 1`.
 The settings are for development, written as the image takes them (`NEO4J_` and the name of the setting, `.` as
@@ -498,8 +464,9 @@ and what it needs, with a `-Dtest` that matches no unit test:
 ./mvnw verify -pl linked-data-store-server -am -Dtest=None -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
-Both need the `docker` command on the path, not only the Docker engine: `ServerImageIT` calls `docker build`
-and `docker image rm`, and `ServerStackIT` lets Testcontainers call `docker compose`. Both name their file
+Both need the `docker` command on the path, not only the Docker engine: `ServerImageIT` calls `docker build`,
+`docker run` for the containers that must fail to start (and `docker rm --force` for one that has not ended within
+two minutes) and `docker image rm`, and `ServerStackIT` lets Testcontainers call `docker compose`. Both name their file
 (`.` for the build, `compose.yaml`) relative to the working directory, so they expect to run in the module
 directory.
 
@@ -508,16 +475,9 @@ directory.
 | `ServerImageIT` | Builds the three images with tags of their own (`lds-server-it:<uuid>`, with `-distroless` and `-debug`), starts each with no configuration and waits until `/ping` answers 200, two minutes at most. Then, on the regular image: a `Company` and a `Person` are written (201) and the person is read back (200); a link is followed both ways with GraphQL (`employer`, and the reverse `employees`); a document with a number as `name` is refused with 400 and `Schema validation error: [$.name: integer found, string expected]`, and is not stored (404); `/ns/Company?schema` is JSON Schema 2020-12 and has `languageText`; `/ping` and `/health/alive` answer 200; `/health/ready` answers 200 with `UP` and the check `persistence` first; `sh -c "id -un"` says `lds`. Each image runs as the user `lds`, which its `/etc/passwd` gives as 1000, and none declares a health check. The distroless image writes and reads a document, and has no `sh` to run. In the debug image `jcmd 1 VM.version` names JDK 27 and `jstack 1` gives a thread dump. A container started with `LDS_HTTP_PORT=9191` and `LDS_HTTP_PREFIX=/lds` answers `/lds/ping` with 200 and `/ping` with 404. A container started with `LDS_NAMESPACE_DEFALT=x` ends with 1 and the message that the variable matches no key, and does not start. A container with the saga log in PostgreSQL, a pool of 10 connections and 30 saga logs ends with 1 and the message of the pool, before it tries to reach the database. A container that is stopped ends with 143 and has logged `ShutdownHook triggered` and `Leaving.. Bye!`. The containers and the images are removed afterwards. |
 | `ServerStackIT` | Starts `compose.yaml` with `SERVER_PORT`, `NEO4J_HTTP_PORT`, `NEO4J_BOLT_PORT` and `SOLR_PORT` set to `0`, so Docker picks the ports and the test runs next to a stack that is up. It builds the image (`withBuild`), waits for the health check of `lds`, which asks `/health/ready`, five minutes at most, and removes the images it built (`RemoveImages.LOCAL`). Then: the log of the server names all four providers (`Using persistence provider: neo4j`, the saga log class of PostgreSQL, `Using transaction-log provider: postgres`, `Search index provider configured: solr`); `/health/ready` answers 200 with `UP` and the checks `persistence`, `sagaLog`, `transactionLog`, `search` and `indexQueue`, in that order, a transaction log that keeps messages and an index queue that is durable; a document is written, read back and its link followed both ways; a `Company` with a text in English, `A small brewery by the fjord`, is found by `Search(query: "fjord")`, asked again for up to 30 seconds. |
 
-`LoopbackPorts` is this module's own copy of a class that every module with containers has. Testcontainers
-publishes a port on every address of the machine; `LoopbackPorts.modify` changes that to 127.0.0.1, also for
-the container Testcontainers starts itself. A port that is published on an address the test names is left as
-it is. `LoopbackPorts.check` fails the test when a port of a started container is on another address; its
-message asks whether the `META-INF/services` file is among the test resources. `ServerImageIT` calls it for
-each container it starts. `ServerStackIT` calls it for the container of the service `lds`, whose port the
-compose file publishes on 127.0.0.1.
-
-These tests were not run for this document. What is said above of the image and the compose file was seen with the
-regular image of 3.0.1 and with the stack of the compose file, or is read from the files.
+`LoopbackPorts`, this module's own copy, publishes the ports of the test containers on 127.0.0.1 only (see
+[LoopbackPorts](build.md#loopbackports)); `ServerImageIT` checks each container it starts with `LoopbackPorts.check`,
+and `ServerStackIT` the container of the service `lds`.
 
 ## Running LDS from the module directory
 
@@ -569,9 +529,10 @@ The working directory matters: `graphql.schema` and `conf/application.properties
 from another directory, LDS ends with `java.nio.file.NoSuchFileException: schemas/schema.graphql`, unless
 `LDS_GRAPHQL_SCHEMA` names the file with its whole path.
 
-In some runs, after a number of requests, the JVM printed four lines on standard error that start with
-`WARNING: A terminally deprecated method in sun.misc.Unsafe has been called` and name
-`io.undertow.server.DirectByteBufferDeallocator` of Undertow 2.4.4. Every request of those runs was answered.
+Undertow 2.4.4 frees its direct buffers through `sun.misc.Unsafe` (`io.undertow.server.DirectByteBufferDeallocator`).
+The first time it does, after a number of requests, the JVM writes four lines on standard error that start with
+`WARNING: A terminally deprecated method in sun.misc.Unsafe has been called`. It is a warning only: the requests are
+answered as before.
 
 ## Rules to keep
 
@@ -613,15 +574,11 @@ These come from the rules of the project and from the comments in the files of t
 Not finished: a wrong configuration of the transaction log is tried again like an engine that is not up yet.
 `UndertowApplication.configureTxLogRawdataClient` tries again after every exception until the `max-wait-seconds` of
 the provider are over, and so does `configureSagaLogProvider` for an exception of the saga log. Seen with a wait of
-3 seconds: `LDS_TXLOG_RAWDATA_PROVIDER=nosuch` ends after four tries with
+3 seconds: `LDS_TXLOG_RAWDATA_PROVIDER=nosuch` ends after a few tries with
 `ProviderException: No provider named 'nosuch'; available: [discard, memory, postgres]`, and
-`LDS_TXLOG_RAWDATA_PROVIDER=postgres` without a password ends after three with
+`LDS_TXLOG_RAWDATA_PROVIDER=postgres` without a password ends the same way with
 `IllegalArgumentException: Missing configuration 'postgres.driver.password'`; with the server defaults each takes
 30 seconds. An unknown `sagalog.provider` and an unknown `persistence.provider` end the process at once, the first
 with only `java.util.NoSuchElementException: No value present`.
 
 Not finished: the log level cannot be set with a key. `logback.xml` is fixed at `INFO`.
-
-Not finished: nothing says whether the profiles of dynamic-configuration are meant to be used. They work:
-`CONFIG_PROFILES` or `-Dconfig.profiles` makes LDS read more files than the table of the sources lists. No
-file of the repository names them.

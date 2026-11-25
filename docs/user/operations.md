@@ -2,37 +2,33 @@
 title: "Running LDS"
 description: "The image and the compose file, starting and stopping, health, logs, what is stored where."
 order: 7
+section: Operate
 ---
 
 # Running Linked Data Store
 
 This document is about running Linked Data Store (LDS): the container image and the compose file, starting and
 stopping, the health addresses, the logs, what LDS stores where, what happens to a write when LDS or one of its
-stores fails, and what to keep safe. It is for people who run LDS, for themselves or for others. It says what
-LDS does today, and says plainly what it does not do.
+stores fails, and what to keep safe. It is for people who run LDS, for themselves or for others. It says plainly
+what LDS does not do.
 
 ## About what is shown
 
-Everything here is about LDS 3.0.1, as the images on Docker Hub and as it is built from the repository.
+Everything here is about the latest version of LDS, as the images on Docker Hub and as it is built from the
+repository.
 
 - The requests were run against LDS, started on the JDK or from its image, on a port of its own. The addresses are
   written with the default port, 9090; nothing else differs. An answer is shown as its status line and its body.
-- The runs with PostgreSQL used PostgreSQL 18, on the same machine or in a container of its own. Its address is
-  in some of the messages below. The runs with search used Solr 10.1 in a container of its own.
+- The runs with PostgreSQL used PostgreSQL 18, and the runs with search used Solr 10.1.
 - What LDS does when Neo4j goes away while it runs was run with the compose file.
 - A line of the log is shown with its time, its level and its message. A long line is broken here.
 
 ## The parts of a running LDS
 
-LDS is one process. It keeps four things. The configuration chooses a provider for each, and the provider keeps
-it in a store, in the memory of the process or outside LDS:
-
-| What | As LDS comes | Can be kept in |
-|---|---|---|
-| The documents: every version of every document | in memory | PostgreSQL or Neo4j |
-| The [saga log](../glossary.md#saga-log): the writes that are under way | in memory | PostgreSQL |
-| The [transaction log](../glossary.md#transaction-log): one entry for every write | not kept | memory or PostgreSQL |
-| The search index | search is off | Solr |
+LDS is one process. It keeps four things: the documents, the [saga log](../glossary.md#saga-log), the
+[transaction log](../glossary.md#transaction-log) and the search index. The configuration chooses a provider for
+each, and the provider keeps it in a store, in the memory of the process or outside LDS;
+[Configuration](configuration.md#choosing-where-lds-keeps-its-data) has the choices and their defaults.
 
 As it comes, LDS keeps everything in memory and nothing is left when it stops. In a run a document was written,
 LDS was stopped and started again, and the document was answered `404 Not Found`. That is for trying LDS.
@@ -47,15 +43,16 @@ LDS is published on Docker Hub as `descoped/lds`, for Linux on amd64 and arm64, 
 
 | Tags | What it is for |
 |---|---|
-| `3.0.1`, `3.0`, `3`, `latest` | The regular image. It has a shell and the small tools of busybox (`sh`, `wget`, `ls`, `ps`, `top`, `vi`), for looking around in a running container. |
-| `3.0.1-distroless`, `3.0-distroless`, `3-distroless`, `distroless` | No shell and no program but `java`. For production, and for platforms where no shell is used, such as Cloud Run and Fargate. `docker exec` can run `java` in it and nothing more. |
-| `3.0.1-debug`, `3.0-debug`, `3-debug`, `debug` | The regular image with the tools of the JDK for diagnostics: remote JMX, a remote debugger, `jcmd`, `jstack`, `jmap`, `jstat`, `jhsdb`, `jfr` and heap dumps. See [Diagnostics with the debug image](#diagnostics-with-the-debug-image). |
+| `latest` | The regular image. It has a shell and the small tools of busybox (`sh`, `wget`, `ls`, `ps`, `top`, `vi`), for looking around in a running container. |
+| `distroless` | No shell and no program but `java`. For production, and for platforms where no shell is used, such as Cloud Run and Fargate. `docker exec` can run `java` in it and nothing more. |
+| `debug` | The regular image with the tools of the JDK for diagnostics: remote JMX, a remote debugger, `jcmd`, `jstack`, `jmap`, `jstat`, `jhsdb`, `jfr` and heap dumps. See [Diagnostics with the debug image](#diagnostics-with-the-debug-image). |
 
-`3.0.1` names one release; `3.0` and `3` move to the newest release of that line, and `latest` to the newest
-release. Name the whole version, or the digest, where what runs must not change on its own.
+These tags move to the newest release. Each release also tags the images with its version, `X.Y.Z`, `X.Y` and
+`X` for the regular image, and the same with `-distroless` and `-debug` after them; `X.Y` and `X` move to the
+newest release of that line. Name the whole version, or the digest, where what runs must not change on its own.
 
 ```sh
-docker run --rm -p 127.0.0.1:9090:9090 descoped/lds:3.0.1
+docker run --rm -p 127.0.0.1:9090:9090 descoped/lds
 ```
 
 The same images are built from the repository with three commands, after LDS is built
@@ -71,7 +68,7 @@ Every published image has a list of what it holds (an SBOM) and the record of it
 signed with cosign by the release workflow of the repository. Check the signature with:
 
 ```sh
-cosign verify descoped/lds:3.0.1 \
+cosign verify descoped/lds \
   --certificate-identity https://github.com/descoped/linked-data-store-project/.github/workflows/release.yml@refs/heads/master \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
@@ -96,8 +93,8 @@ How it runs:
 
 How it is given a model and a configuration:
 
-- The model is read from `/lds/schemas`. Mount a folder of your own there; [The model](model.md) tells
-  what the folder holds.
+- The model is read from `/lds/schemas`: mount a folder of your own there, as [The model](model.md#in-a-container)
+  tells.
 - The configuration is given by environment variables that start with `LDS_`, such as
   `LDS_PERSISTENCE_PROVIDER` and `LDS_NEO4J_DRIVER_URL`, or by a file mounted as
   `/lds/conf/application.properties`. [Configuration](configuration.md) has the keys and the rules.
@@ -111,11 +108,12 @@ addresses](#the-health-addresses) tells what each answers. The compose file of t
 answered `404`.
 
 `docker stop` sends the signal TERM to the Java program. LDS then stops in order, as [Stopping](#stopping) describes,
-and the container ends with exit code 143. A stop takes about 40 seconds at most when a write is held up. A container
+and the container ends with exit code 143. With a write held up, a stop took 30 and 41 seconds in the runs of
+[Stopping](#stopping); the waits of its parts add up to more, so a stop can take longer than a minute. A container
 that is ended by force before LDS has stopped has crashed, as far as its writes go; see [Writes that fail, crashes and
 recovery](#writes-that-fail-crashes-and-recovery). Docker ends a container by force 10 seconds after `docker stop`
-unless it is given longer, so give LDS a minute: `docker stop -t 60 <container>`, and in a compose file of your own
-`stop_grace_period: 60s`, as the compose file of the repository has.
+unless it is given longer, so give LDS at least a minute: `docker stop -t 60 <container>`, and in a compose file of
+your own `stop_grace_period: 60s`, as the compose file of the repository has.
 
 ### Diagnostics with the debug image
 
@@ -139,7 +137,7 @@ docker run --rm -p 127.0.0.1:9090:9090 -p 127.0.0.1:9010:9010 -p 127.0.0.1:5005:
   -e JDK_JAVA_OPTIONS="-Dcom.sun.management.jmxremote.port=9010 -Dcom.sun.management.jmxremote.rmi.port=9010 \
     -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false \
     -Djava.rmi.server.hostname=127.0.0.1 -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005" \
-  descoped/lds:3.0.1-debug
+  descoped/lds:debug
 ```
 
 JMX without a password and a debugger give anyone who reaches the port the whole of LDS. Publish such ports on
@@ -175,15 +173,14 @@ docker compose -f linked-data-store-server/compose.yaml up --build
   rotated at 16 MiB and keeps two files, and it uses a heap of 256 to 512 MiB and a page cache of 256 MiB,
   instead of a share of the memory of the machine. For a larger store, change the variables `NEO4J_...` of the
   service `neo4j`.
-- **Stopping.** LDS is given a minute to stop (`stop_grace_period: 60s`), so `docker compose stop` and `down`
-  let it stop in order also when a write is held up.
+- **Stopping.** The service `lds` is the image of the section above, and is given a minute to stop
+  (`stop_grace_period: 60s`), so `docker compose stop` and `down` let LDS stop in order, as [Stopping](#stopping)
+  describes, also when a write is held up.
 - **The model.** The folder `linked-data-store-server/schemas` is mounted as `/lds/schemas`, read-only. LDS reads
   the model at start, so restart the service `lds` after a change of the model.
 - **What the stack makes before LDS starts.** PostgreSQL makes the databases `sagalog` and `txlog` from the file
   `linked-data-store-server/postgres-init.sql`, once, when its data directory is empty. It also makes a database
   `lds`, which this stack does not use. Solr makes the core `lds-index`. LDS makes none of these itself.
-- **Stopping.** The service `lds` is the image of the section above: when its container is told to stop, LDS
-  stops in order, as [Stopping](#stopping) describes.
 - **The data.** It is in three volumes, `neo4j`, `postgres` and `solr`, and is kept when the stack is stopped and
   started again. This command removes the stack and the three volumes:
 
@@ -204,7 +201,9 @@ LDS does this when it starts, in this order:
 2. It reads the model. A model with no entity type stops the start.
 3. It connects to the store of the documents, which makes what it needs there (see [What is stored
    where](#what-is-stored-where)).
-4. It connects to the saga log. In PostgreSQL the saga log takes every connection of its pool first.
+4. It connects to the saga log. In PostgreSQL the saga log takes every connection of its pool at once and gives
+   them back, so a PostgreSQL without room for the pool ends the start (see [Connections and the
+   pool](#connections-and-the-pool)).
 5. With search on, it makes the search index and the index queue. It does not wait for Solr, so LDS starts when
    Solr is away.
 6. It connects to the transaction log.
@@ -244,6 +243,9 @@ An engine that does not answer at start is tried again:
 | The saga log | `sagalog.provider.initialization.max-wait-seconds` | 30 seconds | 1 to 3 seconds (`sagalog.provider.initialization.retry-interval-seconds`, 2, give or take half) |
 | The transaction log | `txlog.rawdata.provider.initialization.max-wait-seconds` | 30 seconds | 1 to 3 seconds (`txlog.rawdata.provider.initialization.retry-interval-seconds`, 2, give or take half) |
 
+With search on and the transaction log in PostgreSQL, the wait of the transaction log does not come into play when
+its database cannot be reached: the index queue is made there first, and the start fails at once.
+
 The pause is chosen at random each time, so that several LDS that start together do not try at the same moments.
 Each try is one line of the log. Why a try failed is not said until the wait is over. In this run LDS had its
 documents, its saga log and its transaction log in PostgreSQL, and PostgreSQL was started six seconds after LDS:
@@ -265,16 +267,8 @@ documents, its saga log and its transaction log in PostgreSQL, and PostgreSQL wa
 
 While LDS waited, a request to `/ping` got no connection.
 
-When the wait is over, LDS stops what it had made, logs `LDS could not be made; what was made is stopped` at the
-level `ERROR`, and ends with exit code 1. The cause is printed by the JVM on standard error, as
-`Exception in thread "main"` with a stack trace; it is not a line of the log. With
-`LDS_PERSISTENCE_INITIALIZATION_MAX_WAIT_SECONDS=5` and the name of a PostgreSQL host that was not there, LDS ended
-after its tries with:
-
-```
-Exception in thread "main" com.zaxxer.hikari.pool.HikariPool$PoolInitializationException: Failed to initialize
-pool: The connection attempt failed.
-```
+When the wait is over, LDS stops what it had made and ends with exit code 1, as [a start that
+fails](configuration.md#when-lds-does-not-start) does.
 
 With Neo4j one try takes long, because the connection to Neo4j tries again by itself inside the try, with a
 warning and a stack trace in the log each time. With the default wait and a Neo4j host that was not there, LDS made
@@ -341,7 +335,8 @@ The stack of the compose file, with search:
 }
 ```
 
-- `logs` is the number of saga logs of the cluster, those of every LDS that shares the saga log.
+- `logs` is the number of saga logs of the cluster, those of every LDS that shares the saga log, and the saga log
+  `dead-saga` when there is one (see [A write that keeps failing](#a-write-that-keeps-failing)).
 - `keepsMessages` is `false` when no transaction log is kept (`txlog.rawdata.provider=discard`).
 - `durable` is `false` when the index queue is in memory; `updates` is the number of updates it holds, and `oldest`,
   there when it holds some, the time the oldest was added.
@@ -414,13 +409,14 @@ stops its parts in the reverse order of the one they were started in, so that a 
    completed; LDS waits 10 seconds at most for them. A request that is not completed by then loses its connection
    without an answer, also one whose body has not all arrived. Then the port is closed.
 2. The readiness checks.
-3. The sagas. LDS stops looking for unfinished writes. The writes that are under way are completed; LDS waits 10
-   seconds at most for them. A write that is not completed by then fails, and stays in the saga log.
+3. The sagas. LDS stops looking for unfinished writes; a round of recovery that is under way is given up to 40
+   seconds to end. The writes that are under way are completed; LDS waits 10 seconds at most for them. A write
+   that is not completed by then fails, and stays in the saga log.
 4. The threads of the sagas, given 10 seconds to end and 10 more after they are interrupted; then the saga
    observer and the transaction log.
-5. With search on: the rebuild of the search index, if it runs; the sending of the index queue; the index queue;
-   and the connection to Solr. An update that is in the index queue in PostgreSQL stays there and is sent after the
-   next start.
+5. With search on: the rebuild of the search index, if it runs; the sending of the index queue, given 10 seconds
+   to end what it sends and 10 more for its thread; the index queue; and the connection to Solr. An update that
+   is in the index queue in PostgreSQL stays there and is sent after the next start.
 6. The saga log, the threads the store is read on, and the store of the documents.
 
 The waits have no key. When a wait runs out, the log has one of these lines, at the level `WARN`:
@@ -480,8 +476,8 @@ in UTC), the thread, the level, the part of LDS that wrote it, and the message:
 
 - The level is `INFO`, and no configuration key sets it.
 - An error is followed by the lines of a stack trace.
-- What ends a start is printed by the JVM on standard error and is not a line of the log. The log has
-  `LDS could not be made; what was made is stopped` before it.
+- What ends a start is printed by the JVM on standard error and is not a line of the log.
+  [Configuration](configuration.md#when-lds-does-not-start) tells how it shows.
 - LDS takes another logback file from the system property `logback.configurationFile`. In a run with
   `JAVA_TOOL_OPTIONS=-Dlogback.configurationFile=/path/logback-warn.xml`, a file with the level `WARN`, the log
   of a start and a stop had one line, `ShutdownHook triggered..`. With that level there is no line
@@ -493,13 +489,19 @@ What to look for:
 |---|---|---|
 | `Server started in ...ms..` | INFO | LDS has started and answers. |
 | `... initialization attempt # 2`, and higher numbers | INFO | LDS waits at start for the store of the documents, the saga log or the transaction log. |
-| `UT005071: Undertow request failed HttpServerExchange{ PUT /ns/Company/down1}` | ERROR | A request was answered `500`. The stack trace after the line has the cause. |
+| `A write of /ns/Company/down1 failed` | ERROR | A write failed and was answered `500`. The stack trace after the line has the cause. |
+| `UT005071: Undertow request failed HttpServerExchange{ PUT /ns/Company/down1}` | ERROR | A request failed before LDS could answer it, such as a write that got no saga log, and was answered `500`. The stack trace after the line has the cause. |
 | `Observed Saga failure during execution. Saga-name: "...", executionId: "..."` | ERROR | A write failed. The id is the `saga-execution-id` of the write. The line comes again each time the write is tried again and fails. |
-| `LDS could not be made; what was made is stopped` | ERROR | The start failed. The cause follows on standard error. |
+| `LDS could not be made; what was made is stopped` | ERROR | The start failed while LDS made its parts. The cause follows on standard error. |
+| `Configuration: saga.threadpool.core (...) must be greater than saga.threadpool.queue.capacity (...) ...` | WARN | At start: `saga.threadpool.core` is not larger than `saga.threadpool.queue.capacity`. LDS starts all the same. [Configuration](configuration.md#sagas-the-writes) has the keys. |
+| `Submitting ... empty-tasks in an attempt to resolve a potential saga-deadlock ...` | INFO | Every thread of the sagas was busy for a second and none completed a step, so LDS makes more threads. |
 | `LDS is DOWN: [...]`, `LDS is DEGRADED: [...]` | WARN | `/health/ready` was asked and a check failed. The checks that failed are in the line. |
 | `The readiness check ... failed: ...` | WARN | Why a check of `/health/ready` failed. |
 | `The index queue is in memory, as the transaction log (discard) is: ...` | WARN | At start, with search on: what the index queue holds when LDS stops is lost. See [The search index](#the-search-index). |
+| `The search index did not take a batch of ... updates; each is tried alone: ...` | WARN | Solr did not take a batch of updates, and each is sent alone. |
 | `The search index did not take the update of ... (attempt 1); tried again in PT1S: ...` | WARN, ERROR from the tenth attempt | Solr did not take a version. It is sent again later; see [The search index](#the-search-index). |
+| `A round of the index queue failed` | ERROR | The index queue could not be read or changed. LDS tries again after a pause. |
+| `The schema of the search index is changed: what was indexed before is searched as it was indexed until the index is rebuilt (search.index.rebuild)` | WARN | The Solr core had another form of the schema of LDS, and LDS has changed it. See [Rebuild the search index](#rebuild-the-search-index). |
 | `Every version is added to the index queue (...)`, then `The search index is rebuilt from storage: ...` | INFO | A rebuild of the search index; see [Rebuild the search index](#rebuild-the-search-index). |
 | `The schema of the search index is put in (...)` | INFO | LDS has put the fields it needs into the Solr core. |
 | `Started recovery of saga with sagaLog: ... and executionId: ...` | INFO | An unfinished write is run again. |
@@ -513,6 +515,7 @@ What to look for:
 | `Deleted unused empty saga-log: ...` | INFO | LDS removed a saga log of an LDS that is not running; see [Several LDS on one saga log](#several-lds-on-one-saga-log). |
 | `ShutdownHook triggered..`, then `Leaving.. Bye!` | WARN, INFO | LDS was told to stop, and has stopped in order. |
 | `... did not stop cleanly` | ERROR | A part of LDS failed to stop. The parts after it were stopped all the same. |
+| `Pool did not terminate` | ERROR | While LDS stops: a set of threads, of the sagas or of recovery, had not ended 20 seconds after it was told to. LDS goes on stopping. |
 
 The log can hold what the callers send. Two keys make LDS log much more: `http.request.dump` logs every request with its
 headers, the header `Authorization` included, and `neo4j.cypher.show` logs every statement sent to Neo4j, with
@@ -540,9 +543,9 @@ others are said where a caller meets them, in [the REST API](rest-api.md) and
   they are missing. In the runs they were made in the schema `public`. A table that is there is left as it is.
 - One row is one [fragment](../glossary.md#fragment): one value of one version of one document. The table holds
   the documents of every namespace.
-- A delete of a document writes a [tombstone](../glossary.md#tombstone): it adds a row and removes none. A write at the
-  [valid time](../glossary.md#valid-time) of a version that is there replaces the rows of that version. No other request
-  to LDS removes a row, so the table grows with every new version and every delete.
+- A delete of a document writes a [tombstone](../glossary.md#tombstone): it adds a row. A write or a delete at the
+  [valid time](../glossary.md#valid-time) of a version that is there replaces the rows of that version. No other
+  request to LDS removes a row, so the table grows with every new version and every delete.
 - LDS opens 10 connections at start and keeps them.
 - LDS is tested with PostgreSQL 18 and with no other version.
 
@@ -555,21 +558,28 @@ others are said where a caller meets them, in [the REST API](rest-api.md) and
   and the indexes it reads with, when they are missing. Each one it makes is a line `Creating: ...` in the log.
 - LDS never drops an index or a constraint. For one that is there and that it does not use, it writes a line
   `Not using index: ...` to the log, with the statement that drops it.
-- A delete of a document adds a tombstone, a version that marks it as deleted. No request to LDS removes a document from
-  Neo4j.
+- A delete of a document adds a tombstone, a version that marks it as deleted; a version at the same valid time is
+  replaced by it. No request to LDS removes a document from Neo4j.
 - LDS is tested with Neo4j 2026.10, community edition.
 
 ### The saga log
 
-**In memory** (the default). A write that is under way when LDS ends is lost.
+**In memory** (the default). A write that is under way when LDS ends is lost. LDS checks the size of the pool of
+the saga log here as well, though no connection is opened: more than 39 saga logs need a larger
+`sagalog.config.connection-pool.max-size` (see [Connections and the pool](#connections-and-the-pool)).
 
 **In PostgreSQL** (`sagalog.provider=no.cantara.sagalog.postgres.PostgresSagaLogInitializer`).
 
 - The database must be there. LDS does not make it.
-- At start LDS makes a schema with the name of `sagalog.config.cluster.owner`, `lds` as LDS comes, and in it one
-  table for each saga log and a table `Locks`. A table has the name
-  `SAGALOG_<cluster name>_<instance id>_<number>`. With the defaults there are 30 saga logs; in a run with the
-  cluster `lds` and the instance `01` the tables were `SAGALOG_lds_01_00` to `SAGALOG_lds_01_29`.
+- At start LDS makes a schema with the name of `sagalog.config.cluster.owner`, `lds` as LDS comes, and in it a
+  table `Locks` and one table for each saga log. A table has the name
+  `SAGALOG_<cluster name>_<instance id>_<number>`: the cluster name is `sagalog.config.cluster.name`, `lds-test` as
+  LDS comes, and the instance id `sagalog.config.cluster.instance-id`, `01`. With the defaults there are 30 saga
+  logs, the tables `SAGALOG_lds-test_01_00` to `SAGALOG_lds-test_01_29`; in a run with the cluster `lds` they were
+  `SAGALOG_lds_01_00` to `SAGALOG_lds_01_29`.
+- A cluster name and an instance id hold only letters, digits and `-`; an owner holds letters, digits, `_` and `-`.
+- The tables of the saga logs are made at start when `saga.recovery.enabled` is `true`, the default. With it
+  `false`, a table is made when a write first takes its saga log.
 - A write uses one saga log from its start to its end. While it is under way, the table holds the request, the
   document included. When it is done, the table is empty. So a saga log with rows is a write that is under way
   or that failed.
@@ -590,6 +600,8 @@ others are said where a caller meets them, in [the REST API](rest-api.md) and
 - Every write adds one entry. Its id is the `saga-execution-id` that the caller got. It holds the whole document as it
   is after the write, and the method, the namespace, the entity type, the id, the valid time of the version and the
   `source` and `sourceId` of the request. The entry of a delete of a document has no document.
+- The entry is the first step of a write, before the document is stored. So the log also has an entry for a write
+  that was never done: one that failed and was not completed, or one that was given up.
 - Nothing in LDS removes an entry, so the log grows with every write.
 - LDS opens 10 connections at start and keeps them.
 
@@ -647,7 +659,8 @@ An entry of a document that the rebuild sent again is kept. A run, with the docu
 - An index queue that is never empty, because writes keep coming, puts the removal off. The log says so every five
   minutes, with the number of updates the queue holds and the time the oldest was added.
 - An LDS that is stopped before the rebuild is done logs `The rebuild of the search index was stopped before it
-  was done`. What it had added to the index queue is sent; the old entries stay until a rebuild is done.
+  was done`. What it had added to an index queue in PostgreSQL stays there and is sent; an index queue in memory
+  loses it. The old entries stay until a rebuild is done.
 - When the rebuild fails, the log says `The rebuild of the search index failed, or its clean-up; ...` at the level
   `ERROR`, with the cause.
 
@@ -675,12 +688,14 @@ LDS runs it again later, with the request as it was first sent. This is recovery
 three times:
 
 - **When LDS starts**, for the writes in its own saga log. This needs a saga log that is kept, so PostgreSQL.
+  It begins when the log says `Starting Sagas ...`.
 - **At intervals**, for the writes in every saga log of the cluster: after a wait of 30 to 60 seconds, chosen
   anew each time (`saga.recovery.interval.seconds.min` and `.max`). One such look is called a round below.
 - **When a later write is given the same saga log.** The saga logs are given out in turn, so with 30 saga logs
   and writes that come one at a time, that is at the latest the thirtieth write after it.
 
-The first two need `saga.recovery.enabled=true`, which is the default.
+The first two need `saga.recovery.enabled=true`, which is the default. With it `false`, a write that did not
+complete is run again only when a later write is given its saga log.
 
 ### A crash
 
@@ -695,10 +710,10 @@ $ kill -9 <pid>
 
 The caller lost its connection and got no answer. One table of the saga log then held four rows: the start of
 the saga with the request, the start and the end of the step that writes the transaction log, and the start of
-the step that writes the document. The document was not stored. Then LDS was started again:
+the step that writes the document. The document was not stored. Then LDS was started again, and after
+`Starting Sagas ...` the log had:
 
 ```
-18:11:08.178 INFO  Starting saga-recovery (instance-local) ...
 18:11:08.222 INFO  Started recovery of saga with sagaLog: PostgresSagaLogId{schema='development',
                    table='SAGALOG_lds_01_00'} and executionId: 01a1f9f0-97cc-73b6-8c5d-7d0cf461b182
 18:11:08.245 INFO  Recovery of saga succeeded, sagaLog: PostgresSagaLogId{schema='development',
@@ -727,8 +742,10 @@ A `500`, or a connection that is lost, does not say whether the write will be do
 - **Never done.** With the saga log in PostgreSQL and PostgreSQL stopped, a write was answered `500` after 30
   seconds and was not done later: LDS could not note it anywhere.
 
-So a caller that gets no `2xx` sends the write again. Every call of the HTTP API is idempotent and safe to send
-again. [The REST API](rest-api.md#when-a-write-fails) says what a failed write can leave behind.
+So a caller that gets no `2xx` sends the write again. Every call of the HTTP API is safe to send again: a write
+with a `timestamp` writes the same version again, and one without adds a version at a new valid time
+([Concepts](concepts.md#a-call-is-safe-to-send-again)). [The REST API](rest-api.md#when-a-write-fails) says what a
+failed write can leave behind.
 
 A `2xx` to a write that LDS did not wait for (not a [synchronous write](../glossary.md#synchronous-write)) says that
 the write is in the saga log, not that it is done.
@@ -762,14 +779,16 @@ that writes need is away, `/health/ready` answers `503`, and `/ping` and `/healt
 | The store of the documents (run with Neo4j) | A read is answered `500` after about 22 seconds. A write is answered `500` at once, and is done later: the saga log had noted it, and the next round of recovery completed it about 25 seconds after Neo4j was back. `/health/ready` answers `503`, with `persistence` `DOWN` and the error `ServiceUnavailableException`. |
 | Solr | A write and a delete of a document are answered as always, and their updates wait in the index queue until Solr takes them. A search gets no answer until Solr answers, a minute at most. `/health/ready` answers `200`, with `search` `DEGRADED`, and with `indexQueue` `DEGRADED` too when an update has waited more than a minute. |
 
-A `500` has no body. The cause is in the log, after the line `UT005071: Undertow request failed ...`. The log
-also gets many lines from the connections to PostgreSQL: about 700 lines for 70 seconds without PostgreSQL in
-a run.
+A `500` has no body. The cause is in the log: after the line `A write of <path> failed` for a write that failed,
+and after `UT005071: Undertow request failed ...` for a request that failed before LDS could answer it, such as a
+write that got no saga log. The log also gets many lines from the connections to PostgreSQL: about 700 lines for 70
+seconds without PostgreSQL in a run.
 
 The run with Solr away: search on, the documents in PostgreSQL, and the container of Solr paused:
 
 ```console
-$ curl -s -i -X PUT 'http://localhost:9090/ns/Company/down?sync=true' -H 'Content-Type: application/json' \
+$ curl -s -i -X PUT 'http://localhost:9090/ns/Company/c-down?sync=true' \
+    -H 'Content-Type: application/json' \
        -d '{
          "name": "Down",
          "about": [
@@ -805,7 +824,7 @@ Every write is a [saga](../glossary.md#saga): a set of steps that LDS runs in or
 before and after each one. The first entry of a write holds the request as it was sent, the document included. The
 last says that the write is done. An LDS has `saga.number-of-logs` saga logs, 30 as LDS comes, and a write holds one
 of them from its first entry to its last. A saga log in PostgreSQL is a table, as [The saga
-log](#the-saga-log) tells; a table with rows holds a write that is under way or that did not complete.
+log](#the-saga-log) tells.
 
 ### What recovery does after a crash
 
@@ -814,11 +833,8 @@ with the same id and the request of its first entry. A step whose end is in the 
 other step is, also one that had started and may have been done. So a step can run twice. The version that is
 written gets the valid time of the first request, not the time of the recovery. Recovery always goes forward, to
 the end of the write; it does not undo the steps that were done.
-
-Each LDS completes the writes in its own saga logs when it starts, and at intervals of 30 to 60 seconds it looks
-at the saga logs of every LDS of the cluster. [Writes that fail, crashes and
-recovery](#writes-that-fail-crashes-and-recovery) shows a crash and its recovery. With the saga log in memory,
-nothing is left to run again after a crash.
+[Writes that fail, crashes and recovery](#writes-that-fail-crashes-and-recovery) tells when recovery runs, and
+shows a crash and its recovery.
 
 ### A cluster
 
@@ -862,10 +878,11 @@ So the writes of an LDS that is gone are completed by another LDS within about a
 A saga log holds one connection to PostgreSQL while it is open, and an LDS keeps its saga logs open. Recovery
 opens up to 10 saga logs of other LDS at once, and the pool asks PostgreSQL for the list of saga logs on one more.
 So `sagalog.config.connection-pool.max-size` must be at least `saga.number-of-logs` and 11 more: 41 with 30 saga
-logs. LDS checks this at start and does not start with fewer; 50 as LDS comes. The saga log takes every connection
-of its pool when it starts, so an LDS that does not fit in PostgreSQL ends at start instead of failing writes
-later ([Connections to PostgreSQL](#connections-to-postgresql)). Give PostgreSQL room for the pools of every LDS of
-the cluster together, with the connections of the store and the transaction log.
+logs. The key is 50 as LDS comes. LDS checks this at start, also with the saga log in memory, and does not start
+with fewer: more than 39 saga logs need a larger pool. The saga log takes every connection of its pool when it
+starts, so an LDS that does not fit in PostgreSQL ends at start instead of failing writes later ([Connections to
+PostgreSQL](#connections-to-postgresql)). Give PostgreSQL room for the pools of every LDS of the cluster together,
+with the connections of the store and the transaction log.
 
 ### The transaction log of a cluster
 
@@ -886,7 +903,7 @@ LDS has no tool that makes a backup or restores one. Use the tools of the engine
 |---|---|
 | The store of the documents | This is the data: every version of every document. In PostgreSQL it is the table `fragment` in the database of `postgres.driver.database`. In Neo4j it is the database LDS connects to. Losing it loses the documents. Nothing else in LDS can build them again. |
 | The saga log | It holds the writes that are under way and the writes that failed, `dead-saga` included. It has no rows when every write is done. Losing it loses the writes it holds. It matters at the moment of a crash. |
-| The transaction log | A record of every write. LDS runs without it and cannot build the documents from it. It answers `GET /source/{source}`. Keep it if the callers use that address, or if the record matters to you. Its database also holds the index queue, the updates Solr has not taken yet. |
+| The transaction log | A record of every write, also of one that was never done. LDS runs without it and cannot build the documents from it. It answers `GET /source/{source}`. Keep it if the callers use that address, or if the record matters to you. Its database also holds the index queue, the updates Solr has not taken yet. |
 | The search index | It is made from the documents. If it is lost, a start with `search.index.rebuild=true` makes it again from the store of the documents (see [Rebuild the search index](#rebuild-the-search-index)). |
 | The model and the configuration | They are files of your own. LDS reads them at start and stores them nowhere. |
 

@@ -325,8 +325,11 @@ the distroless base with no shell; `debug` (`3.0.0-debug`), as `regular` with th
 name (`jdk.charsets`, `jdk.localedata`), with the class data sharing archive of the default settings of the JVM.
 Every base is pinned by digest. The reactor is built first, and the context is the module directory. `compose.yaml`
 next to it is a whole LDS for development: the regular image, Neo4j, PostgreSQL (saga log and transaction log, the
-databases made by `postgres-init.sql`) and Solr, with the images the tests of the providers use. Keep these when
-changing them:
+databases made by `postgres-init.sql`) and Solr, with the images the tests of the providers use. For users, `stack.sh`
+at the root of the repository starts the same stack on the released image from the plugin's
+`plugins/lds/skills/start/assets/compose-stack.yaml` on master (`curl -fsSL
+https://raw.githubusercontent.com/descoped/linked-data-store-project/master/stack.sh | sh`, `| sh -s down` to remove
+it): the one line of the landing page, so it is moved or renamed only with the page. Keep these when changing them:
 
 - **LDS runs on the class path**, as the tests do. On the module path the libraries Undertow is made of (Undertow,
   XNIO, WildFly client config, SmallRye common) cannot make their message loggers: jboss-logging has to read
@@ -358,7 +361,8 @@ changing them:
 `docs/` is Markdown as GitHub renders it, in two parts with two readers, and a document is for exactly one of
 them: `docs/user/` for those who use LDS (they run it, give it a model, read and write documents; no class, module
 or package names there) and `docs/developer/` for those who change the code (`architecture.md` is the map, then
-one document for each part of the code). `docs/README.md` is the index. Keep these when changing it:
+one document for each part of the code). The root of `docs/` holds what both readers share: `README.md`, the index;
+`glossary.md`; `whats-new.md`; and `roadmap.md`. Keep these when changing it:
 
 - **Only what the code does.** A statement is one found in the code, in a test or by running LDS, and every
   request shown was run, with the answer that came.
@@ -372,13 +376,22 @@ one document for each part of the code). `docs/README.md` is the index. Keep the
   described.
 - **What is unfinished is said where the reader meets it**, in a paragraph that starts with `Not finished:`. When
   the fault is corrected, the paragraph goes.
+- **What's new is the one document about releases** (`docs/whats-new.md`): what each release gives those who use
+  LDS, under the release's name, and what to do when moving up to it. It is the exception to "not a changelog" and
+  "not its history", and names LDS versions; every other document describes the latest release as it is.
+- **The roadmap is the one document about the future** (`docs/roadmap.md`, owner's request): what LDS is to do
+  (Next, Later) and what is considered (To be evaluated, never promised), in categories, with no dates and no LDS
+  versions. Each item is grounded in the code: what LDS lacks today is checked in the code and linked to the
+  document that says it. An item leaves the roadmap when the release that holds it is out.
 - **Established technical terms, each defined once** in `docs/glossary.md` (entity type, document key, embedded
   object, link, valid time, as-of read, snapshot, tombstone, saga, transaction log, fragment, ...), and one term
   for one thing. A new term goes into the glossary first, defined from the code. Present tense, no history.
 - **The documents stand alone.** They never cite this file; a rule of the project is stated in
   `docs/developer/architecture.md`, a command is given as the command.
-- **Figures are Mermaid** (` ```mermaid `, which GitHub draws in light and dark), and show what the code does,
-  as everything else does: a model as a class diagram (a filled diamond for an embedded type, an arrow for a
+- **Figures are Mermaid** (` ```mermaid `, which GitHub draws in light and dark), or an SVG file with its own light
+  and dark style where Mermaid cannot draw it (the topology, software architecture and deployment figures of
+  `docs/developer/architecture.md`, at the owner's request), and show what the code does, as everything else does:
+  never ASCII drawings. A model as a class diagram (a filled diamond for an embedded type, an arrow for a
   link), a timeline as a Gantt chart without the marker of today, a path as a flowchart. What is a table is a
   Markdown table. What a model can say and the timeline of versions and snapshots are drawn where they are
   explained; a change to them changes the figure.
@@ -393,11 +406,13 @@ one document for each part of the code). `docs/README.md` is the index. Keep the
   sentence, as in the index) and `order` (its place in its folder's group), then its own `# Title`. A new document gets
   it, and a row in `docs/README.md`.
 - **The documentation site** (`site/`, `site/README.md`) is a krantho static site (Next.js) that makes pages of
-  `docs/` and adds a landing page (`site/content/landing/home.md`, held to the same rules: only what the code does,
-  the status said plainly). `.github/workflows/pages.yml` publishes it to GitHub Pages (https://lds.descoped.io/,
-  its custom domain) when `docs/`, `site/` or the workflow changes on `master`, or when started by hand; CI does not
-  build it. Its mark is Descoped's (`|>o|`). Check a change with `cd site && pnpm build`, and look at it in light
-  and dark at phone and desktop widths.
+  `docs/` and adds a landing page (`site/content/landing/home.md`: a story that sells, in plain, forward-leaning
+  English, made only of what the code does). `.github/workflows/pages.yml` publishes it to GitHub Pages
+  (https://lds.descoped.io/, its custom domain) when `docs/`, `site/` or the workflow changes on `master`, or when
+  started by hand; CI does not build it. Its mark is Descoped's (`|>o|`). The skill `lds-site`
+  (`.claude/skills/lds-site/`) holds its standard (voice, the grid of 40/60, 50/50 and thirds rows, figures, the
+  measurements) and the way of working, one section at a time; follow it for every change of `site/`. Check a change
+  with `cd site && pnpm build`, and look at it in light and dark at phone and desktop widths.
 - Lines of at most 120 characters, except a row of a table. A link to another document is a relative path, and
   a link to a section names the id GitHub gives its heading, so a heading that is renamed has its links renamed.
 

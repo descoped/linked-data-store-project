@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 420" width="720" height="420" role="img" aria-labelledby="deployment-title deployment-desc">
+  <title id="deployment-title">Three ways to run LDS</title>
+  <desc id="deployment-desc">To try it: one container of the image, with everything in memory. To develop: the compose file of the server, with LDS, Neo4j as the store, PostgreSQL for the saga log, the transaction log and the index queue, and Solr for search. As a service: one container of the image beside a PostgreSQL or a Neo4j for the store, PostgreSQL for the logs and the index queue, and Solr, run by an orchestrator that asks /health/alive and /health/ready. One instance: several need an instance id each and cannot share a transaction log yet.</desc>
+  <style>
+    .bg { fill: var(--diagram-bg, #ffffff); }
+    .box { fill: var(--diagram-box, #f6f8fa); stroke: var(--diagram-line, #8c959f); stroke-width: 1.2; }
+    .lds { fill: var(--diagram-accent-bg, #ddf4ff); stroke: var(--diagram-accent, #0969da); stroke-width: 1.6; }
+    .part { fill: var(--diagram-bg, #ffffff); stroke: var(--diagram-accent, #0969da); stroke-width: 1; }
+    .api { fill: var(--diagram-box, #f6f8fa); stroke: var(--diagram-accent, #0969da); stroke-width: 1.6; }
+    .frame { fill: none; stroke: var(--diagram-line, #8c959f); stroke-width: 1.2; stroke-dasharray: 6 4; }
+    .dash { stroke-dasharray: 5 4; }
+    .edge { fill: none; stroke: var(--diagram-line, #8c959f); stroke-width: 1.5; }
+    .head { fill: var(--diagram-line, #8c959f); }
+    text { fill: var(--diagram-text, #1f2328); font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 13px; }
+    .title { font-size: 14px; font-weight: 600; }
+    .small { font-size: 11.5px; fill: var(--diagram-muted, #59636e); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; fill: var(--diagram-muted, #59636e); }
+    @media (prefers-color-scheme: dark) {
+      .bg, .part { fill: var(--diagram-bg, #0d1117); }
+      .box, .api { fill: var(--diagram-box, #161b22); }
+      .box, .frame { stroke: var(--diagram-line, #6e7681); }
+      .lds { fill: var(--diagram-accent-bg, #0c2d4d); stroke: var(--diagram-accent, #4493f8); }
+      .part, .api { stroke: var(--diagram-accent, #4493f8); }
+      .edge { stroke: var(--diagram-line, #6e7681); }
+      .head { fill: var(--diagram-line, #6e7681); }
+      text { fill: var(--diagram-text, #e6edf3); }
+      .small, .mono { fill: var(--diagram-muted, #9198a1); }
+    }
+  </style>
+  <defs>
+    <marker id="deployment-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="head" d="M0 0 L10 5 L0 10 z"/>
+    </marker>
+  </defs>
+  <rect class="bg" width="720" height="420"/>
+  <text class="title" x="12" y="26">1 · Try it</text>
+  <text class="mono" x="12" y="44">docker run descoped/lds</text>
+  <rect class="frame" x="12" y="56" width="216" height="300" rx="10"/>
+  <text class="title" x="252" y="26">2 · Develop</text>
+  <text class="mono" x="252" y="44">docker compose up</text>
+  <rect class="frame" x="252" y="56" width="216" height="300" rx="10"/>
+  <text class="title" x="492" y="26">3 · As a service</text>
+  <text class="mono" x="492" y="44">an orchestrator runs it</text>
+  <rect class="frame" x="492" y="56" width="216" height="300" rx="10"/>
+  <rect class="lds" x="28" y="76" width="184" height="150" rx="8"/>
+  <text class="title" x="42" y="100">LDS</text>
+  <text class="small" x="42" y="120">store: memory</text>
+  <text class="small" x="42" y="138">saga log: memory</text>
+  <text class="small" x="42" y="156">transaction log: none</text>
+  <text class="small" x="42" y="174">search: off</text>
+  <text class="small" x="42" y="192">the example model</text>
+  <text class="small" x="28" y="262">One container, nothing else.</text>
+  <text class="small" x="28" y="280">What is written is gone</text>
+  <text class="small" x="28" y="298">when it stops.</text>
+  <rect class="lds" x="268" y="76" width="184" height="54" rx="8"/>
+  <text class="title" x="282" y="100">LDS</text>
+  <text class="small" x="282" y="120">healthy on /health/ready</text>
+  <path class="edge" d="M282 130 V286"/>
+  <path class="edge" d="M282 170 H298" marker-end="url(#deployment-arrow)"/>
+  <rect class="box" x="300" y="146" width="152" height="48" rx="8"/>
+  <text x="312" y="167">Neo4j</text>
+  <text class="small" x="312" y="184">the store</text>
+  <path class="edge" d="M282 228 H298" marker-end="url(#deployment-arrow)"/>
+  <rect class="box" x="300" y="204" width="152" height="48" rx="8"/>
+  <text x="312" y="225">PostgreSQL</text>
+  <text class="small" x="312" y="242">logs and index queue</text>
+  <path class="edge" d="M282 286 H298" marker-end="url(#deployment-arrow)"/>
+  <rect class="box" x="300" y="262" width="152" height="48" rx="8"/>
+  <text x="312" y="283">Solr</text>
+  <text class="small" x="312" y="300">the core lds-index</text>
+  <text class="small" x="268" y="340">Every port on 127.0.0.1.</text>
+  <rect class="box" x="508" y="72" width="184" height="40" rx="8"/>
+  <text x="522" y="96">Orchestrator</text>
+  <text class="small" x="610" y="96">alive · ready</text>
+  <path class="edge" d="M600 112 V126" marker-end="url(#deployment-arrow)"/>
+  <rect class="lds" x="508" y="128" width="184" height="54" rx="8"/>
+  <text class="title" x="522" y="152">LDS</text>
+  <text class="small" x="522" y="172">one instance</text>
+  <path class="edge" d="M522 182 V322"/>
+  <path class="edge" d="M522 214 H538" marker-end="url(#deployment-arrow)"/>
+  <rect class="box" x="540" y="190" width="152" height="48" rx="8"/>
+  <text x="552" y="211">PostgreSQL or Neo4j</text>
+  <text class="small" x="552" y="228">the store</text>
+  <path class="edge" d="M522 268 H538" marker-end="url(#deployment-arrow)"/>
+  <rect class="box" x="540" y="244" width="152" height="48" rx="8"/>
+  <text x="552" y="265">PostgreSQL</text>
+  <text class="small" x="552" y="282">logs and index queue</text>
+  <path class="edge" d="M522 322 H538" marker-end="url(#deployment-arrow)"/>
+  <rect class="box" x="540" y="298" width="152" height="48" rx="8"/>
+  <text x="552" y="319">Solr</text>
+  <text class="small" x="552" y="336">when search is on</text>
+  <text class="small" x="492" y="372">Several instances: not finished.</text>
+  <text class="small" x="12" y="398">The same image in each, configured by variables LDS_…, a key each.</text>
+</svg>

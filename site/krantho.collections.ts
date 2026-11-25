@@ -10,6 +10,7 @@ const fields = z.object({
   title: z.string(),
   description: z.string(),
   order: z.number().describe("The page's place in the sidebar").optional(),
+  section: z.string().describe("The group of the sidebar the page is indented under, in its folder's group").optional(),
 })
 
 const docsCollection = (name: string, folder: string, path: string, indexFile?: string) =>
@@ -27,7 +28,7 @@ const user = docsCollection('user', 'user', '/docs/user/:slug/')
 const developer = docsCollection('developer', 'developer', '/docs/developer/:slug/')
 
 // The landing page, one document (home), rendered at /: its fields are the hero, and the `##` sections of its body
-// the bands below it, in the order of the section contract. The `###` headings of a section are its cards.
+// the rows below it, in the order of the section contract. The `###` headings of a section are its columns.
 const landing = defineCollection({
   name: 'landing',
   source: 'filesystem',
@@ -35,13 +36,15 @@ const landing = defineCollection({
   path: '/',
   sections: [
     'The problem',
-    'The time machine',
-    'What a document is made of',
-    'How it works',
-    'See it',
-    'With Claude Code',
-    'When it fits',
-    'Status',
+    'How LDS solves it',
+    'Documents that link to each other',
+    'Writes that pick up where they stopped',
+    'One model gives you both APIs',
+    'Query any moment with GraphQL',
+    'Choose where your documents are stored',
+    'Run it on your machine',
+    'Write once, read any moment',
+    'Or ask Claude to do it',
   ],
   archetype: defineDocumentArchetype({
     id: 'site/landing',

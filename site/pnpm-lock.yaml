@@ -193,6 +193,9 @@ importers:
       '@plausible-analytics/tracker':
         specifier: ^0.4.7
         version: 0.4.7
+      d3-transition:
+        specifier: ^3.0.2
+        version: 3.0.2(d3-selection@3.0.1)
       github-slugger:
         specifier: ^2.0.0
         version: 2.0.0
@@ -215,6 +218,9 @@ importers:
         specifier: ^4.6.7
         version: 4.6.7
     devDependencies:
+      '@types/d3-transition':
+        specifier: ^3.0.9
+        version: 3.0.9
       '@types/node':
         specifier: ^26.6.6
         version: 26.6.6

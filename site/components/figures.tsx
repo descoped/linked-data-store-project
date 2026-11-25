@@ -95,7 +95,7 @@ export function TimeMachineFigure(): React.ReactElement {
         </g>
       ))}
       <text className="fig-small" x={x(2019)} y={130}>
-        the versions of Company/fjord, each valid from its own time
+        three versions of Company/fjord, each valid from its own date
       </text>
       <Version from={2020} to={2023} y={142} name="Fjord Fish" at={[1]} />
       <Version from={2023} to={2030} y={142} name="Fjord Seafood" at={[2]} />
@@ -177,13 +177,13 @@ export function CompositionFigure(): React.ReactElement {
         </g>
       ))}
       <text className="fig-small" x={400} y={128}>
-        a link: another document, read
+        employer links to another document,
       </text>
       <text className="fig-small" x={400} y={142}>
-        at the same instant
+        read at the same moment
       </text>
       <text className="fig-small" x={36} y={178}>
-        the address is embedded: part of ola, versioned with it
+        address is part of ola and versioned with it
       </text>
       <text className="fig-small" x={62} y={234} textAnchor="end">
         ola
@@ -209,6 +209,101 @@ export function CompositionFigure(): React.ReactElement {
           </text>
         ))}
       </g>
+    </svg>
+  )
+}
+
+/** A step of the saga figure: its box, the box lit at the stops where the step is done, and its name */
+function SagaStep({
+  x0,
+  n,
+  name,
+  done,
+}: {
+  x0: number
+  n: number
+  name: string
+  done: number[]
+}): React.ReactElement {
+  return (
+    <g>
+      <rect className="fig-bar" x={x0} y={70} width={172} height={44} rx={6} />
+      {done.map((stop) => (
+        <rect key={stop} className={`fig-bar-on s${stop}`} x={x0} y={70} width={172} height={44} rx={6} />
+      ))}
+      <text x={x0 + 86} y={97} textAnchor="middle">
+        {n} · {name}
+      </text>
+    </g>
+  )
+}
+
+/**
+ * A write is a saga, on the write path of the write-path and saga documents: the steps are the transaction log, the
+ * store and, with search, the index queue, and the saga log records each step that is done. LDS stops before the last
+ * step; recovery reads the saga log, skips the steps that are done, and runs the rest with the input of the request
+ * (a saga log that survives a restart is the one in PostgreSQL). Four stops, the classes s0 to s3.
+ */
+export function SagaFigure(): React.ReactElement {
+  const steps = [
+    { x0: 40, name: 'change log' },
+    { x0: 234, name: 'document store' },
+    { x0: 428, name: 'search queue' },
+  ]
+  const told = [
+    'Step 1 is done, and the saga log notes it.',
+    'Step 2 is done, and the saga log notes it.',
+    'LDS stops before step 3. The write is half done.',
+    'LDS runs again, reads the saga log and finishes step 3.',
+  ]
+  // The steps that are done at each stop, and the entries of the saga log then
+  const done = [[0], [0, 1], [0, 1], [0, 1, 2]]
+  return (
+    <svg className="fig fig-c" viewBox="0 0 640 250" role="img" aria-labelledby="fig-c-title fig-c-desc">
+      <title id="fig-c-title">A write run as a saga</title>
+      <desc id="fig-c-desc">
+        A write of Person/ola goes through three steps in order: the change log, the document store and the search
+        queue. The saga log notes each step when it is done. LDS stops after step 2, so the write is half done. When
+        LDS runs again, it reads the saga log, skips steps 1 and 2 and finishes step 3 with the data first sent.
+      </desc>
+      <text className="fig-request" x={40} y={40}>
+        PUT /ns/Person/ola
+      </text>
+      {steps.map((step, i) => (
+        <SagaStep
+          key={step.name}
+          x0={step.x0}
+          n={i + 1}
+          name={step.name}
+          done={done.flatMap((steps, stop) => (steps.includes(i) ? [stop] : []))}
+        />
+      ))}
+      <path className="fig-arrow" d="M214 92h14m-6 -6l6 6-6 6" />
+      <path className="fig-arrow" d="M408 92h14m-6 -6l6 6-6 6" />
+      <text className="fig-missing s2" x={514} y={136} textAnchor="middle">
+        LDS stops
+      </text>
+      <text className="fig-answer s3" x={514} y={136} textAnchor="middle">
+        finished on restart
+      </text>
+      <text className="fig-small" x={40} y={148}>
+        saga log, the steps that are done
+      </text>
+      <rect className="fig-card" x={40} y={156} width={560} height={40} rx={8} />
+      {done.map((entries, stop) => (
+        <g key={stop} className={`s${stop}`}>
+          {entries.map((i) => (
+            <text key={i} className="fig-answer" x={(steps[i]?.x0 ?? 0) + 86} y={181} textAnchor="middle">
+              step {i + 1} done
+            </text>
+          ))}
+        </g>
+      ))}
+      {told.map((text, stop) => (
+        <text key={text} className={`fig-told s${stop}`} x={40} y={230}>
+          {text}
+        </text>
+      ))}
     </svg>
   )
 }

@@ -6,12 +6,12 @@ import { collections } from '../krantho.collections'
 // Pages read the markdown in ../docs through the site's loader. A link to another file of docs/
 // (concepts.md#what-a-field-holds) becomes that page's address, under the path the site is served under, so the files
 // read the same on GitHub and on the site. An image with copies in public/_krantho/images/ is shown as a <picture>,
-// and `sizes` is how wide the page shows it: the width of the text (46rem) once the window has room for the sidebar
+// and `sizes` is how wide the page shows it: the width of the text of a docs page (about 54rem on a wide window) once the window has room for the sidebar
 // beside it, else the window's width.
 export const site = createStaticSite({
   config,
   collections,
-  images: { sizes: '(min-width: 65rem) 46rem, 100vw' },
+  images: { sizes: '(min-width: 65rem) 54rem, 100vw' },
 })
 initServerLoader(site.loader, site.rendering)
 
@@ -33,6 +33,8 @@ export interface DocLink {
   title: string
   href: string
   group: string
+  /** The sidebar's subgroup the page is indented under, from its front matter; none for a page on its own */
+  section?: string
 }
 
 /** The address of a docs page: docs/README.md is the documentation's home page */
@@ -60,6 +62,7 @@ export async function docLinks(): Promise<DocLink[]> {
         title: String(doc.fields.title),
         href: docHref(collection, doc.slug),
         group: groupOf[collection],
+        ...(typeof doc.fields.section === 'string' ? { section: doc.fields.section } : {}),
       })
     }
   }

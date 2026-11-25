@@ -1,7 +1,8 @@
 ---
-title: "Core: the model"
+title: "The model"
 description: "How a model is read and how a document is checked against it."
-order: 9
+order: 11
+section: Core
 ---
 
 # Core: the model
@@ -22,7 +23,7 @@ part turns the model into three things that the rest of LDS uses:
   what `?schema` gives out.
 - a **[specification](../glossary.md#specification)**: a tree of elements (`SpecificationElement`) that says for
   every field whether it is a plain part of the document or a link, and to which entity types a link may point.
-  The REST paths, the link check, the search index adapters and the persistence providers read it.
+  The REST paths, the link check, the search index and the persistence providers read it.
 - the **answer to a document that is not valid**: the text of the 400.
 
 The code has another name for an entity type: "managed domain" (`Specification.getManagedDomains`,
@@ -41,7 +42,7 @@ All of it is in `linked-data-store-core`, except the interfaces of the specifica
 | `JsonSchema` | The result for all entity types: the validator schema, the text and the definitions, by name. `validate` validates one document. `SchemaRepository` is the interface the handlers get it through. |
 | `JsonSchemaDefinitionElement` | One node of a definition as LDS reads it: `types`, `properties`, `items`, `required`, `description`, `title`, `format`, and `name` when it is a definition of `$defs`. |
 | `JsonSchemaBasedSpecification` (package `io.descoped.lds.core.specification`) | The `Specification` of LDS, and also the `SchemaRepository`. Its static `create` reads JSON Schema files and folders. |
-| `SpecificationJsonSchemaBuilder`, `SpecificationElementBuilder`, `ImmutableSpecificationElement` | Build the tree of elements from the definitions. `SpecificationElementBuilder` holds the rules: what is `ROOT`, `MANAGED`, `EMBEDDED` and `REF`, and how `_link_property_<field>` is read. |
+| `SpecificationJsonSchemaBuilder`, `SpecificationElementBuilder`, `ImmutableSpecificationElement` | Build the tree of elements from the definitions. `SpecificationJsonSchemaBuilder` makes the `ROOT`; `SpecificationElementBuilder` holds the rules for the rest: what is `MANAGED`, `EMBEDDED` and `REF`, and how `_link_property_<field>` is read. |
 | `LinkedDocumentValidator` (package `io.descoped.lds.core.validation`) | Says whether a document may be written: valid by the JSON Schema, and every link a link to an entity type the field may link to. Throws `LinkedDocumentValidationException` with the text for the client. |
 | `Specification`, `SpecificationElement`, `SpecificationElementType`, `SpecificationTraversal` (module `linked-data-store-persistence-provider-api`, package `io.descoped.lds.api.specification`) | The interfaces, and the walk over the tree that the link check uses. |
 | `DomainDirective`, `LinkDirective`, `ReverseLinkDirective` (package `io.descoped.lds.graphql.directives`) | The directives of LDS and their arguments. `DomainDirective.hasDomainDirective` is what the converter asks. |
@@ -57,13 +58,16 @@ reads no schema written as YAML.
 
 The data goes one way:
 
-```
-graphql.schema  -> GraphQLToJsonConverter -> JSON Schema of each entity -+
-                                                                         +-> JsonSchemaBuilder -> JsonSchema
-specification.schema -> files, one for each entity ----------------------+        |
-                                                                                  +-> validator schema (validate)
-                                                                                  +-> text (?schema)
-                                                                                  +-> definitions -> specification
+```mermaid
+flowchart LR
+  G["graphql.schema"] --> C["GraphQLToJsonConverter"] --> J["JSON Schema of each entity type"]
+  S["specification.schema"] --> F["files, one for each entity type"]
+  J --> B["JsonSchemaBuilder"]
+  F --> B
+  B --> JS["JsonSchema"]
+  JS --> V["validator schema (validate)"]
+  JS --> T["text (?schema)"]
+  JS --> D["definitions"] --> SP["specification"]
 ```
 
 ### Which model is read
@@ -79,8 +83,10 @@ specification.schema -> files, one for each entity ----------------------+      
 2. Otherwise `specification.schema` is split at every comma (the parts are not trimmed) and given to
    `JsonSchemaBasedSpecification.create`. A part that is a folder gives every file in it whose name ends in `.json`,
    in any case of the letters; folders inside it are not read. Any other part is one file, read from the file
-   system when it exists and else from the class path (`FileAndClasspathReaderUtils.readFileOrClasspathResource`).
-   The name of the entity type is the name of the file without its last five characters.
+   system when it exists and else from the class path (`FileAndClasspathReaderUtils.readFileOrClasspathResource`);
+   a folder is looked for in the file system only, never on the class path. A part that is neither stops the
+   start with an `IllegalArgumentException` (`Unable to find resource: ` and the part). The name of the entity type
+   is the name of the file without its last five characters.
 3. A model with no entity type stops the start at once, before the persistence provider is started and given
    time to come up (`UndertowApplication.initializeUndertowApplication`), with an `IllegalStateException` that
    names the model: when both keys are empty (`No model is given: ...`), when `specification.schema` names only
@@ -166,7 +172,7 @@ in the next section. What comes out:
 | an enum | `{"type": "string", "enum": [...]}`, the values in the order of their names |
 | `[String]` | `{"type": "array", "items": {"type": "string"}}` |
 | a list of another scalar | `{"type": "array", "items": ...}` with the items of the type of the scalar. The keywords of the scalar but `type` are written on the field as well (`"format": "date"` on `[Date]`, `minimum` and `maximum` on `[Int]`), where the validator applies them to no array. |
-| a list of an enum | `{"type": "array"}` |
+| a list of an enum | `{"type": "string", "enum": [...]}`, as a single enum, so an array there is refused (`$.kinds: array found, string expected`). When the walk of the type has met the enum before (`kind: Kind!` before `kinds: [Kind]`), `{"type": "array"}`. |
 | an embedded type (a type without `@domain`) | no `type` and no `$ref`: any value is valid. The type is still written as a definition in `$defs`. |
 | a list of an embedded type | `{"type": "array", "items": {"$ref": "#/$defs/Address"}}`, and the type as a definition in `$defs` |
 | an entity type with `@link` | `{"type": "string"}` and beside it `_link_property_<field>` with the entity type as its one property |
@@ -205,7 +211,8 @@ document with `"total": 9007199254740993` (a `Long` above the integers a double 
 GraphQL gave it back as it was.
 
 The arguments of `@domain` (`searchable`) and of `@link` (`pagination`, `reverseName`) change nothing in the JSON
-Schema. They are read when the GraphQL schema is built.
+Schema. They are read when the GraphQL schema is built, and `searchable` also when the model is read
+(`DomainDirective.notSearched`), for the search index, whatever `graphql.enabled` is.
 
 This is the schema of `Person` of the example model (`linked-data-store-server/schemas/schema.graphql`), asked
 from a running LDS. The answer is one line; it is shown here on several.
@@ -278,15 +285,14 @@ curl -s 'http://localhost:19106/ns/Person?schema'
 list type is met a second time in the walk of one type, the visitor is told of a back reference and its `visit`
 method is not called. One walk covers the fields of one entity type; an embedded type gets a walk of its own. The
 visitor also has no method for some shapes and falls through to the walk of what is under the field. The result
-is exact but not always what the schema file says. All of this was seen on a running LDS with models written for
-it, or is in the golden files:
+is exact but not always what the schema file says:
 
 - **Two fields with the same list type in one type.** Only the first by name is written as a list. With
   `a: [String]` and `b: [String]`, `b` is `{"type": "string"}`, and a document with an array in `b` is refused
   (`$.b: array found, string expected`). With `c: [Part]` and `d: [Part]`, `d` has no type. The `!` counts: after
   `[T!]!`, both `[T!]!` and `[T!]` are the same list type, and after `[T]!` so is `[T]`. The other way round is
   not: `[T]!` after `[T]` is written as a list, because `visitGraphQLNonNull` calls `visitGraphQLList` itself.
-  Lists of links (`@link`) are not affected.
+  `[Entity]` and `[Union]` with `@link` are not affected; `[Entity!]` with `@link` is (below).
 - **Two fields with the same enum in one type.** Only the first by name gets `type` and `enum`. With
   `earlier: State` and `state: State!`, `state` has no type and takes any value.
 - **A field whose type is an entity type, without `@link`,** is written as a link (`job: Job` gives
@@ -296,16 +302,21 @@ it, or is in the golden files:
   whose type is an entity type. When it has (`jobs: [Job]`, and `Job` has `boss: Person`), the field is written
   as `"type": "object"` with two properties for each field of that entity type whose type is a list without `!`
   after it: an array of texts, and a `_link_property_<field>` that names the type of the items, whatever that
-  type is (`String` also). A document with an array there is refused (`$.jobs: array found, object expected`). A
-  field with `@reverseLink` written in the file is such a list. A second list of the same entity type in the type
-  has no type.
+  type is (`String` also). When the items are a list or end in `!` (`[[String]]`, `[String!]`), the start ends
+  with a `NullPointerException`. A document with an array there is refused
+  (`$.jobs: array found, object expected`). A field with `@reverseLink` written in the file is such a list. A
+  second list of the same entity type in the type has no type.
 - **`[Entity!]` with `@link`** is written as a list of links when the entity type has no field of an entity type,
   and as `{"type": "object", "properties": {}}` without `_link_property_<field>` when it has. `[Entity]` with
-  `@link` is always a list of links.
+  `@link` is always a list of links. `[Entity!]` with `@link` is walked as a field without `@link`, so a second
+  `[Entity!]` field of the same entity type in the type, with `@link` or without, has no type and no
+  `_link_property_<field>`: it is no link.
 - **A union without `@link`** is written as a link to one member: the last by name of the members that the walk has
   not met before (with `union Thing = Job | House`, `c: Thing` links to `Job`, and to `House` when a field
   `a: Job` comes before it). A second field of the same union without `@link` has no type. A list of a union
-  without `@link` is `{"type": "array"}`.
+  without `@link` is written as the single field is, as a link to one member, so an array there is refused
+  (`$.things: array found, string expected`); it is `{"type": "array"}` when the walk has met the union, or every
+  member of it, before.
 - **A field whose type is an interface** has no type. The fields of the interface are written into the definition
   the field is in, as if they were its own: a field of the same name is replaced when the interface is walked
   after it, a field of the interface with `!` is in `required` of the entity type, and a name can come twice in
@@ -326,7 +337,7 @@ it, or is in the golden files:
 - **`@link` on a field whose type is an embedded type** is written as a link to the name of that type, and the type
   gets no definition from that field.
 
-`GraphQLSchemaGoldenTest` holds what the converter writes for ten schema files, among them several of these
+`GraphQLSchemaGoldenTest` holds what the converter writes for twelve schema files, among them several of these
 shapes (`syn-embedded`, `syn-shared-embedded`, `syn-abstract`).
 
 ### Reading a JSON Schema
@@ -349,7 +360,8 @@ It does this, in order:
 
 What `buildElement` reads of a node: `type` (a text, or a list of texts), else the types of the alternatives of
 `anyOf`, else `object`; `properties`; `items`; `required`; `description` (an empty text when there is none);
-`title` and `format`. Every other keyword is left to the validator. `title` and `format` are read and not used.
+`title` and `format`. Every other keyword is left to the validator. `title` is read and not used; `format` goes on
+to the specification.
 A node must be a JSON object, also the value of each property of a `_link_property_<field>` object (`{}` is
 enough); anything else is an `IllegalArgumentException` that names the entity type and the node. Of a node with
 `$ref` nothing else is read. The `$ref` at the root of the schema is not read here: only the validator follows it,
@@ -384,7 +396,7 @@ change afterwards.
 - `getItems` is an element for `items`. It has no element type. Its name is the name of the definition when
   `items` is a `$ref`, and an empty text otherwise.
 - `getJsonTypes` are the types read by `JsonSchemaBuilder`. `getDescription` is the description, an empty text
-  when there is none, and null for the root.
+  when there is none, and null for the root. `getFormat` is its `format`, or null.
 - `getRequired` holds names only on the children of the root, so `isRequired` is true only for a property that is
   written directly in a definition of `$defs` and is asked through that definition.
 - `getValidators` is always empty. `SpecificationValidator` has no method and no implementation.
@@ -433,9 +445,17 @@ The files `*.specification.txt` in `src/test/resources/graphql-golden` show the 
 full.
 
 Who reads the specification: `ResourceContext` (which path is a document, a part of one, or a link),
-`LinkedDocumentValidator`, the saga adapters of persistence and search, `JsonNavigationPath.toSpecificationElement`
-in the persistence API, and the Neo4j provider, which takes from it which fields are links. Persistence is given
-the names of the entity types at start (`PersistenceConfigurator`).
+`LinkedDocumentValidator`, `ReferenceJsonHelper`, the saga adapter that writes a document (it gives it to the
+store's `createOrOverwrite`), `JsonNavigationPath.toSpecificationElement` and
+`RxJsonPersistenceBridge.deleteAllEntities` in the persistence API, the Neo4j provider, which takes from it which
+fields are links, and `IndexEntries`, which makes the entries of the search index. Persistence is given the names of
+the entity types at start (`PersistenceConfigurator`).
+
+The search index takes two things from the specification: a `REF` is not text, and neither is a text whose
+`getFormat` is `date-time`, `date` or `time`. A change in how either is built changes what a search finds
+([what the index is given](search.md#what-the-index-is-given-indexentries)). Beside the specification, the model
+gives the entity types marked `@domain(searchable: false)`, which have no entries; with a JSON Schema model every
+entity type is searched.
 
 ### The limits of names
 
@@ -487,7 +507,7 @@ entity type (`Reference resource does not support link to managed-domain "Person
 That the document a link points at exists is not checked, by intent: a link may point at a document that does not
 exist yet (a dangling reference).
 
-Seen on a running LDS with the example model:
+Seen on a running LDS with the example model (of the headers of each answer, only the content type is shown):
 
 ```sh
 curl -s -i -X PUT 'http://localhost:19106/ns/Person/p1' -H 'Content-Type: application/json' \
@@ -506,6 +526,8 @@ Schema validation error: [$.born: does not match the date-time pattern must be a
 $.friends: string found, array expected, $.name: integer found, string expected]
 ```
 
+The answer is one line; it is shown here on two.
+
 ```sh
 curl -s -i -X PUT 'http://localhost:19106/ns/Person/p1' -H 'Content-Type: application/json' \
      -d '{
@@ -520,8 +542,6 @@ Content-Type: text/plain
 
 Schema validation error: Illegal linked-domain: "Company". Navigation: friends: "/Company/acme"
 ```
-
-(The first answer is one line.)
 
 ### `?schema`
 
@@ -548,25 +568,25 @@ the parameter is not looked at. An entity type the model does not have is answer
 ## Rules to keep
 
 - **JSON Schema 2020-12 and nothing earlier.** A schema that says it is another draft, or has `definitions`, is
-  refused at start, and so is a `$ref` that leads nowhere. Do not add a reader for an earlier draft: 3.0.0 is a
-  clean break, and a schema of an earlier draft read as 2020-12 would be an empty model without a word.
+  refused at start, and so is a `$ref` that leads nowhere. Do not add a reader for an earlier draft: a schema of
+  an earlier draft read as 2020-12 would be an empty model without a word.
 - **Three things are LDS's own and stay:** the link notation (`_link_property_<field>` beside the field; the
   validator sees two ordinary properties and LDS checks the link itself), the check of `format`, and the form of
   an error (the place as LDS writes a path, then the message of the validator). Clients read these texts.
 - **What the converter writes is pinned.** `GraphQLSchemaGoldenTest` compares the JSON Schema and the specification
-  of ten schema files with the files in `src/test/resources/graphql-golden`. A difference is a change in what LDS
+  of twelve schema files with the files in `src/test/resources/graphql-golden`. A difference is a change in what LDS
   gives its clients and stores as links; understand it before an expected file is changed.
 - **Keep `TypeTraverser`.** The visitors depend on the order of its walk and on where it stops. The
   `SchemaTraverser` of graphql-java walks differently.
 - **The specification is what the providers are told about links.** A provider stores a document as it is given;
   whether a document may be like that is for the validation before a write to say. The one thing a provider takes
   from the model is which fields are links (`REF`, `getRefTypes`, `getItems`). A change in how those are built
-  changes what Neo4j stores as a link.
+  changes what Neo4j stores as a link, and what a search finds.
 - **JSON is Jackson 3 trees.** A text is taken out of a node only when the node is known to be a text
   (`isString()` before `stringValue()`); `JsonSchemaBuilder.text` and `LinkedDocumentValidator.text` do this.
   Jackson 3 throws where a node is of another kind.
-- **Fail at start, not at the first write.** A model that cannot be read stops LDS with a message that names the
-  entity type. `initializeValidators` is called for this reason.
+- **Fail at start, not at the first write.** A model that cannot be read stops LDS at start, most often with a
+  message that names the entity type, the `$ref` or the file. `initializeValidators` is called for this reason.
 - **Names are not spliced.** The name of an entity type comes from the model (the name of a file, or of a GraphQL
   type) and is not validated here. Code that puts a name into a query or a path must not concatenate it.
 - **Tests.** A new test class is JUnit 6 with AssertJ (`JsonSchemaBuilderTest`, `DocumentValidationTest`,
@@ -587,7 +607,7 @@ example model):
 
 ```sh
 docker run -d --rm --name lds -p 127.0.0.1:19106:9090 -v "$PWD/json:/lds/json:ro" \
-  -e LDS_GRAPHQL_SCHEMA= -e LDS_SPECIFICATION_SCHEMA=/lds/json descoped/lds:3.0.1
+  -e LDS_GRAPHQL_SCHEMA= -e LDS_SPECIFICATION_SCHEMA=/lds/json descoped/lds
 ```
 
 ```
@@ -595,7 +615,7 @@ INFO  io.descoped.lds.core.UndertowApplication - Creating specification using js
 INFO  i.d.l.c.specification.JsonSchemaBasedSpecification - Managed domains: /Company /Person
 ```
 
-The GraphQL API is not served then (`/graphql` is answered `Unsupported namespace: "graphql"`).
+The GraphQL API is not served then (`/graphql` is answered 400 with `Unsupported namespace: "graphql"`).
 
 ## Tests
 
@@ -603,9 +623,9 @@ All are in `linked-data-store-core/src/test`.
 
 | Class | Kind | What it checks |
 |---|---|---|
-| `JsonSchemaBuilderTest` | JUnit | What is read from a schema, the text kept for `?schema`, a schema without `$schema`, `displayName` and an unknown keyword, definitions shared between entity types, earlier drafts refused, a `$ref` that leads nowhere, what is no schema. |
+| `JsonSchemaBuilderTest` | JUnit | What is read from a schema, the text kept for `?schema`, a schema without `$schema`, `displayName` and an unknown keyword, definitions shared between entity types, earlier drafts refused, a `$ref` that leads nowhere, what is no schema, that an entity type the model does not have cannot be validated. |
 | `DocumentValidationTest` | JUnit | The text of every kind of error, that all errors are given, date-times that are valid and texts that are not, links, a null where a link could be. |
-| `GraphQLSchemaGoldenTest` | JUnit | The JSON Schema and the specification the converter gives for ten schema files, against the files in `graphql-golden` (written with `CanonicalText`). Also the GraphQL schema that is served. |
+| `GraphQLSchemaGoldenTest` | JUnit | The JSON Schema and the specification the converter gives for twelve schema files, against the files in `graphql-golden` (written with `CanonicalText`). Also the GraphQL schema that is served. |
 | `GraphQLToJsonConverterTest` | TestNG | The conversion of `spec/abstract/graphqlschemas/schema.graphql`: dialect, `$ref`, `displayName`, `required`. |
 | `JsonSchemaBasedSpecificationTest`, `SpecificationJsonSchemaBuilderTest` | TestNG | That link fields are `REF` and others `EMBEDDED`, and the count of elements of each type for `spec/agent/Agent.json`. |
 | `LinkedDocumentValidatorTest` | TestNG | Links to the right and the wrong entity type, single and in an array, with `spec/schemas`. |
@@ -618,10 +638,11 @@ those tests is the GraphQL file `gqlschema/schema.graphql`.
 
 The example models are in `src/test/resources`: `spec/schemas` (two entity types with links of every shape, as
 JSON Schema), `spec/abstract` (the same model as GraphQL and as JSON Schema, with a union), `spec/agent`,
-`gqlschema/schema.graphql`, and the files of `graphql-golden`.
+`gqlschema/schema.graphql`, and the files of `graphql-golden`. `spec/no-entity` is a GraphQL file without
+`@domain` (`ModelAtStartTest`), and `spec/scalars` and `spec/plain-links` are models of `GraphQLIntegrationTest`.
+Tests also send documents and queries from `spec/schemas.examples` and `spec/demo/graphql`.
 
-To run one test class, and to build and test core with what it needs (they were not run for this document; a
-build needs JDK 27 and Docker):
+To run one test class, and to build and test core with what it needs (a build needs JDK 27 and Docker):
 
 ```sh
 ./mvnw test -pl linked-data-store-core -Dtest=JsonSchemaBuilderTest
@@ -649,7 +670,8 @@ the definition of the items.
 Not finished: the name of every definition is a property of the root, also of an embedded one, and
 `ResourceContext.createResourceContext` takes any property of the root as an entity type. With the example model
 `GET /ns/Address` is answered 200 with `[]`, and `GET /ns/Address?schema` and `PUT /ns/Address/a1` are answered
-500 (`JsonSchema.getSchemaJson` gives null; `JsonSchema.validate` throws `No JSON Schema for the entity Address`).
+500 with an empty body (`JsonSchema.getSchemaJson` gives null; `JsonSchema.validate` throws
+`No JSON Schema for the entity Address`); the exception is only in the log.
 
 Not finished: when two files define a definition of the same name in `$defs`, the specification keeps the one
 that was read first and the validator uses the one of each file. Links and paths then follow one definition and
@@ -665,24 +687,23 @@ Not finished: a definition that holds itself, directly or through others, ends t
 `StackOverflowError`. This is so for `$ref` in a file and for embedded types in a GraphQL schema
 (`type Branch { branches: [Branch] }`). A link from an entity type to itself is no such case.
 
-A list of an entity type without `@link` (`support: [Support]`) is held by value, as an embedded object, when that
-entity type has a field whose type is an entity type: `AddDefinitionVisitor.visitGraphQLList` then writes the field
-as `"type": "object"` and calls `visitEmbeddedType`, which writes each list field of the entity type into it as a
-list of links. The specification makes it `EMBEDDED`, since it has no `_link_property_support`, so the REST API
-reaches it and the links in it by path. A list of an entity type that has no such field is a list of links
-(`visitListLinkProperty`), and a single field of an entity type without `@link` is a link.
-
-Not finished: `visitEmbeddedType` writes every list field of the entity type as a list of links, with
-`_link_property_<field>` naming the type of the items, also for `[String]`. The other fields are left out, so they
-are not checked. It makes the field one object, so a list is refused. The GraphQL schema keeps the field as a list
-of the entity type, and a query of it is answered with `type mismatch error, expected type LIST`. It ends the start
-with a `NullPointerException` when it meets a list of a list.
+Not finished: a list of an entity type without `@link` (`support: [Support]`) whose entity type has a field of an
+entity type is held by value, as one object (see
+[What follows from the walk of a GraphQL schema](#what-follows-from-the-walk-of-a-graphql-schema)).
+`AddDefinitionVisitor.visitGraphQLList` writes the field as `"type": "object"` and calls `visitEmbeddedType`, which
+writes every list field of the entity type into it as a list of links, with `_link_property_<field>` naming the
+type of the items, also for `[String]`. The other fields are left out, so they are not checked, and a list is
+refused. The specification makes the field `EMBEDDED`, since it has no `_link_property_support`, so the REST API
+reaches it and the links in it by path. The GraphQL schema keeps the field as a list of the entity type, and a
+query of it is answered with `type mismatch error, expected type LIST`. The start ends with a
+`NullPointerException` when the items of such a list field are a list or end in `!` (`[[String]]`, `[String!]`).
 
 Not finished: a list of links to an interface gets a JSON Schema and a specification, and the GraphQL schema is
 then refused with a `ClassCastException` (`GraphQLSchemaGoldenTest.aListOfLinksToAnInterfaceIsRefusedAsItWas`).
-The exception comes in the constructor of `UndertowApplication`, after the store, the saga log and the thread pools
-of the sagas are made; what was made is stopped (`LDS could not be made; what was made is stopped`), and the process
-ends with exit code 1.
+The exception comes in the constructor of `UndertowApplication`, which builds the GraphQL API only when
+`graphql.enabled` is `true`, after the store, the saga log and the thread pools of the sagas are made; what was
+made is stopped (`LDS could not be made; what was made is stopped`), and the process ends with exit code 1. With
+`graphql.enabled` `false` the model is read and LDS starts.
 
 Not finished: `JsonSchemaBuilder.build` does not remove the link directives from the schema. The
 `_link_property_<field>` objects stay in the schema that validates, so a document may hold a field of that name

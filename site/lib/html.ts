@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import GithubSlugger from 'github-slugger'
 import { createHighlighter, type Highlighter } from 'shiki'
 
@@ -52,9 +54,11 @@ function getHighlighter(): Promise<Highlighter> {
  * A code block coloured as GitHub colours it, in both themes: each token carries its light and its dark colour as CSS
  * variables (`--shiki-light`, `--shiki-dark`), and the stylesheet picks one by the page's theme. A language that is
  * not known, and a block without one, is shown as plain text. The block is labelled with its language, and the page
- * adds a copy button to it.
+ * adds a copy button to it. A block of HTTP is an answer, which scrolls when it is long; an answer, a console session and a
+ * block of text wrap their lines. A block with a comment `<!-- label: ... -->` right before it (`<!-- label: The whole stack -->`) is labelled with
+ * that text instead, saying what the block is for rather than what language it is in.
  */
-async function highlight(lang: string, escaped: string): Promise<string> {
+async function highlight(lang: string, escaped: string, title?: string): Promise<string> {
   const code = decode(escaped).replace(/\n$/, '')
   const label = languages[lang]
   const pre = label
@@ -64,7 +68,11 @@ async function highlight(lang: string, escaped: string): Promise<string> {
         defaultColor: false,
       })
     : `<pre class="shiki"><code>${escape(code)}</code></pre>`
-  return `<div class="code-block"><div class="code-head"><span class="code-lang">${label ?? 'Text'}</span></div>${pre}</div>`
+  // An answer can be long: the page shows it in an area of its own height that scrolls. An answer, a session of
+  // commands and their answers, and a block of text (a message, a log) wrap their long lines; code keeps its lines
+  // and scrolls sideways.
+  const kind = lang === 'http' ? ' code-answer code-wrap' : !label || lang === 'console' ? ' code-wrap' : ''
+  return `<div class="code-block${kind}"><div class="code-head"><span class="code-lang">${title ? escape(decode(title)) : (label ?? 'Text')}</span></div>${pre}</div>`
 }
 
 /** Replaces each match of a pattern by what an async function makes of it */
@@ -83,6 +91,37 @@ async function replaceAsync(
   return (await Promise.all(parts)).join('')
 }
 
+// The folders of docs/ that hold the figures of the pages, as SVG files
+const figureFolders = ['developer/images', 'user/images', 'images'].map((folder) =>
+  join(process.cwd(), '..', 'docs', folder),
+)
+
+/** The SVG file of a figure by its name, from the first folder of docs/ that has it */
+async function figureSvg(name: string): Promise<string | undefined> {
+  for (const folder of figureFolders) {
+    try {
+      return await readFile(join(folder, name), 'utf8')
+    } catch {
+      // not in this folder
+    }
+  }
+  return undefined
+}
+
+/**
+ * A figure of docs/ (an image whose file is an SVG of docs/) put into the page as it is, so the page's stylesheet
+ * colours it in the theme the reader picked: its own `<style>` is left out (on GitHub, where it is shown as an image,
+ * it follows the system's theme), and the classes it draws with are styled under `.diagram`. Its own title and
+ * description name it to a screen reader.
+ */
+async function inlineFigure(name: string): Promise<string | undefined> {
+  if (!/^[\w-]+\.svg$/.test(name)) return undefined
+  const svg = await figureSvg(name)
+  if (!svg) return undefined
+  const drawing = svg.replace(/<style>[\s\S]*?<\/style>\s*/, '').trim()
+  return `<figure class="diagram">${drawing}</figure>`
+}
+
 /**
  * The HTML of a page as krantho renders its markdown, made ready to show:
  *
@@ -90,6 +129,7 @@ async function replaceAsync(
  *   `concepts.md#what-a-field-holds` leads to the same place on the site as on GitHub;
  * - a ```mermaid block becomes a `<pre class="mermaid">` with its source, which the page draws in the browser;
  * - every other code block is coloured by its language when the site is built (`highlight`);
+ * - an SVG figure of docs/ is put into the page itself (`inlineFigure`);
  * - the `##` and `###` headings are listed as the page's contents.
  */
 export async function prepareHtml(source: string): Promise<{ html: string; toc: TocEntry[]; hasFigures: boolean }> {
@@ -107,6 +147,11 @@ export async function prepareHtml(source: string): Promise<{ html: string; toc: 
     return `<pre class="mermaid">${code}</pre>`
   })
   html = await highlightCode(html)
+  html = await replaceAsync(
+    html,
+    /<p>\s*<img src="[^"]*\/([\w-]+\.svg)" alt="[^"]*"\s*\/?>\s*<\/p>/g,
+    async (whole = '', name = '') => (await inlineFigure(name)) ?? whole,
+  )
   return { html, toc, hasFigures }
 }
 
@@ -114,7 +159,7 @@ export async function prepareHtml(source: string): Promise<{ html: string; toc: 
 export async function highlightCode(html: string): Promise<string> {
   return replaceAsync(
     html,
-    /<pre><code(?: class="language-([\w-]+)")?>([\s\S]*?)<\/code><\/pre>/g,
-    (_, lang = '', code = '') => highlight(lang, code),
+    /(?:<!--\s*label:\s*([^<>]*?)\s*-->\s*)?<pre><code(?: class="language-([\w-]+)")?>([\s\S]*?)<\/code><\/pre>/g,
+    (_, title = '', lang = '', code = '') => highlight(lang, code, title || undefined),
   )
 }

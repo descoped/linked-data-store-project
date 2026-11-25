@@ -1,7 +1,8 @@
 ---
 title: "The memory provider"
 description: "Persistence in memory, for tests and for trying LDS."
-order: 4
+order: 22
+section: Persistence
 ---
 
 # The memory provider
@@ -23,11 +24,11 @@ It is for tests and for trying LDS. It is not for production:
 - One lock guards the whole store. One write runs at a time, and no read runs while a write does.
 - It has known faults. They are listed under [Not finished](#not-finished).
 
-The provider keeps [fragments](../glossary.md#fragment), not documents. A fragment is one leaf value of one version
-of one document, or one piece of it when the value is a text longer than the fragment capacity. The bridge of
+The provider keeps [fragments](../glossary.md#fragment), not documents. The bridge of
 `linked-data-store-persistence-provider-api` (`RxJsonPersistenceBridge`) cuts a document into fragments before a
-write and puts fragments together into documents after a read. The fragments, the bridge and the
-interface the provider implements are described in [the persistence interface](persistence-api.md).
+write, a text longer than the fragment capacity into several, and puts fragments together into documents after a
+read. The fragments, the bridge and the interface the provider implements are described in
+[the persistence interface](persistence-api.md).
 
 ## Layout
 
@@ -123,7 +124,7 @@ suite keeps a document at every limit on this provider too (`thatADocumentAtEver
 ### One document in the maps
 
 This is what the maps hold after one write and one tombstone, with a fragment capacity of 8 bytes so that a text
-is cut. It was printed from `MemoryTransactionFactory.indexByIndex` by a program in the package of the provider.
+is cut. It is the content of `MemoryTransactionFactory.indexByIndex`, with each key unpacked into its tuple.
 The document, of the entity type `Person` with the id `ola` in the namespace `ns`, valid time
 `2020-01-02T03:04:05.006Z`:
 
@@ -219,17 +220,18 @@ range of two selectors from the last key to the first: it takes the range forwar
 (`descendingMap`).
 
 `getRange` copies the entries of the range into a new map and gives an `AsyncIterable` over the copy. So a range
-does not change after it is taken, and it can be read after the transaction has ended. It also means that the
-whole range is in memory twice while it is read: what is on demand is the delivery of the entries, not the
-copying. The limit does not make the copy smaller: `MemoryAsyncIterator` counts what it has given, so a range
-with the limit 1 still copies every entry between its two keys.
+does not change after it is taken, and it can be read after the transaction has ended. It also means that a range
+that is read has a map of its own, with a node for every entry of the range (the bytes of the keys and values are
+shared with the store, not copied): what is on demand is the delivery of the entries, not the copying. The limit
+does not make the copy smaller: `MemoryAsyncIterator` counts what it has given, so a range with the limit 1 still
+copies every entry between its two keys.
 
 ### One document at a time: `read`
 
 1. `findAnyOneMatchingFragmentInPrimary` takes one entry: the first key at or after `(id, snapshot)` and before the end
    of the range of the id (`Subspace.range(Tuple.of(id))`). Because versions are negated, that is an entry of the newest
-   version that is not after `snapshot`, the version an [as-of read](../glossary.md#as-of-read) gives. An entry of
-   another id or another subspace means there is no such version.
+   version that is not after `snapshot`, the version an [as-of read](../glossary.md#as-of-read) gives. No entry
+   means there is no such version.
 2. If the entry is a tombstone, the stream is one fragment of type `DELETED`.
 3. Otherwise the stream is the range `(id, version)`: every fragment of that version.
 
@@ -238,8 +240,9 @@ with the limit 1 still copies every entry between its two keys.
 The range starts at the first key at or after `(id, before - 1 ms)`. It ends after the version that is valid at
 `after`, which is found as in `read`: at the first key at or after `(id, that version - 1 ms)`. When no
 version is valid at `after`, it ends at the first key at or after `(id, after)`. A missing `after` is the year 1,
-a missing `before` the year 9999. So the range holds the version valid at `after` and every later version before
-`before`.
+a missing `before` the start of the year 9999 (`END_OF_TIME`). So the range holds the version valid at `after` and
+every later version before `before`. A version with a valid time at or after `9999-01-01T00:00Z` is kept and
+an as-of read at its time gives it, but a read of the versions without `before` leaves it out.
 
 The keys hold the negated time, so the range is stored newest first. A backward range is read as it is stored.
 A forward range is read from its last key (`getRangeReversed`) for the versions only, and each version, oldest
@@ -291,6 +294,10 @@ a number is written as the same text, and when a version was written again with 
 check. `RxJsonPersistenceBridge.findDocument` does, but nothing in `linked-data-store-core` calls `findDocument`.
 Core follows a link backward with `RxJsonPersistenceBridge.readSourceDocuments`, which also uses `find` and does not
 check.
+
+`find` also misses a document. The index holds the SHA-1 of the first piece of a value, and `readSourceDocuments`
+asks with the SHA-1 of the whole link text, so a link whose text is longer than the fragment capacity is never
+followed backward (see [the persistence interface](persistence-api.md#links-at-this-level)).
 
 Every read gives its documents in the order of its range and the fragments of each document by path and offset, so
 the bridge cuts the documents from the stream as it comes and sorts nothing (see
@@ -364,8 +371,10 @@ a transaction that changed something throws it, and changes nothing.
 The lock belongs to the thread that made the transaction. `commit`, `cancel` and `close` must be called on that
 thread. On another thread they throw `IllegalMonitorStateException`, and the lock is then never released. Core
 makes and ends each transaction on one thread: a write on the thread of its saga step (`WriteTransaction`), a read
-that is composed of several reads on a thread of the store that opens and closes it (`StoreReads`), and the other
-reads in a `try (Transaction tx = ...)` block around a blocking call. That is why this does not show.
+that is composed of several reads on a thread of the store that opens and closes it (`StoreReads`), the reads of
+the index queue worker and of the index rebuild on a scheduler of their own that opens and closes the transaction
+(`Single.using` in `IndexQueueWorker`, `Flowable.using` in `IndexRebuild`), and the other reads in a
+`try (Transaction tx = ...)` block around a blocking call. That is why this does not show.
 
 `runAsyncInIsolatedTransaction` runs a function in a transaction of its own on a thread of the pool.
 
@@ -444,7 +453,8 @@ the code.
   comparator of the maps changes every read.
 - **Names are never spliced into keys.** A namespace, an entity type, a path and an id go into a key as elements
   of a tuple, which `java-tuple` packs with its own end marks. Keep it so. A bound of a range over ids is made
-  from the range of the tuple (`Subspace.range`), never from a text made from an id.
+  from the tuple of the id, packed (`Subspace.pack`) or as the end of its range (`Subspace.range`), never from a
+  text made from an id.
 - **Time.** Versions are to be stored and compared as UTC instants. The provider does not meet this yet; a
   revision must.
 - **Transactions** are to commit only when asked and roll back otherwise. The provider does not meet this yet; a
@@ -468,7 +478,7 @@ the code.
 | `KeySelectorTest` | JUnit | What each kind of selector resolves to in a store with the keys 1, 3 and 5; that a range runs from its first selector to before its second; the limit; equality of `KeySelector` and `KeyValue`. |
 | `SubspaceTest` | JUnit | Packing and unpacking, `contains`, the two ranges, and that a subspace keeps its own copy of the prefix. |
 | `MemoryTransactionTest` | TestNG | That `cancel` puts back what `set` and `clearRange` changed, and that the transaction cannot be used after it. |
-| `MemoryDeleteTest` | JUnit | What a delete of one version does to the maps today: the version is cleared from `Primary`, and its entries in `PathValueIndex` stay (see [Not finished](#not-finished)). |
+| `MemoryDeleteTest` | JUnit | What a delete of one version does to the maps: the version is cleared from `Primary`, and its entries in `PathValueIndex` stay (see [Not finished](#not-finished)). |
 | `MemoryDirectoryTest` | TestNG | That the directory gives 65536 different prefixes of 2 bytes. |
 
 The tests of `linked-data-store-core` also run on this provider: `TestServerListener` starts the application
@@ -482,8 +492,8 @@ No test of the module covers: `close()` after `commit()`; a write that fails par
 
 ## Not finished
 
-The module has not been revised for 3.0. Each paragraph below is something that was found in the code and,
-where it says "observed", seen in a running LDS or by calling the classes of the built module.
+Each paragraph below is something the code does and, where it says "observed", was seen in a running LDS or by
+calling the classes of the built module.
 
 Not finished: **a read that follows links backward can stop the whole store.** When `find` meets a document whose
 version at `snapshot` is a tombstone with the same valid time as the index entry, it starts a clean-up with
@@ -502,8 +512,9 @@ Not finished: **a delete of one version leaves its index entries.** `delete` bui
 `PathValueIndex` of each fragment of the version and never runs it, then clears the version in `Primary`.
 `deleteAllVersions` does run it. The entries stay in the map. `MemoryDeleteTest` shows it.
 
-Not finished: **that clean-up clears nothing.** It calls `clear` on the index `PathValueIndex` with the key of the
-entry in `Primary`. No index entry has that key.
+Not finished: **the clean-up of `find` clears nothing.** When `find` meets a tombstone, the clean-up it starts
+calls `clear` on the index `PathValueIndex` with the key of the tombstone in `Primary`. No index entry has that
+key.
 
 Not finished: **a link that was replaced is still followed backward.** Index entries of a version that is written
 again are not cleared, and `RxJsonPersistenceBridge.readSourceDocuments` does not check the documents `find`
@@ -523,9 +534,6 @@ Not finished: **`close()` after `commit()` fails when `cancelTxOnClose` is true.
 undo log, so `close` tries to cancel and throws `IllegalStateException`. Observed by calling the classes, with a
 transaction that wrote; one that only read closes without it. The write stays.
 
-Not finished: **`delete` does not clear the index.** `doDelete` builds a stream that would clear the index entries
-of the version, and never subscribes to it. Only `Primary` is cleared. Observed by calling the classes.
-
 Not finished: **a read-only transaction can write.** `readOnly` only chooses the lock. `set` and `clear` are not
 refused.
 
@@ -537,17 +545,18 @@ Not finished: **one publisher, one subscriber.** A second subscriber to an `Asyn
 iterator of the first and gets the entries the first did not take. And when the pool is shut down, `subscribe`
 throws `RejectedExecutionException`; it does not signal `onError`. Both observed by calling the classes.
 
-Not finished: **the fragment capacity is not checked.** A value that is not a number, or an empty value, fails
-each attempt to start the provider; LDS tries again after a wait of about a second for
-`persistence.initialization.max-wait-seconds` (60 in the server) and then ends with `NumberFormatException`
-(observed with `abc` and a wait of 3 seconds: five attempts). With `0`, LDS starts, and a write of a document
-with a text never ends: the thread of the saga stays in `FlattenedDocumentLeafNode.valueByOffset` of the API
-module with the write lock, so no read gets an answer after it. Observed in the image: the `PUT` and a `GET` after
-it had no answer, and Docker ended the container about 17 seconds after the write, out of memory (`OOMKilled`).
-With `-1`, LDS starts, and a write of a document with a text is answered `500` (`capacity < 0: (-1 < 0)` in the
-log) and leaves nothing: a `GET` of the id answers `404`.
+Not finished: **the fragment capacity is not checked.** A value that is not a number fails each attempt to start
+the provider; LDS tries again after a wait of half a second to a second and a half, until
+`persistence.initialization.max-wait-seconds` (60 in the server) is used up, and then ends with
+`NumberFormatException` (observed with `abc` and a wait of 3 seconds: four attempts). An empty value does the same
+(`For input string: ""`): the configuration gives the provider an empty text, not a missing key, so it is not
+`Configuration missing`. With `0`, LDS starts, and a write of a document with a text never ends: the thread of the
+saga loops in `FlattenedDocumentLeafNode.putString` of the API module, putting an empty piece at offset 0 again and
+again, with the write lock, so no read gets an answer after it. Observed in the image: the `PUT` and a `GET` after
+it had no answer, one processor stayed busy, and the memory did not grow; after more than a minute the container
+still ran. With `-1`, LDS starts, and a write of a document with a text is answered `500`
+(`capacity < 0: (-1 < 0)` in the log) and leaves nothing: a `GET` of the id answers `404`.
 
-Not finished: `createOrOverwrite` has the comment `TODO add batch-size`. `MemoryRxPersistence.hasPrevious` and
-`hasNext` are not called by the bridge, which has its own. `MemoryRxPersistence.tickForward` is not called at
-all. Tests of this module that are still TestNG without having to be: `MemoryTransactionTest` and
-`MemoryDirectoryTest`.
+Not finished: `MemoryRxPersistence.hasPrevious` and `hasNext` are not called by the bridge, which has its own.
+`MemoryRxPersistence.tickForward` is not called at all. Tests of this module that are still TestNG without having
+to be: `MemoryTransactionTest` and `MemoryDirectoryTest`.

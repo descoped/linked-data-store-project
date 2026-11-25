@@ -4,6 +4,7 @@ description: >-
   The ideas: document, entity type, namespace, version and valid time, link, model, provider, what a write goes
   through.
 order: 2
+section: Start
 ---
 
 # Concepts
@@ -32,13 +33,13 @@ that keeps them. Four ideas make it what it is:
   keeps them, and a [search index provider](../glossary.md#search-index-provider) finds them by text. Each is chosen by
   configuration, and the requests stay the same.
 
-This document is about LDS 3.0.1. Where something does not work as a user would expect, it says so in a paragraph
-that starts with "Not finished:".
+This document is about the latest version of LDS. Where something does not work as a user would expect, it says so
+in a paragraph that starts with "Not finished:".
 
 ## About the examples
 
-The examples were run against LDS `3.0.1`, the image `descoped/lds:3.0.1` started with nothing configured but its
-port. LDS then has the example model, with the entity types `Person` and `Company`, and keeps everything in memory.
+The examples were run against the image `descoped/lds`, started with nothing configured but its port. LDS then has
+the example model, with the entity types `Person` and `Company`, and keeps everything in memory.
 [Getting started](getting-started.md) tells how to start LDS that way.
 
 The examples start with an LDS that has no documents. LDS in memory has none when it starts, so start it anew if
@@ -51,10 +52,11 @@ changed:
 LDS=http://localhost:9090
 ```
 
-The examples were run in the order they stand, on 24 November 2026, and a later example uses the documents of an
-earlier one. LDS sends a JSON answer on one line; here it is shown formatted, with the fields in the order LDS
-sent them. A GraphQL query is sent as `application/graphql`, the query itself as the body, so that it can be shown
-formatted. A query with variables is sent as JSON.
+The examples were run in the order they stand, and a later example uses the documents of an earlier one. A read
+without a time is as of now: the answers shown for now are those of a read before 2030, when the version written
+for 2030 is not yet valid. LDS sends a JSON answer on one line; here it is shown formatted, with the fields in the
+order LDS sent them. A GraphQL query is sent as `application/graphql`, the query itself as the body, so that it can
+be shown formatted. A query with variables is sent as JSON.
 
 ## Document, entity, namespace and id
 
@@ -71,7 +73,10 @@ An address with another namespace, such as `/other/Company/acme`, is answered `4
 can hold the documents of several namespaces.
 
 An [**id**](../glossary.md#id) names one document among the documents of its entity type. The one who writes the
-document chooses the id. LDS does not make ids.
+document chooses the id. LDS does not make ids. An id is at most 1024 bytes of UTF-8, and holds no `/`, no control
+character and no half of a character (an unpaired surrogate); another id is refused with `400` and a text that says
+why, such as `An id cannot hold a '/'`. [The REST API](rest-api.md#ids-and-encoding) tells how an id is written in an
+address.
 
 Together they are the [document key](../glossary.md#document-key), and the address of a document:
 
@@ -88,7 +93,9 @@ Together they are the [document key](../glossary.md#document-key), and the addre
 Write a document of the entity type `Company` with the id `acme`, and read it:
 
 ```sh
-curl -X PUT "$LDS/ns/Company/acme" -H 'Content-Type: application/json' -d '{"name": "Acme"}'
+curl -X PUT "$LDS/ns/Company/acme" \
+     -H 'Content-Type: application/json' \
+     -d '{"name": "Acme"}'
 ```
 
 ```json
@@ -106,14 +113,11 @@ curl "$LDS/ns/Company/acme"
 The write is answered `201`. Its answer is not the document. It is the id of the saga that carried the write,
 which is explained in [What a write goes through](#what-a-write-goes-through).
 
-A body that is not JSON is refused with `400` and a text that says where LDS stopped reading it. A body sent with
-another content type than JSON is refused with `415`; that is the answer to `curl -d` without the header
-`Content-Type: application/json`, because curl then names another content type. Nothing is written.
+A body that LDS cannot read as JSON, or one sent with another content type than JSON, is refused, and nothing is
+written; [the REST API](rest-api.md#bodies-and-content-types) says which bodies LDS reads and what it answers.
 
-LDS gives a document back with the values it was written with. Three things can differ. The fields can come in
-another order than they were written in. A field written as `null` is not there: LDS writes it as a field that is
-absent. A whole number that does not fit in 64 bits, and a decimal number with more digits than a 64-bit floating
-point number holds, come back changed: `12345678901234567890` was read back as `1.2345678901234567E19`.
+LDS gives a document back with the values it was written with, with a few differences, such as a field written as
+`null`, which is not there; [the REST API](rest-api.md#read-a-document) lists them.
 
 ## Version and time
 
@@ -121,8 +125,9 @@ LDS is a time machine. It does not keep one state of a document, it keeps the do
 
 - A write does not change the document that is there. It adds a **version**: the whole document as it is from
   its **valid time** on.
-- The valid time comes with the write, in the query parameter `timestamp`. A write without it gets the time at
-  which LDS receives the request.
+- The valid time comes with the write, in the query parameter `timestamp`. A write without it gets the time of its
+  turn: the moment it may begin, after the write before it to the same document is done (see
+  [What a write goes through](#what-a-write-goes-through)).
 - The valid time can be in the past, the present or the future. A version for a time in the future is kept now,
   and becomes the document that is read when that time has come.
 - A version holds from its valid time until the valid time of the next version.
@@ -134,11 +139,14 @@ LDS is a time machine. It does not keep one state of a document, it keeps the do
 Three writes of the company `fjord`, each with its valid time. The last one written is the one in the middle:
 
 ```sh
-curl -X PUT "$LDS/ns/Company/fjord?timestamp=2020-01-01T00:00:00Z" -H 'Content-Type: application/json' \
+curl -X PUT "$LDS/ns/Company/fjord?timestamp=2020-01-01T00:00:00Z" \
+     -H 'Content-Type: application/json' \
      -d '{"name": "Fjord Fish"}'
-curl -X PUT "$LDS/ns/Company/fjord?timestamp=2030-01-01T00:00:00Z" -H 'Content-Type: application/json' \
+curl -X PUT "$LDS/ns/Company/fjord?timestamp=2030-01-01T00:00:00Z" \
+     -H 'Content-Type: application/json' \
      -d '{"name": "Fjord Group"}'
-curl -X PUT "$LDS/ns/Company/fjord?timestamp=2023-01-01T00:00:00Z" -H 'Content-Type: application/json' \
+curl -X PUT "$LDS/ns/Company/fjord?timestamp=2023-01-01T00:00:00Z" \
+     -H 'Content-Type: application/json' \
      -d '{"name": "Fjord Seafood"}'
 ```
 
@@ -148,7 +156,7 @@ Each was answered `201` with a `saga-execution-id`. What an as-of read gives dep
 |---|---|
 | `curl "$LDS/ns/Company/fjord?timestamp=2019-06-01T00:00:00Z"` | `404`, no body |
 | `curl "$LDS/ns/Company/fjord?timestamp=2021-06-01T00:00:00Z"` | `{"name":"Fjord Fish"}` |
-| `curl "$LDS/ns/Company/fjord"` (in November 2026) | `{"name":"Fjord Seafood"}` |
+| `curl "$LDS/ns/Company/fjord"` (now) | `{"name":"Fjord Seafood"}` |
 | `curl "$LDS/ns/Company/fjord?timestamp=2031-06-01T00:00:00Z"` | `{"name":"Fjord Group"}` |
 
 On the timeline:
@@ -167,7 +175,7 @@ gantt
     section A read at
     2019-06 gives 404             : milestone, 2019-06-01, 0d
     2021-06 gives Fjord Fish      : milestone, 2021-06-01, 0d
-    now (2026-11) gives Fjord Seafood      : milestone, 2026-11-24, 0d
+    now gives Fjord Seafood       : milestone, 2026-11-24, 0d
     2031-06 gives Fjord Group     : milestone, 2031-06-01, 0d
 ```
 
@@ -194,17 +202,12 @@ curl "$LDS/ns/Company/fjord?timeline"
 ]
 ```
 
-A time is written with an offset or with `Z`, as in `2020-01-01T00:00:00Z`. A time without one is refused with
-`400`. LDS keeps the valid time of a version in UTC, so the same instant written with another offset is the same
-version: a write to `fjord` with `timestamp=2020-01-01T01:00:00%2B01:00` replaced the first version, and the
-timeline still had three. (In an address the plus sign of an offset is written `%2B`.)
+The timeline of an id that has no version is answered `404` with no body.
 
-The GraphQL API makes as-of reads too. There the time is given once for a whole query, in the query parameter
-`snapshot`, and every document the query reaches is read as of that time.
-
-The GraphQL API reads a time as the REST API does. A `snapshot` that is not a time with an offset, such as
-`2021-06-01T00:00:00`, is refused with an error that names it, and a time with another offset than `Z` is the
-same instant in UTC.
+A time is written with an offset or with `Z`, as in `2020-01-01T00:00:00Z`, and LDS keeps it in UTC, so the same
+instant written with another offset is the same version. [The REST API](rest-api.md#the-time-of-a-request-timestamp)
+gives every form a time can take; the GraphQL API takes one time for a whole query, in the query parameter
+`snapshot` ([read at a time](graphql-api.md#read-at-a-time)).
 
 ### A delete in time
 
@@ -224,7 +227,7 @@ The answer is `204` with no body. After it:
 | Request | Answer |
 |---|---|
 | `curl "$LDS/ns/Company/fjord?timestamp=2024-06-01T00:00:00Z"` | `{"name":"Fjord Seafood"}` |
-| `curl "$LDS/ns/Company/fjord"` (in November 2026) | `404`, no body |
+| `curl "$LDS/ns/Company/fjord"` (now) | `404`, no body |
 | `curl "$LDS/ns/Company/fjord?timestamp=2031-06-01T00:00:00Z"` | `{"name":"Fjord Group"}` |
 
 On the timeline:
@@ -243,7 +246,7 @@ gantt
     Fjord Group                   : 2030-01-01, 2033-01-01
     section A read at
     2024-06 gives Fjord Seafood   : milestone, 2024-06-01, 0d
-    now (2026-11) gives 404       : milestone, 2026-11-24, 0d
+    now gives 404                 : milestone, 2026-11-24, 0d
     2031-06 gives Fjord Group     : milestone, 2031-06-01, 0d
 ```
 
@@ -300,7 +303,8 @@ document was at that time, and it leads nowhere when there is no such document a
 Write a person whose `employer` is a company that does not exist:
 
 ```sh
-curl -X PUT "$LDS/ns/Person/ola?timestamp=2020-01-01T00:00:00Z" -H 'Content-Type: application/json' \
+curl -X PUT "$LDS/ns/Person/ola?timestamp=2020-01-01T00:00:00Z" \
+     -H 'Content-Type: application/json' \
      -d '{
        "name": "Ola",
        "employer": "/Company/nordlys"
@@ -333,7 +337,8 @@ curl "$LDS/graphql" -H 'Content-Type: application/graphql' \
 Now write the company, valid from 2021, and send the same query again:
 
 ```sh
-curl -X PUT "$LDS/ns/Company/nordlys?timestamp=2021-01-01T00:00:00Z" -H 'Content-Type: application/json' \
+curl -X PUT "$LDS/ns/Company/nordlys?timestamp=2021-01-01T00:00:00Z" \
+     -H 'Content-Type: application/json' \
      -d '{"name": "Nordlys"}'
 ```
 
@@ -353,7 +358,8 @@ The write is answered `201`, and the query now gives:
 The same query as of the middle of 2020, when Ola had the link and the company was not there yet:
 
 ```sh
-curl "$LDS/graphql?snapshot=2020-06-01T00:00:00Z" -H 'Content-Type: application/graphql' \
+curl "$LDS/graphql?snapshot=2020-06-01T00:00:00Z" \
+     -H 'Content-Type: application/graphql' \
      -d '{
        PersonById(id: "ola") {
          name
@@ -423,7 +429,7 @@ gantt
     Nordlys                       : 2021-01-01, 2027-06-01
     section A query at
     2020-06 gives employer null   : milestone, 2020-06-01, 0d
-    now (2026-11) gives Nordlys   : milestone, 2026-11-24, 0d
+    now gives Nordlys             : milestone, 2026-11-24, 0d
 ```
 
 | A query at | `ola` → `employer` leads to | Answer |
@@ -471,7 +477,7 @@ flowchart LR
 A write of a part or of a link is a write of the whole document:
 
 ```mermaid
-flowchart LR
+flowchart TB
     put["PUT /ns/Person/kari/employer/Company/acme"] --> read["read kari as it is<br/>at the time of the write"]
     read --> change["put /Company/acme<br/>in employer"]
     change --> write["write the whole of kari<br/>as a new version from that time"]
@@ -516,16 +522,15 @@ curl "$LDS/ns/Person/kari"
 }
 ```
 
-A write to a part or to a link is a write of the whole document. LDS reads the document as it is at the valid time of
-the write, changes it, and writes it as a new version. After the write of the document and the write of the link, the
-timeline of `kari` had two versions: one without the link and one with it. So a part or a link can be written only to a
-document that is there at that time; otherwise the answer is `404` with no body.
+LDS reads the document as it is at the valid time of the write, changes it, and writes it as a new version. After the
+write of the document and the write of the link, the timeline of `kari` had two versions: one without the link and one
+with it. So a part or a link can be written, and a part deleted, only in a document that is there at that time;
+otherwise the answer is `404` with no body. A delete of a link from a document that is not there is answered `200`,
+and writes nothing.
 
-LDS writes one document at a time: a write to a document waits until the write before it is done, before it
-reads the document. So two writes to parts or links of one document that are sent at the same time each keep the
-change of the other. With LDS in memory, 20 links added to one document at the same time were all answered `200`,
-and the document then had all 20. The turns are kept in one LDS: two LDS that write to the same store do not wait
-for each other. [The REST API](rest-api.md#one-write-at-a-time-to-a-document) says more.
+LDS writes one document at a time, so two writes to parts or links of one document that are sent at the same time each
+keep the change of the other; [the REST API](rest-api.md#one-write-at-a-time-to-a-document) tells how a write waits
+for its turn.
 
 Not finished: a path does not reach every field of a document. With the example model,
 `/ns/Person/kari/address/city` is answered `400` with `Not a valid path element: "city"`.
@@ -561,7 +566,7 @@ type Person @domain {
 This is the heart of a model. A field of a document holds one of three things:
 
 ```mermaid
-flowchart LR
+flowchart TB
     subgraph ola["Person/ola — a document: an id, an address and versions of its own"]
         direction TB
         values["<b>values</b><br/>name: Ola<br/>born: 1990-05-17T00:00:00Z"]:::value
@@ -584,7 +589,7 @@ flowchart LR
 
 - **A value**: a text, a number, `true` or `false`, a date-time, the name of an enum, or a list of them.
 - [**An embedded object**](../glossary.md#embedded-object), when the type of the field is an embedded type, a type
-  without `@domain`: `address` is an `Address`. A list of them is written `[Chapter]`. It is a value object, and the
+  without `@domain`: `address` is an `Address`. A list of them is written `[Address]`. It is a value object, and the
   document holds it by composition: the object is part of the document it is in. It has no id and no versions of its
   own; it is written and read with its document, and it can be reached by its path, as
   [the three kinds of resource](#the-three-kinds-of-resource) shows. An embedded type has fields of the same three
@@ -596,24 +601,14 @@ flowchart LR
   may also link to a document of one of several entity types: in a GraphQL schema the type of the field is then a union
   of them, and in JSON Schema files the field names each.
 
-A field whose type is an entity type can also hold the values of that entity type in the document itself, as an embedded
-object: a copy, not a link. That is a list of an entity type without `@link`, such as `support: [Support]`, where the
-entity type `Support` has a link of its own (`technical: [Contact] @link`). The values are then part of the document
-they are in, as an embedded object is, and are reached by their path: `/ns/Agreement/a1/support`, and the link inside it
-at `/ns/Agreement/a1/support/technical/Contact/c1`. They have no id and no versions of their own, and a later version of
-a `Support` document does not change them. Any other field whose type is an entity type is read as a link when `@link`
-is left out: `owner: Support` holds the text `/Support/id`.
+A field whose type is an entity type is read as a link also when `@link` is left out: `owner: Support` holds the text
+`/Support/id`. A list of an entity type without `@link`, such as `support: [Support]`, is a list of links too, unless
+that entity type has a field whose type is an entity type, such as a link of its own; then LDS takes the field for an
+embedded object that holds a copy of the values of the entity type.
 
-Not finished: the copy does not work as written. The field holds one object, not a list: a list is refused with
-`$.support: array found, object expected`. Of the fields of the entity type each list is read as a list of links, also a
-list of texts, and the others are not checked: `level` is taken as it comes. The GraphQL API still reads the field as a
-list, and answers it with `null` and the error
-`Can't resolve value (/AgreementById/support) : type mismatch error, expected type LIST`.
-[The model](model.md#shapes-that-do-not-work-as-written) lists it with the other shapes.
-
-Not finished: a field whose type is an interface is none of the three. The fields of the interface become fields of the
-entity type, and the field itself is not checked. [The model](model.md#shapes-that-do-not-work-as-written) lists this
-with other shapes LDS does not read as they are written.
+Not finished: that copy, and a field whose type is an interface, are not read as they are written: the copy holds one
+object, not a list, and a field whose type is an interface is not checked.
+[The model](model.md#shapes-that-do-not-work-as-written) says what LDS makes of each.
 
 ### Checked when a document is written
 
@@ -623,7 +618,9 @@ Before a document is written, LDS checks it against the model ([schema validatio
 document that does not fit is refused with `400` and a text that says what is wrong, and nothing is written:
 
 ```sh
-curl -X PUT "$LDS/ns/Person/per" -H 'Content-Type: application/json' -d '{"name": 7}'
+curl -X PUT "$LDS/ns/Person/per" \
+     -H 'Content-Type: application/json' \
+     -d '{"name": 7}'
 curl -X PUT "$LDS/ns/Person/per" -H 'Content-Type: application/json' \
      -d '{
        "name": "Per",
@@ -636,8 +633,8 @@ Schema validation error: [$.name: integer found, string expected]
 Schema validation error: Illegal linked-domain: "Person". Navigation: employer: "/Person/ola"
 ```
 
-Not finished: the check does not cover everything a model says. With the example model the value of `address` is
-not checked: a person was written with `"address":7`, and another with an address that has no `city`.
+Not finished: the check does not cover everything a model says; with the example model the value of `address` is not
+checked ([the model](model.md#shapes-that-do-not-work-as-written)).
 
 The addresses follow the model as well. A request for an entity type the model does not have, such as `/ns/Robot/r2`, is
 answered `400` with `Not a managed resource name: "Robot"`.
@@ -673,7 +670,7 @@ gantt
     section Snapshots
     T1                            : milestone, 2020-06-01, 0d
     T2                            : milestone, 2022-06-01, 0d
-    Tn = now (2026-11)            : milestone, 2026-11-24, 0d
+    Tn = now                      : milestone, 2026-11-24, 0d
 ```
 
 The snapshots of that history: every document as it was at T, and every link resolved as of T.
@@ -714,24 +711,29 @@ flowchart TB
 These are the five writes, and the GraphQL query that was sent at T1, T2 and Tn:
 
 ```sh
-curl -X PUT "$LDS/ns/Company/acme?timestamp=2020-01-01T00:00:00Z" -H 'Content-Type: application/json' \
+curl -X PUT "$LDS/ns/Company/acme?timestamp=2020-01-01T00:00:00Z" \
+     -H 'Content-Type: application/json' \
      -d '{"name": "Acme"}'
-curl -X PUT "$LDS/ns/Person/ola?timestamp=2020-01-01T00:00:00Z" -H 'Content-Type: application/json' \
+curl -X PUT "$LDS/ns/Person/ola?timestamp=2020-01-01T00:00:00Z" \
+     -H 'Content-Type: application/json' \
      -d '{
        "name": "Ola",
        "address": {"city": "Bergen"},
        "employer": "/Company/nordlys"
      }'
-curl -X PUT "$LDS/ns/Company/nordlys?timestamp=2021-01-01T00:00:00Z" -H 'Content-Type: application/json' \
+curl -X PUT "$LDS/ns/Company/nordlys?timestamp=2021-01-01T00:00:00Z" \
+     -H 'Content-Type: application/json' \
      -d '{"name": "Nordlys"}'
-curl -X PUT "$LDS/ns/Person/ola?timestamp=2023-01-01T00:00:00Z" -H 'Content-Type: application/json' \
+curl -X PUT "$LDS/ns/Person/ola?timestamp=2023-01-01T00:00:00Z" \
+     -H 'Content-Type: application/json' \
      -d '{
        "name": "Ola",
        "address": {"city": "Oslo"},
        "employer": "/Company/acme"
      }'
 curl -X DELETE "$LDS/ns/Company/nordlys?timestamp=2025-01-01T00:00:00Z"
-curl "$LDS/graphql?snapshot=2020-06-01T00:00:00Z" -H 'Content-Type: application/graphql' \
+curl "$LDS/graphql?snapshot=2020-06-01T00:00:00Z" \
+     -H 'Content-Type: application/graphql' \
      -d '{
        PersonById(id: "ola") {
          name
@@ -816,8 +818,8 @@ The writes were answered `201`, and the delete `204`. The answers to the query, 
 ```
 
 Kari is among the employees of `acme` now because of the link written in
-[The three kinds of resource](#the-three-kinds-of-resource), valid from November 2026; at T1 and T2 she was not
-there.
+[The three kinds of resource](#the-three-kinds-of-resource), valid from the time it was written; at T1 and T2 she was
+not there.
 
 A snapshot is whole: a link is not resolved to the document as it is now, but as it was at the time of the
 snapshot. At T2 `nordlys` was there and `ola` worked for it; at Tn `nordlys` is deleted, its version is a
@@ -830,7 +832,8 @@ for Tn.
 A person written for 2019 without the `name` that the model asks for is refused as one written for now would be:
 
 ```sh
-curl -X PUT "$LDS/ns/Person/per?timestamp=2019-01-01T00:00:00Z" -H 'Content-Type: application/json' \
+curl -X PUT "$LDS/ns/Person/per?timestamp=2019-01-01T00:00:00Z" \
+     -H 'Content-Type: application/json' \
      -d '{"born": "1970-01-01T00:00:00Z"}'
 ```
 
@@ -842,9 +845,8 @@ The versions that are stored are not checked again when LDS is started with anot
 as they were written.
 
 Not finished: the model is not kept on the timeline. A snapshot holds the documents of its time, not the model
-they were written under. Every write goes into the transaction log with a field `schema`, and LDS writes the text
-`TODO` in it, so nothing says which model a write was checked against. When LDS is started with another model,
-every snapshot, T1 as well as Tn, is checked and served with that model.
+they were written under, and nothing says which model a write was checked against. When LDS is started with
+another model, every snapshot, T1 as well as Tn, is checked and served with that model.
 
 ## Providers
 
@@ -876,28 +878,16 @@ search index provider, `solr`, which uses Apache Solr. With search on, every wri
 goes to the search index, and the GraphQL API gets a field `Search`. Search is reached through the GraphQL API only, so
 it needs a model that is a GraphQL schema.
 
-Search finds a document by the texts in it, every text of every field:
+Search finds a document by the texts in it, as the document was at the time of the query (its `snapshot`).
+[The GraphQL API](graphql-api.md#how-words-are-found) tells how words are found, and which versions a search looks at
+([search at a time, and history](graphql-api.md#search-at-a-time-and-history)).
 
-- A text in an object that has a `languageCode` and a `languageText`, such as `{"languageCode": "nb",
-  "languageText": "Laks fra fjordene"}`, is searched in the language of the code, by the stems of its words:
-  Norwegian (bokmål and nynorsk), Swedish, English, German or French. `laks` finds the text above.
-- Every other text is searched word for word.
-- A word is also found when it is typed without its special letters or accents: `o` for `ø` and `ö`, `a` for `å`,
-  `ä` and `æ`.
-- A link, a date, a time, a number and `true` or `false` are not searched. An entity type that the model marks with
-  `@domain(searchable: false)` is left out of search.
-
-A search is made at a time, as a read is: it looks at each document as it was at the time of the query (its
-`snapshot`), so a word that only an older version of a document had does not find it. It can also look at every
-version. [The GraphQL API](graphql-api.md#search) shows how to search.
-
-A write does not wait for search. The last step of its saga adds the change to the **index queue**, and LDS sends
-what the queue holds to the search index, which makes it searchable within about a second. When the search index
-does not answer, the changes wait in the queue and are sent when it answers again. The index queue is kept where
-the transaction log is: in PostgreSQL, or in memory when the transaction log is not kept or is kept in memory; in
-memory, what the search index had not taken is lost when LDS stops. A client that needs a write to be found by the
-search that follows it asks for that with `searchable=true`, and the answer to the write waits until search finds
-it, at most 10 seconds ([the REST API](rest-api.md#when-search-finds-a-write-searchable)).
+A write does not wait for search. The last step of its saga adds the change to the
+[**index queue**](../glossary.md#index-queue), from which LDS sends it to the search index, which makes it searchable
+within about a second; [operations](operations.md#the-search-index) tells where the queue is kept and what happens
+when the search index does not answer. A client that needs a write to be found by the search that follows it asks for
+that with `searchable=true`, and the answer to the write waits until search finds it, at most 10 seconds
+([the REST API](rest-api.md#when-search-finds-a-write-searchable)).
 
 ## What a write goes through
 
@@ -915,8 +905,10 @@ of a part and of a link. The steps are:
 Each step comes after the one before it.
 
 LDS writes one document at a time. A write waits until the write to the same document before it is done, before
-it reads the document and begins its saga; it then keeps its turn until its saga is done. Writes to other
-documents do not wait for it.
+it reads the document and begins its saga; it then keeps its turn until its saga is done. A write to another
+document waits for it only when the two documents share a turn: LDS has 1024 turns, and gives each document one of
+them by its key. A write waits at most 30 seconds for its turn, and is then answered `503` and not done;
+[the REST API](rest-api.md#one-write-at-a-time-to-a-document) says more.
 
 ```mermaid
 flowchart TB
@@ -938,41 +930,36 @@ flowchart TB
 LDS records the start of a saga, with the whole request, and the start and the end of each step in a
 [**saga log**](../glossary.md#saga-log). A saga that does not complete, because a step failed or because LDS
 stopped, stays in the saga log and is run again later, with the request as it was first sent: the same document and
-the same time. LDS goes forward only (forward recovery): a step that was done is not undone when a later step fails.
+the same time. After LDS has stopped, that needs a saga log that is kept: in memory, a saga that has not completed
+when LDS ends is lost. LDS goes forward only (forward recovery): a step that was done is not undone when a later step
+fails. [Operations](operations.md#writes-that-fail-crashes-and-recovery) says when a saga is run again.
 
-Not finished: a saga is not run again without end. When it is run again because a later write needs its place in
-the saga log, and it fails once more, LDS moves it to a log that nothing reads, and its write is not done.
-[Operations](operations.md) says when a saga is run again.
+Not finished: a saga is not run again without end; a write that keeps failing is given up
+([operations](operations.md#a-write-that-keeps-failing)).
 
 The answer to a write holds the id of its saga, `{"saga-execution-id":"..."}`. It is the id of the entry in the
-transaction log too. A few answers have no body, such as the `204` to a delete of a whole document;
-[the REST API](rest-api.md) has the answer of every request.
+transaction log too. A write of a whole document is answered `201`; a write of a part or of a link, and a delete of
+a part, `200`. A delete of a whole document is answered `204` and a delete of a link `200`, both with no body; with
+`sync=false` they too hold the id of the saga, the delete of a whole document with `202`.
+[The REST API](rest-api.md) has the answer of every request.
 
 The saga log and the transaction log have providers of their own. With nothing configured, the saga log is in
-memory, so a saga that has not completed when LDS ends is lost, and the transaction log is not kept at all. Both
-can be kept in PostgreSQL; see [configuration](configuration.md) and [operations](operations.md).
+memory and the transaction log is not kept at all. Both can be kept in PostgreSQL; see
+[configuration](configuration.md) and [operations](operations.md).
 
-Not finished: LDS writes the transaction log and reads it back for one thing only: to tell a source of writes
-which of its writes was the last. Nothing in LDS builds the documents again from a transaction log.
+Not finished: nothing in LDS builds the documents again from a transaction log. LDS reads it back only to tell a
+source of writes which of its writes was the last ([the REST API](rest-api.md#sources-and-the-transaction-log)),
+and to check that it answers ([health](rest-api.md#health)).
 
 ### What `sync` means
 
-The query parameter `sync` of a write says whether the answer waits for the saga.
+The query parameter `sync` of a write says whether the answer waits for the saga. A write waits for its saga, a
+[synchronous write](../glossary.md#synchronous-write), unless it has `sync=false`; a write with `searchable=true`
+waits also then, for its saga and for search (see [Search](#search)).
+[The REST API](rest-api.md#when-lds-answers-a-write-sync) tells what each answer means for a read that follows it.
 
-- **The answer waits**, a [synchronous write](../glossary.md#synchronous-write). It is sent when every step has ended. A
-  read sent after the answer gives what was written (read-your-writes).
-- **The answer does not wait.** It is sent when the saga, with the request, is in the saga log. The steps are done
-  shortly after. A read sent right after the answer may not give what was written yet (eventual consistency), and when a
-  step fails, the one who sent the write is not told.
-
-Every write waits when `sync` is not given: a write and a delete of a whole document, of a part and of a link.
-`sync=false` makes a write not wait. [The REST API](rest-api.md#when-lds-answers-a-write-sync) has the table of
-every case. The answer that waits does not wait for search; `searchable=true` makes it wait for that too (see
-[Search](#search)).
-
-Not finished: a write whose saga fails while the answer waits is answered `500` with no body, and the `500` does
-not say whether the document was written. A saga that failed is run again later, so the write may also be done
-after the `500`. [The REST API](rest-api.md#when-a-write-fails) shows what a failed write can leave behind.
+Not finished: a write whose saga fails while the answer waits is answered `500`, which does not say whether the
+document was written; [the REST API](rest-api.md#when-a-write-fails) shows what a failed write can leave behind.
 
 ## A call is safe to send again
 
@@ -992,9 +979,11 @@ looked up first to find out whether it was done.
 The same write sent twice with a `timestamp`, and the timeline after it:
 
 ```sh
-curl -X PUT "$LDS/ns/Company/hav?timestamp=2024-03-01T00:00:00Z" -H 'Content-Type: application/json' \
+curl -X PUT "$LDS/ns/Company/hav?timestamp=2024-03-01T00:00:00Z" \
+     -H 'Content-Type: application/json' \
      -d '{"name": "Hav"}'
-curl -X PUT "$LDS/ns/Company/hav?timestamp=2024-03-01T00:00:00Z" -H 'Content-Type: application/json' \
+curl -X PUT "$LDS/ns/Company/hav?timestamp=2024-03-01T00:00:00Z" \
+     -H 'Content-Type: application/json' \
      -d '{"name": "Hav"}'
 curl "$LDS/ns/Company/hav?timeline"
 ```
@@ -1012,14 +1001,18 @@ curl "$LDS/ns/Company/hav?timeline"
 ]
 ```
 
-One thing follows from time. A write without a `timestamp` gets as valid time the time at which LDS receives it, so each
-time it is sent it adds a version. A read gives the same document after the second as after the first, and the timeline
+One thing follows from time. A write without a `timestamp` gets as valid time the time of its turn, so each time it is
+sent it adds a version. A read gives the same document after the second as after the first, and the timeline
 has one version more. A delete without a `timestamp` adds a tombstone each time in the same way. The same write sent
 twice without a `timestamp`:
 
 ```sh
-curl -X PUT "$LDS/ns/Company/vind" -H 'Content-Type: application/json' -d '{"name": "Vind"}'
-curl -X PUT "$LDS/ns/Company/vind" -H 'Content-Type: application/json' -d '{"name": "Vind"}'
+curl -X PUT "$LDS/ns/Company/vind" \
+     -H 'Content-Type: application/json' \
+     -d '{"name": "Vind"}'
+curl -X PUT "$LDS/ns/Company/vind" \
+     -H 'Content-Type: application/json' \
+     -d '{"name": "Vind"}'
 curl "$LDS/ns/Company/vind?timeline"
 ```
 

@@ -2,6 +2,7 @@
 title: "The REST API"
 description: "Every address, method, parameter and answer."
 order: 4
+section: Reference
 ---
 
 # The REST API
@@ -14,8 +15,8 @@ write documents over HTTP. The ideas behind the API ([document](../glossary.md#d
 
 ## About the examples
 
-Every request in this document was run against LDS `3.0.1`, the image `descoped/lds:3.0.1` started with its
-defaults: everything in memory, and the example [model](../glossary.md#model). Where an example needs another
+Every request in this document was run against the latest version of LDS, the image `descoped/lds` started with
+its defaults: everything in memory, and the example [model](../glossary.md#model). Where an example needs another
 start, the text says so.
 
 The example model has two [entity types](../glossary.md#entity-type):
@@ -33,8 +34,6 @@ port:
 LDS=http://localhost:9090
 J='Content-Type: application/json'
 ```
-
-The LDS that the examples ran on had another port (`http.port`); nothing else differs.
 
 An answer is shown as LDS sent it: the status line, the headers, an empty line and the body. The headers
 `Connection`, `Content-Length` and `Date` are left out. LDS sends a JSON answer as one line; here it is
@@ -54,7 +53,7 @@ LDS has no authentication. It answers every caller that reaches it, over plain H
 | `/{namespace}?schema` and `/{namespace}/{Entity}?schema` | The model, as JSON Schema. See [The model over HTTP](#the-model-over-http). |
 | `/source/{source}` | The last write of a source. See [Sources and the transaction log](#sources-and-the-transaction-log). |
 | `/ping`, `/health/ready`, `/health/alive` | Health. See [Health](#health). |
-| `/graphql`, `/graphiql` | GraphQL. See [the GraphQL API](graphql-api.md). |
+| `/graphql`, `/graphiql` | GraphQL, when the model is a GraphQL schema and `graphql.enabled` is `true` (the default). See [the GraphQL API](graphql-api.md). With a model of JSON Schema files they are read as a namespace and answered 400. |
 
 The texts that LDS sends with a status 400 use other words for the three kinds of resource: a "managed resource"
 is a whole document, an "embedded resource" is a part of a document, a "reference resource" is a link, and a
@@ -128,7 +127,8 @@ Every segment of an address is decoded once, as UTF-8: `%C3%B8l` is the id `øl`
 is a `%` that two hexadecimal digits do not follow.
 
 ```console
-$ curl -i -X PUT "$LDS/ns/Person/id%20with%20space" -H "$J" -d '{"name": "spaced"}'
+$ curl -i -X PUT "$LDS/ns/Person/id%20with%20space" \
+    -H "$J" -d '{"name": "spaced"}'
 HTTP/1.1 201 Created
 Content-Type: application/json
 
@@ -174,7 +174,8 @@ Two keys of the configuration change every address (see [Configuration](configur
 These requests ran on an LDS started with `namespace.default=data` and `http.prefix=/api`:
 
 ```console
-$ curl -i -X PUT "$LDS/api/data/Company/acme?sourceId=d1" -H "$J" -d '{"name": "Acme"}'
+$ curl -i -X PUT "$LDS/api/data/Company/acme?sourceId=d1" \
+    -H "$J" -d '{"name": "Acme"}'
 HTTP/1.1 201 Created
 Content-Type: application/json
 
@@ -214,7 +215,7 @@ JSON object.
 
 | Query parameter | Meaning |
 |---|---|
-| `timestamp` | The valid time of the new version. Without it: the time LDS receives the request. See [Versions and time](#versions-and-time). |
+| `timestamp` | The valid time of the new version. Without it: the moment the write has its turn, see [One write at a time to a document](#one-write-at-a-time-to-a-document). See [Versions and time](#versions-and-time). |
 | `sync` | `sync=false`: LDS answers before the write is done. See [When LDS answers a write: sync](#when-lds-answers-a-write-sync). |
 | `searchable` | `searchable=true`: LDS answers when search finds the write. See [When search finds a write: searchable](#when-search-finds-a-write-searchable). |
 | `source`, `sourceId` | Where the write comes from. See [Sources and the transaction log](#sources-and-the-transaction-log). |
@@ -269,7 +270,8 @@ Content-Type: application/json
 
 {"saga-execution-id": "01a20fdf-ed36-747f-84ba-4a6ceed50f82"}
 
-$ curl -i -X POST "$LDS/ns/Person/kari" -H "$J" -d '{"name": "Kari", "born": null}'
+$ curl -i -X POST "$LDS/ns/Person/kari" \
+    -H "$J" -d '{"name": "Kari", "born": null}'
 HTTP/1.1 201 Created
 Content-Type: application/json
 
@@ -282,7 +284,7 @@ Content-Type: application/json; charset=utf-8
 {"name": "Kari"}
 ```
 
-What is refused, in the order LDS checks it:
+What is refused, in the order LDS checks it once the write has its turn:
 
 | Case | Answer |
 |---|---|
@@ -295,8 +297,11 @@ What is refused, in the order LDS checks it:
 | The document is not valid | 400, `text/plain`, `Schema validation error: ...` |
 | The saga of the write fails | 500, no body. See [When a write fails](#when-a-write-fails). |
 
-Nothing is written when a write is refused. Before all of these, the write waits for its turn: one write at a
-time to a document, see [One write at a time to a document](#one-write-at-a-time-to-a-document).
+Nothing is written when a write is refused. Before all of these, LDS checks the address and the `timestamp` (400,
+see [Addresses](#addresses) and [The time of a request: timestamp](#the-time-of-a-request-timestamp)), and the
+write then waits for its turn: one write at a time to a document, see
+[One write at a time to a document](#one-write-at-a-time-to-a-document). A write that waits 30 seconds for its
+turn is answered 503.
 
 ```console
 $ curl -i -X PUT "$LDS/ns/Person/x1" -H "$J" -d ''
@@ -431,6 +436,8 @@ See
 - 202, `Content-Type: application/json`, `{"saga-execution-id":"<id>"}`, with `sync=false`.
 - 400 `Id was empty!`, when the address has no id.
 - 500 with no body, when the saga of the write fails.
+- 503, when the write waited 30 seconds for its turn, see
+  [One write at a time to a document](#one-write-at-a-time-to-a-document).
 
 A delete of a document that does not exist is answered in the same way, and writes a tombstone too.
 
@@ -452,19 +459,16 @@ Unsupported managed resource method: PATCH
 
 ## Versions and time
 
-Every version of a document has a valid time, from which it holds. A request to a document, to a part of a
-document or to a link has a time too:
-
-- For a read it is the time of the as-of read. The answer is made from the newest version whose valid time is
-  that time or earlier.
-- For a write (`PUT`, `POST`, `DELETE`) it is the valid time of the new version.
-
-The time may be in the past or in the future.
+A request to a document, a list, a part or a link has a time: for a read the time of the as-of read, for a write
+(`PUT`, `POST`, `DELETE`) the valid time of the new version, in the past or in the future;
+[Concepts](concepts.md#version-and-time) explains versions, valid time and as-of reads.
 
 ### The time of a request: timestamp
 
 The query parameter `timestamp` gives the time. `t` is a second name for it, used only when the request has no
-`timestamp`. Without both, the time is the moment LDS receives the request.
+`timestamp`. Without both, the time of a read is the moment LDS handles the request, and the time of a write is
+the moment the write has its turn on the document, always after the time of the write before it (see
+[One write at a time to a document](#one-write-at-a-time-to-a-document)).
 
 The value is a date and a time with an offset from UTC, in the form of ISO 8601. LDS turns it into UTC: the
 versions `2022-01-01T00:00:00+01:00` and `2021-12-31T23:00:00Z` are the same version.
@@ -482,7 +486,9 @@ versions `2022-01-01T00:00:00+01:00` and `2021-12-31T23:00:00Z` are the same ver
 | `2021-06-01T00:00:00+01:00`, `2021-06-01T00:00:00%2B0100` | refused: a `+` that is not encoded, and an offset without `:` |
 | an empty value, or `timestamp` with no `=` | refused |
 
-A value that is refused is answered 400, with the same text also when the parameter was `t`:
+A value that is refused is answered 400, with the same text also when the parameter was `t`. It is refused on
+every address of a document, a list, a part or a link, also with `timeline` and with `schema` on an entity type,
+where the time has no other effect:
 
 ```console
 $ curl -i "$LDS/ns/Company/globex?timestamp=2021-06-01T00:00:00+01:00"
@@ -506,20 +512,23 @@ With the memory provider the valid time of a version is kept to the millisecond:
 Three versions of one document, the second with an offset:
 
 ```console
-$ curl -i -X PUT "$LDS/ns/Company/globex?timestamp=2020-01-01T00:00:00Z" -H "$J" -d '{"name": "Globex 2020"}'
+$ curl -i -X PUT "$LDS/ns/Company/globex?timestamp=2020-01-01T00:00:00Z" \
+    -H "$J" -d '{"name": "Globex 2020"}'
 HTTP/1.1 201 Created
 Content-Type: application/json
 
 {"saga-execution-id": "01a20fdf-ee1e-7b4b-b385-7f3b3de61ff2"}
 
-$ curl -i -X PUT "$LDS/ns/Company/globex?timestamp=2022-01-01T00:00:00%2B01:00" -H "$J" \
+$ curl -i -X PUT "$LDS/ns/Company/globex?timestamp=2022-01-01T00:00:00%2B01:00" \
+    -H "$J" \
     -d '{"name": "Globex 2022"}'
 HTTP/1.1 201 Created
 Content-Type: application/json
 
 {"saga-execution-id": "01a20fdf-ee2c-7a1e-82ae-1315f1ece418"}
 
-$ curl -i -X PUT "$LDS/ns/Company/globex?timestamp=2030-06-01T12:00:00Z" -H "$J" -d '{"name": "Globex 2030"}'
+$ curl -i -X PUT "$LDS/ns/Company/globex?timestamp=2030-06-01T12:00:00Z" \
+    -H "$J" -d '{"name": "Globex 2030"}'
 HTTP/1.1 201 Created
 Content-Type: application/json
 
@@ -619,20 +628,21 @@ Not finished: the answer is always the whole list. There are no parameters for a
 
 ### Write between versions, and replace a version
 
-A write at a valid time before versions that exist makes a version at that time and leaves the later versions
-as they are. A write at exactly the valid time of a version that exists replaces that version; the same moment
-written with another offset is the same time. The first write below replaces the version of 2020, the second
-adds a version between 2020 and 2022.
+A write at exactly the valid time of a version replaces it, also when the time is written with another offset,
+and a write between versions adds one ([Concepts](concepts.md#version-and-time)). The first write below replaces
+the version of 2020, the second adds a version between 2020 and 2022.
 
 ```console
-$ curl -i -X PUT "$LDS/ns/Company/globex?timestamp=2020-01-01T01:00:00%2B01:00" -H "$J" \
+$ curl -i -X PUT "$LDS/ns/Company/globex?timestamp=2020-01-01T01:00:00%2B01:00" \
+    -H "$J" \
     -d '{"name": "Globex 2020, written again"}'
 HTTP/1.1 201 Created
 Content-Type: application/json
 
 {"saga-execution-id": "01a20fdf-ee9a-72dc-aac9-a9fe3c308299"}
 
-$ curl -i -X PUT "$LDS/ns/Company/globex?timestamp=2021-01-01T00:00:00Z" -H "$J" -d '{"name": "Globex 2021"}'
+$ curl -i -X PUT "$LDS/ns/Company/globex?timestamp=2021-01-01T00:00:00Z" \
+    -H "$J" -d '{"name": "Globex 2021"}'
 HTTP/1.1 201 Created
 Content-Type: application/json
 
@@ -664,72 +674,9 @@ Content-Type: application/json; charset=utf-8
 
 ### What a delete means for earlier and later versions
 
-A delete writes a tombstone, a version in which the document is deleted. From that time until the next version
-the document is not there: a read is answered 404, and the document is not in the list of its entity type. Before
-that time, and from the next version on, the document is read as before.
-
-```console
-$ curl -i -X DELETE "$LDS/ns/Company/globex?timestamp=2025-01-01T00:00:00Z"
-HTTP/1.1 204 No Content
-
-$ curl -i "$LDS/ns/Company/globex?timestamp=2024-01-01T00:00:00Z"
-HTTP/1.1 200 OK
-Content-Type: application/json; charset=utf-8
-
-{"name": "Globex 2022"}
-
-$ curl -i "$LDS/ns/Company/globex"
-HTTP/1.1 404 Not Found
-Content-Type: application/json; charset=utf-8
-
-$ curl -i "$LDS/ns/Company/globex?timestamp=2031-01-01T00:00:00Z"
-HTTP/1.1 200 OK
-Content-Type: application/json; charset=utf-8
-
-{"name": "Globex 2030"}
-
-$ curl -i "$LDS/ns/Company"
-HTTP/1.1 200 OK
-Content-Type: application/json; charset=utf-8
-
-[
-  {"name": "Acme"}
-]
-```
-
-In the timeline the tombstone is there, with an empty document (seen with the memory provider):
-
-```console
-$ curl -i "$LDS/ns/Company/globex?timeline"
-HTTP/1.1 200 OK
-Content-Type: application/json; charset=utf-8
-
-[
-  {
-    "version": "2020-01-01T00:00Z[Etc/UTC]",
-    "document": {"name": "Globex 2020, written again"}
-  },
-  {
-    "version": "2021-01-01T00:00Z[Etc/UTC]",
-    "document": {"name": "Globex 2021"}
-  },
-  {
-    "version": "2021-12-31T23:00Z[Etc/UTC]",
-    "document": {"name": "Globex 2022"}
-  },
-  {
-    "version": "2025-01-01T00:00Z[Etc/UTC]",
-    "document": {}
-  },
-  {
-    "version": "2030-06-01T12:00Z[Etc/UTC]",
-    "document": {"name": "Globex 2030"}
-  }
-]
-```
-
-A write at the valid time of a tombstone replaces it, and a delete at the valid time of a version replaces that
-version.
+A delete writes a tombstone: from its time until the next version the document is not there, and the versions
+before and after it are read as before ([Concepts](concepts.md#a-delete-in-time)). In a timeline a tombstone is a
+version with an empty document, as below (seen with the memory provider).
 
 A delete of a document that was never written, here with `sync=false`:
 
@@ -760,8 +707,9 @@ A part of a document is a field of it, addressed by its [path](../glossary.md#pa
 `/{namespace}/{Entity}/{id}/{field}`. A path that ends at a link field (`/ns/Person/ola/employer`) is a part too:
 its value is the link, or the list of links.
 
-Every method first reads the document as of the time of the request. When there is no document at that time, or
-it is deleted, the answer is 404 with no body, whatever the method and the body.
+`GET`, `PUT`, `POST` and `DELETE` first read the document as of the time of the request. When there is no document
+at that time, or it is deleted, the answer is 404 with no body, whatever the body. Any other method is answered
+400 `Unsupported embedded resource method: <METHOD>`, before the document is read.
 
 ### Read a part
 
@@ -823,6 +771,8 @@ document against the model, and writes the whole document as a new version, vali
   type, and 400 when the document with the new part goes past a limit of
   [Write a document](#write-a-document). Nothing is written. See [Bodies and content types](#bodies-and-content-types).
 - 500 with no body, when the saga of the write fails.
+- 503, when the write waited 30 seconds for its turn, see
+  [One write at a time to a document](#one-write-at-a-time-to-a-document).
 
 LDS answers when the write is done, as for a whole document; with `sync=false` it answers before, see
 [When LDS answers a write: sync](#when-lds-answers-a-write-sync).
@@ -861,7 +811,8 @@ Content-Type: text/plain
 
 Schema validation error: [$.born: does not match the date-time pattern must be a valid RFC 3339 date-time]
 
-$ curl -i -X PUT "$LDS/ns/Person/ola/address?timestamp=2019-01-01T00:00:00Z" -H "$J" \
+$ curl -i -X PUT "$LDS/ns/Person/ola/address?timestamp=2019-01-01T00:00:00Z" \
+    -H "$J" \
     -d '{
       "street": "Too early",
       "city": "Oslo"
@@ -881,6 +832,8 @@ document then had no `address`. A `PUT` of `null` to `/ns/Person/ola/name` was r
 
 - 200, `Content-Type: application/json`, `{"saga-execution-id":"<id>"}`.
 - 404 with no body, when there is no document at that time.
+- 500 with no body, when the saga of the write fails.
+- 503, when the write waited 30 seconds for its turn.
 
 ```console
 $ curl -i -X DELETE "$LDS/ns/Person/ola/born"
@@ -899,9 +852,10 @@ Content-Type: application/json; charset=utf-8
 Not finished: the document is not checked against the model after a part is removed, so a field that the model
 requires can be removed. Ran: after `DELETE /ns/Person/req/name` the document was `{}`, and the next
 `PUT` of a part of it was refused with `Schema validation error: [$: required property 'name' not found]`. A new
-version is written also when the document did not have the field.
-
-Any other method is answered 400 `Unsupported embedded resource method: <METHOD>`.
+version is written also when the document did not have the field, and the objects on the path to the field that
+the document does not have are made, empty: with a model of JSON Schema files (see
+[How deep a path can go](#how-deep-a-path-can-go)), a `DELETE` of `/ns/Company/acme/support/contacts` on a
+document without `support` writes a version with `"support": {}`.
 
 ### How deep a path can go
 
@@ -1003,6 +957,9 @@ a write of a whole document.
   its end. A field that holds one link gets the link as its value, in place of the link it had. The answer is
   200, `Content-Type: application/json`, `{"saga-execution-id":"<id>"}`.
 - 404 with no body, when there is no document at the time of the request. The document is not made.
+- 500 with no body, when the saga of the write fails while LDS waits for it.
+- 503, when the write waited 30 seconds for its turn, see
+  [One write at a time to a document](#one-write-at-a-time-to-a-document).
 
 ```console
 $ curl -i "$LDS/ns/Person/kari/employer/Company/acme"
@@ -1062,7 +1019,7 @@ Content-Type: application/json; charset=utf-8
 
 ### Remove a link
 
-`DELETE` is answered 200 in every case.
+`DELETE` is answered 200, also when there is nothing to remove, but for the 500 and the 503 below.
 
 - There is no document at the time of the request, or the document does not have the link: nothing is written,
   no body.
@@ -1071,6 +1028,8 @@ Content-Type: application/json; charset=utf-8
   field that holds one link is removed.
 - The body is empty when LDS waited for the write (the default). With `sync=false` it is
   `{"saga-execution-id":"<id>"}`, with `Content-Type: application/json`.
+- 500 with no body, when the saga of the write fails while LDS waits for it.
+- 503, when the write waited 30 seconds for its turn.
 
 ```console
 $ curl -i -X DELETE "$LDS/ns/Person/kari/friends/Person/per"
@@ -1166,7 +1125,8 @@ Content-Type: application/json
 
 {"saga-execution-id": "01a20fdf-f4d5-7448-aa84-62a05b472c58"}
 
-$ curl -i -X PUT "$LDS/ns/Person/tm/address?timestamp=2022-01-01T00:00:00Z" -H "$J" \
+$ curl -i -X PUT "$LDS/ns/Person/tm/address?timestamp=2022-01-01T00:00:00Z" \
+    -H "$J" \
     -d '{
       "street": "New",
       "city": "Oslo"
@@ -1176,7 +1136,8 @@ Content-Type: application/json
 
 {"saga-execution-id": "01a20fdf-f4e1-7ffc-88d6-0ea05afd2f08"}
 
-$ curl -i -X PUT "$LDS/ns/Person/tm/address?timestamp=2019-01-01T00:00:00Z" -H "$J" \
+$ curl -i -X PUT "$LDS/ns/Person/tm/address?timestamp=2019-01-01T00:00:00Z" \
+    -H "$J" \
     -d '{
       "street": "Too early",
       "city": "Oslo"
@@ -1227,10 +1188,8 @@ HTTP/1.1 404 Not Found
 
 ## When LDS answers a write: sync
 
-Every write (`PUT`, `POST` and `DELETE` of a document, of a part or of a link) is carried out by a saga: LDS
-records the write in the transaction log, then writes the document with the
-[persistence provider](../glossary.md#persistence-provider) and, when search is on, adds the change to the index
-queue, from which LDS sends it to the search index. [Concepts](concepts.md) says more about sagas.
+Every write (`PUT`, `POST` and `DELETE` of a document, of a part or of a link) is carried out by a saga, whose
+steps are in [Concepts](concepts.md#what-a-write-goes-through).
 
 A write to a part or to a link is a write of the whole document: LDS reads the document, changes it, and writes
 it as a new version.
@@ -1288,18 +1247,19 @@ change from its index queue to the search index, and the search index makes it s
 (the key `search.index.commit-within`, see [Configuration](configuration.md)). A write does not wait for search,
 and a search index that does not answer does not slow it.
 
-A write that is to be found by the search that follows it asks for it with `searchable=true`, on `PUT`, `POST` and
-`DELETE` of a document, a part or a link:
+A write that is to be found by the search that follows it asks for it with `searchable=true` (`true` in upper or
+lower case), on `PUT`, `POST` and `DELETE` of a document, a part or a link:
 
 - LDS waits for the saga of the write, also with `sync=false`, and then until search finds the write, at most 10
   seconds. The answer is then the one the write has without `searchable`.
 - The answer has the header `LDS-Searchable`: `true` when search finds the write, `false` when the 10 seconds were
   not enough. A page in a browser can read it (see [CORS](#cors)).
-- At most half as many writes as LDS has threads for requests (four for each processor) wait for search at one
-  time. A write past that is answered when its saga is done, with `LDS-Searchable: false`.
+- At most four writes for each processor (at least eight) wait for search at one time, half as many as LDS has
+  threads for requests. A write past that is answered when its saga is done, with `LDS-Searchable: false`.
 - Without search, `searchable=true` makes the write wait for its saga, and the answer has no `LDS-Searchable`.
 
-These requests ran on an LDS in memory with search on (`graphql.search.enabled=true`, Solr 10):
+These requests ran on an LDS in memory with search on, in Solr 10 (`graphql.search.enabled=true`, with
+`search.index.provider` and `search.index.url`, see [Configuration](configuration.md#search-with-solr)):
 
 ```console
 $ curl -i -X PUT "$LDS/ns/Company/fjord?searchable=true" -H "$J" \
@@ -1313,7 +1273,8 @@ Content-Type: application/json
 
 {"saga-execution-id": "01a20feb-5c80-7a59-a7da-bc9ec8d2fb77"}
 
-$ curl -i -X PUT "$LDS/ns/Company/fjord/about?searchable=true&sync=false" -H "$J" \
+$ curl -i -X PUT "$LDS/ns/Company/fjord/about?searchable=true&sync=false" \
+    -H "$J" \
     -d '[{"languageCode": "nb", "languageText": "Laks fra fjordene"}]'
 HTTP/1.1 200 OK
 LDS-Searchable: true
@@ -1356,7 +1317,8 @@ Content-Type: application/json
 With Solr stopped, the same LDS answered a write after 10 seconds, and the write was done:
 
 ```console
-$ curl -i -X PUT "$LDS/ns/Company/slow?searchable=true" -H "$J" -d '{"name": "Slow"}'
+$ curl -i -X PUT "$LDS/ns/Company/slow?searchable=true" \
+    -H "$J" -d '{"name": "Slow"}'
 HTTP/1.1 201 Created
 LDS-Searchable: false
 Content-Type: application/json
@@ -1385,14 +1347,16 @@ the commands are `failBefore` and `failAfter`, and the steps are `txlog`, `persi
 `index-queue`. A value without a step, or with a step the saga does not have, does nothing.
 
 ```console
-$ curl -i -X PUT "$LDS/ns/Company/f1?saga=failBefore%20persistence" -H "$J" -d '{"name": "F1"}'
+$ curl -i -X PUT "$LDS/ns/Company/f1?saga=failBefore%20persistence" \
+    -H "$J" -d '{"name": "F1"}'
 HTTP/1.1 500 Internal Server Error
 
 $ curl -i "$LDS/ns/Company/f1"
 HTTP/1.1 404 Not Found
 Content-Type: application/json; charset=utf-8
 
-$ curl -i -X PUT "$LDS/ns/Company/f2?sync=false&saga=failBefore%20persistence" -H "$J" -d '{"name": "F2"}'
+$ curl -i -X PUT "$LDS/ns/Company/f2?sync=false&saga=failBefore%20persistence" \
+    -H "$J" -d '{"name": "F2"}'
 HTTP/1.1 201 Created
 Content-Type: application/json
 
@@ -1402,7 +1366,8 @@ $ curl -i "$LDS/ns/Company/f2"
 HTTP/1.1 404 Not Found
 Content-Type: application/json; charset=utf-8
 
-$ curl -i -X PUT "$LDS/ns/Company/f3?saga=failAfter%20persistence" -H "$J" -d '{"name": "F3"}'
+$ curl -i -X PUT "$LDS/ns/Company/f3?saga=failAfter%20persistence" \
+    -H "$J" -d '{"name": "F3"}'
 HTTP/1.1 500 Internal Server Error
 
 $ curl -i "$LDS/ns/Company/f3"
@@ -1416,56 +1381,15 @@ Content-Type: application/json; charset=utf-8
 later (55 seconds in this run) a `GET` of each was answered 200 with the document, and the version of `f1` has
 the time of the request that was answered 500.
 
-LDS carries out a limited number of writes at one time (see [Configuration](configuration.md)). A write
-that has waited 10 seconds for a place among them is answered 500 with no body, and is not done.
+LDS carries out a limited number of writes at one time (see [Configuration](configuration.md)): each needs one
+of its saga logs (`saga.number-of-logs`). A write that has waited 10 seconds for a saga log is answered 500 with
+no body, and is not done. When `saga.number-of-logs` is more than half the sum of `saga.threadpool.max` and
+`saga.threadpool.queue.capacity`, that half is the limit, and a write waits for a place with no limit of time.
 
 ### Sending a request again
 
-A request that got no answer can be sent again; no request is refused because it was sent before
-([Concepts](concepts.md) says more). What the second request does:
-
-- A `PUT` with the same `timestamp` and the same body writes the same version again. The timeline does not grow.
-- A `PUT` of a link that is there writes nothing, and a `DELETE` of a link that is not there is answered 200.
-- A `DELETE` of a document that is deleted, or that never was, is answered 204.
-- A write without `timestamp` makes a new version each time it is sent, because its time is the time of the
-  request.
-
-`Company/twice` is written and then deleted twice, all without `timestamp`:
-
-```console
-$ curl -i -X PUT "$LDS/ns/Company/twice" -H "$J" -d '{"name": "Twice"}'
-HTTP/1.1 201 Created
-Content-Type: application/json
-
-{"saga-execution-id": "01a20fdf-f942-7f32-ae68-4a977819c624"}
-
-$ curl -i -X DELETE "$LDS/ns/Company/twice"
-HTTP/1.1 204 No Content
-
-$ curl -i -X DELETE "$LDS/ns/Company/twice"
-HTTP/1.1 204 No Content
-
-$ curl -i "$LDS/ns/Company/twice?timeline"
-HTTP/1.1 200 OK
-Content-Type: application/json; charset=utf-8
-
-[
-  {
-    "version": "2026-11-24T23:24:26.306Z[Etc/UTC]",
-    "document": {"name": "Twice"}
-  },
-  {
-    "version": "2026-11-24T23:24:26.327Z[Etc/UTC]",
-    "document": {}
-  },
-  {
-    "version": "2026-11-24T23:24:26.340Z[Etc/UTC]",
-    "document": {}
-  }
-]
-```
-
-A caller that must not add a version when it sends a write again gives the write a `timestamp`.
+Every request can be sent again, and a write with a `timestamp` writes the same version again, while one without
+it adds a version each time: [Concepts](concepts.md#a-call-is-safe-to-send-again) shows both.
 
 ### One write at a time to a document
 
@@ -1480,22 +1404,17 @@ version of the write before it.
 
 A write waits at most 30 seconds for its turn. Then it is answered `503 Service Unavailable`, `text/plain`, with
 `The document is being written by another request. Try again.`, and nothing is written. While a write waits, no
-thread of LDS waits with it, and the reads and the writes of other documents go on.
+thread of LDS waits with it, and reads go on. LDS keeps 1024 turns, and each document has one of them, chosen from
+its namespace, entity type and id: a write to another document that has the same turn waits as well, and can be
+answered the same 503.
 
 The turns are kept in one LDS: two LDS that write to the same store do not wait for each other.
 
 ## What LDS checks before it writes
 
-LDS checks a document against the model on `PUT` and `POST` of a whole document, and on `PUT` and `POST` of a
-part (the whole document with the new part is checked). It does not check on `DELETE` of a part, and not when a
-link is added or removed by its address.
-
-A document that is not valid is answered 400 with `Content-Type: text/plain` and a body that starts with `Schema
-validation error:`. Nothing is written. The text after it has one of two forms: a list in `[` and `]` of every value
-that is wrong, each with its place in the document, or the first link that is wrong, with its field after the word
-`Navigation:`. [The
-model](model.md#what-lds-checks-when-a-document-is-written) explains the two checks behind them and how to read the
-texts. These are answers with the example model:
+A document that is not valid is answered 400, `text/plain`, with a text that starts with `Schema validation error:`,
+and nothing is written; [the model](model.md#what-lds-checks-when-a-document-is-written) says when LDS checks, the
+two checks and how to read the text. These are answers with the example model:
 
 | Document sent as `Person` | Text after `Schema validation error:` |
 |---|---|
@@ -1511,6 +1430,10 @@ texts. These are answers with the example model:
 
 A field whose value is `null` is taken out before the check: `{"name":"V","employer":null}` is written as
 `{"name":"V"}`.
+
+Not finished: with a model that is a GraphQL schema, a single field of an embedded type is not checked. With the
+example model `{"name":"V","address":{"city":7}}` and `{"name":"V","address":"just text"}` are both written, 201.
+See [the model](model.md#fields).
 
 What a model can say, and what LDS does not check, is in [the model](model.md).
 
@@ -1550,7 +1473,8 @@ Content-Type: text/plain
 The body cannot be read at line 1, column 12: Unexpected end-of-input: expected close marker for Object. Send the
 body as JSON, with Content-Type: application/json
 
-$ curl -i -X PUT "$LDS/ns/Person/c1" -H 'Content-Type: text/plain' -d '{"name": "A"}'
+$ curl -i -X PUT "$LDS/ns/Person/c1" \
+    -H 'Content-Type: text/plain' -d '{"name": "A"}'
 HTTP/1.1 415 Unsupported Media Type
 Content-Type: text/plain
 
@@ -1589,8 +1513,9 @@ checked with.
 | `GET /{namespace}/{Entity}?schema` | 200, the schema of the entity type. The value of `schema` is not read |
 | `GET /{namespace}/{Entity}/{id}?schema` | the document: with an id, `schema` has no effect |
 
-All are answered with `Content-Type: application/json; charset=utf-8`. The two requests on the namespace do not
-take a `/` at the end (`/ns/?schema` is answered 400), and they are answered for every method, not only `GET`.
+A 200 has `Content-Type: application/json; charset=utf-8`, the 400 `text/plain`. The two requests on
+the namespace do not take a `/` at the end (`/ns/?schema` is answered 400), and they are answered for every
+method, not only `GET`.
 
 ```console
 $ curl -i "$LDS/ns?schema"
@@ -1598,44 +1523,6 @@ HTTP/1.1 200 OK
 Content-Type: application/json; charset=utf-8
 
 ["/ns/Company?schema", "/ns/Person?schema"]
-
-$ curl -i "$LDS/ns/Company?schema"
-HTTP/1.1 200 OK
-Content-Type: application/json; charset=utf-8
-
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$ref": "#/$defs/Company",
-  "$defs": {
-    "Company": {
-      "type": "object",
-      "properties": {
-        "about": {
-          "displayName": "",
-          "type": "array",
-          "items": {"$ref": "#/$defs/Text"}
-        },
-        "founded": {
-          "type": "string",
-          "format": "date-time",
-          "displayName": ""
-        },
-        "name": {"type": "string", "displayName": ""}
-      },
-      "required": ["name"],
-      "displayName": "A company",
-      "description": "A company"
-    },
-    "Text": {
-      "type": "object",
-      "properties": {
-        "languageCode": {"type": "string", "displayName": ""},
-        "languageText": {"type": "string", "displayName": ""}
-      },
-      "required": ["languageText"]
-    }
-  }
-}
 
 $ curl -i "$LDS/ns?schema=embed"
 HTTP/1.1 200 OK
@@ -1645,7 +1532,9 @@ Content-Type: application/json; charset=utf-8
  {"$schema":"https://json-schema.org/draft/2020-12/schema","$ref":"#/$defs/Person","$defs":{"Person":...}}]
 ```
 
-What the schema holds is described in [the model](model.md).
+The answer to `?schema=embed` is cut short here after the name of each entity type: each element is the whole
+schema of an entity type, as `GET /ns/{Entity}?schema` gives it. [The model](model.md#see-the-model-lds-has-read)
+shows such a schema and what it holds.
 
 ## Sources and the transaction log
 
@@ -1676,7 +1565,8 @@ What the answer can be depends on the configuration (see [Configuration](configu
 With the defaults:
 
 ```console
-$ curl -i -X PUT "$LDS/ns/Person/src1?source=A&sourceId=a1" -H "$J" -d '{"name": "S"}'
+$ curl -i -X PUT "$LDS/ns/Person/src1?source=A&sourceId=a1" \
+    -H "$J" -d '{"name": "S"}'
 HTTP/1.1 201 Created
 Content-Type: application/json
 
@@ -1693,19 +1583,22 @@ On an LDS started with `txlog.rawdata.provider=memory` (the log is kept until LD
 `txlog.split.sources=true`:
 
 ```console
-$ curl -i -X PUT "$LDS/ns/Person/s1?source=A&sourceId=a1" -H "$J" -d '{"name": "S1"}'
+$ curl -i -X PUT "$LDS/ns/Person/s1?source=A&sourceId=a1" \
+    -H "$J" -d '{"name": "S1"}'
 HTTP/1.1 201 Created
 Content-Type: application/json
 
 {"saga-execution-id": "01a20fe4-44d7-71eb-981b-c4384c059766"}
 
-$ curl -i -X PUT "$LDS/ns/Person/s2?source=B&sourceId=b1" -H "$J" -d '{"name": "S2"}'
+$ curl -i -X PUT "$LDS/ns/Person/s2?source=B&sourceId=b1" \
+    -H "$J" -d '{"name": "S2"}'
 HTTP/1.1 201 Created
 Content-Type: application/json
 
 {"saga-execution-id": "01a20fe4-4502-7ac0-a65e-57fd2bd20278"}
 
-$ curl -i -X PUT "$LDS/ns/Person/s1/address?source=A&sourceId=a2" -H "$J" -d '{"city": "Oslo"}'
+$ curl -i -X PUT "$LDS/ns/Person/s1/address?source=A&sourceId=a2" \
+    -H "$J" -d '{"city": "Oslo"}'
 HTTP/1.1 200 OK
 Content-Type: application/json
 
@@ -1743,11 +1636,14 @@ Things to know:
 - When `sourceId` is given more than once, the first one is used.
 
 Not finished: with `txlog.split.sources=true` the source is part of the name of a log, and LDS does not check
-it. A name may hold letters, digits, `_`, `.` and `-`. A write with another `source` (ran: `source=a%20b`) is
-answered 500 with no body and is not done, and `GET /source/a%20b` is answered 500 too.
+it. The name of the log is `txlog.rawdata.topic-prefix` (default `txlog-`) followed by the source. It may hold
+only the letters `A` to `Z` and `a` to `z`, digits, `_`, `.` and `-`, must start with a letter or a digit, and is
+at most 100 characters: with the default prefix a source is at most 94 characters, and a letter such as `ø` is
+not allowed. A write with another `source` (ran: `source=a%20b`) is answered 500 with no body and is not done,
+and `GET /source/a%20b` is answered 500 too.
 
-Not finished: LDS writes the transaction log and reads it only for `/source/{source}`. Nothing in LDS reads
-documents back from it.
+Not finished: LDS writes the transaction log, and reads only its last entry, for `/source/{source}` and for the
+check of the transaction log in `/health/ready`. Nothing in LDS reads documents back from it.
 
 ## CORS
 
@@ -1785,7 +1681,8 @@ Content-Type: application/json; charset=utf-8
   "name": "Kari"
 }
 
-$ curl -i -X OPTIONS -H 'Origin: https://app.example' -H 'Access-Control-Request-Method: PUT' \
+$ curl -i -X OPTIONS \
+    -H 'Origin: https://app.example' -H 'Access-Control-Request-Method: PUT' \
     -H 'Access-Control-Request-Headers: content-type' "$LDS/ns/Person/kari"
 HTTP/1.1 204 No Content
 Access-Control-Allow-Origin: https://app.example
@@ -1829,108 +1726,22 @@ HTTP/1.1 200 OK
 
 ## Health
 
-| Address | Answer | What it checks |
-|---|---|---|
-| `/ping` | 200, no body | Nothing. LDS answers HTTP. |
-| `/health/alive` | 200, no body | Nothing. The same as `/ping`. |
-| `/health/ready` | 200 or 503, `application/json; charset=utf-8` | Whether LDS can take writes: it asks each part a write needs, at the same time, and gives each at most 2 seconds. |
-
-`/health/ready` asks the persistence provider (`persistence`), the saga log (`sagaLog`), the transaction log
-(`transactionLog`), and, when search is on, the search index (`search`) and the index queue (`indexQueue`). The
-answer has the state of LDS in `status`, and in `checks` an entry for each part: its state, the milliseconds it
-took to answer, what it told, and `error` when it failed. The state is one of:
-
-| `status` | Status code | When |
-|---|---|---|
-| `UP` | 200 | Every part answers. |
-| `DEGRADED` | 200 | LDS takes writes, but the search index does not answer, or the oldest change in the index queue has waited more than a minute. |
-| `DOWN` | 503 | A part that writes need does not answer: the persistence provider, the saga log, the transaction log or the index queue. |
-
-```console
-$ curl -i "$LDS/ping"
-HTTP/1.1 200 OK
-
-$ curl -i "$LDS/health/alive"
-HTTP/1.1 200 OK
-
-$ curl -i "$LDS/health/ready"
-HTTP/1.1 200 OK
-Content-Type: application/json; charset=utf-8
-
-{
-  "status": "UP",
-  "checks": {
-    "persistence": {"status": "UP", "millis": 3},
-    "sagaLog": {"status": "UP", "millis": 4, "logs": 30},
-    "transactionLog": {"status": "UP", "millis": 0, "keepsMessages": false}
-  }
-}
-```
-
-The LDS with search of [When search finds a write: searchable](#when-search-finds-a-write-searchable), after Solr
-was stopped:
-
-```console
-$ curl -i "$LDS/health/ready"
-HTTP/1.1 200 OK
-Content-Type: application/json; charset=utf-8
-
-{
-  "status": "DEGRADED",
-  "checks": {
-    "persistence": {"status": "UP", "millis": 3},
-    "sagaLog": {"status": "UP", "millis": 0, "logs": 30},
-    "transactionLog": {"status": "UP", "millis": 0, "keepsMessages": false},
-    "search": {"status": "DEGRADED", "millis": 2000, "error": "no answer within 2000 ms"},
-    "indexQueue": {
-      "status": "UP",
-      "millis": 0,
-      "durable": false,
-      "updates": 1,
-      "oldest": "2026-11-24T23:36:54.201672013Z"
-    }
-  }
-}
-```
-
-Every method gets the same answer. The addresses are exact, with upper and lower case: `/ping/x` and `/PING`
-are read as a namespace and answered 400. With `http.prefix` set, the prefix comes first (`/api/ping`).
-[Operations](operations.md) says how the health addresses are used.
+`/ping`, `/health/alive` and `/health/ready`, what `/health/ready` asks and the JSON it answers are in
+[Operations](operations.md#the-health-addresses). They are answered for every method, after `http.prefix` when
+it is set (`/api/ping`). Upper and lower case matter and nothing may follow them: `/PING` and `/ping/x` are read
+as a namespace and answered 400, while a `/` at the end is ignored (`/ping/` is `/ping`).
 
 ## While LDS stops
 
-When LDS is told to stop, it first completes the requests it has received. From that moment every new request
-is answered `503 Service Unavailable` with no body, the health addresses too. The 503 means that the request was
-not carried out, and that it can be sent again, later or to another LDS.
-
-In the run below LDS was told to stop while a `PUT` was still sending its body. The `PUT` was completed and
-answered `201 Created`. The requests sent in the meantime:
-
-```console
-$ curl -i "$LDS/ns/Person/ola"
-HTTP/1.1 503 Service Unavailable
-
-$ curl -i "$LDS/ping"
-HTTP/1.1 503 Service Unavailable
-
-$ curl -i -H 'Origin: https://app.example' "$LDS/ns/Person/ola"
-HTTP/1.1 503 Service Unavailable
-Access-Control-Allow-Origin: https://app.example
-Vary: Origin
-Access-Control-Expose-Headers: Authorization,Content-Type,LDS-Searchable
-```
-
-The 503 has the CORS headers when the origin is allowed, so a page in a browser can read it. A preflight
-request is still answered 204. When LDS has stopped, a request gets no connection.
-
-LDS waits at most 10 seconds for the requests it has received. A request that is not completed by then loses
-its connection without an answer. [Operations](operations.md) describes the whole order of a stop.
+While LDS stops, every new request is answered `503 Service Unavailable` with no body, and can be sent again
+later or to another LDS; [Operations](operations.md#stopping) describes the whole order of a stop. The 503 has the
+CORS headers when the origin is allowed, and a preflight request is still answered 204 (see [CORS](#cors)).
 
 ## Every query parameter
 
 | Parameter | On | Meaning | Default |
 |---|---|---|---|
-| `timestamp` | every request to a document, a part or a link | The time of an as-of read, or the valid time of the new version. See [The time of a request: timestamp](#the-time-of-a-request-timestamp). | the time of the request |
+| `timestamp` | every request to a document, a list, a part or a link; a value that cannot be read is answered 400 also where the time has no effect | The time of an as-of read, or the valid time of the new version. See [The time of a request: timestamp](#the-time-of-a-request-timestamp). | the time of the request |
 | `t` | the same | Another name for `timestamp`, used when `timestamp` is not given. |  |
 | `timeline` | `GET` of one document | Every version of the document. A value is not needed. | not given |
 | `sync` | `PUT`, `POST`, `DELETE` | Whether LDS waits for the write before it answers. See [When LDS answers a write: sync](#when-lds-answers-a-write-sync). | waits |
@@ -1944,18 +1755,18 @@ its connection without an answer. [Operations](operations.md) describes the whol
 
 | Status | When |
 |---|---|
-| 200 | A read of a document, a list, a timeline, a part, a schema or a source. A link that the document has (no body). A write or a removal of a part. A link that was added, or was there already (no body). A removal of a link, in every case. A health address. |
+| 200 | A read of a document, a list, a timeline, a part, a schema or a source. A link that the document has (no body). A write or a removal of a part. A link that was added, or was there already (no body). A removal of a link, also when there was nothing to remove. A health address. |
 | 201 | A write of a whole document, also when the document existed, and also when LDS did not wait. |
 | 202 | A delete of a whole document with `sync=false`. |
 | 204 | A delete of a whole document that LDS waited for. A CORS preflight request. |
 | 400 | The address is not valid: the namespace, the entity type, a field, an id that is empty or breaks a rule of [Ids and encoding](#ids-and-encoding), the form of a link address, an escape that is not one. The `timestamp` cannot be read. The body is empty or cannot be read as JSON, or the address of a write has no id. A path of a value is too long, or a value is in too many arrays. The document is not valid. The method is not one the address has. |
-| 404 | There is no document at the time of the request, or it is deleted then: for a read of a document, for a timeline (no version at all), for every method on a part, and for `GET`, `PUT` and `POST` of a link. A link that the document does not have (`GET`). The address `/`, and an address outside `http.prefix`. |
+| 404 | There is no document at the time of the request, or it is deleted then: for a read of a document, for a timeline (no version at all), for `GET`, `PUT`, `POST` and `DELETE` of a part, and for `GET`, `PUT` and `POST` of a link. A link that the document does not have (`GET`). The address `/`, and an address outside `http.prefix`. |
 | 409 | `GET /source/{source}` when no transaction log is kept. |
 | 415 | The content type of a body is not JSON. |
-| 500 | The saga of a write failed while LDS waited, or the write waited 10 seconds for a place among the writes LDS carries out at one time. Also the cases marked "Not finished" in this document: a `source` that cannot be the name of a log, the name of a type that is not an entity type. |
+| 500 | The saga of a write failed while LDS waited, or the write waited 10 seconds for a saga log. Also the cases marked "Not finished" in this document: a `source` that cannot be the name of a log, the name of a type that is not an entity type. |
 | 503 | LDS is stopping. A write waited 30 seconds for its turn, see [One write at a time to a document](#one-write-at-a-time-to-a-document). `/health/ready`: a part that writes need does not answer. |
 
 A 400, a 409 and a 415 have `Content-Type: text/plain` and a text that says what is wrong; the 400 without a text,
 for a letter outside ASCII or an escape that is not one, is in [Ids and encoding](#ids-and-encoding). A 404 and a
 500 have no body. A 503 has no body while LDS stops, a text when a write waited too long for its turn, and the
-JSON of [Health](#health) from `/health/ready`.
+JSON of [the health addresses](operations.md#the-health-addresses) from `/health/ready`.

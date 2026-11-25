@@ -14,6 +14,8 @@ const nextConfig: NextConfig = {
   basePath: basePathOf(resolveConfig(kranthoConfig, process.env).site.baseUrl),
   trailingSlash: true,
   images: { unoptimized: true },
+  // `next dev` would otherwise write an AGENTS.md of its own into the site
+  agentRules: false,
   // Loaded by Node at build, not bundled: they load optional packages on demand
   serverExternalPackages: ['@krantho/static', '@krantho/server'],
 }

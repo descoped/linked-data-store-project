@@ -15,9 +15,10 @@ Linked Data Store (LDS) is a server that gives REST and GraphQL access to versio
 instant asked for.
 
 This documentation is in two parts, for two kinds of reader, and a [glossary](glossary.md) of the terms both use.
-Every document is written from the code as it is, and every request shown in it was run. LDS 3.0.1 is released as
-images on Docker Hub (`descoped/lds`) and is built from the repository, where its releases are tagged. What is
-unfinished is said where a reader meets it, in a paragraph that starts with "Not finished:".
+Every document is written from the code as it is, and every request shown in it was run. The documents describe the
+latest release, which is published as images on Docker Hub (`descoped/lds`) and is built from the repository, where
+its releases are tagged. What is unfinished is said where a reader meets it, in a paragraph that starts with
+"Not finished:".
 
 ## For those who use LDS
 
@@ -25,6 +26,8 @@ You run LDS, give it a model, and read and write documents. You do not need to r
 
 | Document | What it is |
 |---|---|
+| [What's new](whats-new.md) | What each release gives you: what you can do now, and what was fixed. |
+| [Roadmap](roadmap.md) | What LDS is to do next, and what is being considered: security, the model, tools, writes and reads, running it. |
 | [Getting started](user/getting-started.md) | From nothing to a first document: start LDS, write a document, read it, read it as it was, link two documents, ask with GraphQL. |
 | [Concepts](user/concepts.md) | The ideas: document, entity type, namespace, version and valid time, link, model, provider, what a write goes through. |
 | [The model](user/model.md) | How to write a model, as a GraphQL schema or as JSON Schema files, and what LDS checks against it. |

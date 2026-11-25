@@ -22,7 +22,10 @@ export function Mermaid(): null {
     let cancelled = false
 
     const draw = async (): Promise<void> => {
-      const { default: mermaid } = await import('mermaid')
+      // Mermaid takes only `select` of d3, and d3 says it has no side effects, so the bundler leaves out the module
+      // that gives a selection its transition(), which Mermaid calls when the pointer leaves a box of a flowchart.
+      // Loaded here, it adds it to the one d3-selection Mermaid uses.
+      const [{ default: mermaid }] = await Promise.all([import('mermaid'), import('d3-transition')])
       if (cancelled) return
       // A timeline (Gantt chart) takes the width of the text column; Mermaid would measure the hidden element it
       // draws in, and draw it narrow

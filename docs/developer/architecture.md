@@ -4,6 +4,7 @@ description: >-
   The map of the code: the modules, the path of a read and of a write, the ideas that hold the code together and the
   rules a change must keep.
 order: 0
+section: Overview
 ---
 
 # The architecture of Linked Data Store
@@ -24,6 +25,15 @@ Every [version](../glossary.md#version) of a document has a [valid time](../glos
 [model](../glossary.md#model) is read when LDS starts. These words are explained for a user in
 [the concepts](../user/concepts.md).
 
+![The topology of a running LDS: clients ask one LDS process over HTTP; it keeps documents in a store, the steps of
+each write in a saga log, every write in a transaction log, and with search the updates in an index queue and the
+index in Solr](images/topology.svg)
+
+LDS is one process. Applications and people ask it over HTTP, by REST and GraphQL; whoever runs it asks `/ping` and
+`/health/ready`. It keeps what it is given in engines of its own choosing, each named by configuration: the store of
+the documents, the saga log of the steps of each write, the transaction log of every write, and, when search is on,
+the index queue and the search index. What each part of the process does is the rest of this document.
+
 The code has some words of its own:
 
 | In the code | Means |
@@ -41,6 +51,10 @@ The code has some words of its own:
 | [lifecycle](../glossary.md#lifecycle) | A subsystem that is started and stopped with LDS (`Lifecycle`, `Lifecycles`). |
 
 ## The modules
+
+![The software architecture: the server starts core; core holds HTTP, REST and GraphQL, the model, the write and its
+saga, the reads of the store, the transaction log, the index queue's worker and the lifecycles, and knows only the
+persistence API and the search API, which the providers implement](images/software-architecture.svg)
 
 LDS is one Maven reactor with the group `io.descoped.lds` and one version, which every module has. Every module with
 code is a JPMS module, except the [shared suite](../glossary.md#shared-suite) of tests for
@@ -94,18 +108,38 @@ flowchart BT
 - The search API depends on the persistence API (`requires transitive`). The Solr provider and the index queue in
   PostgreSQL depend on the search API.
 - Core depends on the persistence API and the search API, and on no provider. Its tests use the memory provider.
-- The server depends on core. At run time it adds every provider: memory, PostgreSQL, Neo4j, Solr, the index queue in
-  PostgreSQL, and the saga log and the transaction log in PostgreSQL (`sagalog-postgres`,
+- The server depends on core. Its POM also names the client API of the transaction log (`rawdata-client-api`),
+  though its code uses only core. At run time it adds every provider: memory, PostgreSQL, Neo4j, Solr, the index
+  queue in PostgreSQL, and the saga log and the transaction log in PostgreSQL (`sagalog-postgres`,
   `rawdata-client-provider-postgres`).
 
-So the code of core never names a provider, and a provider exports no package. The server module is the one place
-where core and the providers meet, and they meet on the class path, not in code.
+So the code of core names no provider but a search index in memory for its own tests (`TestSearchIndex`), and a
+provider exports no package. The server module is the one place where core and the providers meet, and they meet on
+the class path, not in code.
 
 Core uses these libraries as they are: Undertow for HTTP, graphql-java for GraphQL,
 `com.networknt:json-schema-validator` for validation, Cantara distributed saga (`no.cantara.saga`) for the sagas and
 the saga log ([the saga engine](saga.md)), `io.descoped.rawdata` for the transaction log, and
 `io.descoped.config:dynamic-configuration` for the configuration. Library versions are properties of the root
 `pom.xml`.
+
+### The packages of core
+
+Core's packages are under `io.descoped.lds.core`, `io.descoped.lds.graphql` and `io.descoped.lds.test`. Each has a
+document:
+
+| Package | What it holds | Document |
+|---|---|---|
+| `core` (`UndertowApplication`), `core.lifecycle`, `core.health` | How the application is made, started and stopped, the HTTP handler chain, and readiness. | [The application](core-application.md) |
+| `core.controller` | The way in: CORS, the namespace, the time and the path of a request, and `/source/`. | [The application](core-application.md), [the REST handlers](core-rest.md) |
+| `core.domain` and its packages `managed`, `embedded`, `reference`, `resource` | The REST handlers, the body, the lock of a document, the answer after a saga, and the wait for search. | [The REST handlers](core-rest.md), [the write path](core-write-path.md) |
+| `core.saga`, `core.txlog` | The sagas, their coordinator and recovery, and the transaction log. | [The write path](core-write-path.md), [the saga engine](saga.md) |
+| `core.persistence` | How the store is found, the steps of a saga that write it, and the threads it is read on (`StoreReads`). | [The application](core-application.md), [the write path](core-write-path.md) |
+| `core.schema`, `core.specification`, `core.validation` | The JSON Schema of each entity type, the specification, and the validation of a document. | [The model](core-model.md) |
+| `core.search` | How the search index and the index queue are found, the worker, the rebuild, the steps of a saga that add to the queue, and a search index in memory for the tests of core (`TestSearchIndex`, `SimpleSearchIndex`). | [Search](search.md) |
+| `core.utils` | The time of a request, the wait between tries at start, and reading a file. | [The application](core-application.md) |
+| `graphql` and its packages | The GraphQL request, the schema builder and its visitors, and the fetchers. `graphql.jsonschema` writes the JSON Schema of a GraphQL schema. | [GraphQL](core-graphql.md), [the model](core-model.md) |
+| `io.descoped.lds.test.server` | An empty interface, so that the package exists in the main code and the module descriptor can export it. | [The application](core-application.md#the-module-descriptor) |
 
 ## The subsystems of a running LDS
 
@@ -115,12 +149,28 @@ clients as a [lifecycle](../glossary.md#lifecycle) to the application's `Lifecyc
 model with no entity type, or a name past its limit, stops the start before anything is made.
 
 ```mermaid
-flowchart LR
-    store["Store"] --> reads["Store reads"] --> sagalog["Saga log pool"]
-    sagalog --> index["Search index"] --> queue["Index queue"]
-    queue --> worker["Index queue worker"] --> rebuild["Index rebuild"]
-    rebuild --> txlog["Transaction log"] --> observer["Saga observer"] --> pool["Saga thread pool"]
-    pool --> sagas["Sagas"] --> ready["Readiness checks"] --> http["HTTP server"]
+flowchart TB
+    subgraph one[" "]
+        direction LR
+        store["Store"] --> reads["Store reads"] --> sagalog["Saga log pool"]
+    end
+    subgraph two[" "]
+        direction LR
+        index["Search index"] --> queue["Index queue"] --> worker["Index queue worker"] --> rebuild["Index rebuild"]
+    end
+    subgraph three[" "]
+        direction LR
+        txlog["Transaction log"] --> observer["Saga observer"] --> pool["Saga thread pool"] --> sagas["Sagas"]
+    end
+    subgraph four[" "]
+        direction LR
+        ready["Readiness checks"] --> http["HTTP server"]
+    end
+    one --> two --> three --> four
+    style one fill:none,stroke:none
+    style two fill:none,stroke:none
+    style three fill:none,stroke:none
+    style four fill:none,stroke:none
     style index stroke-dasharray: 4 3
     style queue stroke-dasharray: 4 3
     style worker stroke-dasharray: 4 3
@@ -134,7 +184,7 @@ The four with a dashed line are made only with search, and the rebuild only when
 image, with the defaults of the server:
 
 ```sh
-docker run -d --rm --name lds -p 127.0.0.1:19104:9090 descoped/lds:3.0.1
+docker run -d --rm --name lds -p 127.0.0.1:19104:9090 descoped/lds
 docker logs lds
 ```
 
@@ -172,15 +222,19 @@ This is `GET /ns/Person/ola?timestamp=...` through the modules. The document it 
 under [The path of a write](#the-path-of-a-write). Run that request first: on an empty LDS this read is answered 404.
 
 1. **Undertow** takes the request. It passes the chain that the constructor of `UndertowApplication` builds:
-   `CORSHandler`, then a `GracefulShutdownHandler` that answers 503 while LDS stops, then a `PathHandler`. The exact
-   paths `/ping`, `/health/alive` and `/health/ready` have handlers of their own, and so have `/graphql` and
+   `CORSHandler`, then a `GracefulShutdownHandler` that answers 503 while LDS stops, then a `PathHandler` for the
+   prefix in `http.prefix` (`/` by default), which answers 404 outside it, then, when `http.request.dump` is true, a
+   handler that logs each request, then the `PathHandler` of the paths of LDS. Every path below is under the prefix.
+   The exact paths `/ping`, `/health/alive` and `/health/ready` have handlers of their own, and so have `/graphql` and
    `/graphiql` when `graphql.enabled` is true and the model is a GraphQL schema. Every other path goes to
    `NamespaceController`.
 2. **`NamespaceController`** checks that the path begins with the namespace of `namespace.default` and hands the
-   request to a new `DataController`. A path under `/source/` goes to `SourceHandler`, and any other path is answered
-   400.
+   request to a new `DataController`. A path under `/source/` goes to `SourceHandler`, which answers
+   `GET /source/{source}` with the `lastSourceId` of the last entry of the transaction log for that source, and 409
+   when the transaction log is `discard`. Any other path is answered 400.
 3. **`DataController`** moves the request from the I/O thread to a worker thread of Undertow. It reads the time from
-   `timestamp` (or `t`), takes the time now when there is none, and turns it into UTC.
+   `timestamp` (or `t`), takes the time now when there is none, and turns it into UTC. A write without a
+   `timestamp` is given its time later, when it has the lock of its document (step 1 of a write).
    `ResourceContext.createResourceContext` then checks every name of the path against the specification and says which
    kind of resource the path is. A time it cannot read and a name the specification does not have are answered 400.
 4. **The handler of that kind**, here `ManagedResourceHandler` (the others are `EmbeddedResourceHandler` and
@@ -228,7 +282,12 @@ read. The steps below follow them.
 
 1. **`DataController`** asks for the [document lock](../glossary.md#document-lock) of `/ns/Person/ola`
    (`DocumentLocks`): one write at a time to a document, held until the saga of the write has completed. A write that
-   waits for it holds no thread, and is answered 503 when it has waited 30 seconds.
+   waits for it holds no thread, and is answered 503 when it has waited 30 seconds. The locks are striped: a document
+   is hashed by namespace, entity type and id to one of 1024 locks, so a write can wait for another document that
+   shares its lock, and a saga that never completes holds every document of its lock until LDS is restarted. The lock
+   holds in this process only. A write without a `timestamp` gets its valid time here: the time it got the lock
+   (`DocumentLocks.timeOfTurn`), to the microsecond, and always after the time of the write before it, also when the
+   clock goes back.
 2. **`ManagedResourceHandler.putManaged`** reads the body as it comes (`AsyncAnswer.withBody`), on a worker thread
    when it has all come, with `BodyParser` into a Jackson tree. A field that is `null` is left out (`NullFields`), and
    a value past the [limits](#limits-and-the-order-of-ids) is answered 400.
@@ -256,7 +315,10 @@ read. The steps below follow them.
    runs it again.
 10. **`AsyncAnswer.afterSaga`** answers from the completion of the saga, with the transaction id
     (`saga-execution-id`): no thread waits for it. With `sync=false` the answer is sent when the saga is in its log.
-    With `searchable=true` it is sent when a search finds the write, at most 10 seconds later.
+    With `searchable=true` it is sent when a search finds the write, at most 10 seconds later, with the header
+    `LDS-Searchable` (`true` or `false`). Such a write waits for its saga also with `sync=false`. At most half as many
+    writes as there are request threads wait for search at once; one past that is answered when its saga has
+    completed, with `LDS-Searchable: false`.
 
 ```mermaid
 sequenceDiagram
@@ -303,6 +365,25 @@ of the valid time of the request, makes the change in it, and writes the whole d
 of a whole document has a saga of its own, `Delete managed resource`, with the same steps. Its `persistence` step
 removes nothing: it writes a [tombstone](../glossary.md#tombstone) (`RxJsonPersistence.markDocumentDeleted`), a
 version that says the document is not there from that time on. [The write path](core-write-path.md) has the detail.
+
+## Where LDS runs
+
+![Three ways to run LDS: one container in memory to try it; the compose file with Neo4j, PostgreSQL and Solr to
+develop; one container beside its engines, run by an orchestrator, as a service](images/deployment.svg)
+
+Every way runs the same image, `descoped/lds`, configured by environment variables `LDS_...`, each setting one key of
+[the configuration](../user/configuration.md):
+
+| Way | Started with | What it keeps |
+|---|---|---|
+| Try it | `docker run --rm -p 127.0.0.1:9090:9090 descoped/lds` | Everything in memory: what is written is gone when it stops. |
+| Develop | `./mvnw package -DskipTests`, then `docker compose -f linked-data-store-server/compose.yaml up --build` | Neo4j for the documents; PostgreSQL for the saga log, the transaction log and the index queue; Solr for search ([the server](server.md)). |
+| As a service | The image, beside its engines, run by an orchestrator that asks `/health/alive` and `/health/ready` | The store in PostgreSQL or Neo4j, the logs and the index queue in PostgreSQL, and Solr when search is on ([running LDS](../user/operations.md)). |
+
+Not finished: a service is one instance. Several LDS can share the saga log and the index queue in PostgreSQL (see
+[The saga of a write](#the-saga-of-a-write)), but each needs a `sagalog.config.cluster.instance-id` of its own, which
+nothing derives; they cannot share a topic of the transaction log in PostgreSQL; and the lock of a document holds in
+one process only, so two of them can write one document at the same time ([the saga engine](saga.md)).
 
 ## The ideas that hold the code together
 
@@ -351,7 +432,8 @@ how many steps run at once, so the sagas slow down with a slow store instead of 
 application's own threads of `StoreReads`.
 
 Not finished: besides the reads above, `SagaExecutionCoordinator.handoff` waits on the request thread for a free saga
-log (at most 10 seconds) and for a permit; the start and the stop wait on the main thread.
+log (at most 10 seconds) and for a permit; `SourceHandler` asks the transaction log (JDBC, in PostgreSQL) on a
+request thread; the start and the stop wait on the main thread.
 
 ### A lifecycle for every subsystem
 
@@ -368,7 +450,9 @@ the reverse order, so a subsystem stops before what it needs. Stopped, LDS:
 4. shuts down the saga log pool, the threads the store is read on, and the store.
 
 A subsystem that fails to stop is logged, and the rest are stopped all the same. A start that fails part of the way
-stops what was made, logs `LDS could not be made; what was made is stopped`, and the process ends with exit code 1.
+stops what was made. A subsystem that cannot be made logs `LDS could not be made; what was made is stopped`; one that
+cannot start (an HTTP server that cannot listen on its address) fails with `<name> could not start`. Either way the
+process ends with exit code 1.
 `Server` has a `Lifecycles` of its own for the process: RxJava's shared schedulers, then LDS, which uses them, so LDS
 stops first. The signal of `docker stop` reaches the JVM, the shutdown hook stops the process in order, and the
 container ends with exit code 143. `ApplicationStopTest` holds the order. [The application](core-application.md#stop)
@@ -422,7 +506,7 @@ does. A liveness probe asks `/health/alive`, a readiness probe `/health/ready`. 
 server, with Neo4j, PostgreSQL and Solr:
 
 ```sh
-curl -s http://localhost:19090/health/ready
+curl -s http://localhost:9090/health/ready
 ```
 
 ```json
@@ -460,9 +544,9 @@ no "current" document in a store:
 
 - An as-of read at an instant gives the latest version whose valid time is not after that instant. Without an
   instant, the read is as of now.
-- A write makes the version whose valid time is the time of the request. The valid time may be in the past or in the
-  future. A write at the valid time of a version that exists replaces that version, which makes a write with a
-  `timestamp` safe to send again.
+- A write makes the version whose valid time is the time of the request (without a `timestamp`, the time it got the
+  lock of its document). The valid time may be in the past or in the future. A write at the valid time of a version
+  that exists replaces that version, which makes a write with a `timestamp` safe to send again.
 - A delete writes a tombstone. Earlier versions stay, and an as-of read at their valid times still finds them.
 - A link is the text `/Entity/id` in a field. No write checks that the target exists, so a link may point at a
   document that is written later (a dangling reference). A link is resolved at the time of the read.
@@ -489,8 +573,8 @@ flowchart TB
 ```
 
 The model is not on the timeline. `SagaInput` has a field `schema`, which goes into the transaction log with every
-write. Every handler gives it the text `TODO` (`SagaRecoveryTriggerTest` gives it `testng-schema-v1.0`), nothing
-reads it, and nothing else records which model a version was written under.
+write. Every handler gives it the text `TODO`, nothing reads it, and nothing else records which model a version was
+written under.
 [Concepts](../user/concepts.md#snapshots-the-time-machine) draws [snapshots](../glossary.md#snapshot) as a user sees
 them.
 
@@ -598,8 +682,8 @@ module makes that module meet them.
 - **JDK 27.** LDS is a product: it is built, tested and run on one JDK, and CI uses JDK 27 only
   (`maven.compiler.release` 27). Raising it is a deliberate change of `java.version` in the root POM, the workflows
   and the image together.
-- **3.0.0 is a clean break.** Nothing was released before it, so there are no backward-compatibility shims,
-  deprecated aliases, data-migration code or migration guides.
+- **A clean break.** There are no backward-compatibility shims, deprecated aliases, data-migration code or migration
+  guides.
 - **One reactor, one version.** Every module inherits the root POM and is released with it. Modules depend on each
   other with `${project.version}`. Dependency versions are properties in the root POM, not `dependencyManagement`, so
   the BOM manages the LDS modules only.
@@ -628,7 +712,8 @@ module makes that module meet them.
 - **Limits.** One set of limits for every provider, in bytes of UTF-8 (`Limits`), set by the store with the least
   room. A limit is raised only when every provider keeps the new one (see
   [Limits and the order of ids](#limits-and-the-order-of-ids)).
-- **The order of ids** is the order of their code points, in every provider and in core (`IdOrder`).
+- **The order of ids** is the order of their code points, in every provider and in core (`IdOrder`; see
+  [Limits and the order of ids](#limits-and-the-order-of-ids)).
 - **Time.** Versions are stored and compared as UTC instants.
 - **Transactions** commit only when asked and roll back otherwise.
 - **The latest stable version** of every library, plugin, action, image and engine (Neo4j 2026, Solr 10).
@@ -637,8 +722,8 @@ module makes that module meet them.
   each is raised: PostgreSQL stays at 18, and Maven stays at 3 (`requireMavenVersion` `[3.9.0,4)`). Renovate is told
   so in `.github/renovate.json`.
 - **No leftovers** of earlier hosts and pipelines.
-- **Secrets.** Nothing but the documented development defaults: the database user `lds` and the Neo4j password
-  `lds-development` of the tests and the compose files.
+- **Secrets.** Nothing but the documented development defaults: the database user `lds` with the password `lds`,
+  and the Neo4j password `lds-development`, of the tests and the compose files.
 - **Releases by hand; CI publishes SNAPSHOTs only.** After a green build on `master`, or a start by hand on a branch,
   CI deploys every module but the load test as a SNAPSHOT to Descoped's repository, read at
   `https://maven.descoped.io/`; the job names the target on its command line, and the POM has no
@@ -653,9 +738,8 @@ order. LDS runs on the class path, with `java` as the process of the container.
 
 Not finished: some rules are not met everywhere. `Transaction.close()` commits, and the read handlers close their
 transactions with it; the write of a saga step commits only when asked (`WriteTransaction`). The memory provider does
-not store a time as an instant, and GraphQL does not turn the instant of an as-of read into UTC. The shared suite is
-not a named module. In the code core declares `uses`, and the two API modules, which define the service interfaces,
-do not.
+not store a time as an instant. The shared suite is not a named module. In the code core declares `uses`, and the two
+API modules, which define the service interfaces, do not.
 
 ## Not finished
 
@@ -669,8 +753,9 @@ Not finished: these are the large items that LDS does not have yet. Every docume
   `namespace.default`: [the application](core-application.md).
 - **A failed saga is answered 500 with no body**, and the caller cannot tell whether recovery will do the write.
   Nothing reads the `dead-saga` log: [the write path](core-write-path.md).
-- **Several LDS in one cluster** need an instance id each, which nothing derives, and cannot share a topic of the
-  transaction log in PostgreSQL: [the saga engine](saga.md), [the write path](core-write-path.md).
+- **Several LDS in one cluster** need an instance id each, which nothing derives, cannot share a topic of the
+  transaction log in PostgreSQL, and do not see each other's locks of documents: [the saga engine](saga.md),
+  [the write path](core-write-path.md).
 - **No provider reads the delete policy** that core passes (`FAIL_IF_INCOMING_LINKS`):
   [the persistence interface](persistence-api.md).
 - **A single field of an embedded type** of a GraphQL schema gets no content in the JSON Schema, so it is not
