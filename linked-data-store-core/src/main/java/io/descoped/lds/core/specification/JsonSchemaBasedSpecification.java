@@ -9,6 +9,7 @@ import io.descoped.lds.core.schema.SchemaRepository;
 import io.descoped.lds.core.utils.FileAndClasspathReaderUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.databind.JsonNode;
 
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
@@ -59,8 +60,15 @@ public class JsonSchemaBasedSpecification implements Specification, SchemaReposi
         String filename = path.toFile().getName();
         String schemaFilename = filename.substring(filename.lastIndexOf("/") + 1);
         String managedDomain = schemaFilename.substring(0, schemaFilename.length() - ".json".length());
+        JsonNode schema = JsonTools.toJsonNode(json);
+        // Without it the file would validate nothing: the definitions are only named, and none is the entity type.
+        if (schema.isObject() && !schema.has("$ref")) {
+            throw new IllegalArgumentException("The JSON Schema file " + path + " has no \"$ref\" at its root. It "
+                    + "names the definition of the entity type " + managedDomain + ": \"$ref\": \"#/$defs/"
+                    + managedDomain + "\"");
+        }
         sb.append(" /" + managedDomain);
-        jsonSchema = new JsonSchemaBuilder(jsonSchema, managedDomain, JsonTools.toJsonNode(json)).build();
+        jsonSchema = new JsonSchemaBuilder(jsonSchema, managedDomain, schema).build();
         return jsonSchema;
     }
 
