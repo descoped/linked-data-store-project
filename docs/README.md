@@ -27,6 +27,7 @@ You run LDS, give it a model, and read and write documents. You do not need to r
 | Document | What it is |
 |---|---|
 | [What's new](whats-new.md) | What each release gives you: what you can do now, and what was fixed. |
+| [Roadmap](roadmap.md) | What LDS is to do next, and what is being considered: security, the model, tools, writes and reads, running it. |
 | [Getting started](user/getting-started.md) | From nothing to a first document: start LDS, write a document, read it, read it as it was, link two documents, ask with GraphQL. |
 | [Concepts](user/concepts.md) | The ideas: document, entity type, namespace, version and valid time, link, model, provider, what a write goes through. |
 | [The model](user/model.md) | How to write a model, as a GraphQL schema or as JSON Schema files, and what LDS checks against it. |

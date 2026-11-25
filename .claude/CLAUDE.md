@@ -375,6 +375,10 @@ one document for each part of the code). `docs/README.md` is the index. Keep the
   described.
 - **What is unfinished is said where the reader meets it**, in a paragraph that starts with `Not finished:`. When
   the fault is corrected, the paragraph goes.
+- **The roadmap is the one document about the future** (`docs/roadmap.md`, owner's request): what LDS is to do
+  (Next, Later) and what is considered (To be evaluated, never promised), in categories, with no dates and no LDS
+  versions. Each item is grounded in the code: what LDS lacks today is checked in the code and linked to the
+  document that says it. An item leaves the roadmap when the release that holds it is out.
 - **Established technical terms, each defined once** in `docs/glossary.md` (entity type, document key, embedded
   object, link, valid time, as-of read, snapshot, tombstone, saga, transaction log, fragment, ...), and one term
   for one thing. A new term goes into the glossary first, defined from the code. Present tense, no history.
