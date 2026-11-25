@@ -25,7 +25,7 @@ public interface SearchIndexProvider {
     /**
      * The search index, set up with the configuration.
      *
-     * @param configuration the values of the keys the provider reads
+     * @param configuration the configuration of LDS, every key of it
      * @return the index
      */
     SearchIndex getSearchIndex(Map<String, String> configuration);

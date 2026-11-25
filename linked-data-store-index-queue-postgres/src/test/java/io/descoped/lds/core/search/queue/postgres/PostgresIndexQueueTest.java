@@ -8,6 +8,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import java.net.InetAddress;
+import java.net.ServerSocket;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -19,8 +21,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.awaitility.Awaitility.await;
 
 /**
  * The queue in PostgreSQL 18: found by the service loader under the name of the transaction log provider, durable,
@@ -83,7 +89,7 @@ class PostgresIndexQueueTest {
                 .map(provider -> provider.get().providerId()).toList();
 
         assertThat(names).contains("postgres");
-        assertThat(new PostgresIndexQueueProvider().configurationKeys()).allMatch(key -> key.startsWith("txlog.config.postgres."));
+        assertThat(new PostgresIndexQueueProvider().configurationKeys()).allMatch(key -> key.startsWith("txlog."));
         assertThat(queue.durable()).isTrue();
     }
 
@@ -118,7 +124,7 @@ class PostgresIndexQueueTest {
     }
 
     @Test
-    void updatesAreTakenInOrderAtMostTheNumberAskedAndNotAgainWhileTheirLeaseLasts() throws InterruptedException {
+    void updatesAreTakenInOrderAtMostTheNumberAskedAndNotAgainWhileTheirLeaseLasts() {
         for (String id : List.of("c", "a", "b")) {
             queue.add(update(id, IndexUpdate.Operation.CREATE_OR_OVERWRITE)).blockingAwait();
         }
@@ -126,8 +132,9 @@ class PostgresIndexQueueTest {
         assertThat(taken(queue, 2, Duration.ofMillis(500))).containsExactly("c", "a");
         assertThat(taken(queue, 10, Duration.ofMinutes(1))).containsExactly("b");
         assertThat(taken(queue, 10, Duration.ofMinutes(1))).isEmpty();
-        Thread.sleep(700);
-        assertThat(taken(queue, 10, Duration.ofMinutes(1))).containsExactly("c", "a");
+        assertThat(await().atMost(Duration.ofSeconds(10)).pollInterval(Duration.ofMillis(50))
+                .until(() -> taken(queue, 10, Duration.ofMinutes(1)), ids -> !ids.isEmpty()))
+                .containsExactly("c", "a");
     }
 
     @Test
@@ -148,7 +155,7 @@ class PostgresIndexQueueTest {
     }
 
     @Test
-    void anUpdateThatIsPutOffWaitsAndHasOneAttemptMoreAndOneThatIsRemovedIsGone() throws InterruptedException {
+    void anUpdateThatIsPutOffWaitsAndHasOneAttemptMoreAndOneThatIsRemovedIsGone() {
         queue.add(update("a", IndexUpdate.Operation.CREATE_OR_OVERWRITE)).blockingAwait();
         queue.add(update("b", IndexUpdate.Operation.CREATE_OR_OVERWRITE)).blockingAwait();
         List<IndexQueue.Entry> entries = queue.take(10, Duration.ofMinutes(1)).blockingGet();
@@ -157,8 +164,8 @@ class PostgresIndexQueueTest {
         queue.postpone(List.of(entries.getFirst()), Duration.ofMillis(500)).blockingAwait();
 
         assertThat(taken(queue, 10, Duration.ofMinutes(1))).isEmpty();
-        Thread.sleep(700);
-        assertThat(queue.take(10, Duration.ofMinutes(1)).blockingGet())
+        assertThat(await().atMost(Duration.ofSeconds(10)).pollInterval(Duration.ofMillis(50))
+                .until(() -> queue.take(10, Duration.ofMinutes(1)).blockingGet(), taken -> !taken.isEmpty()))
                 .extracting(entry -> entry.update().id(), IndexQueue.Entry::attempts)
                 .containsExactly(org.assertj.core.groups.Tuple.tuple("a", 1));
         queue.remove(List.of()).blockingAwait();
@@ -197,6 +204,56 @@ class PostgresIndexQueueTest {
 
         assertThat(lag.updates()).isEqualTo(PostgresIndexQueue.LAG_COUNT_LIMIT);
         assertThat(lag.oldest()).isEqualTo(firstAdded);
+    }
+
+    /**
+     * The queue is made before the transaction log, and waits for its database as long as the transaction log does:
+     * a database that comes up after LDS has started to wait for it is found.
+     */
+    @Test
+    void theQueueWaitsForADatabaseThatIsNotUpYet() throws Exception {
+        int port;
+        try (ServerSocket free = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            port = free.getLocalPort();
+        }
+        Map<String, String> configuration = Map.of(
+                PostgresIndexQueueProvider.HOST, "127.0.0.1",
+                PostgresIndexQueueProvider.PORT, String.valueOf(port),
+                PostgresIndexQueueProvider.USER, "lds",
+                PostgresIndexQueueProvider.PASSWORD, "lds",
+                PostgresIndexQueueProvider.DATABASE, "txlog",
+                PostgresIndexQueueProvider.MAX_WAIT_SECONDS, "120");
+        CompletableFuture<IndexQueue> opened = CompletableFuture.supplyAsync(
+                () -> new PostgresIndexQueueProvider().indexQueue(configuration));
+
+        try (PostgreSQLContainer later = new PostgreSQLContainer("postgres:18-alpine")
+                .withDatabaseName("txlog").withUsername("lds").withPassword("lds")) {
+            later.setPortBindings(List.of(port + ":" + PostgreSQLContainer.POSTGRESQL_PORT));
+            later.start();
+            LoopbackPorts.check(later);
+
+            try (IndexQueue waited = opened.get(2, TimeUnit.MINUTES)) {
+                assertThat(waited.lag().blockingGet()).isEqualTo(new IndexQueue.Lag(0, null));
+            }
+        }
+    }
+
+    @Test
+    void withoutAWaitADatabaseThatCannotBeReachedStopsTheStartAtOnce() throws Exception {
+        int port;
+        try (ServerSocket free = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            port = free.getLocalPort();
+        }
+        Map<String, String> configuration = Map.of(
+                PostgresIndexQueueProvider.HOST, "127.0.0.1",
+                PostgresIndexQueueProvider.PORT, String.valueOf(port),
+                PostgresIndexQueueProvider.USER, "lds",
+                PostgresIndexQueueProvider.PASSWORD, "lds",
+                PostgresIndexQueueProvider.DATABASE, "txlog",
+                PostgresIndexQueueProvider.MAX_WAIT_SECONDS, "0");
+
+        assertThatThrownBy(() -> new PostgresIndexQueueProvider().indexQueue(configuration))
+                .isInstanceOf(RuntimeException.class);
     }
 
     @Test

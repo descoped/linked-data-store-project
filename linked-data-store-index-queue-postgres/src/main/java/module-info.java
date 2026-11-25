@@ -12,7 +12,6 @@ module io.descoped.lds.index.queue.postgres {
     requires java.sql;
     requires com.zaxxer.hikari;
     requires org.postgresql.jdbc;
-    requires org.slf4j;
 
     provides IndexQueueProvider with PostgresIndexQueueProvider;
 }
