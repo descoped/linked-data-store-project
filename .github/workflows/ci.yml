@@ -4,15 +4,16 @@ name: CI
 # run: build, tests and Javadoc, the modules that do not depend on each other at the same time (-T 1C); a push,
 # a tag and a start by hand build every module, a pull request takes the modules whose inputs have not changed
 # from the build cache; the tests start PostgreSQL 18, Neo4j and Solr in Docker through
-# Testcontainers, build the image of the server and start its compose file with the docker command. Pushes to
-# master and release tags, and pull requests from this repository, add coverage and the SonarCloud analysis (not
+# Testcontainers, build the image of the server and start its compose file with the docker command. Pushes (to
+# master, or of a tag), and pull requests from this repository, add coverage and the SonarCloud analysis (not
 # gating; pull requests from forks get no token). CI publishes SNAPSHOTs only, to Descoped's AWS CodeArtifact
 # repository, read at https://maven.descoped.io/ (the job snapshot), and nothing to Maven Central or an image
 # registry: releases are made by hand (see .claude/CLAUDE.md).
 # CI builds the products, so it runs only for what can change them: the root POM, the Maven wrapper, the
 # modules and this file. The documentation (docs/, README.md and every other Markdown file), LICENSE, .claude/,
-# Renovate's settings and claude.yml never start a build. A tag starts it whatever it changes: GitHub does not
-# apply paths to a tag.
+# Renovate's settings and claude.yml never start a build. A tag starts it whatever it changes (GitHub does not
+# apply paths to a tag), when a person pushes it: the release workflow pushes its tag with the token of the
+# workflow, and GitHub starts no workflow for a push made with that token, so no CI runs for a release's tag.
 on:
   push:
     branches: [master]
