@@ -159,12 +159,32 @@ class PostgresProviderTest {
     }
 
     @Test
+    void versionsAMicrosecondApartAreKeptAndReadBack() {
+        ZonedDateTime threeMicrosLater = T1.plusNanos(3_000);
+        ZonedDateTime fourMicrosLater = T1.plusNanos(4_000);
+        write(NS, "Micro", "m", T1, city("Oslo"));
+        write(NS, "Micro", "m", threeMicrosLater, city("Bergen"));
+        write(NS, "Micro", "m", fourMicrosLater, city("Trondheim"));
+
+        try (Transaction tx = persistence.createTransaction(true)) {
+            assertThat(persistence.readDocumentVersions(tx, NS, "Micro", "m", Range.unbounded())
+                    .map(document -> document.key().timestamp()).toList().blockingGet())
+                    .containsExactly(T1, threeMicrosLater, fourMicrosLater);
+        }
+        assertThat(read(NS, "Micro", "m", T1.plusNanos(2_999)).jackson()).isEqualTo(city("Oslo"));
+        JsonDocument atThree = read(NS, "Micro", "m", threeMicrosLater);
+        assertThat(atThree.key().timestamp()).isEqualTo(threeMicrosLater);
+        assertThat(atThree.jackson()).isEqualTo(city("Bergen"));
+        assertThat(read(NS, "Micro", "m", NOW).jackson()).isEqualTo(city("Trondheim"));
+    }
+
+    @Test
     void aVersionWrittenTwiceInOneWriteIsTheLastOne() {
-        ZonedDateTime sameMillisecond = T1.plusNanos(1_000); // stored as T1
+        ZonedDateTime sameMicrosecond = T1.plusNanos(500); // stored as T1
         ZonedDateTime sameInstantInOslo = T2.withZoneSameInstant(ZoneId.of("Europe/Oslo"));
         writeAll(List.of(
                 document(NS, "Twice", "micro", T1, mapper.createObjectNode().put("city", "Oslo").put("only", "first")),
-                document(NS, "Twice", "micro", sameMillisecond, city("Bergen")),
+                document(NS, "Twice", "micro", sameMicrosecond, city("Bergen")),
                 document(NS, "Twice", "zoned", T2, city("Oslo")),
                 document(NS, "Twice", "zoned", sameInstantInOslo, city("Bergen")),
                 document(NS, "Twice", "apart", T1, city("Oslo")),
