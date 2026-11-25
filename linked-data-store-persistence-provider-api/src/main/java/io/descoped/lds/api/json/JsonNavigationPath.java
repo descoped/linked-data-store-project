@@ -4,6 +4,7 @@ import io.descoped.lds.api.specification.Specification;
 import io.descoped.lds.api.specification.SpecificationElement;
 import io.descoped.lds.api.specification.SpecificationElementType;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Deque;
@@ -73,41 +74,85 @@ public class JsonNavigationPath {
         return path;
     }
 
+    /*
+     * The parts of a path as serialize writes it. It is cut at each dot that does not follow an escape (FieldName),
+     * and a name is read without its escapes.
+     */
     private static String[] deserialize(String relationName) {
         List<String> parts = new LinkedList<>();
-        String[] dotSeparated = relationName.split("\\.");
-        for (String dotPart : dotSeparated) {
-            if (dotPart.endsWith("]")) {
-                addArrayParts(dotPart, parts);
+        for (String dotPart : splitAtDots(relationName)) {
+            int openingBracket = indexOfUnescaped(dotPart, '[');
+            if (openingBracket >= 0 && dotPart.endsWith("]")) {
+                addArrayParts(dotPart, openingBracket, parts);
             } else {
-                if (dotPart.contains("[") || dotPart.contains("]")) {
+                if (openingBracket >= 0 || indexOfUnescaped(dotPart, ']') >= 0) {
                     throw new IllegalArgumentException("Malformed json-path, path-element contain square-bracket symbol in a bad way");
                 }
-                parts.add(dotPart);
+                parts.add(FieldName.unescape(dotPart));
             }
         }
         return parts.toArray(new String[parts.size()]);
     }
 
     /*
+     * The text between the dots that do not follow an escape, as String.split gives it: without the empty parts at
+     * the end.
+     */
+    private static List<String> splitAtDots(String text) {
+        List<String> parts = new ArrayList<>();
+        int start = 0;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c == FieldName.ESCAPE) {
+                i++;
+            } else if (c == '.') {
+                parts.add(text.substring(start, i));
+                start = i + 1;
+            }
+        }
+        parts.add(text.substring(start));
+        while (!parts.isEmpty() && parts.getLast().isEmpty()) {
+            parts.removeLast();
+        }
+        return parts;
+    }
+
+    /*
+     * Where the character is in the text, not after an escape, or -1.
+     */
+    private static int indexOfUnescaped(String text, char wanted) {
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c == FieldName.ESCAPE) {
+                i++;
+            } else if (c == wanted) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /*
      * The parts of a path-element that ends with an array index: the array-field, then one part for each index.
      */
-    private static void addArrayParts(String dotPart, List<String> parts) {
-        if (dotPart.startsWith("[")) {
+    private static void addArrayParts(String dotPart, int openingBracket, List<String> parts) {
+        if (openingBracket == 0) {
             throw new IllegalArgumentException("Malformed json-path, array-index path-element must be prepended by field");
         }
-        int indexOfFirstOpenSquareBracket = dotPart.indexOf("[");
-        if (indexOfFirstOpenSquareBracket == -1) {
-            throw new IllegalArgumentException("Malformed json-path, path-element contains ']' without also containing '['");
-        }
-        String fieldIdentifier = dotPart.substring(0, indexOfFirstOpenSquareBracket);
-        parts.add(fieldIdentifier); // array-field
-        Matcher m = arrayElementPattern.matcher(dotPart.substring(indexOfFirstOpenSquareBracket));
+        parts.add(FieldName.unescape(dotPart.substring(0, openingBracket))); // array-field
+        Matcher m = arrayElementPattern.matcher(dotPart.substring(openingBracket));
         while (m.find()) {
             parts.add(m.group()); // array-items field
         }
     }
 
+    /**
+     * The path as text: {@code $}, then {@code .} and each name, written with an escape before each character that is
+     * the syntax of a path ({@link FieldName}), and {@code []} for the items of an array: {@code $.a[].b}. It is the
+     * path of a value as the providers store it, without the places in arrays.
+     *
+     * @return the path as text
+     */
     public String serialize() {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < path.length; i++) {
@@ -117,7 +162,7 @@ public class JsonNavigationPath {
                 if (i > 0) {
                     sb.append(".");
                 }
-                sb.append(path[i]);
+                sb.append(i == 0 ? path[i] : FieldName.escape(path[i]));
             }
         }
         return sb.toString();

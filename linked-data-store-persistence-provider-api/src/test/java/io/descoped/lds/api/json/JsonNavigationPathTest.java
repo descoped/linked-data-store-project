@@ -63,6 +63,21 @@ public class JsonNavigationPathTest {
         assertEquals(e.getMessage(), "json-path element at index 1 contain square bracket symbol without being formatted as a proper array element");
     }
 
+    /**
+     * A name that holds a dot is written with an escape before it, as the providers write the path of a value
+     * (FieldName), and read back as the name it is.
+     */
+    @Test
+    public void thatADotInANameIsEscaped() {
+        assertEquals(JsonNavigationPath.from("$", "a.b", "[]", "c").serialize(), "$.a\\.b[].c");
+        assertEquals(JsonNavigationPath.from("$", "a\\").serialize(), "$.a\\\\");
+        assertEquals(JsonNavigationPath.from("$.a\\.b[].c").getPath(), new String[]{"$", "a.b", "[]", "c"});
+        assertEquals(JsonNavigationPath.from("$.a\\\\.b").getPath(), new String[]{"$", "a\\", "b"});
+        assertEquals(JsonNavigationPath.from("$.a\\.b[]").serialize(), "$.a\\.b[]");
+        // a name with a bracket is no part of a path of the model
+        expectThrows(IllegalArgumentException.class, () -> JsonNavigationPath.from("$.a\\[b"));
+    }
+
     @Test
     public void thatPopBackRemovesTheLastElement() {
         assertEquals(JsonNavigationPath.from("$.a[].b").popBack().getPath(), new String[]{"$", "a", "[]"});

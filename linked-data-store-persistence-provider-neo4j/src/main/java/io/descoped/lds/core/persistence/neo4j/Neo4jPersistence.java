@@ -1,5 +1,6 @@
 package io.descoped.lds.core.persistence.neo4j;
 
+import io.descoped.lds.api.json.FieldName;
 import io.descoped.lds.api.json.JsonNavigationPath;
 import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.IdOrder;
@@ -149,15 +150,16 @@ final class Neo4jPersistence implements RxJsonPersistence {
     }
 
     /*
-     * The path of a leaf. An item of an array is told by its index, which only an item has: a field may be named
-     * "[]" too, as an item is.
+     * The path of a leaf, as every provider writes it (FieldName): the name of a field, which the relationship holds as
+     * it is, with an escape before each character that is the syntax of a path. An item of an array is told by its
+     * index, which only an item has: a field may be named "[]" too, as an item is.
      */
     static String computePath(List<Relationship> embeds) {
         StringBuilder completePath = new StringBuilder("$");
         for (Relationship embedRel : embeds) {
             Value index = embedRel.get("index");
             if (index.isNull()) {
-                completePath.append(".").append(embedRel.get("path").asString());
+                completePath.append(".").append(FieldName.escape(embedRel.get("path").asString()));
             } else {
                 completePath.append("[").append(index.asNumber().intValue()).append("]");
             }

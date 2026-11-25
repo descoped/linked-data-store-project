@@ -1636,6 +1636,32 @@ public abstract class PersistenceIntegrationTest {
     }
 
     /**
+     * A provider gives a document back as it was written also when the name of a field holds what is the syntax of a
+     * path: a dot, a bracket, a place in an array, the escape of these, or all of a path. Two fields whose names
+     * would make the same path are two fields. Such a field is found by its text as any other is.
+     */
+    @Test
+    public void thatAFieldWhoseNameHoldsTheSyntaxOfAPathIsKept() throws JSONException {
+        try (Transaction tx = persistence.createTransaction(false)) {
+            assertReadAsWritten(tx, specification, "Address", "syntax-dot", "{'city':'Oslo','a.b':1,'a':{'b':2},'.':3,'..':4,'c.':5,'.d':6}");
+            assertReadAsWritten(tx, specification, "Address", "syntax-place", "{'x[3]':2,'x':[5],'[0]':0,'y[0][1]':1,'z[]':[{'[1]':'in'}]}");
+            assertReadAsWritten(tx, specification, "Address", "syntax-brackets", "{'[]':'items','[':1,']':2,'a[':3,'a]':4,'][':5,'[x]':6}");
+            assertReadAsWritten(tx, specification, "Address", "syntax-escape", "{'\\\\':1,'a\\\\.b':2,'a\\\\':{'b':3},'\\\\[0\\\\]':4,'e\\\\':[7]}");
+            assertReadAsWritten(tx, specification, "Address", "syntax-path", "{'$':1,'$.a':2,'$.a[0]':3,'a.b[1].c':{'d.e':['f.g']}}");
+            assertReadAsWritten(tx, specification, "Person", "syntax-known", "{'firstname':'A','history':{'a.b':'/Address/x','currentAddress':'/Address/syntax-dot'}}");
+
+            writeAndRead(tx, specification, "Address", "syntax-find", json("{'p.q':'dotted','r':{'s.t':['u']},'p':{'q':'nested'}}"));
+            assertThat(idsFound(tx, "Address", "$.p\\.q", "dotted")).containsExactly("syntax-find");
+            assertThat(idsFound(tx, "Address", "$.p\\.q", "nested")).isEmpty();
+            assertThat(idsFound(tx, "Address", "$.p.q", "nested")).containsExactly("syntax-find");
+            assertThat(idsFound(tx, "Address", "$.p.q", "dotted")).isEmpty();
+            assertThat(idsFound(tx, "Address", "$.r.s\\.t[]", "u")).containsExactly("syntax-find");
+            assertThat(persistence.findDocument(tx, Y2020, namespace, "Address", JsonNavigationPath.from("$", "p.q"), "dotted", Range.unbounded())
+                    .map(document -> document.key().id()).toList().blockingGet()).containsExactly("syntax-find");
+        }
+    }
+
+    /**
      * A provider stores a document as it is given, also where the specification describes a field as something
      * else than the document holds there. Whether a document may be like that is for the validation before a
      * write to say, not for the store.
