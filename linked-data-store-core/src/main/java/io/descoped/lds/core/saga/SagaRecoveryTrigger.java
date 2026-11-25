@@ -29,7 +29,7 @@ public class SagaRecoveryTrigger {
     private final Random random = new Random();
 
     private static final AtomicInteger triggerThreadId = new AtomicInteger();
-    private final ScheduledExecutorService recoveryTriggerSingleThreadedPool = Executors.newScheduledThreadPool(1, runnable -> new Thread(runnable, "saga-recovery-trigger-" + triggerThreadId.incrementAndGet()));
+    private final ScheduledExecutorService recoveryTriggerSingleThreadedPool; // made once the intervals are checked
     private final AtomicReference<ScheduledFuture<?>> triggerScheduleRef = new AtomicReference<>();
     private final ExecutorService recoveryThreadPool;
 
@@ -53,6 +53,8 @@ public class SagaRecoveryTrigger {
         this.intervalMinSec = intervalMinSec;
         this.intervalMaxSec = intervalMaxSec;
         this.recoveryThreadPool = recoveryThreadPool;
+        this.recoveryTriggerSingleThreadedPool = Executors.newScheduledThreadPool(1,
+                runnable -> new Thread(runnable, "saga-recovery-trigger-" + triggerThreadId.incrementAndGet()));
     }
 
     public void start() {

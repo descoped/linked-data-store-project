@@ -135,8 +135,9 @@ class ApplicationStopTest {
         server.getApplication().stop();
 
         assertThat(lifecycles.stopped()).containsExactly(
-                "HTTP server", "Readiness checks", "Sagas", "Saga thread pool", "Saga observer", "Transaction log",
-                "Index queue worker", "Index queue", "Search index", "Saga log pool", "Store reads", "Store");
+                "HTTP server", "Readiness checks", "Sagas", "Saga recovery thread pool", "Saga thread pool",
+                "Saga observer", "Transaction log", "Index queue worker", "Index queue", "Search index",
+                "Saga log pool", "Store reads", "Store");
         assertThat(lifecycles.stopped()).isEqualTo(lifecycles.names().reversed());
     }
 

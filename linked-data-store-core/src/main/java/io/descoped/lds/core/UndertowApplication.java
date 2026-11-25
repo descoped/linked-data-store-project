@@ -424,6 +424,9 @@ public class UndertowApplication implements Lifecycle {
 
         AtomicInteger executorThreadId = new AtomicInteger();
         ScheduledExecutorService recoveryThreadPool = Executors.newScheduledThreadPool(SAGA_RECOVERY_THREADS, runnable -> new Thread(runnable, "saga-recovery-" + executorThreadId.incrementAndGet()));
+        // stopped by the sagas, before they wait for the running sagas; here also when the start fails before them
+        lifecycles.add(Lifecycle.of("Saga recovery thread pool",
+                timeout -> Pools.stop("The saga recovery thread pool", recoveryThreadPool, timeout)));
 
         LOG.info("Initializing saga-execution-coordinator ...");
 
