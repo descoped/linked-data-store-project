@@ -276,8 +276,9 @@ class IndexQueueWorkerTest {
         } finally {
             worker.stop(5, TimeUnit.SECONDS);
         }
+        // The worker's thread has ended, so nothing added from now on can be sent
+        assertThat(worker.isTerminated()).isTrue();
         add("after", IndexUpdate.Operation.DELETE);
-        Thread.sleep(100);
         assertThat(index.deleted).isEmpty();
     }
 }
