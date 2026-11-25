@@ -72,6 +72,23 @@ public class SourceTest {
 
     @Test
     @ConfigurationOverride({
+            "http.prefix", "/lds",
+            "txlog.split.sources", "true",
+            "txlog.default-source", "default",
+            "txlog.rawdata.topic-prefix", "tx-prefixed-",
+            "txlog.rawdata.provider", "memory"
+    })
+    public void thatTheLastSourceIdIsTheSameUnderAPrefix() {
+        client.put("/lds/data/contact/4b2ef?sync=true&source=A&sourceId=a1", readFileOrClasspathResource("demo/3-scrooge.json")).expect201Created();
+
+        ObjectNode expected = JsonTools.mapper.createObjectNode();
+        expected.put("lastSourceId", "a1");
+        String response = client.get("/lds/source/A").expect200Ok().body();
+        assertEquals(JsonTools.toJsonNode(response), expected);
+    }
+
+    @Test
+    @ConfigurationOverride({
             "txlog.split.sources", "false",
             "txlog.default-source", "default",
             "txlog.rawdata.topic-prefix", "tx-merged-",
