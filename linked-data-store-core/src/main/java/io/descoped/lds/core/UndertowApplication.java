@@ -16,6 +16,7 @@ import io.descoped.lds.core.health.Readiness;
 import io.descoped.lds.core.health.ReadinessHandler;
 import io.descoped.lds.core.lifecycle.Lifecycle;
 import io.descoped.lds.core.lifecycle.Lifecycles;
+import io.descoped.lds.core.lifecycle.Pools;
 import io.descoped.lds.core.controller.NamespaceController;
 import io.descoped.lds.core.domain.DocumentLocks;
 import io.descoped.lds.core.domain.SearchWait;
@@ -71,7 +72,6 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -408,13 +408,14 @@ public class UndertowApplication implements Lifecycle {
         LOG.info("Initializing saga observer ...");
 
         final SagasObserver sagasObserver = new SagasObserver(sagaRepository).start();
-        lifecycles.add(Lifecycle.of("Saga observer", _ -> sagasObserver.shutdown()));
+        lifecycles.add(Lifecycle.of("Saga observer", sagasObserver::shutdown));
 
         LOG.info("Initializing saga thread-pool ...");
 
         SelectableThreadPoolExecutor sagaThreadPool = sagaThreadPool(configuration);
         // a saga that branches hands steps to this pool, so such a saga fails if it runs when the pool is shut down
-        lifecycles.add(Lifecycle.of("Saga thread pool", _ -> shutdownAndAwaitTermination(sagaThreadPool)));
+        lifecycles.add(Lifecycle.of("Saga thread pool", timeout -> Pools.stop("The saga thread pool", sagaThreadPool,
+                timeout)));
         int numberOfSagaLogs = configuration.getInt("saga.number-of-logs");
 
         boolean sagaCommandsEnabled = configuration.getBoolean("saga.commands.enabled", false);
@@ -486,7 +487,7 @@ public class UndertowApplication implements Lifecycle {
             IndexRebuild started = new IndexRebuild(persistence, indexQueue, searchIndex,
                     configuration.find("namespace.default").orElseThrow(),
                     List.copyOf(specification.getManagedDomains()));
-            lifecycles.add(Lifecycle.of("Index rebuild", started::start, _ -> started.stop()));
+            lifecycles.add(Lifecycle.of("Index rebuild", started::start, started::stop));
             rebuild = started;
         }
         return new Indexing(searchIndex, indexQueue, worker, rebuild);
@@ -535,17 +536,20 @@ public class UndertowApplication implements Lifecycle {
                 });
             }
         }, timeout -> {
-            if (trigger != null) {
-                trigger.stop(); // shuts the recovery thread-pool down as well
-            } else {
-                // recovery by the next write uses this pool also when there is no trigger
-                shutdownAndAwaitTermination(recoveryThreadPool);
+            try {
+                if (trigger != null) {
+                    trigger.stop(timeout); // shuts the recovery thread-pool down as well
+                } else {
+                    // recovery by the next write uses this pool also when there is no trigger
+                    Pools.stop("The saga recovery thread pool", recoveryThreadPool, timeout);
+                }
+                if (!sec.awaitRunningSagas(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
+                    LOG.warn("Sagas were still running after {}. They fail when their thread pool is shut down, and "
+                            + "are recovered from their saga logs.", timeout);
+                }
+            } finally {
+                sec.shutdown();
             }
-            if (!sec.awaitRunningSagas(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
-                LOG.warn("Sagas were still running after {}. They fail when their thread pool is shut down, and are "
-                        + "recovered from their saga logs.", timeout);
-            }
-            sec.shutdown();
         });
     }
 
@@ -683,21 +687,6 @@ public class UndertowApplication implements Lifecycle {
                 .entrySet().stream().collect(Collectors.toMap(e -> e.getKey().substring(prefix.length()), Map.Entry::getValue));
     }
 
-    static void shutdownAndAwaitTermination(ExecutorService pool) {
-        pool.shutdown();
-        try {
-            if (!pool.awaitTermination(10, TimeUnit.SECONDS)) {
-                pool.shutdownNow();
-                if (!pool.awaitTermination(10, TimeUnit.SECONDS)) {
-                    LOG.error("Pool did not terminate");
-                }
-            }
-        } catch (InterruptedException _) {
-            pool.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
-    }
-
     public void enableSagaExecutionAutomaticDeadlockDetectionAndResolution() {
         sec.startThreadpoolWatchdog();
     }
@@ -746,7 +735,8 @@ public class UndertowApplication implements Lifecycle {
 
     /**
      * Stops the application as {@link #stop()} does, waiting the given time at most for the requests that are
-     * being handled, then for the running sagas, and then for each subsystem's work.
+     * being handled, then for the running sagas, and then for each subsystem's work. A pool of threads whose work
+     * has not completed in that time is interrupted, and its threads get {@link Pools#GRACE} to end.
      *
      * @param timeout the longest time to wait for the work of each subsystem
      */

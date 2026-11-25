@@ -234,6 +234,26 @@ class ApplicationStopTest {
     }
 
     /**
+     * A saga whose step does not end holds the stop up no longer than it is told, for the running sagas and then for
+     * the thread pool of the sagas, which is then interrupted, and a second for its threads to end.
+     */
+    @Test
+    void aStepThatDoesNotEndHoldsTheStopNoLongerThanItIsTold() throws Exception {
+        server = start();
+        SagaExecutionCoordinator sec = server.getApplication().getSec();
+        held = new HeldSaga(sec);
+        held.start();
+        assertThat(held.entered.await(10, TimeUnit.SECONDS)).isTrue();
+
+        long before = System.nanoTime();
+        server.getApplication().stop(Duration.ofMillis(200));
+
+        // the sagas, then the pool, each 200 ms, and a second for the threads; not the ten seconds of a fixed wait
+        assertThat(Duration.ofNanos(System.nanoTime() - before)).isLessThan(Duration.ofSeconds(5));
+        assertStopped(server);
+    }
+
+    /**
      * While the application completes the requests it is handling, it answers a new request 503 Service
      * Unavailable: it is stopping, and the client may try again, here later or at another instance. The request
      * that is being handled, here one whose body has not all arrived, is completed and answered as always.
@@ -420,7 +440,7 @@ class ApplicationStopTest {
                     .until(() -> recoveries.get() == 1);
             assertThat(recoveries).hasValue(1);
         } finally {
-            trigger.stop();
+            trigger.stop(Duration.ofSeconds(10));
         }
     }
 

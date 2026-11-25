@@ -8,6 +8,7 @@ import no.cantara.saga.execution.SagaHandoffResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.util.concurrent.CompletionException;
 
 public class SagasObserver implements Runnable {
@@ -35,10 +36,18 @@ public class SagasObserver implements Runnable {
         selector.add(sagaHandoffControl.getCompletionFuture(), sagaHandoffControl);
     }
 
-    public SagasObserver shutdown() {
+    /**
+     * Stops the observer and waits for its thread to end, at most the time given.
+     *
+     * @param timeout how long to wait for the thread, at most
+     * @return this observer
+     */
+    public SagasObserver shutdown(Duration timeout) {
         shutdownFuture.complete(null);
         try {
-            sagaObserverThread.join();
+            if (!sagaObserverThread.join(timeout)) {
+                LOG.warn("The saga observer had not ended {} after it was stopped", timeout);
+            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new RuntimeException(e);

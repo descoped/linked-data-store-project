@@ -254,6 +254,54 @@ class IndexQueueWorkerLifecycleTest {
         await().atMost(Duration.ofSeconds(5)).until(worker::isTerminated);
     }
 
+    /**
+     * An index that holds the thread of the worker, and does not let go when it is interrupted, holds the stop up
+     * for the time it is told and a second for the thread, not twice the time.
+     */
+    @Test
+    void aRoundThatHoldsTheThreadHoldsTheStopNoLongerThanItIsTold() throws Exception {
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        SearchIndex holdingTheThread = new HeldIndex() {
+            @Override
+            public Completable put(List<IndexEntry> entries) {
+                return Completable.fromAction(() -> { // on the thread of the worker
+                    entered.countDown();
+                    boolean interrupted = false;
+                    while (true) {
+                        try {
+                            release.await();
+                            break;
+                        } catch (InterruptedException e) {
+                            interrupted = true; // not let go
+                        }
+                    }
+                    if (interrupted) {
+                        Thread.currentThread().interrupt();
+                    }
+                });
+            }
+        };
+        MemoryIndexQueue queue = new MemoryIndexQueue();
+        IndexQueueWorker holding = new IndexQueueWorker(queue, holdingTheThread, persistence,
+                IndexEntriesTest.withoutAModel(), POLL);
+        try {
+            holding.start();
+            storeAndAdd(queue, "held");
+            assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
+
+            long started = System.nanoTime();
+            holding.stop(2, TimeUnit.SECONDS);
+
+            // two seconds for the round and one for the thread; not two for each
+            assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofMillis(3500));
+        } finally {
+            release.countDown();
+            holding.stop(5, TimeUnit.SECONDS);
+        }
+        await().atMost(Duration.ofSeconds(5)).until(holding::isTerminated);
+    }
+
     @Test
     void afterAStopNothingIsSentAndTheThreadHasEnded() throws InterruptedException {
         MemoryIndexQueue queue = new MemoryIndexQueue();

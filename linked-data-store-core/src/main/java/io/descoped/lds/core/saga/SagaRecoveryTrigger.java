@@ -1,9 +1,11 @@
 package io.descoped.lds.core.saga;
 
+import io.descoped.lds.core.lifecycle.Pools;
 import no.cantara.sagalog.SagaPoolShutdownException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -95,31 +97,24 @@ public class SagaRecoveryTrigger {
         return (long) intervalMinSec + random.nextInt(1 + intervalMaxSec - intervalMinSec);
     }
 
-    public void stop() {
+    /**
+     * Stops the trigger, then its thread and the recovery thread pool, whose recovery may complete within the time
+     * given, for both together; then what still runs is interrupted (see {@link Pools#stop}).
+     *
+     * @param timeout how long the recovery that runs may take to complete, at most
+     */
+    public void stop(Duration timeout) {
         stopped.set(true);
         ScheduledFuture<?> scheduledFuture = triggerScheduleRef.get();
         if (scheduledFuture != null) {
             scheduledFuture.cancel(true);
         }
+        long deadline = System.nanoTime() + timeout.toNanos();
         LOG.debug("Shutting down single-thread-pool");
-        shutdownAndAwaitTermination(recoveryTriggerSingleThreadedPool);
+        Pools.stop("The saga recovery trigger", recoveryTriggerSingleThreadedPool, timeout);
         LOG.debug("Shutting down recovery thread-pool");
-        shutdownAndAwaitTermination(recoveryThreadPool);
+        Pools.stop("The saga recovery thread pool", recoveryThreadPool,
+                Duration.ofNanos(Math.max(0, deadline - System.nanoTime())));
         LOG.debug("Shutting down recovery thread-pool done!");
-    }
-
-    static void shutdownAndAwaitTermination(ExecutorService pool) {
-        pool.shutdown();
-        try {
-            if (!pool.awaitTermination(10, TimeUnit.SECONDS)) {
-                pool.shutdownNow();
-                if (!pool.awaitTermination(10, TimeUnit.SECONDS)) {
-                    LOG.error("Pool did not terminate");
-                }
-            }
-        } catch (InterruptedException _) {
-            pool.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
     }
 }
