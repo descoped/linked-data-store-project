@@ -54,6 +54,11 @@ documentation. Before writing a section:
 - check every claim against the code or by running LDS; every command shown is run against the released image, and
   the answer shown is the one it gave.
 
+The code is the truth. A sentence of the documentation, a memory or an earlier draft is a lead to check, never a source:
+before a claim is shown to the owner, its place in the code is read and, where it can be, LDS is run to show it.
+Show the owner the claim with its file and line and what the run answered. A consequence ("so a write may be lost")
+is a claim too, and is run, not reasoned.
+
 The plan's product inventory lists the features with their files; keep it up to date when the code changes.
 
 ## The voice
