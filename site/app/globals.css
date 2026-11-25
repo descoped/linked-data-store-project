@@ -3,8 +3,8 @@
   --font-text: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
   --text-xs: 0.75rem;
-  --text-sm: 0.84375rem;
-  --text-base: 0.9375rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
   --text-lg: 1.125rem;
   --text-2xl: clamp(1.5rem, 1.25rem + 1vw, 1.9rem);
   --text-4xl: clamp(2rem, 1.4rem + 2.6vw, 3.2rem);
@@ -18,8 +18,9 @@
   --space-8: 4rem;
   --radius-sm: 6px;
   --radius-md: 10px;
-  --width-content: 76rem;
+  --width-content: 90rem;
   --width-prose: 46rem;
+  --width-doc: 42rem;
   --gutter: clamp(1rem, 0.5rem + 2vw, 2rem);
   --header-height: 4rem;
   --duration-fast: 150ms;
@@ -327,7 +328,7 @@ a {
 /* The documentation: sidebar, page, and the page's contents */
 .site-body {
   display: grid;
-  grid-template-columns: 15rem minmax(0, 1fr);
+  grid-template-columns: 16rem minmax(0, 1fr);
   margin: 0 auto;
   max-width: var(--width-content);
 }
@@ -421,9 +422,14 @@ a {
   grid-template-columns: minmax(0, 1fr) 14rem;
 }
 
+/* A page uses the width between the sidebar and its contents: its running text stays at a width that reads well,
+   and its tables, code and figures take all of it */
 .doc {
-  max-width: var(--width-prose);
   min-width: 0;
+}
+
+.doc .prose > :not(table, pre, .code-block, .diagram) {
+  max-width: var(--width-doc);
 }
 
 .toc {
@@ -525,7 +531,7 @@ a {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   font-family: var(--font-mono);
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   line-height: 1.55;
   overflow-x: auto;
   padding: var(--space-4);
