@@ -122,6 +122,68 @@ class AsyncIterablePublisherSignalsTest {
         assertThat(subscriber.signals).containsExactly("onError the store is gone");
     }
 
+    @Test
+    void eachSubscriberIsGivenEveryEntry() throws InterruptedException {
+        AsyncIterable<Integer> fromOneToThree = () -> new Counting() {
+            @Override
+            public boolean hasNext() {
+                return count < 3;
+            }
+        };
+        AsyncIterablePublisher<Integer> publisher = new AsyncIterablePublisher<>(fromOneToThree);
+        Recording first = new Recording(Long.MAX_VALUE);
+        Recording second = new Recording(Long.MAX_VALUE);
+
+        publisher.subscribe(first);
+        assertThat(first.done.await(10, TimeUnit.SECONDS)).isTrue();
+        publisher.subscribe(second);
+        assertThat(second.done.await(10, TimeUnit.SECONDS)).isTrue();
+
+        assertThat(first.signals).containsExactly("onNext 1", "onNext 2", "onNext 3");
+        assertThat(second.signals).containsExactly("onNext 1", "onNext 2", "onNext 3");
+    }
+
+    /* A store that is closed cannot read: the subscriber is told so, and subscribe returns. */
+    @Test
+    void aSubscriberOfAClosedStoreIsGivenTheError() throws InterruptedException {
+        MemoryTransactionFactory factory = new MemoryTransactionFactory(false);
+        MemoryTransaction tx = factory.createTransaction(false);
+        tx.set(new byte[]{1}, new byte[0], "i");
+        AsyncIterablePublisher<KeyValue> publisher = new AsyncIterablePublisher<>(tx.getRange(
+                KeySelector.firstGreaterOrEqual(new byte[]{0}), KeySelector.firstGreaterOrEqual(new byte[]{9}), "i", ROW_LIMIT_UNLIMITED));
+        tx.cancel();
+        factory.close();
+        List<String> signals = new CopyOnWriteArrayList<>();
+        CountDownLatch done = new CountDownLatch(1);
+
+        publisher.subscribe(new Subscriber<>() {
+            @Override
+            public void onSubscribe(Subscription subscription) {
+                subscription.request(1);
+            }
+
+            @Override
+            public void onNext(KeyValue entry) {
+                signals.add("onNext");
+            }
+
+            @Override
+            public void onError(Throwable failure) {
+                signals.add("onError " + failure.getClass().getSimpleName());
+                done.countDown();
+            }
+
+            @Override
+            public void onComplete() {
+                signals.add("onComplete");
+                done.countDown();
+            }
+        });
+
+        assertThat(done.await(10, TimeUnit.SECONDS)).isTrue();
+        assertThat(signals).containsExactly("onError RejectedExecutionException");
+    }
+
     /* Counts from 1 without end, each answer given on another thread, as the store gives its own. */
     private static class Counting implements AsyncIterator<Integer> {
         int count;

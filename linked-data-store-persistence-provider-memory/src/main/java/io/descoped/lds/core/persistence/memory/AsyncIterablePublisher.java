@@ -4,30 +4,47 @@ import org.reactivestreams.Publisher;
 import org.reactivestreams.Subscriber;
 import org.reactivestreams.Subscription;
 
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
+/**
+ * The items of an {@link AsyncIterable} as a reactive stream. Each subscriber is given every item: it walks an
+ * iterator of its own.
+ */
 public class AsyncIterablePublisher<T> implements Publisher<T> {
 
-    final AsyncIterator<T> asyncIterator;
+    final AsyncIterable<T> asyncIterable;
 
     public AsyncIterablePublisher(AsyncIterable<T> asyncIterable) {
-        this.asyncIterator = asyncIterable.iterator();
+        this.asyncIterable = asyncIterable;
     }
 
     @Override
     public void subscribe(Subscriber<? super T> subscriber) {
-        AsyncIterableSubscription subscription = new AsyncIterableSubscription(subscriber);
+        AsyncIterator<T> asyncIterator;
+        Throwable failure = null;
+        try {
+            asyncIterator = asyncIterable.iterator();
+            if (asyncIterator == null) {
+                failure = new NullPointerException("asyncIterator");
+            }
+        } catch (Throwable t) {
+            asyncIterator = null;
+            failure = t;
+        }
+        AsyncIterableSubscription subscription = new AsyncIterableSubscription(subscriber, asyncIterator);
         subscriber.onSubscribe(subscription);
-        if (asyncIterator == null) {
-            subscription.signalError(new NullPointerException("asyncIterator"));
+        if (failure != null) {
+            subscription.signalError(failure);
             return;
         }
         subscription.onSubscribeReturned();
     }
 
     class AsyncIterableSubscription implements Subscription {
+        final AsyncIterator<T> asyncIterator;
         final AtomicLong requested = new AtomicLong();
         final AtomicLong published = new AtomicLong();
         final AtomicBoolean cancelled = new AtomicBoolean();
@@ -38,8 +55,9 @@ public class AsyncIterablePublisher<T> implements Publisher<T> {
          */
         final AtomicBoolean publicationPending = new AtomicBoolean(true);
 
-        AsyncIterableSubscription(Subscriber<? super T> subscriber) {
+        AsyncIterableSubscription(Subscriber<? super T> subscriber, AsyncIterator<T> asyncIterator) {
             this.subscriber.set(subscriber);
+            this.asyncIterator = asyncIterator;
         }
 
         void onSubscribeReturned() {
@@ -94,7 +112,14 @@ public class AsyncIterablePublisher<T> implements Publisher<T> {
         }
 
         private void asyncIterate() {
-            asyncIterator.onHasNext().whenComplete((hasNext, failure) -> {
+            CompletableFuture<Boolean> hasNextFuture;
+            try {
+                hasNextFuture = asyncIterator.onHasNext();
+            } catch (Throwable t) {
+                signalError(t); // the iterator could not be asked, as when the pool of the store is shut down
+                return;
+            }
+            hasNextFuture.whenComplete((hasNext, failure) -> {
                 if (failure != null) {
                     signalError(failure); // the iterator could not tell whether there is a next item
                     return;
