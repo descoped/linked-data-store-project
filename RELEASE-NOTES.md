@@ -29,6 +29,8 @@ cosign by the release workflow of this repository. What a client sees differentl
 
 - **One write at a time to a document**, in each LDS: writes of parts and links to one document at the same time no
   longer lose changes. A write waits for its turn without holding a thread, at most 30 seconds, then 503.
+- **A write that names no time comes after the write before it** to the same document, also when the clock of the
+  machine goes back, so it is not written in the past and lost from the newest version.
 - **Parts and links wait** for their write, as documents do, unless `sync=false`.
 - **A failed write leaves nothing.** A `null` field is written as absent.
 - **Clear answers:** a body that is not JSON is 400 with the line, the column and the reason; another content type
