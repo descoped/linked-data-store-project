@@ -20,7 +20,6 @@
   --radius-md: 10px;
   --width-content: 90rem;
   --width-prose: 46rem;
-  --width-doc: 42rem;
   --gutter: clamp(1rem, 0.5rem + 2vw, 2rem);
   --header-height: 4rem;
   --duration-fast: 150ms;
@@ -422,14 +421,9 @@ a {
   grid-template-columns: minmax(0, 1fr) 14rem;
 }
 
-/* A page uses the width between the sidebar and its contents: its running text stays at a width that reads well,
-   and its tables, code and figures take all of it */
+/* A page uses all the width between the sidebar and its contents */
 .doc {
   min-width: 0;
-}
-
-.doc .prose > :not(table, pre, .code-block, .diagram) {
-  max-width: var(--width-doc);
 }
 
 .toc {
