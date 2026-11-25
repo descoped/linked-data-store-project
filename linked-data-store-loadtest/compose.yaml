@@ -1,7 +1,7 @@
 # What a load test runs in: LDS with one persistence provider, the load tester (HTTPLoadTest-baseline) and a
 # controller with the tools of the scripts. It is started by the scripts (ldsmemory.sh, ldsneo4j.sh,
-# ldspostgres.sh), which say which provider LDS has (LDS_PERSISTENCE_PROVIDER), which engine is started with it
-# (COMPOSE_PROFILES) and where the results go (RESULTS_FOLDER).
+# ldspostgres.sh, ldspostgres-logs.sh), which say which provider LDS has (LDS_PERSISTENCE_PROVIDER), which engine
+# is started with it (COMPOSE_PROFILES) and where the results go (RESULTS_FOLDER).
 #
 # Nothing is published on the machine: the load is driven from inside the network. For development only: the
 # passwords are the ones written here.
