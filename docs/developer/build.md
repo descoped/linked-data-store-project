@@ -658,16 +658,16 @@ published to Maven Central. It is made with two pull requests and a start of the
    ```
 
    `.github/workflows/release.yml` runs in the environment `release`, which allows `master` only and asks for no
-   approval: the go-ahead is given before the run is started, and the run publishes when its checks pass. It logs
-   in to Docker Hub with the secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` of the
-   organisation `descoped`, given to this repository. It checks first, and publishes
-   nothing when a check fails: the version has the form `1.2.3`, the POMs on `master` have it, its tag does not
-   exist, `RELEASE-NOTES.md` has its section, no dependency is a SNAPSHOT (the enforcer rule `requireReleaseDeps`,
-   since a SNAPSHOT would make the release whatever that SNAPSHOT was that day), and CI (`Build (JDK 27)`) passed on
-   the commit. It then packages the
-   jars without testing them again, builds the three images of the Dockerfile for both platforms with an SBOM and
-   provenance, pushes them, signs each by its digest with cosign (keyless, by the identity of the workflow on
-   GitHub), and at the end tags the commit with the version alone and makes the release on GitHub from the notes.
+   approval: the go-ahead is given before the run is started, and the run publishes when its checks pass. Only those who
+   may write to the repository can start it (the owner alone). It logs in to Docker Hub with the secrets
+   `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` of the organisation `descoped`, given to this repository. It checks first,
+   and publishes nothing when a check fails: the version has the form `1.2.3`, the POMs on `master` have it, its tag
+   does not exist, `RELEASE-NOTES.md` has its section, no dependency is a SNAPSHOT (the enforcer rule
+   `requireReleaseDeps`, since a SNAPSHOT would make the release whatever that SNAPSHOT was that day), and CI (`Build
+   (JDK 27)`) passed on the commit. It then packages the jars without testing them again, builds the three images of the
+   Dockerfile for both platforms with an SBOM and provenance, pushes them, signs each by its digest with cosign
+   (keyless, by the identity of the workflow on GitHub), and at the end tags the commit with the version alone and makes
+   the release on GitHub from the notes.
 3. The second pull request sets the versions to the next SNAPSHOT. The site (its landing page, and
    `softwareVersion` in `site/krantho.config.ts`) is changed for the release then, when the images are there: a
    change of `site/` is published at once.
