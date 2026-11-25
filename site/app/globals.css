@@ -582,6 +582,19 @@ a {
   margin: 0;
 }
 
+/* A long answer scrolls in an area of its own, so the text around it stays near; the copy button
+   still copies all of it */
+.prose .code-wrap pre {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.prose .code-answer pre {
+  max-height: 30rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
 .shiki,
 .shiki span {
   color: var(--shiki-light);

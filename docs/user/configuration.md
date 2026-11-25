@@ -485,7 +485,8 @@ With the example values of the five CORS keys above, a browser's question before
 `https://app.example` is answered:
 
 ```sh
-curl -s -i -X OPTIONS 'http://localhost:19306/ns/Company/acme' -H 'Origin: https://app.example' \
+curl -s -i -X OPTIONS 'http://localhost:19306/ns/Company/acme' \
+     -H 'Origin: https://app.example' \
      -H 'Access-Control-Request-Method: PUT' -H 'Access-Control-Request-Headers: Content-Type'
 ```
 

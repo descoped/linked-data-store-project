@@ -770,7 +770,8 @@ a run.
 The run with Solr away: search on, the documents in PostgreSQL, and the container of Solr paused:
 
 ```console
-$ curl -s -i -X PUT 'http://localhost:9090/ns/Company/down?sync=true' -H 'Content-Type: application/json' \
+$ curl -s -i -X PUT 'http://localhost:9090/ns/Company/down?sync=true' \
+    -H 'Content-Type: application/json' \
        -d '{
          "name": "Down",
          "about": [

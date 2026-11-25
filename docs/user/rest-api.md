@@ -129,7 +129,8 @@ Every segment of an address is decoded once, as UTF-8: `%C3%B8l` is the id `øl`
 is a `%` that two hexadecimal digits do not follow.
 
 ```console
-$ curl -i -X PUT "$LDS/ns/Person/id%20with%20space" -H "$J" -d '{"name": "spaced"}'
+$ curl -i -X PUT "$LDS/ns/Person/id%20with%20space" \
+    -H "$J" -d '{"name": "spaced"}'
 HTTP/1.1 201 Created
 Content-Type: application/json
 
@@ -175,7 +176,8 @@ Two keys of the configuration change every address (see [Configuration](configur
 These requests ran on an LDS started with `namespace.default=data` and `http.prefix=/api`:
 
 ```console
-$ curl -i -X PUT "$LDS/api/data/Company/acme?sourceId=d1" -H "$J" -d '{"name": "Acme"}'
+$ curl -i -X PUT "$LDS/api/data/Company/acme?sourceId=d1" \
+    -H "$J" -d '{"name": "Acme"}'
 HTTP/1.1 201 Created
 Content-Type: application/json
 
@@ -270,7 +272,8 @@ Content-Type: application/json
 
 {"saga-execution-id": "01a20fdf-ed36-747f-84ba-4a6ceed50f82"}
 
-$ curl -i -X POST "$LDS/ns/Person/kari" -H "$J" -d '{"name": "Kari", "born": null}'
+$ curl -i -X POST "$LDS/ns/Person/kari" \
+    -H "$J" -d '{"name": "Kari", "born": null}'
 HTTP/1.1 201 Created
 Content-Type: application/json
 
@@ -507,20 +510,23 @@ With the memory provider the valid time of a version is kept to the millisecond:
 Three versions of one document, the second with an offset:
 
 ```console
-$ curl -i -X PUT "$LDS/ns/Company/globex?timestamp=2020-01-01T00:00:00Z" -H "$J" -d '{"name": "Globex 2020"}'
+$ curl -i -X PUT "$LDS/ns/Company/globex?timestamp=2020-01-01T00:00:00Z" \
+    -H "$J" -d '{"name": "Globex 2020"}'
 HTTP/1.1 201 Created
 Content-Type: application/json
 
 {"saga-execution-id": "01a20fdf-ee1e-7b4b-b385-7f3b3de61ff2"}
 
-$ curl -i -X PUT "$LDS/ns/Company/globex?timestamp=2022-01-01T00:00:00%2B01:00" -H "$J" \
+$ curl -i -X PUT "$LDS/ns/Company/globex?timestamp=2022-01-01T00:00:00%2B01:00" \
+    -H "$J" \
     -d '{"name": "Globex 2022"}'
 HTTP/1.1 201 Created
 Content-Type: application/json
 
 {"saga-execution-id": "01a20fdf-ee2c-7a1e-82ae-1315f1ece418"}
 
-$ curl -i -X PUT "$LDS/ns/Company/globex?timestamp=2030-06-01T12:00:00Z" -H "$J" -d '{"name": "Globex 2030"}'
+$ curl -i -X PUT "$LDS/ns/Company/globex?timestamp=2030-06-01T12:00:00Z" \
+    -H "$J" -d '{"name": "Globex 2030"}'
 HTTP/1.1 201 Created
 Content-Type: application/json
 
@@ -626,14 +632,16 @@ written with another offset is the same time. The first write below replaces the
 adds a version between 2020 and 2022.
 
 ```console
-$ curl -i -X PUT "$LDS/ns/Company/globex?timestamp=2020-01-01T01:00:00%2B01:00" -H "$J" \
+$ curl -i -X PUT "$LDS/ns/Company/globex?timestamp=2020-01-01T01:00:00%2B01:00" \
+    -H "$J" \
     -d '{"name": "Globex 2020, written again"}'
 HTTP/1.1 201 Created
 Content-Type: application/json
 
 {"saga-execution-id": "01a20fdf-ee9a-72dc-aac9-a9fe3c308299"}
 
-$ curl -i -X PUT "$LDS/ns/Company/globex?timestamp=2021-01-01T00:00:00Z" -H "$J" -d '{"name": "Globex 2021"}'
+$ curl -i -X PUT "$LDS/ns/Company/globex?timestamp=2021-01-01T00:00:00Z" \
+    -H "$J" -d '{"name": "Globex 2021"}'
 HTTP/1.1 201 Created
 Content-Type: application/json
 
@@ -862,7 +870,8 @@ Content-Type: text/plain
 
 Schema validation error: [$.born: does not match the date-time pattern must be a valid RFC 3339 date-time]
 
-$ curl -i -X PUT "$LDS/ns/Person/ola/address?timestamp=2019-01-01T00:00:00Z" -H "$J" \
+$ curl -i -X PUT "$LDS/ns/Person/ola/address?timestamp=2019-01-01T00:00:00Z" \
+    -H "$J" \
     -d '{
       "street": "Too early",
       "city": "Oslo"
@@ -1167,7 +1176,8 @@ Content-Type: application/json
 
 {"saga-execution-id": "01a20fdf-f4d5-7448-aa84-62a05b472c58"}
 
-$ curl -i -X PUT "$LDS/ns/Person/tm/address?timestamp=2022-01-01T00:00:00Z" -H "$J" \
+$ curl -i -X PUT "$LDS/ns/Person/tm/address?timestamp=2022-01-01T00:00:00Z" \
+    -H "$J" \
     -d '{
       "street": "New",
       "city": "Oslo"
@@ -1177,7 +1187,8 @@ Content-Type: application/json
 
 {"saga-execution-id": "01a20fdf-f4e1-7ffc-88d6-0ea05afd2f08"}
 
-$ curl -i -X PUT "$LDS/ns/Person/tm/address?timestamp=2019-01-01T00:00:00Z" -H "$J" \
+$ curl -i -X PUT "$LDS/ns/Person/tm/address?timestamp=2019-01-01T00:00:00Z" \
+    -H "$J" \
     -d '{
       "street": "Too early",
       "city": "Oslo"
@@ -1314,7 +1325,8 @@ Content-Type: application/json
 
 {"saga-execution-id": "01a20feb-5c80-7a59-a7da-bc9ec8d2fb77"}
 
-$ curl -i -X PUT "$LDS/ns/Company/fjord/about?searchable=true&sync=false" -H "$J" \
+$ curl -i -X PUT "$LDS/ns/Company/fjord/about?searchable=true&sync=false" \
+    -H "$J" \
     -d '[{"languageCode": "nb", "languageText": "Laks fra fjordene"}]'
 HTTP/1.1 200 OK
 LDS-Searchable: true
@@ -1357,7 +1369,8 @@ Content-Type: application/json
 With Solr stopped, the same LDS answered a write after 10 seconds, and the write was done:
 
 ```console
-$ curl -i -X PUT "$LDS/ns/Company/slow?searchable=true" -H "$J" -d '{"name": "Slow"}'
+$ curl -i -X PUT "$LDS/ns/Company/slow?searchable=true" \
+    -H "$J" -d '{"name": "Slow"}'
 HTTP/1.1 201 Created
 LDS-Searchable: false
 Content-Type: application/json
@@ -1386,14 +1399,16 @@ the commands are `failBefore` and `failAfter`, and the steps are `txlog`, `persi
 `index-queue`. A value without a step, or with a step the saga does not have, does nothing.
 
 ```console
-$ curl -i -X PUT "$LDS/ns/Company/f1?saga=failBefore%20persistence" -H "$J" -d '{"name": "F1"}'
+$ curl -i -X PUT "$LDS/ns/Company/f1?saga=failBefore%20persistence" \
+    -H "$J" -d '{"name": "F1"}'
 HTTP/1.1 500 Internal Server Error
 
 $ curl -i "$LDS/ns/Company/f1"
 HTTP/1.1 404 Not Found
 Content-Type: application/json; charset=utf-8
 
-$ curl -i -X PUT "$LDS/ns/Company/f2?sync=false&saga=failBefore%20persistence" -H "$J" -d '{"name": "F2"}'
+$ curl -i -X PUT "$LDS/ns/Company/f2?sync=false&saga=failBefore%20persistence" \
+    -H "$J" -d '{"name": "F2"}'
 HTTP/1.1 201 Created
 Content-Type: application/json
 
@@ -1403,7 +1418,8 @@ $ curl -i "$LDS/ns/Company/f2"
 HTTP/1.1 404 Not Found
 Content-Type: application/json; charset=utf-8
 
-$ curl -i -X PUT "$LDS/ns/Company/f3?saga=failAfter%20persistence" -H "$J" -d '{"name": "F3"}'
+$ curl -i -X PUT "$LDS/ns/Company/f3?saga=failAfter%20persistence" \
+    -H "$J" -d '{"name": "F3"}'
 HTTP/1.1 500 Internal Server Error
 
 $ curl -i "$LDS/ns/Company/f3"
@@ -1551,7 +1567,8 @@ Content-Type: text/plain
 The body cannot be read at line 1, column 12: Unexpected end-of-input: expected close marker for Object. Send the
 body as JSON, with Content-Type: application/json
 
-$ curl -i -X PUT "$LDS/ns/Person/c1" -H 'Content-Type: text/plain' -d '{"name": "A"}'
+$ curl -i -X PUT "$LDS/ns/Person/c1" \
+    -H 'Content-Type: text/plain' -d '{"name": "A"}'
 HTTP/1.1 415 Unsupported Media Type
 Content-Type: text/plain
 
@@ -1677,7 +1694,8 @@ What the answer can be depends on the configuration (see [Configuration](configu
 With the defaults:
 
 ```console
-$ curl -i -X PUT "$LDS/ns/Person/src1?source=A&sourceId=a1" -H "$J" -d '{"name": "S"}'
+$ curl -i -X PUT "$LDS/ns/Person/src1?source=A&sourceId=a1" \
+    -H "$J" -d '{"name": "S"}'
 HTTP/1.1 201 Created
 Content-Type: application/json
 
@@ -1694,19 +1712,22 @@ On an LDS started with `txlog.rawdata.provider=memory` (the log is kept until LD
 `txlog.split.sources=true`:
 
 ```console
-$ curl -i -X PUT "$LDS/ns/Person/s1?source=A&sourceId=a1" -H "$J" -d '{"name": "S1"}'
+$ curl -i -X PUT "$LDS/ns/Person/s1?source=A&sourceId=a1" \
+    -H "$J" -d '{"name": "S1"}'
 HTTP/1.1 201 Created
 Content-Type: application/json
 
 {"saga-execution-id": "01a20fe4-44d7-71eb-981b-c4384c059766"}
 
-$ curl -i -X PUT "$LDS/ns/Person/s2?source=B&sourceId=b1" -H "$J" -d '{"name": "S2"}'
+$ curl -i -X PUT "$LDS/ns/Person/s2?source=B&sourceId=b1" \
+    -H "$J" -d '{"name": "S2"}'
 HTTP/1.1 201 Created
 Content-Type: application/json
 
 {"saga-execution-id": "01a20fe4-4502-7ac0-a65e-57fd2bd20278"}
 
-$ curl -i -X PUT "$LDS/ns/Person/s1/address?source=A&sourceId=a2" -H "$J" -d '{"city": "Oslo"}'
+$ curl -i -X PUT "$LDS/ns/Person/s1/address?source=A&sourceId=a2" \
+    -H "$J" -d '{"city": "Oslo"}'
 HTTP/1.1 200 OK
 Content-Type: application/json
 
@@ -1786,7 +1807,8 @@ Content-Type: application/json; charset=utf-8
   "name": "Kari"
 }
 
-$ curl -i -X OPTIONS -H 'Origin: https://app.example' -H 'Access-Control-Request-Method: PUT' \
+$ curl -i -X OPTIONS \
+    -H 'Origin: https://app.example' -H 'Access-Control-Request-Method: PUT' \
     -H 'Access-Control-Request-Headers: content-type' "$LDS/ns/Person/kari"
 HTTP/1.1 204 No Content
 Access-Control-Allow-Origin: https://app.example

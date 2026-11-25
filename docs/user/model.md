@@ -143,30 +143,102 @@ HTTP/1.1 200 OK
 
 The address of an entity type with `?schema` after it gives the JSON Schema of the entity type. With a GraphQL schema as
 the model, it is the JSON Schema that LDS has made from the schema, and it is what LDS checks documents with. Read it
-when LDS accepts or refuses a document and you do not see why. This is the answer for `Book` of the library model below,
-shortened:
+when LDS accepts or refuses a document and you do not see why. This is the answer for `Book` of the library model
+below:
 
 ```sh
 curl -i 'http://localhost:9090/ns/Book?schema'
 ```
 
-```
+```http
 HTTP/1.1 200 OK
 
-{"$schema":"https://json-schema.org/draft/2020-12/schema","$ref":"#/$defs/Book","$defs":{"Book":{"type":"object",
-"properties":{"authors":{"displayName":"","type":"array","items":{"type":"string"}},
-"_link_property_authors":{"properties":{"Author":{"type":"null"}},"type":"object"},
-"chapters":{"displayName":"","type":"array","items":{"$ref":"#/$defs/Chapter"}},
-"cover":{"displayName":""},"inPrint":{"type":"boolean","displayName":""},
-...
-"pages":{"type":"integer","minimum":-2147483648,"maximum":2147483647,"displayName":""},
-"published":{"type":"string","format":"date-time","displayName":""},
-"publisher":{"displayName":"","type":"string","description":"A publisher"},
-...
-"state":{"displayName":"","type":"string","enum":["DRAFT","PUBLISHED"]},
-"title":{"type":"string","description":"The title on the cover","displayName":""}},
-"required":["title"],"displayName":"A book","description":"A book"},
-"Chapter":{...},"Cover":{...}}}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/Book",
+  "$defs": {
+    "Book": {
+      "type": "object",
+      "properties": {
+        "authors": {
+          "displayName": "",
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "_link_property_authors": {
+          "properties": {"Author": {"type": "null"}},
+          "type": "object"
+        },
+        "chapters": {
+          "displayName": "",
+          "type": "array",
+          "items": {"$ref": "#/$defs/Chapter"}
+        },
+        "cover": {"displayName": ""},
+        "inPrint": {"type": "boolean", "displayName": ""},
+        "keywords": {
+          "type": "array",
+          "displayName": "",
+          "items": {"type": "string"}
+        },
+        "pages": {
+          "type": "integer",
+          "minimum": -2147483648,
+          "maximum": 2147483647,
+          "displayName": ""
+        },
+        "published": {
+          "type": "string",
+          "format": "date-time",
+          "displayName": ""
+        },
+        "publisher": {
+          "displayName": "",
+          "type": "string",
+          "description": "A publisher"
+        },
+        "_link_property_publisher": {
+          "properties": {"Publisher": {"type": "null"}},
+          "type": "object"
+        },
+        "rights": {"displayName": "", "type": "string"},
+        "_link_property_rights": {
+          "properties": {
+            "Author": {"type": "null"},
+            "Publisher": {"type": "null"}
+          },
+          "type": "object"
+        },
+        "state": {
+          "displayName": "",
+          "type": "string",
+          "enum": ["DRAFT", "PUBLISHED"]
+        },
+        "title": {
+          "type": "string",
+          "description": "The title on the cover",
+          "displayName": ""
+        }
+      },
+      "required": ["title"],
+      "displayName": "A book",
+      "description": "A book"
+    },
+    "Chapter": {
+      "type": "object",
+      "properties": {
+        "summary": {"type": "string", "displayName": ""},
+        "title": {"type": "string", "displayName": ""}
+      },
+      "required": ["title"]
+    },
+    "Cover": {
+      "type": "object",
+      "properties": {"colour": {"type": "string", "displayName": ""}},
+      "required": ["colour"]
+    }
+  }
+}
 ```
 
 `cover` has no `type`: LDS does not check it. `displayName` is not a keyword of JSON Schema. It is a name
@@ -299,11 +371,14 @@ An arrow is a link: the document holds the text `/Entity/id`, and what it points
 These three documents fit the model: a publisher, an author and a book.
 
 ```sh
-curl -i -X PUT 'http://localhost:9090/ns/Publisher/north?sync=true' -H 'Content-Type: application/json' \
+curl -i -X PUT 'http://localhost:9090/ns/Publisher/north?sync=true' \
+     -H 'Content-Type: application/json' \
      -d '{"name": "North Press"}'
-curl -i -X PUT 'http://localhost:9090/ns/Author/ada?sync=true' -H 'Content-Type: application/json' \
+curl -i -X PUT 'http://localhost:9090/ns/Author/ada?sync=true' \
+     -H 'Content-Type: application/json' \
      -d '{"name": "Ada"}'
-curl -i -X PUT 'http://localhost:9090/ns/Book/winter?sync=true' -H 'Content-Type: application/json' \
+curl -i -X PUT 'http://localhost:9090/ns/Book/winter?sync=true' \
+     -H 'Content-Type: application/json' \
      -d '{
        "title": "Winter",
        "inPrint": true,
@@ -411,7 +486,8 @@ object is, and the field may hold any value. GraphQL gives an object in an `ID` 
 and read back as it was:
 
 ```sh
-curl -i -X PUT 'http://localhost:9090/ns/Book/spring?sync=true' -H 'Content-Type: application/json' \
+curl -i -X PUT 'http://localhost:9090/ns/Book/spring?sync=true' \
+     -H 'Content-Type: application/json' \
      -d '{
        "title": "Spring",
        "cover": "none",
@@ -696,7 +772,8 @@ This is `Book.json`. It says the same as the GraphQL schema above, and more:
 A document that fits it:
 
 ```sh
-curl -i -X PUT 'http://localhost:9090/ns/Book/winter?sync=true' -H 'Content-Type: application/json' \
+curl -i -X PUT 'http://localhost:9090/ns/Book/winter?sync=true' \
+     -H 'Content-Type: application/json' \
      -d '{
        "title": "Winter",
        "inPrint": true,
@@ -827,7 +904,8 @@ and `$.chapters[0].title` for a field of that item.
 With the GraphQL schema of the library as the model:
 
 ```sh
-curl -i -X PUT 'http://localhost:9090/ns/Book/spring?sync=true' -H 'Content-Type: application/json' \
+curl -i -X PUT 'http://localhost:9090/ns/Book/spring?sync=true' \
+     -H 'Content-Type: application/json' \
      -d '{
        "inPrint": "yes",
        "published": "20 November",
@@ -842,16 +920,14 @@ curl -i -X PUT 'http://localhost:9090/ns/Book/spring?sync=true' -H 'Content-Type
 ```
 HTTP/1.1 400 Bad Request
 
-Schema validation error: [$.chapters[0]: required property 'title' not found, $.inPrint: string found, boolean
-expected, $.keywords: string found, array expected, $.published: does not match the date-time pattern must be a
-valid RFC 3339 date-time, $.state: does not have a value in the enumeration ["DRAFT", "PUBLISHED"], $: required
-property 'title' not found]
+Schema validation error: [$.chapters[0]: required property 'title' not found, $.inPrint: string found, boolean expected, $.keywords: string found, array expected, $.published: does not match the date-time pattern must be a valid RFC 3339 date-time, $.state: does not have a value in the enumeration ["DRAFT", "PUBLISHED"], $: required property 'title' not found]
 ```
 
 With the JSON Schema files of the library as the model:
 
 ```sh
-curl -i -X PUT 'http://localhost:9090/ns/Book/spring?sync=true' -H 'Content-Type: application/json' \
+curl -i -X PUT 'http://localhost:9090/ns/Book/spring?sync=true' \
+     -H 'Content-Type: application/json' \
      -d '{
        "title": "",
        "firstSold": "1 December",
@@ -864,10 +940,7 @@ curl -i -X PUT 'http://localhost:9090/ns/Book/spring?sync=true' -H 'Content-Type
 ```
 HTTP/1.1 400 Bad Request
 
-Schema validation error: [$.title: must be at least 1 characters long, $.firstSold: does not match the date
-pattern must be a valid RFC 3339 full-date, $.pages: must have a minimum value of 1, $.cover: required property
-'colour' not found, $: property 'weight' is not defined in the schema and the schema does not allow additional
-properties]
+Schema validation error: [$.title: must be at least 1 characters long, $.firstSold: does not match the date pattern must be a valid RFC 3339 full-date, $.pages: must have a minimum value of 1, $.cover: required property 'colour' not found, $: property 'weight' is not defined in the schema and the schema does not allow additional properties]
 ```
 
 Other messages that were seen:

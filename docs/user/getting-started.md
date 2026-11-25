@@ -227,7 +227,8 @@ Write a company with the id `acme`. The body is the document, and the header `Co
 says that it is JSON:
 
 ```sh
-curl -i -X PUT 'http://localhost:9090/ns/Company/acme?sync=true' -H 'Content-Type: application/json' \
+curl -i -X PUT 'http://localhost:9090/ns/Company/acme?sync=true' \
+     -H 'Content-Type: application/json' \
      -d '{
        "name": "Acme",
        "founded": "1990-05-17T00:00:00Z"
@@ -248,7 +249,8 @@ tells what a write goes through.
 Now a person with the id `ola`:
 
 ```sh
-curl -i -X PUT 'http://localhost:9090/ns/Person/ola?sync=true' -H 'Content-Type: application/json' \
+curl -i -X PUT 'http://localhost:9090/ns/Person/ola?sync=true' \
+     -H 'Content-Type: application/json' \
      -d '{
        "name": "Ola",
        "address": {"street": "Storgata 1", "city": "Oslo"}
@@ -266,7 +268,8 @@ document that fails the check is refused with a text that says what is wrong, an
 number:
 
 ```sh
-curl -i -X PUT 'http://localhost:9090/ns/Person/kari?sync=true' -H 'Content-Type: application/json' \
+curl -i -X PUT 'http://localhost:9090/ns/Person/kari?sync=true' \
+     -H 'Content-Type: application/json' \
      -d '{"name": 7}'
 ```
 
@@ -286,15 +289,15 @@ whose address has no `city` is written all the same. A list of embedded objects 
 A body that is not JSON is refused before it is checked, with the place of the fault:
 
 ```sh
-curl -i -X PUT 'http://localhost:9090/ns/Person/kari?sync=true' -H 'Content-Type: application/json' \
+curl -i -X PUT 'http://localhost:9090/ns/Person/kari?sync=true' \
+     -H 'Content-Type: application/json' \
      -d '{"name": "Kari"'
 ```
 
 ```
 HTTP/1.1 400 Bad Request
 
-The body cannot be read at line 1, column 13: Unexpected end-of-input: expected close marker for Object. Send the
-body as JSON, with Content-Type: application/json
+The body cannot be read at line 1, column 13: Unexpected end-of-input: expected close marker for Object. Send the body as JSON, with Content-Type: application/json
 ```
 
 Without the header `Content-Type: application/json`, `curl -d` names another content type, and LDS answers
@@ -482,7 +485,8 @@ HTTP/1.1 200 OK
 A link can also be written as a field of the document. Kari works for the same company and has Ola as a friend:
 
 ```sh
-curl -i -X PUT 'http://localhost:9090/ns/Person/kari?sync=true' -H 'Content-Type: application/json' \
+curl -i -X PUT 'http://localhost:9090/ns/Person/kari?sync=true' \
+     -H 'Content-Type: application/json' \
      -d '{
        "name": "Kari",
        "employer": "/Company/acme",
@@ -515,7 +519,8 @@ LDS does not check that the document a link points at exists. A link can point a
 until then it is a dangling reference. Per works for a company that LDS does not have:
 
 ```sh
-curl -i -X PUT 'http://localhost:9090/ns/Person/per?sync=true' -H 'Content-Type: application/json' \
+curl -i -X PUT 'http://localhost:9090/ns/Person/per?sync=true' \
+     -H 'Content-Type: application/json' \
      -d '{
        "name": "Per",
        "employer": "/Company/not-yet"
@@ -661,7 +666,8 @@ GraphQL makes as-of reads too. The time is the query parameter `snapshot` in the
 links it follows, is answered as of that time:
 
 ```sh
-curl -i 'http://localhost:9090/graphql?snapshot=2021-06-01T00:00:00Z' -H 'Content-Type: application/graphql' \
+curl -i 'http://localhost:9090/graphql?snapshot=2021-06-01T00:00:00Z' \
+     -H 'Content-Type: application/graphql' \
      -d '{
        PersonById(id: "ola") {
          name
@@ -689,7 +695,8 @@ A version that does not have a link field answers the link with `null`. The vers
 `employer`:
 
 ```sh
-curl -i 'http://localhost:9090/graphql?snapshot=2021-06-01T00:00:00Z' -H 'Content-Type: application/graphql' \
+curl -i 'http://localhost:9090/graphql?snapshot=2021-06-01T00:00:00Z' \
+     -H 'Content-Type: application/graphql' \
      -d '{
        PersonById(id: "ola") {
          name
@@ -713,7 +720,8 @@ HTTP/1.1 200 OK
 A `snapshot` that LDS cannot read as a time, a date alone for example, is refused:
 
 ```sh
-curl -i 'http://localhost:9090/graphql?snapshot=2021-06-01' -H 'Content-Type: application/graphql' \
+curl -i 'http://localhost:9090/graphql?snapshot=2021-06-01' \
+     -H 'Content-Type: application/graphql' \
      -d '{
        PersonById(id: "ola") {
          name

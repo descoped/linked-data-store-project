@@ -54,7 +54,8 @@ function getHighlighter(): Promise<Highlighter> {
  * A code block coloured as GitHub colours it, in both themes: each token carries its light and its dark colour as CSS
  * variables (`--shiki-light`, `--shiki-dark`), and the stylesheet picks one by the page's theme. A language that is
  * not known, and a block without one, is shown as plain text. The block is labelled with its language, and the page
- * adds a copy button to it.
+ * adds a copy button to it. A block of HTTP is an answer, which scrolls when it is long; an answer, a console session and a
+ * block of text wrap their lines.
  */
 async function highlight(lang: string, escaped: string): Promise<string> {
   const code = decode(escaped).replace(/\n$/, '')
@@ -66,7 +67,11 @@ async function highlight(lang: string, escaped: string): Promise<string> {
         defaultColor: false,
       })
     : `<pre class="shiki"><code>${escape(code)}</code></pre>`
-  return `<div class="code-block"><div class="code-head"><span class="code-lang">${label ?? 'Text'}</span></div>${pre}</div>`
+  // An answer can be long: the page shows it in an area of its own height that scrolls. An answer, a session of
+  // commands and their answers, and a block of text (a message, a log) wrap their long lines; code keeps its lines
+  // and scrolls sideways.
+  const kind = lang === 'http' ? ' code-answer code-wrap' : !label || lang === 'console' ? ' code-wrap' : ''
+  return `<div class="code-block${kind}"><div class="code-head"><span class="code-lang">${label ?? 'Text'}</span></div>${pre}</div>`
 }
 
 /** Replaces each match of a pattern by what an async function makes of it */

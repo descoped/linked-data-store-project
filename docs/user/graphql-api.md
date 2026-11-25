@@ -250,7 +250,9 @@ With the content type `application/graphql` the whole body is the query. Such a 
 operation name.
 
 ```sh
-curl 'http://localhost:9090/graphql' -H 'Content-Type: application/graphql' -d '{ CompanyById(id: "acme") { name } }'
+curl 'http://localhost:9090/graphql' \
+     -H 'Content-Type: application/graphql' \
+     -d '{ CompanyById(id: "acme") { name } }'
 ```
 
 ```json
@@ -270,7 +272,9 @@ curl 'http://localhost:9090/graphql' -H 'Content-Type: application/graphql' -d '
 | another content type, or none | nothing: the answer is `415 Unsupported Media Type`, with an error that names the content types to send |
 
 ```sh
-curl -i 'http://localhost:9090/graphql' -H 'Content-Type: text/plain' -d '{ CompanyById(id: "acme") { name } }'
+curl -i 'http://localhost:9090/graphql' \
+     -H 'Content-Type: text/plain' \
+     -d '{ CompanyById(id: "acme") { name } }'
 ```
 
 ```http
@@ -1234,7 +1238,8 @@ the time is now.
 The time is the query parameter `snapshot` of the address. It works for GET and for POST.
 
 ```sh
-curl 'http://localhost:9090/graphql?snapshot=2021-06-01T00:00:00Z' -H 'Content-Type: application/graphql' \
+curl 'http://localhost:9090/graphql?snapshot=2021-06-01T00:00:00Z' \
+     -H 'Content-Type: application/graphql' \
      -d '{
        PersonById(id: "ola") {
          name

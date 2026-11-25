@@ -89,7 +89,9 @@ Together they are the [document key](../glossary.md#document-key), and the addre
 Write a document of the entity type `Company` with the id `acme`, and read it:
 
 ```sh
-curl -X PUT "$LDS/ns/Company/acme" -H 'Content-Type: application/json' -d '{"name": "Acme"}'
+curl -X PUT "$LDS/ns/Company/acme" \
+     -H 'Content-Type: application/json' \
+     -d '{"name": "Acme"}'
 ```
 
 ```json
@@ -135,11 +137,14 @@ LDS is a time machine. It does not keep one state of a document, it keeps the do
 Three writes of the company `fjord`, each with its valid time. The last one written is the one in the middle:
 
 ```sh
-curl -X PUT "$LDS/ns/Company/fjord?timestamp=2020-01-01T00:00:00Z" -H 'Content-Type: application/json' \
+curl -X PUT "$LDS/ns/Company/fjord?timestamp=2020-01-01T00:00:00Z" \
+     -H 'Content-Type: application/json' \
      -d '{"name": "Fjord Fish"}'
-curl -X PUT "$LDS/ns/Company/fjord?timestamp=2030-01-01T00:00:00Z" -H 'Content-Type: application/json' \
+curl -X PUT "$LDS/ns/Company/fjord?timestamp=2030-01-01T00:00:00Z" \
+     -H 'Content-Type: application/json' \
      -d '{"name": "Fjord Group"}'
-curl -X PUT "$LDS/ns/Company/fjord?timestamp=2023-01-01T00:00:00Z" -H 'Content-Type: application/json' \
+curl -X PUT "$LDS/ns/Company/fjord?timestamp=2023-01-01T00:00:00Z" \
+     -H 'Content-Type: application/json' \
      -d '{"name": "Fjord Seafood"}'
 ```
 
@@ -301,7 +306,8 @@ document was at that time, and it leads nowhere when there is no such document a
 Write a person whose `employer` is a company that does not exist:
 
 ```sh
-curl -X PUT "$LDS/ns/Person/ola?timestamp=2020-01-01T00:00:00Z" -H 'Content-Type: application/json' \
+curl -X PUT "$LDS/ns/Person/ola?timestamp=2020-01-01T00:00:00Z" \
+     -H 'Content-Type: application/json' \
      -d '{
        "name": "Ola",
        "employer": "/Company/nordlys"
@@ -334,7 +340,8 @@ curl "$LDS/graphql" -H 'Content-Type: application/graphql' \
 Now write the company, valid from 2021, and send the same query again:
 
 ```sh
-curl -X PUT "$LDS/ns/Company/nordlys?timestamp=2021-01-01T00:00:00Z" -H 'Content-Type: application/json' \
+curl -X PUT "$LDS/ns/Company/nordlys?timestamp=2021-01-01T00:00:00Z" \
+     -H 'Content-Type: application/json' \
      -d '{"name": "Nordlys"}'
 ```
 
@@ -354,7 +361,8 @@ The write is answered `201`, and the query now gives:
 The same query as of the middle of 2020, when Ola had the link and the company was not there yet:
 
 ```sh
-curl "$LDS/graphql?snapshot=2020-06-01T00:00:00Z" -H 'Content-Type: application/graphql' \
+curl "$LDS/graphql?snapshot=2020-06-01T00:00:00Z" \
+     -H 'Content-Type: application/graphql' \
      -d '{
        PersonById(id: "ola") {
          name
@@ -624,7 +632,9 @@ Before a document is written, LDS checks it against the model ([schema validatio
 document that does not fit is refused with `400` and a text that says what is wrong, and nothing is written:
 
 ```sh
-curl -X PUT "$LDS/ns/Person/per" -H 'Content-Type: application/json' -d '{"name": 7}'
+curl -X PUT "$LDS/ns/Person/per" \
+     -H 'Content-Type: application/json' \
+     -d '{"name": 7}'
 curl -X PUT "$LDS/ns/Person/per" -H 'Content-Type: application/json' \
      -d '{
        "name": "Per",
@@ -715,24 +725,29 @@ flowchart TB
 These are the five writes, and the GraphQL query that was sent at T1, T2 and Tn:
 
 ```sh
-curl -X PUT "$LDS/ns/Company/acme?timestamp=2020-01-01T00:00:00Z" -H 'Content-Type: application/json' \
+curl -X PUT "$LDS/ns/Company/acme?timestamp=2020-01-01T00:00:00Z" \
+     -H 'Content-Type: application/json' \
      -d '{"name": "Acme"}'
-curl -X PUT "$LDS/ns/Person/ola?timestamp=2020-01-01T00:00:00Z" -H 'Content-Type: application/json' \
+curl -X PUT "$LDS/ns/Person/ola?timestamp=2020-01-01T00:00:00Z" \
+     -H 'Content-Type: application/json' \
      -d '{
        "name": "Ola",
        "address": {"city": "Bergen"},
        "employer": "/Company/nordlys"
      }'
-curl -X PUT "$LDS/ns/Company/nordlys?timestamp=2021-01-01T00:00:00Z" -H 'Content-Type: application/json' \
+curl -X PUT "$LDS/ns/Company/nordlys?timestamp=2021-01-01T00:00:00Z" \
+     -H 'Content-Type: application/json' \
      -d '{"name": "Nordlys"}'
-curl -X PUT "$LDS/ns/Person/ola?timestamp=2023-01-01T00:00:00Z" -H 'Content-Type: application/json' \
+curl -X PUT "$LDS/ns/Person/ola?timestamp=2023-01-01T00:00:00Z" \
+     -H 'Content-Type: application/json' \
      -d '{
        "name": "Ola",
        "address": {"city": "Oslo"},
        "employer": "/Company/acme"
      }'
 curl -X DELETE "$LDS/ns/Company/nordlys?timestamp=2025-01-01T00:00:00Z"
-curl "$LDS/graphql?snapshot=2020-06-01T00:00:00Z" -H 'Content-Type: application/graphql' \
+curl "$LDS/graphql?snapshot=2020-06-01T00:00:00Z" \
+     -H 'Content-Type: application/graphql' \
      -d '{
        PersonById(id: "ola") {
          name
@@ -831,7 +846,8 @@ for Tn.
 A person written for 2019 without the `name` that the model asks for is refused as one written for now would be:
 
 ```sh
-curl -X PUT "$LDS/ns/Person/per?timestamp=2019-01-01T00:00:00Z" -H 'Content-Type: application/json' \
+curl -X PUT "$LDS/ns/Person/per?timestamp=2019-01-01T00:00:00Z" \
+     -H 'Content-Type: application/json' \
      -d '{"born": "1970-01-01T00:00:00Z"}'
 ```
 
@@ -993,9 +1009,11 @@ looked up first to find out whether it was done.
 The same write sent twice with a `timestamp`, and the timeline after it:
 
 ```sh
-curl -X PUT "$LDS/ns/Company/hav?timestamp=2024-03-01T00:00:00Z" -H 'Content-Type: application/json' \
+curl -X PUT "$LDS/ns/Company/hav?timestamp=2024-03-01T00:00:00Z" \
+     -H 'Content-Type: application/json' \
      -d '{"name": "Hav"}'
-curl -X PUT "$LDS/ns/Company/hav?timestamp=2024-03-01T00:00:00Z" -H 'Content-Type: application/json' \
+curl -X PUT "$LDS/ns/Company/hav?timestamp=2024-03-01T00:00:00Z" \
+     -H 'Content-Type: application/json' \
      -d '{"name": "Hav"}'
 curl "$LDS/ns/Company/hav?timeline"
 ```
@@ -1019,8 +1037,12 @@ has one version more. A delete without a `timestamp` adds a tombstone each time 
 twice without a `timestamp`:
 
 ```sh
-curl -X PUT "$LDS/ns/Company/vind" -H 'Content-Type: application/json' -d '{"name": "Vind"}'
-curl -X PUT "$LDS/ns/Company/vind" -H 'Content-Type: application/json' -d '{"name": "Vind"}'
+curl -X PUT "$LDS/ns/Company/vind" \
+     -H 'Content-Type: application/json' \
+     -d '{"name": "Vind"}'
+curl -X PUT "$LDS/ns/Company/vind" \
+     -H 'Content-Type: application/json' \
+     -d '{"name": "Vind"}'
 curl "$LDS/ns/Company/vind?timeline"
 ```
 
