@@ -66,20 +66,13 @@ Start LDS from its image on Docker Hub, in memory, with an example model:
 docker run --rm -p 127.0.0.1:9090:9090 descoped/lds:3.0.1
 ```
 
-Write Company/fjord, valid from 1 January 2020:
+Write Company/fjord, valid from 1 January 2020, and read it as of 1 June 2021:
 
-```sh
-curl -X PUT 'http://localhost:9090/ns/Company/fjord?timestamp=2020-01-01T00:00:00Z' \
-     -H 'Content-Type: application/json' -d '{"name": "Fjord Fish"}'
-```
-
-Read it as of 1 June 2021:
-
-```sh
-curl 'http://localhost:9090/ns/Company/fjord?timestamp=2021-06-01T00:00:00Z'
-```
-
-```json
+```console
+$ curl -X PUT 'http://localhost:9090/ns/Company/fjord?timestamp=2020-01-01T00:00:00Z' \
+    -H 'Content-Type: application/json' -d '{"name": "Fjord Fish"}'
+{"saga-execution-id": "01a211da-6186-7b26-8c37-dad49191bf12"}
+$ curl 'http://localhost:9090/ns/Company/fjord?timestamp=2021-06-01T00:00:00Z'
 {"name": "Fjord Fish"}
 ```
 

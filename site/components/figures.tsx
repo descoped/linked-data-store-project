@@ -212,3 +212,98 @@ export function CompositionFigure(): React.ReactElement {
     </svg>
   )
 }
+
+/** A step of the saga figure: its box, the box lit at the stops where the step is done, and its name */
+function SagaStep({
+  x0,
+  n,
+  name,
+  done,
+}: {
+  x0: number
+  n: number
+  name: string
+  done: number[]
+}): React.ReactElement {
+  return (
+    <g>
+      <rect className="fig-bar" x={x0} y={70} width={172} height={44} rx={6} />
+      {done.map((stop) => (
+        <rect key={stop} className={`fig-bar-on s${stop}`} x={x0} y={70} width={172} height={44} rx={6} />
+      ))}
+      <text x={x0 + 86} y={97} textAnchor="middle">
+        {n} · {name}
+      </text>
+    </g>
+  )
+}
+
+/**
+ * A write is a saga, on the write path of the write-path and saga documents: the steps are the transaction log, the
+ * store and, with search, the index queue, and the saga log records each step that is done. LDS stops before the last
+ * step; recovery reads the saga log, skips the steps that are done, and runs the rest with the input of the request
+ * (a saga log that survives a restart is the one in PostgreSQL). Four stops, the classes s0 to s3.
+ */
+export function SagaFigure(): React.ReactElement {
+  const steps = [
+    { x0: 40, name: 'transaction log' },
+    { x0: 234, name: 'store' },
+    { x0: 428, name: 'index queue' },
+  ]
+  const told = [
+    'The first step is done, and the saga log says so.',
+    'The second step is done, and the saga log says so.',
+    'LDS stops before the last step. The write is not complete.',
+    'After the restart, recovery reads the saga log: it skips what is done and runs the rest.',
+  ]
+  // The steps that are done at each stop, and the entries of the saga log then
+  const done = [[0], [0, 1], [0, 1], [0, 1, 2]]
+  return (
+    <svg className="fig fig-c" viewBox="0 0 640 250" role="img" aria-labelledby="fig-c-title fig-c-desc">
+      <title id="fig-c-title">A write is a saga</title>
+      <desc id="fig-c-desc">
+        A write of Person/ola goes through three steps: the transaction log, the store and the index queue. The saga
+        log records each step when it is done. LDS stops after the second step. After the restart, recovery reads the
+        saga log, skips the two steps that are done and runs the index queue, with the document of the request.
+      </desc>
+      <text className="fig-request" x={40} y={40}>
+        PUT /ns/Person/ola
+      </text>
+      {steps.map((step, i) => (
+        <SagaStep
+          key={step.name}
+          x0={step.x0}
+          n={i + 1}
+          name={step.name}
+          done={done.flatMap((steps, stop) => (steps.includes(i) ? [stop] : []))}
+        />
+      ))}
+      <path className="fig-arrow" d="M214 92h14m-6 -6l6 6-6 6" />
+      <path className="fig-arrow" d="M408 92h14m-6 -6l6 6-6 6" />
+      <text className="fig-missing s2" x={514} y={136} textAnchor="middle">
+        LDS stops
+      </text>
+      <text className="fig-answer s3" x={514} y={136} textAnchor="middle">
+        run by recovery
+      </text>
+      <text className="fig-small" x={40} y={148}>
+        the saga log
+      </text>
+      <rect className="fig-card" x={40} y={156} width={560} height={40} rx={8} />
+      {done.map((entries, stop) => (
+        <g key={stop} className={`s${stop}`}>
+          {entries.map((i) => (
+            <text key={i} className="fig-answer" x={(steps[i]?.x0 ?? 0) + 86} y={181} textAnchor="middle">
+              {i === 2 && stop === 3 ? '3 done' : `${i + 1} done`}
+            </text>
+          ))}
+        </g>
+      ))}
+      {told.map((text, stop) => (
+        <text key={text} className={`fig-small s${stop}`} x={40} y={228}>
+          {text}
+        </text>
+      ))}
+    </svg>
+  )
+}

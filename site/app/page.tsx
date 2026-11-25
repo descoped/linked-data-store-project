@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation'
 import { getCMSContent, resolveSeoContent, SeoJsonLd } from '@krantho/ui-react/server'
 import { collections } from '../krantho.collections'
 import { CodeCopy } from '../components/code-copy'
-import { CompositionFigure, TimeMachineFigure } from '../components/figures'
+import { CompositionFigure, SagaFigure, TimeMachineFigure } from '../components/figures'
 import { SectionHash } from '../components/section-hash'
 import { highlightCode } from '../lib/html'
 import { site } from '../lib/krantho'
@@ -28,6 +28,35 @@ function cardsOf(html: string): { intro: string; cards: { title: string; html: s
 
 const idOf = (name: string): string => name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
 
+/** A section's HTML cut in two: its text, and its code blocks (as `highlightCode` makes them) */
+function codeOf(html: string): { text: string; code: string } {
+  const blocks = html.match(/<div class="code-block[^"]*">[\s\S]*?<\/pre><\/div>/g) ?? []
+  let text = html
+  for (const block of blocks) text = text.replace(block, '')
+  return { text, code: blocks.join('') }
+}
+
+/** A section's HTML cut at its second paragraph: what it says first, and the rest */
+function leadOf(html: string): { lead: string; rest: string } {
+  const at = html.indexOf('<p', html.indexOf('</p>'))
+  return at < 0 ? { lead: html, rest: '' } : { lead: html.slice(0, at), rest: html.slice(at) }
+}
+
+/**
+ * How a section is laid out, by its name: `split` puts its text beside its figure or its code, `panel` is a split on
+ * a tinted ground, `fit` puts its first paragraph beside the rest in a card, `quiet` is small print. A section with
+ * no layout is its text, then its cards.
+ */
+const layoutOf: Record<string, 'split' | 'panel' | 'fit' | 'quiet'> = {
+  'What a document is made of': 'split',
+  'With Claude Code': 'panel',
+  'When it fits': 'fit',
+  Status: 'quiet',
+}
+
+/** Sections shown side by side in one band: the first names the second */
+const pairOf: Record<string, string> = { 'The problem': 'The time machine' }
+
 /** The figure a section of the contract shows after its text; its words are the section's */
 const figureOf: Record<string, () => React.ReactElement> = {
   'What a document is made of': () => (
@@ -36,6 +65,16 @@ const figureOf: Record<string, () => React.ReactElement> = {
       <figcaption>
         Person/ola holds an embedded address and a link to a company. A read at each instant gives ola as it was
         then, and follows the link to the company as it was at the same instant.
+      </figcaption>
+    </figure>
+  ),
+  'How it works': () => (
+    <figure className="figure figure-wide">
+      <SagaFigure />
+      <figcaption>
+        A write goes through its steps one after the other, and the saga log records each one that is done. A write
+        cut off by a failure or a stop is taken up again from there: by the next write, after a restart (with the saga
+        log in PostgreSQL), or by another LDS on the same saga log.
       </figcaption>
     </figure>
   ),
@@ -54,6 +93,12 @@ export default async function Home(): Promise<React.ReactElement> {
   // The code blocks coloured as on the documentation pages
   const sections = Object.fromEntries(
     await Promise.all(Object.entries(raw).map(async ([name, html]) => [name, await highlightCode(html)] as const)),
+  )
+  // A second section of a pair is shown in the band of the first, when the document has the first
+  const shownWithFirst = new Set(
+    Object.entries(pairOf)
+      .filter(([first]) => sections[first])
+      .map(([, second]) => second),
   )
   return (
     <main className="landing">
@@ -82,14 +127,60 @@ export default async function Home(): Promise<React.ReactElement> {
       </section>
       {(collections.landing.sections ?? [])
         .filter((name) => sections[name])
+        .filter((name) => !shownWithFirst.has(name))
         .map((name) => {
-          const { intro, cards } = cardsOf(sections[name] ?? '')
           const id = idOf(name)
+          const second = pairOf[name]
+          if (second && sections[second]) {
+            return (
+              <section key={name} id={id} className="band band-pair" aria-label={`${name}, ${second}`}>
+                {[name, second].map((part) => (
+                  <div key={part} id={idOf(part)} className="pair-part">
+                    <h2>{part}</h2>
+                    <div className="prose" dangerouslySetInnerHTML={{ __html: sections[part] ?? '' }} />
+                  </div>
+                ))}
+              </section>
+            )
+          }
+          const layout = layoutOf[name]
+          const html = sections[name] ?? ''
+          const title = <h2 id={`${id}-title`}>{name}</h2>
+          if (layout === 'split' || layout === 'panel') {
+            const { text, code } = codeOf(html)
+            const figure = figureOf[name]?.()
+            return (
+              <section key={name} id={id} className={`band band-split${layout === 'panel' ? ' band-panel' : ''}`} aria-labelledby={`${id}-title`}>
+                <div className="split-text">
+                  {title}
+                  <div className="prose" dangerouslySetInnerHTML={{ __html: text }} />
+                </div>
+                <div className="split-side">
+                  {figure}
+                  {code && <div className="prose" dangerouslySetInnerHTML={{ __html: code }} />}
+                </div>
+              </section>
+            )
+          }
+          if (layout === 'fit') {
+            const { lead, rest } = leadOf(html)
+            return (
+              <section key={name} id={id} className="band band-split band-fit" aria-labelledby={`${id}-title`}>
+                <div className="split-text">
+                  {title}
+                  <div className="prose lead" dangerouslySetInnerHTML={{ __html: lead }} />
+                </div>
+                <div className="split-side card">
+                  <div className="prose" dangerouslySetInnerHTML={{ __html: rest }} />
+                </div>
+              </section>
+            )
+          }
+          const { intro, cards } = cardsOf(html)
           return (
-            <section key={name} id={id} className="band" aria-labelledby={`${id}-title`}>
-              <h2 id={`${id}-title`}>{name}</h2>
+            <section key={name} id={id} className={`band${layout === 'quiet' ? ' band-quiet' : ''}`} aria-labelledby={`${id}-title`}>
+              {title}
               {intro.trim() && <div className="prose" dangerouslySetInnerHTML={{ __html: intro }} />}
-              {figureOf[name]?.()}
               {cards.length > 0 && (
                 <div className="cards">
                   {cards.map((card) => (
@@ -99,6 +190,14 @@ export default async function Home(): Promise<React.ReactElement> {
                     </div>
                   ))}
                 </div>
+              )}
+              {figureOf[name]?.()}
+              {name === 'See it' && (
+                <p className="actions">
+                  <Link className="button primary" href={f['primary-href']}>
+                    {f['primary-label']}
+                  </Link>
+                </p>
               )}
             </section>
           )

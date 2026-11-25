@@ -33,6 +33,7 @@
   --color-border: #dde1e4;
   --color-accent: #1f6f8b;
   --color-accent-contrast: #ffffff;
+  --color-accent-soft: #e4f1f5;
   --color-focus: #1f6f8b;
   --color-danger: #cf222e;
 }
@@ -48,6 +49,7 @@
     --color-border: #2a343a;
     --color-accent: #7cc4dc;
     --color-accent-contrast: #0f1417;
+    --color-accent-soft: #15303a;
     --color-focus: #7cc4dc;
     --color-danger: #ff7b72;
   }
@@ -63,6 +65,7 @@
   --color-border: #2a343a;
   --color-accent: #7cc4dc;
   --color-accent-contrast: #0f1417;
+  --color-accent-soft: #15303a;
   --color-focus: #7cc4dc;
   --color-danger: #ff7b72;
 }
@@ -229,13 +232,16 @@ a {
 
 @media (min-width: 64rem) {
   .hero {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+    gap: var(--space-8);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
   }
 }
 
+/* The release the page is about, a line above the headline */
 .eyebrow {
-  color: var(--color-text-muted);
+  color: var(--color-accent);
   font-size: var(--text-sm);
+  font-weight: 600;
   letter-spacing: 0.02em;
   margin: 0 0 var(--space-4);
 }
@@ -286,19 +292,111 @@ a {
 }
 
 .band {
-  border-top: 1px solid var(--color-border);
-  padding: var(--space-8) 0 var(--space-6);
+  padding: clamp(3rem, 2rem + 4vw, 5.5rem) 0;
 }
 
-.band > h2 {
-  font-size: var(--text-2xl);
-  letter-spacing: -0.01em;
+/* Every other band on a ground of its own, as wide as the window: space and ground part the sections, not lines */
+.band-pair,
+.band:has(> .cards),
+.band-fit {
+  background: var(--color-surface);
+  box-shadow: 0 0 0 100vmax var(--color-surface);
+  clip-path: inset(0 -100vmax);
+}
+
+.band h2 {
+  font-size: clamp(1.6rem, 1.3rem + 1.1vw, 2.2rem);
+  letter-spacing: -0.015em;
   line-height: var(--leading-tight);
   margin: 0 0 var(--space-4);
 }
 
 .band > .prose {
   max-width: var(--width-prose);
+}
+
+.band .prose > p:last-child {
+  margin-bottom: 0;
+}
+
+/* Two sections side by side: the problem, then what LDS does about it */
+.band-pair {
+  display: grid;
+  gap: var(--space-6);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr));
+}
+
+.pair-part {
+  border-radius: var(--radius-md);
+  padding: clamp(1.5rem, 1rem + 2vw, 2.5rem);
+}
+
+.pair-part:first-child {
+  background: var(--color-sunken);
+}
+
+.pair-part:last-child {
+  background: var(--color-accent-soft);
+}
+
+/* A section's text beside its figure or its code */
+.band-split {
+  align-items: center;
+  display: grid;
+  gap: var(--space-6);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 64rem) {
+  .band-split {
+    gap: var(--space-8);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  }
+}
+
+.split-side .figure,
+.split-side .code-block {
+  margin: 0 0 var(--space-4);
+}
+
+.split-side > :last-child,
+.split-side .prose > :last-child {
+  margin-bottom: 0;
+}
+
+.split-text .actions {
+  margin-top: var(--space-6);
+}
+
+/* A split on a tinted ground, in a panel of its own */
+.band-panel {
+  background: var(--color-accent-soft);
+  border-radius: calc(var(--radius-md) * 2);
+  margin: var(--space-6) 0;
+  padding: clamp(1.5rem, 1rem + 3vw, 3.5rem);
+}
+
+/* When it fits: where it does, beside where it does not yet */
+.band-fit {
+  align-items: start;
+}
+
+.prose.lead {
+  font-size: var(--text-lg);
+}
+
+.band-fit .split-side.card {
+  padding: var(--space-6);
+}
+
+/* The status, in small print at the end */
+.band-quiet {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.band-quiet h2 {
+  font-size: var(--text-lg);
 }
 
 .cards {
@@ -940,9 +1038,24 @@ html:has(.figure-dialog[open]) {
   padding: var(--space-4);
 }
 
-/* A figure of a section is as wide as the text it follows */
+/* A figure of a section is as wide as the text it follows; one under cards as wide as they are */
 .band .figure {
   max-width: var(--width-prose);
+}
+
+.band .figure-wide {
+  margin-top: var(--space-6);
+  max-width: none;
+}
+
+.band .figure-wide .fig {
+  margin: 0 auto;
+  max-width: 52rem;
+}
+
+.band:has(> .actions) .actions,
+.band > .actions {
+  margin-top: var(--space-6);
 }
 
 .figure figcaption {
