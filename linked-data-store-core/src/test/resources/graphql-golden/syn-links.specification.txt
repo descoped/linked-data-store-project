@@ -34,6 +34,8 @@ root elementType=ROOT jsonTypes=[object] refTypes=[] required=[] isRequired=fals
         kind elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description=""
       property kinds
         kinds elementType=EMBEDDED jsonTypes=[array] refTypes=[] required=[] isRequired=false description=""
+          items
+             elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
       property name
         name elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description="the name"
       property nick

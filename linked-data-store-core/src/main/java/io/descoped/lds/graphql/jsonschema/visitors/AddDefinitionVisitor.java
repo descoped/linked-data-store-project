@@ -19,6 +19,7 @@ import graphql.schema.GraphQLUnmodifiedType;
 import graphql.util.TraversalControl;
 import graphql.util.TraverserContext;
 import io.descoped.lds.graphql.directives.LinkDirective;
+import io.descoped.lds.graphql.directives.ReverseLinkDirective;
 import io.descoped.lds.graphql.schemas.TypeTraverser;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ArrayNode;
@@ -82,6 +83,13 @@ public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
 
     @Override
     public TraversalControl visitGraphQLFieldDefinition(GraphQLFieldDefinition node, TraverserContext<GraphQLSchemaElement> context) {
+        // A reverse link is found from the documents that link to this one, and is not held in it: no property, as
+        // the reverse links LDS adds itself have none.
+        for (GraphQLDirective directive : node.getDirectives()) {
+            if (directive.getName().equals(ReverseLinkDirective.NAME)) {
+                return TraversalControl.ABORT;
+            }
+        }
         ObjectNode definitionElements = definition();
         ObjectNode definitionProperties = (ObjectNode) definitionElements.get(PROPERTIES);
 
@@ -110,6 +118,12 @@ public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
             if (directive.getName().equals(LinkDirective.NAME) && visitLinkField(node, definitionElements)) {
                 return TraversalControl.ABORT;
             }
+        }
+
+        // One object of a type without @domain refers to its definition, as the items of a list of them do. The
+        // definition is written when the type is walked, under this field or under one before it.
+        if (GraphQLTypeUtil.unwrapNonNull(type) instanceof GraphQLObjectType objectType && !hasDomainDirective(objectType)) {
+            propertyElements.put("$ref", "#/$defs/" + objectType.getName());
         }
 
         return visitGraphQLType(node.getType(), context);
@@ -161,7 +175,8 @@ public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
             visitUnionLinkProperty(node.getType());
             return true;
         } else if (subType instanceof GraphQLList listType) {
-            GraphQLType wrappedType = listType.getWrappedType();
+            // [Entity!] as [Entity]: the walk would see the list of a second such field as one it has entered before
+            GraphQLType wrappedType = GraphQLTypeUtil.unwrapNonNull(listType.getWrappedType());
             if (wrappedType instanceof GraphQLUnionType) {
                 ObjectNode properties = (ObjectNode) definitionElements.get(PROPERTIES).get(visitedFieldName);
                 ObjectNode itemList = object();
@@ -232,9 +247,35 @@ public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
             lastVisitedNodeType = GraphQLList.class.getName();
 
             return visitGraphQLType(node, context);
+        } else if (type instanceof GraphQLEnumType enumType) {
+            // the items are the names of the enum; the enum is not walked, which would make the field one name
+            itemList.put("type", STRING);
+            ArrayNode enumValues = itemList.putArray("enum");
+            enumType.getValues().forEach(value -> enumValues.add(value.getName()));
+            fieldProperties.set(ITEMS, itemList);
+            lastVisitedNodeType = GraphQLList.class.getName();
+
+            return TraversalControl.ABORT;
+        } else if (type instanceof GraphQLUnionType unionType && isUnionOfEntityTypes(unionType)) {
+            // a list of links to the members, as with @link; a member walked would make the field one link
+            itemList.put("type", STRING);
+            fieldProperties.set(ITEMS, itemList);
+            lastVisitedNodeType = GraphQLList.class.getName();
+            visitUnionLinkProperty(unionType);
+
+            return TraversalControl.ABORT;
         }
 
         return TraversalControl.CONTINUE;
+    }
+
+    private static boolean isUnionOfEntityTypes(GraphQLUnionType unionType) {
+        for (GraphQLNamedOutputType member : unionType.getTypes()) {
+            if (!(member instanceof GraphQLObjectType objectType) || !hasDomainDirective(objectType)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /*
@@ -396,7 +437,8 @@ public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
                         linkedProperties.put("type", OBJECT);
                         propertiesValues = object();
                         linkedObjects.put("type", "null");
-                        propertiesValues.set(name(((GraphQLList) fieldDef.getType()).getWrappedType()), linkedObjects);
+                        // the type inside the list, also when it is wrapped: [String!], [[String]]
+                        propertiesValues.set(name(GraphQLTypeUtil.unwrapAll(fieldDef.getType())), linkedObjects);
                         linkedProperties.set(PROPERTIES, propertiesValues);
 
                         embeddedProperties.set(LINK_PROPERTY_PREFIX + fieldDef.getName(), linkedProperties);

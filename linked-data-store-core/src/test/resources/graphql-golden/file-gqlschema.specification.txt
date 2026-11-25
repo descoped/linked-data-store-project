@@ -252,6 +252,10 @@ root elementType=ROOT jsonTypes=[object] refTypes=[] required=[] isRequired=fals
     provisionagreement elementType=MANAGED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
       property address
         address elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+          property city
+            city elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+          property street
+            street elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
       property contacts
         contacts elementType=REF jsonTypes=[array] refTypes=[contact] required=[] isRequired=false description=""
           items

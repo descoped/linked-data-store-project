@@ -16,6 +16,12 @@ root elementType=ROOT jsonTypes=[object] refTypes=[] required=[] isRequired=fals
         street elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description=""
       property zip
         zip elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+          property area
+            area elementType=REF jsonTypes=[array] refTypes=[City] required=[] isRequired=false description=""
+              items
+                 elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+          property code
+            code elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
   property City
     City elementType=MANAGED jsonTypes=[object] refTypes=[] required=[name] isRequired=false description=""
       property name
@@ -34,6 +40,26 @@ root elementType=ROOT jsonTypes=[object] refTypes=[] required=[] isRequired=fals
     Person elementType=MANAGED jsonTypes=[object] refTypes=[] required=[homes, name, work] isRequired=false description=""
       property home
         home elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+          property cities
+            cities elementType=REF jsonTypes=[array] refTypes=[City] required=[] isRequired=false description=""
+              items
+                 elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+          property city
+            city elementType=REF jsonTypes=[string] refTypes=[City] required=[] isRequired=false description=""
+          property lines
+            lines elementType=EMBEDDED jsonTypes=[array] refTypes=[] required=[] isRequired=false description=""
+              items
+                 elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+          property street
+            street elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+          property zip
+            zip elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+              property area
+                area elementType=REF jsonTypes=[array] refTypes=[City] required=[] isRequired=false description=""
+                  items
+                     elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+              property code
+                code elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
       property homes
         homes elementType=EMBEDDED jsonTypes=[array] refTypes=[] required=[] isRequired=true description=""
           items
@@ -52,6 +78,12 @@ root elementType=ROOT jsonTypes=[object] refTypes=[] required=[] isRequired=fals
                 street elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
               property zip
                 zip elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+                  property area
+                    area elementType=REF jsonTypes=[array] refTypes=[City] required=[] isRequired=false description=""
+                      items
+                         elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+                  property code
+                    code elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
       property jobs
         jobs elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
           property staff
@@ -62,6 +94,26 @@ root elementType=ROOT jsonTypes=[object] refTypes=[] required=[] isRequired=fals
         name elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=true description=""
       property work
         work elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=true description=""
+          property cities
+            cities elementType=REF jsonTypes=[array] refTypes=[City] required=[] isRequired=false description=""
+              items
+                 elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+          property city
+            city elementType=REF jsonTypes=[string] refTypes=[City] required=[] isRequired=false description=""
+          property lines
+            lines elementType=EMBEDDED jsonTypes=[array] refTypes=[] required=[] isRequired=false description=""
+              items
+                 elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+          property street
+            street elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+          property zip
+            zip elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[] isRequired=false description=""
+              property area
+                area elementType=REF jsonTypes=[array] refTypes=[City] required=[] isRequired=false description=""
+                  items
+                     elementType=null jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
+              property code
+                code elementType=EMBEDDED jsonTypes=[string] refTypes=[] required=[] isRequired=false description=""
   property Zip
     Zip elementType=EMBEDDED jsonTypes=[object] refTypes=[] required=[code] isRequired=false description=""
       property area

@@ -57,7 +57,12 @@ import org.slf4j.LoggerFactory;
 import tools.jackson.databind.node.ObjectNode;
 
 import java.io.File;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.io.UncheckedIOException;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -82,7 +87,6 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static java.util.Optional.ofNullable;
 
 public class UndertowApplication implements Lifecycle {
 
@@ -282,15 +286,32 @@ public class UndertowApplication implements Lifecycle {
     }
 
     private static TypeDefinitionRegistry parseSchemaFile(File graphQLFile) {
-        TypeDefinitionRegistry definitionRegistry;
-        URL systemResource = ClassLoader.getSystemResource(graphQLFile.getPath());
+        return parseSchemaFile(graphQLFile.getPath(), ClassLoader.getSystemClassLoader());
+    }
 
-        if (ofNullable(systemResource).isPresent()) {
-            definitionRegistry = new SchemaParser().parse(new File(systemResource.getPath()));
-        } else {
-            definitionRegistry = new SchemaParser().parse(new File(graphQLFile.getPath()));
+    /*
+     * The GraphQL schema at the path: the resource of the class loader when it has one, in a folder or in a jar, and
+     * the file otherwise.
+     */
+    static TypeDefinitionRegistry parseSchemaFile(String path, ClassLoader classLoader) {
+        URL resource = classLoader.getResource(path);
+        if (resource == null) {
+            return new SchemaParser().parse(new File(path));
         }
-        return definitionRegistry;
+        try (Reader reader = new InputStreamReader(resource.openStream(), StandardCharsets.UTF_8)) {
+            return new SchemaParser().parse(reader);
+        } catch (IOException e) {
+            throw new UncheckedIOException("The GraphQL schema " + path + " cannot be read from " + resource, e);
+        }
+    }
+
+    /*
+     * The files and folders of JSON Schemas that specification.schema names, separated by commas: each without the
+     * spaces around it.
+     */
+    static String[] specificationSchemaFiles(String configured) {
+        return "".equals(configured) ? new String[0] : Stream.of(configured.split(",")).map(String::trim)
+                .toArray(String[]::new);
     }
 
     /** The class path resource that holds the defaults of the configuration of core */
@@ -350,7 +371,7 @@ public class UndertowApplication implements Lifecycle {
 
         } else {
             String schemaConfigStr = configuration.get("specification.schema");
-            String[] specificationSchema = ("".equals(schemaConfigStr) ? new String[0] : schemaConfigStr.split(","));
+            String[] specificationSchema = specificationSchemaFiles(schemaConfigStr);
             LOG.info("Creating specification using json-schema: {}", schemaConfigStr);
             specification = JsonSchemaBasedSpecification.create(specificationSchema);
         }

@@ -57,6 +57,13 @@ class ModelAtStartTest {
     }
 
     @Test
+    void theFilesOfJsonSchemasAreTakenWithoutTheSpacesAroundTheirCommas() {
+        assertThat(UndertowApplication.specificationSchemaFiles("spec/schemas/contact.json, spec/agent ,spec/v1"))
+                .containsExactly("spec/schemas/contact.json", "spec/agent", "spec/v1");
+        assertThat(UndertowApplication.specificationSchemaFiles("")).isEmpty();
+    }
+
+    @Test
     void aNamespaceOrAnEntityTypeWithinTheLimitsIsTaken() {
         UndertowApplication.checkNames("n".repeat(64), Set.of("E".repeat(128), "Person"));
         UndertowApplication.checkNames("日".repeat(21), Set.of("Ø".repeat(64)));

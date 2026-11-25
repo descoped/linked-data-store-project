@@ -118,6 +118,10 @@ ENTITY Person
         },
         "kinds" : {
           "displayName" : "",
+          "items" : {
+            "enum" : [ "A", "B" ],
+            "type" : "string"
+          },
           "type" : "array"
         },
         "name" : {

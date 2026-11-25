@@ -97,11 +97,13 @@ class DirectivesTest {
 
         LinkDirective plain = LinkDirective.newLinkDirective(false);
         assertThat(value(plain.getDirective(), "pagination")).isEqualTo(false);
+        assertThat(plain.getPagination()).isFalse();
 
         LinkDirective named = LinkDirective.newLinkDirective(false, "owners");
         assertThat(value(named.getDirective(), "pagination")).isEqualTo(false);
         assertThat(value(named.getDirective(), "reverseName")).isEqualTo("owners");
         assertThat(named.getReverseName()).contains("owners");
+        assertThat(named.getPagination()).isFalse();
         assertThat(named.getDirective().getArguments()).extracting(GraphQLArgument::getName).containsExactly("pagination", "reverseName");
     }
 
@@ -149,6 +151,10 @@ class DirectivesTest {
         ReverseLinkDirective other = reverseLink.newReverseLinkDirective("$.friend");
         assertThat(other.getMappedBy()).isEqualTo("$.friend");
         assertThat(other.getArgument("pagination")).isNull();
+        assertThat(other.getPagination()).isTrue();
+
+        ReverseLinkDirective plain = ReverseLinkDirective.newReverseLinkDirective(false, "$.friend");
+        assertThat(plain.getPagination()).isFalse();
     }
 
     @Test

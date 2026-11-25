@@ -57,6 +57,8 @@ class IndexEntriesTest {
             type Address {
               street: String
               city: String!
+              since: Date
+              landlord: Person @link
             }
             type Secret @domain(searchable: false) {
               name: String
@@ -119,6 +121,20 @@ class IndexEntriesTest {
                   "wakes": "07:00:00Z",
                   "address": {"street": "Storgata 1", "city": "Oslo"},
                   "employer": "/Company/acme"
+                }""");
+
+        assertThat(entry.texts()).isEqualTo(Map.of(Language.NONE, List.of("Ola", "Storgata 1", "Oslo")));
+    }
+
+    /**
+     * The fields of a single embedded object are known as those of a list of them are.
+     */
+    @Test
+    void aLinkAndADateInASingleEmbeddedObjectAreNotText() {
+        IndexEntry entry = written("Person", """
+                {
+                  "name": "Ola",
+                  "address": {"street": "Storgata 1", "city": "Oslo", "since": "2001-01-01", "landlord": "/Person/kari"}
                 }""");
 
         assertThat(entry.texts()).isEqualTo(Map.of(Language.NONE, List.of("Ola", "Storgata 1", "Oslo")));
