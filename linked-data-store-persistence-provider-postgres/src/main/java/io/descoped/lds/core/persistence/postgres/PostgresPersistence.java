@@ -24,7 +24,7 @@ import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -87,12 +87,18 @@ final class PostgresPersistence implements RxPersistence {
     /**
      * The statements of one write. The rows of a document version that is written again are deleted before the
      * new ones are inserted, and both are sent in batches.
+     * <p>
+     * A document's fragments come one after the other. A version is the instant as it is stored, so two documents
+     * whose versions differ only in zone or below the millisecond are one version: when a document comes whose
+     * version this write has already written, what was written of it is deleted first, and the last one is kept,
+     * as when it is written again in a later write.
      */
     private static final class WriteBatch implements AutoCloseable {
         private final Connection connection;
         private final PreparedStatement insert;
         private final PreparedStatement delete;
-        private final Set<DocumentKey> deletedDocuments = new LinkedHashSet<>();
+        private final Set<StoredVersion> writtenVersions = new HashSet<>();
+        private DocumentKey document;
         private int insertCount;
         private int deleteCount;
 
@@ -116,7 +122,12 @@ final class PostgresPersistence implements RxPersistence {
             }
             try {
                 OffsetDateTime version = instantOf(item.timestamp());
-                if (deletedDocuments.add(DocumentKey.from(item))) {
+                DocumentKey key = DocumentKey.from(item);
+                if (!key.equals(document)) {
+                    document = key;
+                    if (!writtenVersions.add(new StoredVersion(item.namespace(), item.entity(), item.id(), version))) {
+                        execute(); // the rows written of the version so far are in the table before they are deleted
+                    }
                     delete.setString(1, item.namespace());
                     delete.setString(2, item.entity());
                     delete.setString(3, item.id());
@@ -164,6 +175,10 @@ final class PostgresPersistence implements RxPersistence {
             try (delete) {
                 insert.close();
             }
+        }
+
+        /* A document version as the table keys it. */
+        private record StoredVersion(String namespace, String entity, String id, OffsetDateTime version) {
         }
     }
 

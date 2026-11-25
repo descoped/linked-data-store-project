@@ -158,6 +158,28 @@ class PostgresProviderTest {
         assertThat(atTen.key().timestamp()).isEqualTo(ZonedDateTime.of(2020, 6, 1, 10, 0, 0, 0, UTC));
     }
 
+    @Test
+    void aVersionWrittenTwiceInOneWriteIsTheLastOne() {
+        ZonedDateTime sameMillisecond = T1.plusNanos(1_000); // stored as T1
+        ZonedDateTime sameInstantInOslo = T2.withZoneSameInstant(ZoneId.of("Europe/Oslo"));
+        writeAll(List.of(
+                document(NS, "Twice", "micro", T1, mapper.createObjectNode().put("city", "Oslo").put("only", "first")),
+                document(NS, "Twice", "micro", sameMillisecond, city("Bergen")),
+                document(NS, "Twice", "zoned", T2, city("Oslo")),
+                document(NS, "Twice", "zoned", sameInstantInOslo, city("Bergen")),
+                document(NS, "Twice", "apart", T1, city("Oslo")),
+                document(NS, "Twice", "between", T1, city("Oslo")),
+                document(NS, "Twice", "apart", T1, city("Bergen"))));
+
+        for (String id : List.of("micro", "zoned", "apart")) {
+            assertThat(read(NS, "Twice", id, NOW).jackson()).as(id).isEqualTo(city("Bergen"));
+            try (Transaction tx = persistence.createTransaction(true)) {
+                assertThat(persistence.readDocumentVersions(tx, NS, "Twice", id, Range.unbounded()).count().blockingGet())
+                        .as(id).isOne();
+            }
+        }
+    }
+
     // ---- find
 
     @Test
