@@ -325,8 +325,11 @@ the distroless base with no shell; `debug` (`3.0.0-debug`), as `regular` with th
 name (`jdk.charsets`, `jdk.localedata`), with the class data sharing archive of the default settings of the JVM.
 Every base is pinned by digest. The reactor is built first, and the context is the module directory. `compose.yaml`
 next to it is a whole LDS for development: the regular image, Neo4j, PostgreSQL (saga log and transaction log, the
-databases made by `postgres-init.sql`) and Solr, with the images the tests of the providers use. Keep these when
-changing them:
+databases made by `postgres-init.sql`) and Solr, with the images the tests of the providers use. For users, `stack.sh`
+at the root of the repository starts the same stack on the released image from the plugin's
+`plugins/lds/skills/start/assets/compose-stack.yaml` on master (`curl -fsSL
+https://raw.githubusercontent.com/descoped/linked-data-store-project/master/stack.sh | sh`, `| sh -s down` to remove
+it): the one line of the landing page, so it is moved or renamed only with the page. Keep these when changing them:
 
 - **LDS runs on the class path**, as the tests do. On the module path the libraries Undertow is made of (Undertow,
   XNIO, WildFly client config, SmallRye common) cannot make their message loggers: jboss-logging has to read

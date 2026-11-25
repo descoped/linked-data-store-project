@@ -86,7 +86,7 @@ enough.
 
 Start LDS with Docker. The first command runs it in memory with an example model, so there is nothing to set up. The
 second starts the whole stack instead, with Neo4j for the documents, PostgreSQL for the saga log and the change log,
-and Solr for search, and keeps your data until `docker compose -p lds down -v` removes it.
+and Solr for search. Your data is kept until the same line ending in `sh -s down` stops it and removes it.
 
 Then write a company that is valid from 1 January 2020 and read it back as of 1 June 2021. The write answers with the
 id of its saga, and the read gives the version that was valid on that date.
@@ -96,9 +96,8 @@ id of its saga, and the read gives the version that was valid on that date.
 docker run --rm -p 127.0.0.1:9090:9090 descoped/lds:3.0.1
 ```
 
-```sh
-curl -fsSL https://lds.descoped.io/compose.yaml \
-  | docker compose -f - up -d --wait
+```console
+$ curl -fsSL https://raw.githubusercontent.com/descoped/linked-data-store-project/master/stack.sh | sh
 ```
 
 ```console
