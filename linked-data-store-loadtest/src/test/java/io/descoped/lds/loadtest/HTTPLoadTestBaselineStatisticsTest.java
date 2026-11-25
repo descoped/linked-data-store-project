@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -119,6 +120,23 @@ class HTTPLoadTestBaselineStatisticsTest {
 
         assertThat(data().get("N")).containsExactly(Map.entry("3", "0"));
         assertThat(data().get("mean")).containsExactly(Map.entry("3", "NaN"));
+    }
+
+    @Test
+    void theFilesOfARunAreOpenedByTheNameOfItsCsvFile() throws IOException {
+        // A name with capitals is not found as lowercase on a file system that tells them apart (Linux); in a
+        // locale whose lowercase of I is a dotless i, not even on one that does not (macOS).
+        Locale locale = Locale.getDefault();
+        Locale.setDefault(Locale.forLanguageTag("tr"));
+        try {
+            run("Initial", 4, 10, request("Read", 10, true));
+
+            HTTPLoadTestBaselineStatistics.main(new String[]{results.toString(), plots.toString(), "p"});
+        } finally {
+            Locale.setDefault(locale);
+        }
+
+        assertThat(data().get("r-N")).containsExactly(Map.entry("4", "1"));
     }
 
     @Test
