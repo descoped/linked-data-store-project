@@ -14,6 +14,8 @@ import static java.util.Optional.ofNullable;
 @ProviderName("mem")
 public class MemoryInitializer implements PersistenceInitializer {
 
+    private static final String FRAGMENT_CAPACITY = "persistence.fragment.capacity";
+
     MemoryRxPersistence persistence;
     RxJsonPersistence rxJsonPersistence;
 
@@ -25,7 +27,7 @@ public class MemoryInitializer implements PersistenceInitializer {
     @Override
     public Set<String> configurationKeys() {
         return Set.of(
-                "persistence.fragment.capacity"
+                FRAGMENT_CAPACITY
         );
     }
 
@@ -39,11 +41,28 @@ public class MemoryInitializer implements PersistenceInitializer {
 
     @Override
     public RxJsonPersistence initialize(String defaultNamespace, Map<String, String> configuration, Set<String> managedDomains) {
-        int fragmentCapacityBytes = Integer.parseInt(ofNullable(configuration.get("persistence.fragment.capacity")).orElse("8192"));
+        int fragmentCapacityBytes = fragmentCapacity(ofNullable(configuration.get(FRAGMENT_CAPACITY)).orElse("8192"));
         boolean cancelTxOnClose = Boolean.parseBoolean(ofNullable(configuration.get("persistence.mem.transaction.cancel-on-close")).orElse("false"));
         TransactionFactory transactionFactory = new MemoryTransactionFactory(cancelTxOnClose);
         persistence = new MemoryRxPersistence(transactionFactory, new MemoryDirectory());
         rxJsonPersistence = new RxJsonPersistenceBridge(persistence, fragmentCapacityBytes);
         return rxJsonPersistence;
+    }
+
+    /*
+     * The largest number of bytes of one piece of a text: a whole number above 0. With 0 a text would be cut for ever
+     * while the write holds the lock of the store, and a negative value would fail every write.
+     */
+    private static int fragmentCapacity(String value) {
+        int capacity;
+        try {
+            capacity = Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(FRAGMENT_CAPACITY + " is not a whole number: '" + value + "'", e);
+        }
+        if (capacity <= 0) {
+            throw new IllegalArgumentException(FRAGMENT_CAPACITY + " must be above 0, it is " + capacity);
+        }
+        return capacity;
     }
 }
