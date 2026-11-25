@@ -30,6 +30,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 
 /**
@@ -228,6 +229,77 @@ class IndexQueueWorkerLifecycleTest {
         assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofSeconds(2));
         assertThat(index.taken).isEmpty();
         assertThat(inQueue(queue)).as("left, to be taken again when its lease ends").isEqualTo(1);
+    }
+
+    /**
+     * A stop on a thread that is interrupted while a round is sending does not wait for it, and still ends the
+     * worker: no round follows, and its thread ends.
+     */
+    @Test
+    void aStopThatIsInterruptedWhileARoundIsSendingStillEndsTheWorker() throws Exception {
+        MemoryIndexQueue queue = new MemoryIndexQueue();
+        index.hold = new CountDownLatch(1);
+        worker(queue).start();
+        storeAndAdd(queue, "inflight");
+        assertThat(index.sending.await(5, TimeUnit.SECONDS)).isTrue();
+
+        Thread.currentThread().interrupt();
+        try {
+            assertThatThrownBy(() -> worker.stop(10, TimeUnit.SECONDS)).isInstanceOf(InterruptedException.class);
+        } finally {
+            Thread.interrupted(); // cleared for what comes after
+        }
+        index.hold.countDown();
+
+        await().atMost(Duration.ofSeconds(5)).until(worker::isTerminated);
+    }
+
+    /**
+     * An index that holds the thread of the worker, and does not let go when it is interrupted, holds the stop up
+     * for the time it is told and a second for the thread, not twice the time.
+     */
+    @Test
+    void aRoundThatHoldsTheThreadHoldsTheStopNoLongerThanItIsTold() throws Exception {
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        SearchIndex holdingTheThread = new HeldIndex() {
+            @Override
+            public Completable put(List<IndexEntry> entries) {
+                return Completable.fromAction(() -> { // on the thread of the worker
+                    entered.countDown();
+                    boolean interrupted = false;
+                    while (true) {
+                        try {
+                            release.await();
+                            break;
+                        } catch (InterruptedException e) {
+                            interrupted = true; // not let go
+                        }
+                    }
+                    if (interrupted) {
+                        Thread.currentThread().interrupt();
+                    }
+                });
+            }
+        };
+        MemoryIndexQueue queue = new MemoryIndexQueue();
+        IndexQueueWorker holding = new IndexQueueWorker(queue, holdingTheThread, persistence,
+                IndexEntriesTest.withoutAModel(), POLL);
+        try {
+            holding.start();
+            storeAndAdd(queue, "held");
+            assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
+
+            long started = System.nanoTime();
+            holding.stop(2, TimeUnit.SECONDS);
+
+            // two seconds for the round and one for the thread; not two for each
+            assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofMillis(3500));
+        } finally {
+            release.countDown();
+            holding.stop(5, TimeUnit.SECONDS);
+        }
+        await().atMost(Duration.ofSeconds(5)).until(holding::isTerminated);
     }
 
     @Test

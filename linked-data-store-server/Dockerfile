@@ -82,6 +82,9 @@ COPY schemas/ /lds/schemas/
 #
 # java is the process of the container, so that the signal that stops the container reaches it: LDS then answers
 # what it is handling and completes its sagas before it ends.
+#
+# --sun-misc-unsafe-memory-access=allow (JEP 498): Undertow 2.4.4, the latest, frees its direct buffers with
+# sun.misc.Unsafe::invokeCleaner, and the JDK would warn of it in every run. Remove it when Undertow no longer does.
 
 FROM base-distroless AS distroless
 
@@ -92,7 +95,7 @@ COPY --from=app / /
 WORKDIR /lds
 USER lds
 EXPOSE 9090
-ENTRYPOINT ["java", "-cp", "/lds/lib/*", "io.descoped.lds.server.Server"]
+ENTRYPOINT ["java", "--sun-misc-unsafe-memory-access=allow", "-cp", "/lds/lib/*", "io.descoped.lds.server.Server"]
 
 FROM base-shell AS debug
 
@@ -103,7 +106,7 @@ COPY --from=app / /
 WORKDIR /lds
 USER lds
 EXPOSE 9090
-ENTRYPOINT ["java", "-cp", "/lds/lib/*", "io.descoped.lds.server.Server"]
+ENTRYPOINT ["java", "--sun-misc-unsafe-memory-access=allow", "-cp", "/lds/lib/*", "io.descoped.lds.server.Server"]
 
 FROM base-shell AS regular
 
@@ -114,4 +117,4 @@ COPY --from=app / /
 WORKDIR /lds
 USER lds
 EXPOSE 9090
-ENTRYPOINT ["java", "-cp", "/lds/lib/*", "io.descoped.lds.server.Server"]
+ENTRYPOINT ["java", "--sun-misc-unsafe-memory-access=allow", "-cp", "/lds/lib/*", "io.descoped.lds.server.Server"]

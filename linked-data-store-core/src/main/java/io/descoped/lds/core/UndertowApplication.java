@@ -1,6 +1,6 @@
 package io.descoped.lds.core;
 
-import io.descoped.lds.core.utils.Jitter;
+import io.descoped.lds.core.utils.StartAttempts;
 import graphql.GraphQL;
 import graphql.schema.GraphQLSchema;
 import graphql.schema.idl.SchemaParser;
@@ -16,6 +16,7 @@ import io.descoped.lds.core.health.Readiness;
 import io.descoped.lds.core.health.ReadinessHandler;
 import io.descoped.lds.core.lifecycle.Lifecycle;
 import io.descoped.lds.core.lifecycle.Lifecycles;
+import io.descoped.lds.core.lifecycle.Pools;
 import io.descoped.lds.core.controller.NamespaceController;
 import io.descoped.lds.core.domain.DocumentLocks;
 import io.descoped.lds.core.domain.SearchWait;
@@ -76,7 +77,6 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -277,11 +277,14 @@ public class UndertowApplication implements Lifecycle {
                 .build();
         lifecycles.add(Lifecycle.of("HTTP server", server::start, timeout -> {
             requests.shutdown(); // every request from here on is answered 503 Service Unavailable
-            if (!requests.awaitShutdown(timeout.toMillis())) {
-                LOG.warn("Requests were still being handled after {}. They lose their connection when the HTTP "
-                        + "server stops.", timeout);
+            try {
+                if (!requests.awaitShutdown(timeout.toMillis())) {
+                    LOG.warn("Requests were still being handled after {}. They lose their connection when the HTTP "
+                            + "server stops.", timeout);
+                }
+            } finally {
+                server.stop(); // also when the wait is interrupted
             }
-            server.stop();
         }));
     }
 
@@ -427,13 +430,14 @@ public class UndertowApplication implements Lifecycle {
         LOG.info("Initializing saga observer ...");
 
         final SagasObserver sagasObserver = new SagasObserver(sagaRepository).start();
-        lifecycles.add(Lifecycle.of("Saga observer", _ -> sagasObserver.shutdown()));
+        lifecycles.add(Lifecycle.of("Saga observer", sagasObserver::shutdown));
 
         LOG.info("Initializing saga thread-pool ...");
 
         SelectableThreadPoolExecutor sagaThreadPool = sagaThreadPool(configuration);
         // a saga that branches hands steps to this pool, so such a saga fails if it runs when the pool is shut down
-        lifecycles.add(Lifecycle.of("Saga thread pool", _ -> shutdownAndAwaitTermination(sagaThreadPool)));
+        lifecycles.add(Lifecycle.of("Saga thread pool", timeout -> Pools.stop("The saga thread pool", sagaThreadPool,
+                timeout)));
         int numberOfSagaLogs = configuration.getInt("saga.number-of-logs");
 
         boolean sagaCommandsEnabled = configuration.getBoolean("saga.commands.enabled", false);
@@ -442,6 +446,9 @@ public class UndertowApplication implements Lifecycle {
 
         AtomicInteger executorThreadId = new AtomicInteger();
         ScheduledExecutorService recoveryThreadPool = Executors.newScheduledThreadPool(SAGA_RECOVERY_THREADS, runnable -> new Thread(runnable, "saga-recovery-" + executorThreadId.incrementAndGet()));
+        // stopped by the sagas, before they wait for the running sagas; here also when the start fails before them
+        lifecycles.add(Lifecycle.of("Saga recovery thread pool",
+                timeout -> Pools.stop("The saga recovery thread pool", recoveryThreadPool, timeout)));
 
         LOG.info("Initializing saga-execution-coordinator ...");
 
@@ -505,7 +512,7 @@ public class UndertowApplication implements Lifecycle {
             IndexRebuild started = new IndexRebuild(persistence, indexQueue, searchIndex,
                     configuration.find("namespace.default").orElseThrow(),
                     List.copyOf(specification.getManagedDomains()));
-            lifecycles.add(Lifecycle.of("Index rebuild", started::start, _ -> started.stop()));
+            lifecycles.add(Lifecycle.of("Index rebuild", started::start, started::stop));
             rebuild = started;
         }
         return new Indexing(searchIndex, indexQueue, worker, rebuild);
@@ -554,17 +561,20 @@ public class UndertowApplication implements Lifecycle {
                 });
             }
         }, timeout -> {
-            if (trigger != null) {
-                trigger.stop(); // shuts the recovery thread-pool down as well
-            } else {
-                // recovery by the next write uses this pool also when there is no trigger
-                shutdownAndAwaitTermination(recoveryThreadPool);
+            try {
+                if (trigger != null) {
+                    trigger.stop(timeout); // shuts the recovery thread-pool down as well
+                } else {
+                    // recovery by the next write uses this pool also when there is no trigger
+                    Pools.stop("The saga recovery thread pool", recoveryThreadPool, timeout);
+                }
+                if (!sec.awaitRunningSagas(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
+                    LOG.warn("Sagas were still running after {}. They fail when their thread pool is shut down, and "
+                            + "are recovered from their saga logs.", timeout);
+                }
+            } finally {
+                sec.shutdown();
             }
-            if (!sec.awaitRunningSagas(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
-                LOG.warn("Sagas were still running after {}. They fail when their thread pool is shut down, and are "
-                        + "recovered from their saga logs.", timeout);
-            }
-            sec.shutdown();
         });
     }
 
@@ -579,38 +589,39 @@ public class UndertowApplication implements Lifecycle {
         return jsonSchemaBasedSpecification;
     }
 
-    private static SagaLogPool configureSagaLogProvider(DynamicConfiguration configuration) {
+    static SagaLogPool configureSagaLogProvider(DynamicConfiguration configuration) {
         String providerClass = configuration.find("sagalog.provider").orElse(null);
         LOG.info("Using saga-log-pool provider-class: {}", providerClass);
-        ServiceLoader<SagaLogInitializer> loader = ServiceLoader.load(SagaLogInitializer.class);
-        SagaLogInitializer initializer = loader.stream().filter(c -> providerClass.equals(c.type().getName())).findFirst().orElseThrow().get();
+        SagaLogInitializer initializer = sagaLogInitializer(providerClass);
         Map<String, String> providerConfig = subMapFromPrefix(configuration.asMap(), "sagalog.config.");
         checkSagaLogPool(initializer, providerConfig, configuration.getInt("saga.number-of-logs"));
 
         int retryIntervalSeconds = configuration.getInt("sagalog.provider.initialization.retry-interval-seconds");
         int maxWaitSeconds = configuration.getInt("sagalog.provider.initialization.max-wait-seconds");
-        long start = System.currentTimeMillis();
-        for (int i = 1; ; i++) {
-            try {
-                LOG.info("SagaLogPool provider initialization attempt # {}", i);
-                SagaLogPool sagaLogPool = initializer.initialize(providerConfig);
-                LOG.info("SagaLogPool initialized!");
-                return sagaLogPool;
-            } catch (Exception e) {
-                long durationMs = System.currentTimeMillis() - start;
-                long remainingMs = TimeUnit.SECONDS.toMillis(maxWaitSeconds) - durationMs;
-                if (remainingMs > 0) {
-                    try {
-                        Thread.sleep(Math.min(Jitter.around(retryIntervalSeconds * 1000L), remainingMs));
-                    } catch (InterruptedException _) {
-                        Thread.currentThread().interrupt();
-                        throw new RuntimeException("Interrupted while attempting to sleep, interrupt status preserved.", e);
-                    }
-                } else {
-                    throw e;
-                }
-            }
+        SagaLogPool sagaLogPool = StartAttempts.until("SagaLogPool provider", Duration.ofSeconds(maxWaitSeconds),
+                Duration.ofSeconds(retryIntervalSeconds), () -> initializer.initialize(providerConfig));
+        LOG.info("SagaLogPool initialized!");
+        return sagaLogPool;
+    }
+
+    /*
+     * The saga log provider whose class has the name given (sagalog.provider). A name that is missing, or that no
+     * provider on the class path has, stops the start with the key and the names there are.
+     */
+    static SagaLogInitializer sagaLogInitializer(String providerClass) {
+        List<ServiceLoader.Provider<SagaLogInitializer>> providers = ServiceLoader.load(SagaLogInitializer.class)
+                .stream().toList();
+        Set<String> names = providers.stream().map(provider -> provider.type().getName())
+                .collect(Collectors.toCollection(TreeSet::new));
+        if (providerClass == null || providerClass.isBlank()) {
+            throw new IllegalStateException("sagalog.provider is not set: name the class of the saga log provider, "
+                    + "one of " + names);
         }
+        String name = providerClass.trim();
+        return providers.stream().filter(provider -> provider.type().getName().equals(name)).findFirst()
+                .orElseThrow(() -> new IllegalStateException("No saga log provider " + name + " (sagalog.provider);"
+                        + " there are: " + names))
+                .get();
     }
 
     /*
@@ -630,14 +641,16 @@ public class UndertowApplication implements Lifecycle {
      * wait and fail. It is refused at start: the pool must have a connection for each of its logs, which stay open
      * once opened, one for each log of another instance that recovery opens at the same time (one for each recovery
      * thread), and one for the pool's own queries (listing the logs). The pool's size is the provider's key, or its
-     * default. Whether the database has room for the pool, the provider checks when it makes it.
+     * default. Whether the database has room for the pool, the provider checks when it makes it. A provider that does
+     * not name the key keeps its logs without a pool, and is not checked, also when the key is given (the server's
+     * defaults give it for every provider).
      */
     static void checkSagaLogPool(SagaLogInitializer initializer, Map<String, String> providerConfig, int numberOfLogs) {
-        String poolSize = providerConfig.getOrDefault(SAGA_LOG_POOL_SIZE,
-                initializer.configurationOptionsAndDefaults().get(SAGA_LOG_POOL_SIZE));
-        if (poolSize == null) {
+        Map<String, String> options = initializer.configurationOptionsAndDefaults();
+        if (!options.containsKey(SAGA_LOG_POOL_SIZE)) {
             return; // the provider keeps its logs without a pool of connections
         }
+        String poolSize = providerConfig.getOrDefault(SAGA_LOG_POOL_SIZE, options.get(SAGA_LOG_POOL_SIZE));
         int connections = Integer.parseInt(poolSize.trim());
         int needed = numberOfLogs + SAGA_RECOVERY_THREADS + 1;
         if (connections < needed) {
@@ -681,28 +694,11 @@ public class UndertowApplication implements Lifecycle {
 
         int retryIntervalSeconds = configuration.getInt("txlog.rawdata.provider.initialization.retry-interval-seconds");
         int maxWaitSeconds = configuration.getInt("txlog.rawdata.provider.initialization.max-wait-seconds");
-        long start = System.currentTimeMillis();
-        for (int i = 1; ; i++) {
-            try {
-                LOG.info("Transaction-log provider initialization attempt # {}", i);
-                RawdataClient txLogRawdataClient = RawdataClient.create(providerConfig);
-                LOG.info("Transaction-log initialized");
-                return txLogRawdataClient;
-            } catch (Exception e) {
-                long durationMs = System.currentTimeMillis() - start;
-                long remainingMs = TimeUnit.SECONDS.toMillis(maxWaitSeconds) - durationMs;
-                if (remainingMs > 0) {
-                    try {
-                        Thread.sleep(Math.min(Jitter.around(retryIntervalSeconds * 1000L), remainingMs));
-                    } catch (InterruptedException _) {
-                        Thread.currentThread().interrupt();
-                        throw new RuntimeException("Interrupted while attempting to sleep, interrupt status preserved.", e);
-                    }
-                } else {
-                    throw e;
-                }
-            }
-        }
+        RawdataClient txLogRawdataClient = StartAttempts.until("Transaction-log provider",
+                Duration.ofSeconds(maxWaitSeconds), Duration.ofSeconds(retryIntervalSeconds),
+                () -> RawdataClient.create(providerConfig));
+        LOG.info("Transaction-log initialized");
+        return txLogRawdataClient;
     }
 
     public static Map<String, String> subMapFromPrefix(Map<String, String> configMap, String prefix) {
@@ -714,21 +710,6 @@ public class UndertowApplication implements Lifecycle {
         }
         return navConf.subMap(prefix, true, prefix + "\uFFFF", false)
                 .entrySet().stream().collect(Collectors.toMap(e -> e.getKey().substring(prefix.length()), Map.Entry::getValue));
-    }
-
-    static void shutdownAndAwaitTermination(ExecutorService pool) {
-        pool.shutdown();
-        try {
-            if (!pool.awaitTermination(10, TimeUnit.SECONDS)) {
-                pool.shutdownNow();
-                if (!pool.awaitTermination(10, TimeUnit.SECONDS)) {
-                    LOG.error("Pool did not terminate");
-                }
-            }
-        } catch (InterruptedException _) {
-            pool.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
     }
 
     public void enableSagaExecutionAutomaticDeadlockDetectionAndResolution() {
@@ -779,7 +760,8 @@ public class UndertowApplication implements Lifecycle {
 
     /**
      * Stops the application as {@link #stop()} does, waiting the given time at most for the requests that are
-     * being handled, then for the running sagas, and then for each subsystem's work.
+     * being handled, then for the running sagas, and then for each subsystem's work. A pool of threads whose work
+     * has not completed in that time is interrupted, and its threads get {@link Pools#GRACE} to end.
      *
      * @param timeout the longest time to wait for the work of each subsystem
      */

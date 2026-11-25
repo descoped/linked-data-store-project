@@ -8,6 +8,7 @@ import io.descoped.lds.api.search.IndexEntry;
 import io.descoped.lds.api.search.IndexQueue;
 import io.descoped.lds.api.search.IndexUpdate;
 import io.descoped.lds.api.search.SearchIndex;
+import io.descoped.lds.core.lifecycle.Pools;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Flowable;
 import io.reactivex.rxjava3.core.Maybe;
@@ -109,7 +110,7 @@ public final class IndexQueueWorker {
 
     /**
      * Stops after the round that runs, waiting for it at most the given time; the updates it has not removed stay in
-     * the queue.
+     * the queue. Its thread is then interrupted, and gets {@link Pools#GRACE} to end.
      *
      * @param timeout the longest wait for the round
      * @param unit    its unit
@@ -131,10 +132,11 @@ public final class IndexQueueWorker {
                     timeout, unit, LEASE);
         } catch (ExecutionException e) {
             LOG.debug("The last round of the index queue failed", e);
+        } finally {
+            executor.shutdownNow(); // also when the wait is interrupted
         }
-        executor.shutdownNow();
-        if (!executor.awaitTermination(timeout, unit)) {
-            LOG.warn("The thread of the index queue had not ended {} {} after it was stopped", timeout, unit);
+        if (!executor.awaitTermination(Pools.GRACE.toNanos(), TimeUnit.NANOSECONDS)) {
+            LOG.warn("The thread of the index queue had not ended {} after it was stopped", Pools.GRACE);
         }
     }
 

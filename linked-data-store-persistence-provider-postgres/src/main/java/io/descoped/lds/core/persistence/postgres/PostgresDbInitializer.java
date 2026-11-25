@@ -93,7 +93,7 @@ public class PostgresDbInitializer implements PersistenceInitializer {
     private static HikariDataSource openDataSource(Map<String, String> configuration) {
         PGSimpleDataSource database = new PGSimpleDataSource();
         database.setServerNames(new String[]{configuration.get("postgres.driver.host")});
-        database.setPortNumbers(new int[]{Integer.parseInt(configuration.get("postgres.driver.port"))});
+        database.setPortNumbers(new int[]{port(configuration.get("postgres.driver.port"))});
         database.setUser(configuration.get("postgres.driver.user"));
         database.setPassword(configuration.get("postgres.driver.password"));
         database.setDatabaseName(configuration.get("postgres.driver.database"));
@@ -103,6 +103,21 @@ public class PostgresDbInitializer implements PersistenceInitializer {
         config.setAutoCommit(false);
         config.setMaximumPoolSize(POOL_SIZE);
         return new HikariDataSource(config);
+    }
+
+    /**
+     * The port, read as the rest of the configuration reads a number: the spaces around it are left out.
+     *
+     * @param value the value of {@code postgres.driver.port}
+     * @return the port
+     * @throws IllegalArgumentException when it is not a number, a fault of the configuration that no later try mends
+     */
+    static int port(String value) {
+        try {
+            return Integer.parseInt(value.trim());
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("postgres.driver.port is not a number: " + value, e);
+        }
     }
 
     /**

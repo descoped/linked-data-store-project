@@ -77,7 +77,7 @@ public class SagaRecoveryTriggerTest {
                     });
 
         } finally {
-            sagaRecoveryTrigger.stop();
+            sagaRecoveryTrigger.stop(Duration.ofSeconds(10));
         }
     }
 
