@@ -45,8 +45,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * its clients, and is to be understood before an expected file is changed.
  * <p>
  * The JSON Schemas and specifications hold the faults of the walk corrected since, each with its own test: a single
- * field of a type without {@code @domain} refers to its definition, and the items of a list of an enum are its names
- * ({@code GraphQLModelValidationTest}).
+ * field of a type without {@code @domain} refers to its definition, the items of a list of an enum are its names, and
+ * a reverse link written in the file is no field of the document ({@code GraphQLModelValidationTest}).
  */
 class GraphQLSchemaGoldenTest {
 

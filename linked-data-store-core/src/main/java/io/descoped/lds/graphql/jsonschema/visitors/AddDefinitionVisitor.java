@@ -19,6 +19,7 @@ import graphql.schema.GraphQLUnmodifiedType;
 import graphql.util.TraversalControl;
 import graphql.util.TraverserContext;
 import io.descoped.lds.graphql.directives.LinkDirective;
+import io.descoped.lds.graphql.directives.ReverseLinkDirective;
 import io.descoped.lds.graphql.schemas.TypeTraverser;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ArrayNode;
@@ -82,6 +83,13 @@ public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
 
     @Override
     public TraversalControl visitGraphQLFieldDefinition(GraphQLFieldDefinition node, TraverserContext<GraphQLSchemaElement> context) {
+        // A reverse link is found from the documents that link to this one, and is not held in it: no property, as
+        // the reverse links LDS adds itself have none.
+        for (GraphQLDirective directive : node.getDirectives()) {
+            if (directive.getName().equals(ReverseLinkDirective.NAME)) {
+                return TraversalControl.ABORT;
+            }
+        }
         ObjectNode definitionElements = definition();
         ObjectNode definitionProperties = (ObjectNode) definitionElements.get(PROPERTIES);
 

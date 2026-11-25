@@ -125,6 +125,26 @@ class GraphQLModelValidationTest {
         assertThat(model.field("Holder", "supports").getProperties()).containsKeys("tags", "lines", "staff");
     }
 
+    /**
+     * A reverse link is found from the documents that link to this one, and is not held in it.
+     */
+    @Test
+    void aReverseLinkWrittenInTheModelIsNotAFieldOfTheDocument() {
+        Model model = Model.of("""
+                directive @reverseLink(mappedBy: String, pagination: Boolean) on FIELD_DEFINITION
+                type Source @domain { link: [Target] @link }
+                type Target @domain {
+                  bar: String
+                  back: [Source!]! @reverseLink(mappedBy: "$.link[]", pagination: false)
+                  paged: [Source] @reverseLink(mappedBy: "$.link[]")
+                }
+                """);
+
+        model.valid("Target", "{'bar':'x'}");
+        assertThat(model.specification().getRootElement().getProperties().get("Target").getProperties())
+                .containsOnlyKeys("bar");
+    }
+
     @Test
     void everyListOfLinksWithNonNullItemsIsALink() {
         Model model = Model.of("""

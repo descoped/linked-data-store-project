@@ -48,17 +48,12 @@ ENTITY Target
   "$defs" : {
     "Target" : {
       "properties" : {
-        "back" : {
-          "displayName" : "",
-          "properties" : { },
-          "type" : "object"
-        },
         "bar" : {
           "displayName" : "",
           "type" : "string"
         }
       },
-      "required" : [ "back" ],
+      "required" : [ ],
       "type" : "object"
     }
   },
