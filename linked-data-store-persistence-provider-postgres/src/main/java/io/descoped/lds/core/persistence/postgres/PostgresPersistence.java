@@ -24,7 +24,7 @@ import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -38,13 +38,12 @@ import java.util.Set;
  * ({@link ResultSetPublisher}, fetch size {@value #FETCH_SIZE}), ordered by document, then version, then path. The
  * statement is run when the stream is subscribed to and closed when the stream ends or is cancelled.
  * <p>
- * A version is an instant with millisecond precision. A value is one fragment: this provider does not split a
+ * A version is an instant with microsecond precision. A value is one fragment: this provider does not split a
  * value.
  * <p>
- * Ids are ordered by their UTF-8 bytes (collation {@code POSIX}), which is the order of code points. Java orders
- * strings by UTF-16 code units, and the bridge sorts a list that way. The two differ only between a character
- * from U+E000 to U+FFFF and one above U+FFFF (an emoji), so for ids with both, {@code hasNext} and
- * {@code hasPrevious} can disagree with the list until the bridge stops sorting.
+ * Ids are ordered by their UTF-8 bytes (collation {@code POSIX}), which is the order of their code points, the
+ * order the bridge bounds a range by ({@code IdOrder.CODE_POINTS}). The bridge does not sort a list: it takes the
+ * documents in the order given here.
  */
 final class PostgresPersistence implements RxPersistence {
 
@@ -87,12 +86,18 @@ final class PostgresPersistence implements RxPersistence {
     /**
      * The statements of one write. The rows of a document version that is written again are deleted before the
      * new ones are inserted, and both are sent in batches.
+     * <p>
+     * A document's fragments come one after the other. A version is the instant as it is stored, so two documents
+     * whose versions differ only in zone or below the microsecond are one version: when a document comes whose
+     * version this write has already written, what was written of it is deleted first, and the last one is kept,
+     * as when it is written again in a later write.
      */
     private static final class WriteBatch implements AutoCloseable {
         private final Connection connection;
         private final PreparedStatement insert;
         private final PreparedStatement delete;
-        private final Set<DocumentKey> deletedDocuments = new LinkedHashSet<>();
+        private final Set<StoredVersion> writtenVersions = new HashSet<>();
+        private DocumentKey document;
         private int insertCount;
         private int deleteCount;
 
@@ -116,7 +121,12 @@ final class PostgresPersistence implements RxPersistence {
             }
             try {
                 OffsetDateTime version = instantOf(item.timestamp());
-                if (deletedDocuments.add(DocumentKey.from(item))) {
+                DocumentKey key = DocumentKey.from(item);
+                if (!key.equals(document)) {
+                    document = key;
+                    if (!writtenVersions.add(new StoredVersion(item.namespace(), item.entity(), item.id(), version))) {
+                        execute(); // the rows written of the version so far are in the table before they are deleted
+                    }
                     delete.setString(1, item.namespace());
                     delete.setString(2, item.entity());
                     delete.setString(3, item.id());
@@ -164,6 +174,10 @@ final class PostgresPersistence implements RxPersistence {
             try (delete) {
                 insert.close();
             }
+        }
+
+        /* A document version as the table keys it. */
+        private record StoredVersion(String namespace, String entity, String id, OffsetDateTime version) {
         }
     }
 
@@ -389,10 +403,11 @@ final class PostgresPersistence implements RxPersistence {
     }
 
     /**
-     * A version as it is stored and compared: the instant, cut to whole milliseconds.
+     * A version as it is stored and compared: the instant, cut to whole microseconds, which is what the column
+     * holds. Cut here, because PostgreSQL would round a finer time.
      */
     private static OffsetDateTime instantOf(ZonedDateTime timestamp) {
-        return timestamp.toInstant().truncatedTo(ChronoUnit.MILLIS).atOffset(ZoneOffset.UTC);
+        return timestamp.toInstant().truncatedTo(ChronoUnit.MICROS).atOffset(ZoneOffset.UTC);
     }
 
     /**
