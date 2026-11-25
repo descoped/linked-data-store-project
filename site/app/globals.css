@@ -296,7 +296,7 @@ a {
 }
 
 /* Every other band on a ground of its own, as wide as the window: space and ground part the sections, not lines */
-.band-pair:not(#see-it),
+.band-pair:not(.band-stack),
 .band:has(> .cards),
 .band-fit {
   background: var(--color-surface);
@@ -335,8 +335,27 @@ a {
   background: var(--color-sunken);
 }
 
-/* See it and With Claude: cards on the page's ground */
-#see-it .pair-part:first-child {
+/* The cards of a section in one row, as many as there are, each as wide; one above the other on a narrow screen */
+@media (min-width: 56rem) {
+  .cards {
+    grid-auto-columns: minmax(0, 1fr);
+    grid-auto-flow: column;
+  }
+}
+
+/* The problem is told in fewer words than the answer: its card is narrower, so the two end level */
+@media (min-width: 64rem) {
+  .band-pair:not(.band-stack) {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  }
+}
+
+/* Two cards one above the other, each as wide as the page: the first on the page's ground, the second tinted */
+.band-stack {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.band-stack .pair-part:first-child {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
 }
@@ -399,10 +418,26 @@ a {
   padding: var(--space-6);
 }
 
-/* The status, in small print at the end */
+/* The status, in small print at the end, centred */
 .band-quiet {
   color: var(--color-text-muted);
   font-size: var(--text-sm);
+  text-align: center;
+}
+
+.band-quiet > .prose {
+  margin-inline: auto;
+  max-width: 48rem;
+}
+
+/* A figure beside its text, under the cards of its section */
+.figure-split {
+  margin-top: clamp(2.5rem, 1.5rem + 3vw, 4rem);
+}
+
+.band-split .figure {
+  margin: 0;
+  max-width: none;
 }
 
 .band-quiet h2 {
@@ -412,7 +447,7 @@ a {
 .cards {
   display: grid;
   gap: var(--space-4);
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
+  grid-template-columns: minmax(0, 1fr);
   margin-top: var(--space-6);
 }
 
@@ -1051,16 +1086,6 @@ html:has(.figure-dialog[open]) {
 /* A figure of a section is as wide as the text it follows; one under cards as wide as they are */
 .band .figure {
   max-width: var(--width-prose);
-}
-
-.band .figure-wide {
-  margin-top: var(--space-6);
-  max-width: none;
-}
-
-.band .figure-wide .fig {
-  margin: 0 auto;
-  max-width: 52rem;
 }
 
 .band:has(> .actions) .actions,

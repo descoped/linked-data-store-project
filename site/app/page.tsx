@@ -53,8 +53,11 @@ const layoutOf: Record<string, 'split' | 'panel' | 'fit' | 'quiet'> = {
   Status: 'quiet',
 }
 
-/** Sections shown side by side in one band: the first names the second */
+/** Sections shown as two cards in one band: the first names the second */
 const pairOf: Record<string, string> = { 'The problem': 'The time machine', 'See it': 'With Claude' }
+
+/** Pairs whose cards are one above the other, each as wide as the page: their code needs the width */
+const stacked = new Set(['See it'])
 
 /** The figure a section of the contract shows after its text; its words are the section's */
 const figureOf: Record<string, () => React.ReactElement> = {
@@ -68,14 +71,18 @@ const figureOf: Record<string, () => React.ReactElement> = {
     </figure>
   ),
   'How it works': () => (
-    <figure className="figure figure-wide">
-      <SagaFigure />
-      <figcaption>
-        A write goes through its steps one after the other, and the saga log records each one that is done. A write
-        cut off by a failure or a stop is taken up again from there: by the next write, after a restart (with the saga
-        log in PostgreSQL), or by another LDS on the same saga log.
-      </figcaption>
-    </figure>
+    <div className="band-split figure-split">
+      <div className="prose lead">
+        <p>
+          A write goes through its steps one after the other, and the saga log records each one that is done. A write
+          cut off by a failure or a stop is taken up again from there: by the next write, after a restart (with the
+          saga log in PostgreSQL), or by another LDS on the same saga log.
+        </p>
+      </div>
+      <figure className="figure">
+        <SagaFigure />
+      </figure>
+    </div>
   ),
 }
 
@@ -132,7 +139,12 @@ export default async function Home(): Promise<React.ReactElement> {
           const second = pairOf[name]
           if (second && sections[second]) {
             return (
-              <section key={name} id={id} className="band band-pair" aria-label={`${name}, ${second}`}>
+              <section
+                key={name}
+                id={id}
+                className={`band band-pair${stacked.has(name) ? ' band-stack' : ''}`}
+                aria-label={`${name}, ${second}`}
+              >
                 {[name, second].map((part) => (
                   <div key={part} id={idOf(part)} className="pair-part">
                     <h2>{part}</h2>
