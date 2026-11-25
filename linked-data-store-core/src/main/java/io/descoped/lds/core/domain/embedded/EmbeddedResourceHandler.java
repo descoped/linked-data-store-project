@@ -212,7 +212,8 @@ public class EmbeddedResourceHandler implements HttpHandler {
                         return;
                     }
 
-                    mergeJson(resourceContext, rootNode, null);
+                    // what is not there is not made: a part is removed only from a document that has it
+                    resourceContext.removeFrom(rootNode);
 
                     boolean sync = SyncParameter.waits(exchange.getQueryParameters());
 
@@ -244,10 +245,6 @@ public class EmbeddedResourceHandler implements HttpHandler {
             if (t.jsonObject.isArray()) {
                 // array-navigation is not supported
                 throw new UnsupportedOperationException("array navigation not supported");
-            }
-            if (subTree == null) {
-                t.jsonObject.remove(embeddedPropertyName);
-                return true;
             }
             t.jsonObject.set(embeddedPropertyName, subTree);
             return true;

@@ -306,4 +306,32 @@ public class ResourceContext {
         return navigateAndCreateJson(nextResourceElement, nextJsonNode, f);
     }
 
+    /**
+     * Removes the value the path names from a document. A step of the path the document does not have is not made:
+     * there is then nothing to remove, and the document is left as it is.
+     *
+     * @param rootNode the document
+     * @return whether a value was removed
+     */
+    public boolean removeFrom(JsonNode rootNode) {
+        return removeFrom(firstElement, rootNode);
+    }
+
+    private static boolean removeFrom(ResourceElement re, JsonNode jn) {
+        // array-navigation is not supported
+        ResourceElement nextResourceElement = re.next();
+        if (!nextResourceElement.hasNext()) {
+            return new ResourceJsonTraversalTuple(nextResourceElement, jn).jsonObject
+                    .remove(nextResourceElement.name()) != null;
+        }
+        if (!jn.isObject()) {
+            // as navigateAndCreateJson, which cannot walk through a value that is not an object
+            throw new UnsupportedOperationException("array-navigation not supported");
+        }
+        if (!jn.has(nextResourceElement.name())) {
+            return false;
+        }
+        return removeFrom(nextResourceElement, jn.get(nextResourceElement.name()));
+    }
+
 }
