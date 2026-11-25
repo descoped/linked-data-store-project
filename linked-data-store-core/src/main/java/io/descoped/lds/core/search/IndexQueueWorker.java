@@ -128,8 +128,9 @@ public final class IndexQueueWorker {
                     timeout, unit, LEASE);
         } catch (ExecutionException e) {
             LOG.debug("The last round of the index queue failed", e);
+        } finally {
+            executor.shutdownNow(); // also when the wait is interrupted
         }
-        executor.shutdownNow();
         if (!executor.awaitTermination(timeout, unit)) {
             LOG.warn("The thread of the index queue had not ended {} {} after it was stopped", timeout, unit);
         }

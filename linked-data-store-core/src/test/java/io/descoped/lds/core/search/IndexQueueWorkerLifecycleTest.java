@@ -30,6 +30,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 
 /**
@@ -228,6 +229,29 @@ class IndexQueueWorkerLifecycleTest {
         assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofSeconds(2));
         assertThat(index.taken).isEmpty();
         assertThat(inQueue(queue)).as("left, to be taken again when its lease ends").isEqualTo(1);
+    }
+
+    /**
+     * A stop on a thread that is interrupted while a round is sending does not wait for it, and still ends the
+     * worker: no round follows, and its thread ends.
+     */
+    @Test
+    void aStopThatIsInterruptedWhileARoundIsSendingStillEndsTheWorker() throws Exception {
+        MemoryIndexQueue queue = new MemoryIndexQueue();
+        index.hold = new CountDownLatch(1);
+        worker(queue).start();
+        storeAndAdd(queue, "inflight");
+        assertThat(index.sending.await(5, TimeUnit.SECONDS)).isTrue();
+
+        Thread.currentThread().interrupt();
+        try {
+            assertThatThrownBy(() -> worker.stop(10, TimeUnit.SECONDS)).isInstanceOf(InterruptedException.class);
+        } finally {
+            Thread.interrupted(); // cleared for what comes after
+        }
+        index.hold.countDown();
+
+        await().atMost(Duration.ofSeconds(5)).until(worker::isTerminated);
     }
 
     @Test

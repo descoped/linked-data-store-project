@@ -272,11 +272,14 @@ public class UndertowApplication implements Lifecycle {
                 .build();
         lifecycles.add(Lifecycle.of("HTTP server", server::start, timeout -> {
             requests.shutdown(); // every request from here on is answered 503 Service Unavailable
-            if (!requests.awaitShutdown(timeout.toMillis())) {
-                LOG.warn("Requests were still being handled after {}. They lose their connection when the HTTP "
-                        + "server stops.", timeout);
+            try {
+                if (!requests.awaitShutdown(timeout.toMillis())) {
+                    LOG.warn("Requests were still being handled after {}. They lose their connection when the HTTP "
+                            + "server stops.", timeout);
+                }
+            } finally {
+                server.stop(); // also when the wait is interrupted
             }
-            server.stop();
         }));
     }
 

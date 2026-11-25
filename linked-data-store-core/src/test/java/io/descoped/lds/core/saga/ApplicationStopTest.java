@@ -27,6 +27,7 @@ import java.util.Map;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.net.ConnectException;
 import java.net.Socket;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -292,11 +293,16 @@ class ApplicationStopTest {
     }
 
     /**
-     * A stop on a thread that is interrupted does not wait, and still stops every part.
+     * A stop on a thread that is interrupted does not wait, and still stops every part: the HTTP server no longer
+     * takes connections, and the thread of the worker of the index queue ends.
      */
     @Test
     void aStopThatIsInterruptedStopsEveryPartWithoutWaiting() throws Exception {
+        Set<String> workersBefore = indexQueueThreads();
         server = start();
+        await().atMost(Duration.ofSeconds(5)).until(() -> !startedSince(workersBefore).isEmpty());
+        Set<String> worker = startedSince(workersBefore);
+        URI address = URI.create(server.testURL("/"));
         try (Socket inFlight = requestWithHalfItsBody()) {
             assertThat(inFlight.isConnected()).isTrue();
             Thread stopper = new Thread(() -> {
@@ -311,6 +317,9 @@ class ApplicationStopTest {
             assertThat(Duration.ofNanos(System.nanoTime() - before)).isLessThan(Duration.ofSeconds(8)); // not the ten of a wait
             assertStopped(server);
         }
+        assertThatThrownBy(() -> new Socket(address.getHost(), address.getPort()).close())
+                .as("the HTTP server takes no connection").isInstanceOf(ConnectException.class);
+        await().atMost(Duration.ofSeconds(5)).until(() -> indexQueueThreads().stream().noneMatch(worker::contains));
     }
 
     @Test
