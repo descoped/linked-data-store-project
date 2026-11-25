@@ -61,7 +61,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }):
           <div className="site-footer-inner">
             <span>
               A <a href="https://descoped.io/">Descoped</a> product · © 2026 ·{' '}
-              <a href="https://github.com/descoped/linked-data-store-project/blob/master/LICENSE">Apache License 2.0</a>
+              <a href="https://github.com/descoped/linked-data-store-project/blob/master/LICENSE">APL2 License</a>
             </span>
             <span>
               Built with <a href="https://krantho.com">Krantho</a>
