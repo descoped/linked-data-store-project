@@ -139,17 +139,22 @@ jobs:
           ./mvnw --batch-mode --no-transfer-progress versions:set -DgenerateBackupPoms=false \
             -DnewVersion="${version%-SNAPSHOT}-${name}-SNAPSHOT"
 
+      # A release version on master (the commit a release is made from) is published by the release workflow, as
+      # images only: the job publishes nothing then, and passes.
       - name: Only a SNAPSHOT
+        id: version
         run: |
           version=$(./mvnw -q help:evaluate -Dexpression=project.version -DforceStdout)
           case "$version" in
-            *-SNAPSHOT) echo "Publishing $version" ;;
-            *) echo "Not a SNAPSHOT: $version"; exit 1 ;;
+            *-SNAPSHOT) echo "Publishing $version"; echo "publish=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::notice::$version is a release, not a SNAPSHOT: nothing is published"
+               echo "publish=false" >> "$GITHUB_OUTPUT" ;;
           esac
 
       # Last before the deploy, so no other step runs while the role's credentials exist. They are not exported to
       # the job's environment: only the deploy step gets them, for at most 15 minutes.
       - id: aws
+        if: steps.version.outputs.publish == 'true'
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd  # v6.3.0
         with:
           role-to-assume: ${{ secrets.CODEARTIFACT_SNAPSHOTS_ROLE_ARN }}
@@ -163,6 +168,7 @@ jobs:
       # are masked in the log. The role's ARN is an organization secret. -DskipITs as well as -DskipTests: Failsafe's
       # skipTests has no property binding, so the image tests would otherwise run while the credentials exist.
       - name: Deploy
+        if: steps.version.outputs.publish == 'true'
         env:
           AWS_ACCESS_KEY_ID: ${{ steps.aws.outputs.aws-access-key-id }}
           AWS_SECRET_ACCESS_KEY: ${{ steps.aws.outputs.aws-secret-access-key }}
