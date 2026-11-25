@@ -4,7 +4,9 @@ description: >-
   The standard and the way of working for the LDS documentation site (site/, published at lds.descoped.io) and above
   all its landing page: tell the product's story from what the code does, in plain, forward-leaning English, on a
   grid of 40/60, 50/50 and thirds rows, with figures a newcomer understands, measured at real widths before anyone
-  sees it, one section at a time. Use whenever a task touches site/ (content/landing/home.md, app/page.tsx,
+  sees it, one section at a time; and the documentation pages it shows (docs/user, "Using LDS", and docs/developer,
+  "Developing LDS"): every statement checked against the code, one home for each topic, complete and plain for its
+  reader. Use whenever a task touches site/ or docs/ (content/landing/home.md, app/page.tsx,
   app/globals.css, components/figures.tsx, the sidebar or the look of the documentation pages), whenever someone asks
   to improve, redesign, reword or review the landing page or the site, or to add or change a figure on it.
 ---
@@ -86,7 +88,8 @@ sells, made only of what LDS does.
   stop (a full stop stays between two sentences inside an item). The sentence that introduces the list keeps its own.
 
 The documentation (`docs/`) keeps its own established style, set in the project's `CLAUDE.md`; the voice above is
-for the landing page unless the owner extends it.
+for the landing page unless the owner extends it. How the documentation pages are checked and revised is below, in
+"The documentation pages".
 
 ## The layout
 
@@ -117,6 +120,52 @@ page"):
   and it shows one still frame under reduced motion.
 - Before showing it, ask: what would a newcomer say this shows? If that is not the idea, redraw it.
 - The living figures are SVG in `components/figures.tsx`, moved by CSS alone (`globals.css`, "Figures").
+
+## The documentation pages
+
+The site shows `docs/` in two groups, each for one reader: "Using LDS" (`docs/user/`: those who run LDS, give it a
+model, write and read documents; no class, module or package names) and "Developing LDS" (`docs/developer/`: those
+who change the code; `architecture.md` is the map). The rules of their style are in the project's `CLAUDE.md`, "The
+documentation", and are followed as they are written there; this part says how a revision is done.
+
+**The code is the only source.** A document describes the released version. When `git diff <tag> HEAD` shows no change
+of the code, the code on disk is that release; otherwise read the code at the tag. Every statement is found in the
+code (its file and line are noted while working, not written into the document) or shown by running the released
+image; every request shown was run, with the answer that came. A statement that the code does not bear out is
+corrected or removed, never softened. An earlier document, a comment in the code or a memory is a lead, not a source.
+
+**One home for each topic.** A topic is explained once, in the document of the reader it belongs to; every other
+document that needs it gives one sentence and a link to that place. Before a revision, make the map of topics: for
+each, the document that is its home and the others that repeat it. The user documents explain what LDS does and how
+to use it; the developer documents explain how the code does it, and link to the user document for the behaviour
+rather than describing it again. The glossary defines a term once; a document links to it instead of defining it
+anew.
+
+**Complete for its reader.** A user can start, model, write, read, query, configure and operate LDS from "Using LDS"
+alone; a developer can find, from `architecture.md`, the document for every module and every part of core. A
+behaviour a reader meets that no document states is a gap, and is written from the code.
+
+**Easy to read.** One idea a sentence, the reader's words first, a term linked to the glossary where it first
+appears, examples run and formatted as `CLAUDE.md` says. Cut what the reader does not need: a sentence that repeats
+the one before it, a list of internals in a user document, history.
+
+**The order of work**, for the whole set or one document:
+
+1. Map: the documents, their topics, and the code each one describes (modules, classes, configuration keys).
+2. Verify: each document read against its code, statement by statement, and its requests run; a list of what is
+   not true, what is missing and what repeats another document.
+3. Decide the home of each repeated topic, with the map of all documents in view.
+4. Revise each document: correct, fill the gaps, replace repeats by a sentence and a link, cut.
+5. Check: `cd site && pnpm build` passes, links and anchors resolve, lines are at most 120 characters, the front
+   matter and the rows of `docs/README.md` match; look at the changed pages on the site, light and dark.
+6. Report to the owner, document by document, what was corrected, added and cut, with the code that decided it.
+   Anything that is a decision about LDS, not about the text (a fault found in the code, a behaviour that looks
+   unintended), is reported, not fixed in the documents.
+
+Work on several documents at once may be given to agents, one document to each; the map and the decision of where
+each topic lives are made with all of them in view, before any document is revised. An agent that runs LDS uses the
+released image in memory on a port of its own, removes its container, and never builds with Maven or starts a
+compose stack.
 
 ## Checks before the owner sees anything
 
