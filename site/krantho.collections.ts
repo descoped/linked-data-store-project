@@ -40,7 +40,7 @@ const landing = defineCollection({
     'Documents that link to each other',
     'Writes that pick up where they stopped',
     'One model gives you both APIs',
-    'Search that travels in time too',
+    'Query any moment with GraphQL',
     'Choose where your documents are stored',
     'Run it on your machine',
     'Or ask Claude to do it',

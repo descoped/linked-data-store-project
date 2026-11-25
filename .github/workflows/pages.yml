@@ -9,6 +9,8 @@ on:
     paths:
       - 'docs/**'
       - 'site/**'
+      # served as /compose.yaml, the one-line start of the whole stack on the landing page
+      - 'plugins/lds/skills/start/assets/compose-stack.yaml'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 

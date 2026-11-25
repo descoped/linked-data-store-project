@@ -44,14 +44,21 @@ const figureOf: Record<string, () => React.ReactElement> = {
 /** Sections shown side by side in one row, half and half: the first names the second */
 const pairOf: Record<string, string> = {
   'The problem': 'How LDS solves it',
-  'One model gives you both APIs': 'Search that travels in time too',
+  'One model gives you both APIs': 'Query any moment with GraphQL',
   'Where LDS fits': 'Where LDS does not fit',
+}
+
+/** Sections whose list is drawn with a mark for each item: a tick where LDS fits, a cross where it does not */
+const marksOf: Record<string, 'yes' | 'no'> = {
+  'Where LDS fits': 'yes',
+  'Where LDS does not fit': 'no',
 }
 
 /** A section's heading and its text */
 function Part({ name, html, children }: { name: string; html: string; children?: React.ReactNode }): React.ReactElement {
+  const marks = marksOf[name]
   return (
-    <div className="row-part">
+    <div className={marks ? `row-part marks-${marks}` : 'row-part'}>
       <h2 id={idOf(name)}>{name}</h2>
       {html.trim() && <div className="prose" dangerouslySetInnerHTML={{ __html: html }} />}
       {children}

@@ -16,8 +16,9 @@ secondary-href: "/docs/user/concepts/"
 
 ## The problem
 
-When a record changes, most databases overwrite it and the old value is gone. To answer what was true last June,
-teams add audit tables, triggers or versioned rows, and every query then joins those histories on ranges of dates.
+When a record changes, most databases overwrite it and the old value is gone. To answer where Kari Nordmann lived
+last June, teams add audit tables, triggers or versioned rows, and every query then joins those histories on ranges
+of dates.
 When records refer to each other, every history has to line up at the same moment, and that is where it gets hard.
 
 ## How LDS solves it
@@ -30,8 +31,9 @@ version valid at that same moment. There are no audit tables to maintain and no 
 ## Documents that link to each other
 
 A document is JSON at an address such as `/ns/Person/ola`, shaped by your model. It holds plain values, embedded
-objects that are versioned with it, and links to other documents that keep versions of their own. Read Ola as of June
-2022, and LDS follows the employer link to the company as it was in June 2022 too. [The model](/docs/user/model/)
+objects that are versioned with it, and links to other documents that keep versions of their own. Read Ola Nordmann
+as of June 2022, and LDS follows his employer link to the company as it was in June 2022 too.
+[The model](/docs/user/model/)
 
 ## Writes that pick up where they stopped
 
@@ -52,18 +54,18 @@ and, from a GraphQL schema, a GraphQL API whose links you can follow in both dir
 against the model before it is written, and a rejected write names the field that is wrong.
 [The model](/docs/user/model/)
 
-## Search that travels in time too
+## Query any moment with GraphQL
 
-Turn on search, with a GraphQL model, and every text in your documents is indexed in Solr. Texts tagged with their
-language are matched by the stems of their words in Norwegian, Swedish, English, German and French, and a word typed
-without ø or å still finds the word that has them. Search as of any moment, or let a write wait until it can be
-found. [Search](/docs/user/graphql-api/#search)
+Give a GraphQL query a snapshot, and the whole query reads your data as it was at that moment: every document, every
+link and every link back to it. Search works the same way. With Solr, find documents by the words they held then,
+matched by their stems in Norwegian, Swedish, English, German and French, with ø and å optional.
+[The GraphQL API](/docs/user/graphql-api/)
 
 ## Choose where your documents are stored
 
-Start in memory and move to PostgreSQL or Neo4j when you are ready. Every store passes the same suite of tests against
-the real database, so your requests and answers stay the same whichever you choose. Whichever store holds your
-documents, keep the saga log in PostgreSQL so that a write cut off by a restart is completed.
+Start with the in-memory store, then move to PostgreSQL or Neo4j when you are ready. Every store passes the same
+suite of tests against the real database, so your requests and answers stay the same whichever you choose. Whichever
+store holds your documents, keep the saga log in PostgreSQL so that a write cut off by a restart is completed.
 [Configuration](/docs/user/configuration/#choosing-where-lds-keeps-its-data)
 
 ### In memory
@@ -82,12 +84,21 @@ enough.
 
 ## Run it on your machine
 
-Start LDS with Docker. It runs in memory with an example model, so there is nothing to set up. Then write a company
-that is valid from 1 January 2020 and read it back as of 1 June 2021. The write answers with the id of its saga, and
-the read gives the version that was valid on that date. [Getting started](/docs/user/getting-started/) goes further.
+Start LDS with Docker. The first command runs it in memory with an example model, so there is nothing to set up. The
+second starts the whole stack instead, with Neo4j for the documents, PostgreSQL for the saga log and the change log,
+and Solr for search, and keeps your data until `docker compose -p lds down -v` removes it.
+
+Then write a company that is valid from 1 January 2020 and read it back as of 1 June 2021. The write answers with the
+id of its saga, and the read gives the version that was valid on that date.
+[Getting started](/docs/user/getting-started/) goes further.
 
 ```sh
 docker run --rm -p 127.0.0.1:9090:9090 descoped/lds:3.0.1
+```
+
+```sh
+curl -fsSL https://lds.descoped.io/compose.yaml \
+  | docker compose -f - up -d --wait
 ```
 
 ```console
@@ -113,17 +124,19 @@ books, authors and loans, and load these members from members.csv". [With Claude
 
 LDS fits data whose history is part of the data.
 
-- Registers, master data and reference data that change over time and are read as they were.
-- Reports and audits that must show the data as it stood on a past date.
-- Models whose documents link to each other and are read together at one moment.
-- Changes known in advance, written today with a date in the future.
+- **Registers and master data.** Data that changes over time and is read as it was.
+- **Reports and audits.** The data as it stood on a past date.
+- **Linked models.** Documents that link to each other, read together at one moment.
+- **Planned changes.** Written today, with a date in the future.
 
 ## Where LDS does not fit
 
 These are facts of LDS 3.0.
 
-- You need to know when a version was recorded as well as when it is valid. LDS keeps the valid time only.
-- You need access control in the store. LDS has no authentication, so anyone who reaches its port can read and write.
-- You need a link checked on write, or a delete refused while other documents link to it. LDS does neither.
-- You run several LDS that write the same document at the same time. Writes to one document take turns within one
-  LDS, not across several.
+- **Recorded time.** You need to know when a version was recorded as well as when it is valid. LDS keeps the valid
+  time only.
+- **Access control.** LDS has no authentication, so anyone who reaches its port can read and write.
+- **Checked links.** You need a link checked on write, or a delete refused while other documents link to it. LDS
+  does neither.
+- **Several writers.** Several LDS write the same document at the same time. Writes to one document take turns
+  within one LDS, not across several.
