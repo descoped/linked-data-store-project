@@ -6,7 +6,7 @@
     <!-- Parent and aggregator of every module. All modules share this version and are released together. -->
     <groupId>io.descoped.lds</groupId>
     <artifactId>linked-data-store-project</artifactId>
-    <version>3.0.1</version>
+    <version>3.0.2-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <name>Linked Data Store Project</name>
@@ -39,7 +39,7 @@
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <!-- Reproducible builds: every jar entry gets this time, so the same commit builds the same bytes and a
              release can be run again. Set to the time of the release in the pull request that sets the version. -->
-        <project.build.outputTimestamp>2026-11-25T00:03:14Z</project.build.outputTimestamp>
+        <project.build.outputTimestamp>2026-11-25T00:36:24Z</project.build.outputTimestamp>
 
         <!-- Dependency versions. Kept as properties, not in dependencyManagement, so that importing
              linked-data-store-bom (which inherits this POM) manages the Linked Data Store modules only. -->
