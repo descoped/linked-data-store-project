@@ -978,11 +978,13 @@ public abstract class PersistenceIntegrationTest {
     }
 
     /**
-     * Every version of the address, in order of time: the city of a version, or "{}" for an empty document.
+     * Every version of the address, in order of time: the city of a version, the document when it has no city, or
+     * "deleted" for a mark of deletion, which is a deleted document with no content.
      */
     private List<String> versionsOf(Transaction tx, String id) {
         return persistence.readDocumentVersions(tx, namespace, "Address", id, Range.unbounded())
-                .map(document -> document.key().timestamp().getYear() + ":" + (document.jackson().has("city") ? document.jackson().get("city").asString() : document.jackson().toString()))
+                .map(document -> document.key().timestamp().getYear() + ":" + (document.deleted() ? "deleted"
+                        : document.jackson().has("city") ? document.jackson().get("city").asString() : document.jackson().toString()))
                 .toList().blockingGet();
     }
 
@@ -1047,7 +1049,8 @@ public abstract class PersistenceIntegrationTest {
 
     /**
      * A document that is marked as deleted is not there from the time of the mark until its next version: not
-     * when it is read, listed or searched for. With the versions of the document the mark is an empty document.
+     * when it is read, listed or searched for. With the versions of the document the mark is a deleted document,
+     * with no content: not an empty document, which is a version of its own.
      */
     @Test
     public void thatADocumentMarkedAsDeletedIsNotReadFromTheTimeOfTheMark() {
@@ -1057,12 +1060,16 @@ public abstract class PersistenceIntegrationTest {
             writeAddressVersion(tx, "marked", Y1702);
 
             markAddressDeleted(tx, "marked", Y1701);
+            persistence.createOrOverwrite(tx, toDocument(namespace, "Address", "marked", mapper.createObjectNode(), Y1703), specification).blockingAwait();
 
-            assertEquals(versionsOf(tx, "marked"), List.of("1700:1700", "1701:{}", "1702:1702"));
+            assertEquals(versionsOf(tx, "marked"), List.of("1700:1700", "1701:deleted", "1702:1702", "1703:{}"));
+            assertThat(persistence.readDocumentVersions(tx, namespace, "Address", "marked", Range.unbounded())
+                    .filter(JsonDocument::deleted).map(document -> String.valueOf(document.jackson())).toList().blockingGet())
+                    .containsExactly("null");
             assertEquals(cityAt(tx, "marked", Y1700.plusMonths(6)), "1700");
             assertNull(cityAt(tx, "marked", Y1701));
             assertNull(cityAt(tx, "marked", Y1701.plusMonths(6)));
-            assertEquals(cityAt(tx, "marked", Y1703), "1702");
+            assertEquals(cityAt(tx, "marked", Y1702.plusMonths(6)), "1702");
             assertEquals(idsOfAddressesAt(tx, Y1700.plusMonths(6), "marked"), List.of("marked"));
             assertEquals(idsOfAddressesAt(tx, Y1701.plusMonths(6), "marked"), List.of());
             assertEquals(persistence.findDocument(tx, Y1701.plusMonths(6), namespace, "Address", JsonNavigationPath.from("$.city"), "1700", Range.unbounded())
@@ -1070,7 +1077,7 @@ public abstract class PersistenceIntegrationTest {
 
             // the mark deleted: the version before it is the document again
             deleteAddressVersion(tx, "marked", Y1701);
-            assertEquals(versionsOf(tx, "marked"), List.of("1700:1700", "1702:1702"));
+            assertEquals(versionsOf(tx, "marked"), List.of("1700:1700", "1702:1702", "1703:{}"));
             assertEquals(cityAt(tx, "marked", Y1701.plusMonths(6)), "1700");
 
             forget(tx, "Address", "marked");
@@ -1091,7 +1098,7 @@ public abstract class PersistenceIntegrationTest {
 
             markAddressDeleted(tx, "sameTime", Y1701);
 
-            assertEquals(versionsOf(tx, "sameTime"), List.of("1700:1700", "1701:{}", "1702:1702"));
+            assertEquals(versionsOf(tx, "sameTime"), List.of("1700:1700", "1701:deleted", "1702:1702"));
             assertEquals(cityAt(tx, "sameTime", Y1700.plusMonths(6)), "1700");
             assertNull(cityAt(tx, "sameTime", Y1701));
             assertNull(cityAt(tx, "sameTime", Y1701.plusMonths(6)));
@@ -1124,14 +1131,14 @@ public abstract class PersistenceIntegrationTest {
 
             markAddressDeleted(tx, "markedFirst", Y1701);
 
-            assertEquals(versionsOf(tx, "markedFirst"), List.of("1701:{}"));
+            assertEquals(versionsOf(tx, "markedFirst"), List.of("1701:deleted"));
             assertNull(cityAt(tx, "markedFirst", Y1702));
             assertEquals(idsOfAddressesAt(tx, Y1702, "markedFirst"), List.of());
 
             writeAddressVersion(tx, "markedFirst", Y1700);
             writeAddressVersion(tx, "markedFirst", Y1702);
 
-            assertEquals(versionsOf(tx, "markedFirst"), List.of("1700:1700", "1701:{}", "1702:1702"));
+            assertEquals(versionsOf(tx, "markedFirst"), List.of("1700:1700", "1701:deleted", "1702:1702"));
             assertEquals(cityAt(tx, "markedFirst", Y1700.plusMonths(6)), "1700");
             assertNull(cityAt(tx, "markedFirst", Y1701.plusMonths(6)));
             assertEquals(cityAt(tx, "markedFirst", Y1703), "1702");

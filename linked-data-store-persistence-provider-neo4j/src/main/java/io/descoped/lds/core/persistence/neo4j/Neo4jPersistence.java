@@ -52,7 +52,8 @@ import static io.descoped.lds.core.persistence.neo4j.Neo4jDocumentWriter.hashOf;
  * <li>A link is a {@code REF} relationship to the document node it points at, in the same namespace. That node is
  * created with the link when the document is not written yet.</li>
  * <li>A version that marks the document as deleted is a root with {@code deleted: true} and nothing below it. A
- * read at a time leaves it out; with the versions of a document it is read as an empty document.</li>
+ * read at a time leaves it out; with the versions of a document it is read as a deleted document, with no
+ * content.</li>
  * <li>The versions of a document follow each other without a gap: a version is valid until the next one, and a
  * version that is deleted gives its time to the version before it.</li>
  * </ul>
@@ -104,8 +105,8 @@ final class Neo4jPersistence implements RxJsonPersistence {
         ZonedDateTime version = row.get("v").get("from").asZonedDateTime();
         DocumentKey key = new DocumentKey(namespace, entityName, id, version);
 
-        // A version that marks the document as deleted has no leaves, so it is an empty document. It is read with
-        // the versions of a document only: the reads at a time leave it out (VALID_AT_SNAPSHOT).
+        // A version that marks the document as deleted has no leaves. It is read with the versions of a document
+        // only (versionOf): the reads at a time leave it out (VALID_AT_SNAPSHOT).
         Map<String, FlattenedDocumentLeafNode> leaves = new TreeMap<>();
         for (Value leaf : row.get("leaves").values()) {
             String path = computePath(leaf.get(0).asList(Value::asRelationship));
@@ -114,6 +115,17 @@ final class Neo4jPersistence implements RxJsonPersistence {
         FlattenedDocument flattenedDocument = new FlattenedDocument(key, leaves, false);
         JsonNode jsonObject = new FlattenedDocumentToJson(flattenedDocument).toJsonNode();
         return new JsonDocument(key, jsonObject);
+    }
+
+    /**
+     * The document of one record of a read of versions: a version that marks the document as deleted is a deleted
+     * document, with no content, as the other stores give it.
+     */
+    static JsonDocument versionOf(Record row, String namespace, String entityName) {
+        JsonDocument document = toDocument(row, namespace, entityName);
+        return row.get("m").asNode().get("deleted").asBoolean(false)
+                ? new JsonDocument(document.key(), (JsonNode) null)
+                : document;
     }
 
     private static FlattenedDocumentLeafNode toLeaf(DocumentKey key, String path, Node node) {
@@ -257,12 +269,8 @@ final class Neo4jPersistence implements RxJsonPersistence {
         String cypher = MATCH_DOCUMENT + Cypher.label(entityName) + " {namespace: $namespace})-[v:VERSION]->(m)\n" +
                 "WITH r, v, m ORDER BY r.idOrder, v.from\n" +
                 RETURN_DOCUMENT;
-        return ((Neo4jTransaction) tx).executeCypherAsync(cypher, Map.of(NAMESPACE, ns)).map(row -> {
-            JsonDocument document = toDocument(row, ns, entityName);
-            return row.get("m").asNode().get("deleted").asBoolean(false)
-                    ? new JsonDocument(document.key(), (JsonNode) null)
-                    : document;
-        });
+        return ((Neo4jTransaction) tx).executeCypherAsync(cypher, Map.of(NAMESPACE, ns))
+                .map(row -> versionOf(row, ns, entityName));
     }
 
     @Override
@@ -286,7 +294,7 @@ final class Neo4jPersistence implements RxJsonPersistence {
         String cypher = MATCH_DOCUMENT + Cypher.label(entityName) + " {namespace: $namespace, id: $rid})-[v:VERSION]->(m)" + where + "\n" +
                 "WITH r, v, m" + orderAndLimit(range, "v.from", params) + "\n" +
                 RETURN_DOCUMENT;
-        return documents(tx, cypher, params, ns, entityName);
+        return ((Neo4jTransaction) tx).executeCypherAsync(cypher, params).map(row -> versionOf(row, ns, entityName));
     }
 
     @Override

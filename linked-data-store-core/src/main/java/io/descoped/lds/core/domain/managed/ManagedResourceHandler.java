@@ -137,7 +137,7 @@ public class ManagedResourceHandler implements HttpHandler {
 
     /*
      * Every version of the document, oldest first. There is no pagination and no range of time: the store is asked
-     * for all versions.
+     * for all versions. A deletion is {"version": ..., "deleted": true}, with no document.
      */
     private ArrayNode timeline(Transaction tx, ResourceElement topLevelElement) {
         ArrayNode output = mapper.createArrayNode();
@@ -145,7 +145,11 @@ public class ManagedResourceHandler implements HttpHandler {
         for (JsonDocument jsonDocument : jsonDocumentFlowable.blockingIterable()) {
             ObjectNode timeVersionedInstance = output.addObject();
             timeVersionedInstance.put("version", jsonDocument.key().timestamp().toString());
-            timeVersionedInstance.set("document", jsonDocument.jackson());
+            if (jsonDocument.deleted()) {
+                timeVersionedInstance.put("deleted", true);
+            } else {
+                timeVersionedInstance.set("document", jsonDocument.jackson());
+            }
         }
         return output;
     }

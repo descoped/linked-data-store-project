@@ -96,20 +96,22 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
     /**
      * Convert a flowable of {@link Fragment}s to a flowable of {@link JsonDocument}.
      * <p>
-     * The received fragments must be ordered by id <strong>before</strong> it is ordered by path..
+     * The received fragments must be ordered by id <strong>before</strong> it is ordered by path. A version that marks
+     * a document as deleted is left out, or, when it is included, a deleted document: one with no content.
      */
     static Flowable<JsonDocument> toDocuments(Flowable<Fragment> fragmentFlowable, int fragmentSize, boolean includeDeleted) {
-        return toFlattenedDocuments(fragmentFlowable, fragmentSize).filter(flattenedDocument -> {
-            // Filter out the deleted documents.
-            return includeDeleted || !flattenedDocument.deleted();
+        return toFlattenedDocuments(fragmentFlowable, fragmentSize)
+                .filter(flattenedDocument -> includeDeleted || !flattenedDocument.deleted())
+                .map(RxJsonPersistenceBridge::toDocument);
+    }
 
-        }).map(flattenedDocument -> {
-            // Convert to JsonDocument.
-            return new JsonDocument(
-                    flattenedDocument.key(),
-                    new FlattenedDocumentToJson(flattenedDocument).toJsonNode()
-            );
-        });
+    /*
+     * The document of a version, or a deleted document (no content) for a version that marks it as deleted.
+     */
+    private static JsonDocument toDocument(FlattenedDocument flattenedDocument) {
+        return flattenedDocument.deleted()
+                ? new JsonDocument(flattenedDocument.key(), (JsonNode) null)
+                : new JsonDocument(flattenedDocument.key(), new FlattenedDocumentToJson(flattenedDocument).toJsonNode());
     }
 
     /*
@@ -165,9 +167,7 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
     @Override
     public Flowable<JsonDocument> readAllDocumentVersions(Transaction tx, String ns, String entityName) {
         return toFlattenedDocuments(persistence.readAllVersions(tx, ns, entityName), fragmentSize)
-                .map(flattenedDocument -> flattenedDocument.deleted()
-                        ? new JsonDocument(flattenedDocument.key(), (JsonNode) null)
-                        : new JsonDocument(flattenedDocument.key(), new FlattenedDocumentToJson(flattenedDocument).toJsonNode()));
+                .map(RxJsonPersistenceBridge::toDocument);
     }
 
     @Override
