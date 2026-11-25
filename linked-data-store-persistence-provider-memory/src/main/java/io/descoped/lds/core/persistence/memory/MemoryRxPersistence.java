@@ -533,6 +533,10 @@ public class MemoryRxPersistence implements RxPersistence {
         transactionFactory.close();
     }
 
+    /*
+     * A version as a tuple of its fields, each negated so that the newest sorts first, to the microsecond: the time
+     * LDS gives a write.
+     */
     public static Tuple toTuple(ZonedDateTime timestamp) {
         return Tuple.of(
                 -timestamp.getYear(),
@@ -541,7 +545,7 @@ public class MemoryRxPersistence implements RxPersistence {
                 -timestamp.getHour(),
                 -timestamp.getMinute(),
                 -timestamp.getSecond(),
-                -TimeUnit.NANOSECONDS.toMillis(timestamp.getNano())
+                -TimeUnit.NANOSECONDS.toMicros(timestamp.getNano())
         );
     }
 
@@ -553,7 +557,7 @@ public class MemoryRxPersistence implements RxPersistence {
                 (int) -timestampTuple.getLong(3),
                 (int) -timestampTuple.getLong(4),
                 (int) -timestampTuple.getLong(5),
-                (int) -TimeUnit.MILLISECONDS.toNanos(timestampTuple.getLong(6)),
+                (int) -TimeUnit.MICROSECONDS.toNanos(timestampTuple.getLong(6)),
                 ZONE_ID_UTC
         );
     }

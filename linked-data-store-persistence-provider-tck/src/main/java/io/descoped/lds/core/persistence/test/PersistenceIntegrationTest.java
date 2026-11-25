@@ -1717,6 +1717,28 @@ public abstract class PersistenceIntegrationTest {
         }
     }
 
+    /**
+     * A version is kept to the microsecond, the time LDS gives a write: two versions a few microseconds apart, in
+     * one millisecond, are two versions, each read back with its own time.
+     */
+    @Test
+    public void thatVersionsAMicrosecondApartAreEachKept() {
+        ZonedDateTime first = of(2020, 1, 1, 12, 0, 0, 123_456_000, ZoneId.of("Etc/UTC"));
+        ZonedDateTime second = first.plusNanos(3_000);
+        try (Transaction tx = persistence.createTransaction(false)) {
+            forget(tx, "Address", "microseconds");
+            persistence.createOrOverwrite(tx, toDocument(namespace, "Address", "microseconds", createAddress("first", "", ""), first), specification).blockingAwait();
+            persistence.createOrOverwrite(tx, toDocument(namespace, "Address", "microseconds", createAddress("second", "", ""), second), specification).blockingAwait();
+
+            assertThat(persistence.readDocumentVersions(tx, namespace, "Address", "microseconds", Range.unbounded())
+                    .map(document -> document.key().timestamp().toInstant() + " " + document.jackson().get("city").asString())
+                    .toList().blockingGet())
+                    .containsExactly(first.toInstant() + " first", second.toInstant() + " second");
+            assertThat(cityAt(tx, "microseconds", first.plusNanos(2_000))).isEqualTo("first");
+            assertThat(cityAt(tx, "microseconds", second)).isEqualTo("second");
+        }
+    }
+
     protected JsonDocument toDocument(String namespace, String entity, String id, JsonNode json, ZonedDateTime timestamp) {
         return new JsonDocument(new DocumentKey(namespace, entity, id, timestamp), json);
     }
