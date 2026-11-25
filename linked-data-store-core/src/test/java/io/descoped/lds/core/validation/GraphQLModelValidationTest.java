@@ -83,4 +83,60 @@ class GraphQLModelValidationTest {
                 "[$.homes[0]: required property 'city' not found]");
         assertThat(model.field("Person", "home").getProperties()).containsOnlyKeys("city", "zip");
     }
+
+    @Test
+    void aListOfAnEnumIsAListOfItsNames() {
+        Model model = Model.of("""
+                type Thing @domain { kinds: [Kind] sorts: [Kind!]! }
+                enum Kind { A B }
+                """);
+
+        model.valid("Thing", "{'kinds':['A','B'],'sorts':['B']}");
+        model.refused("Thing", "{'kinds':'A','sorts':[]}", "[$.kinds: string found, array expected]");
+        model.refused("Thing", "{'kinds':['C'],'sorts':[]}",
+                "[$.kinds[0]: does not have a value in the enumeration [\"A\", \"B\"]]");
+        model.refused("Thing", "{'sorts':['C']}", "[$.sorts[0]: does not have a value in the enumeration [\"A\", \"B\"]]");
+    }
+
+    @Test
+    void aListOfAUnionOfEntityTypesWithoutLinkIsAListOfLinksToThem() {
+        Model model = Model.of("""
+                type Owner @domain { things: [Thing] }
+                type Job @domain { title: String }
+                type Car @domain { make: String }
+                union Thing = Job | Car
+                """);
+
+        model.valid("Owner", "{'things':['/Job/j1','/Car/c1']}");
+        model.refused("Owner", "{'things':'/Job/j1'}", "[$.things: string found, array expected]");
+        model.refused("Owner", "{'things':['/Person/p1']}",
+                "Illegal linked-domain: \"Person\". Navigation: things: \"/Person/p1\"");
+    }
+
+    @Test
+    void aListFieldWithWrappedItemsInAnEntityTypeHeldAsAnEmbeddedObjectIsRead() {
+        Model model = Model.of("""
+                type Holder @domain { supports: [Support] }
+                type Support @domain { tags: [String!] lines: [[String]] staff: [Person] @link }
+                type Person @domain { name: String }
+                """);
+
+        model.valid("Holder", "{'supports':{'staff':['/Person/p1']}}");
+        assertThat(model.field("Holder", "supports").getProperties()).containsKeys("tags", "lines", "staff");
+    }
+
+    @Test
+    void everyListOfLinksWithNonNullItemsIsALink() {
+        Model model = Model.of("""
+                type Team @domain { leads: [Person!] @link members: [Person!] @link guests: [Person!]! @link }
+                type Person @domain { name: String }
+                """);
+
+        model.valid("Team", "{'leads':['/Person/p1'],'members':['/Person/p2'],'guests':['/Person/p3']}");
+        for (String field : new String[]{"leads", "members", "guests"}) {
+            model.refused("Team", "{'guests':[],'" + field + "':['/Job/j1']}",
+                    "Illegal linked-domain: \"Job\". Navigation: " + field + ": \"/Job/j1\"");
+            assertThat(model.field("Team", field).getRefTypes()).as(field).containsExactly("Person");
+        }
+    }
 }

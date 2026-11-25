@@ -167,7 +167,8 @@ public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
             visitUnionLinkProperty(node.getType());
             return true;
         } else if (subType instanceof GraphQLList listType) {
-            GraphQLType wrappedType = listType.getWrappedType();
+            // [Entity!] as [Entity]: the walk would see the list of a second such field as one it has entered before
+            GraphQLType wrappedType = GraphQLTypeUtil.unwrapNonNull(listType.getWrappedType());
             if (wrappedType instanceof GraphQLUnionType) {
                 ObjectNode properties = (ObjectNode) definitionElements.get(PROPERTIES).get(visitedFieldName);
                 ObjectNode itemList = object();
@@ -238,9 +239,35 @@ public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
             lastVisitedNodeType = GraphQLList.class.getName();
 
             return visitGraphQLType(node, context);
+        } else if (type instanceof GraphQLEnumType enumType) {
+            // the items are the names of the enum; the enum is not walked, which would make the field one name
+            itemList.put("type", STRING);
+            ArrayNode enumValues = itemList.putArray("enum");
+            enumType.getValues().forEach(value -> enumValues.add(value.getName()));
+            fieldProperties.set(ITEMS, itemList);
+            lastVisitedNodeType = GraphQLList.class.getName();
+
+            return TraversalControl.ABORT;
+        } else if (type instanceof GraphQLUnionType unionType && isUnionOfEntityTypes(unionType)) {
+            // a list of links to the members, as with @link; a member walked would make the field one link
+            itemList.put("type", STRING);
+            fieldProperties.set(ITEMS, itemList);
+            lastVisitedNodeType = GraphQLList.class.getName();
+            visitUnionLinkProperty(unionType);
+
+            return TraversalControl.ABORT;
         }
 
         return TraversalControl.CONTINUE;
+    }
+
+    private static boolean isUnionOfEntityTypes(GraphQLUnionType unionType) {
+        for (GraphQLNamedOutputType member : unionType.getTypes()) {
+            if (!(member instanceof GraphQLObjectType objectType) || !hasDomainDirective(objectType)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /*
@@ -402,7 +429,8 @@ public class AddDefinitionVisitor extends GraphQLTypeVisitorStub {
                         linkedProperties.put("type", OBJECT);
                         propertiesValues = object();
                         linkedObjects.put("type", "null");
-                        propertiesValues.set(name(((GraphQLList) fieldDef.getType()).getWrappedType()), linkedObjects);
+                        // the type inside the list, also when it is wrapped: [String!], [[String]]
+                        propertiesValues.set(name(GraphQLTypeUtil.unwrapAll(fieldDef.getType())), linkedObjects);
                         linkedProperties.set(PROPERTIES, propertiesValues);
 
                         embeddedProperties.set(LINK_PROPERTY_PREFIX + fieldDef.getName(), linkedProperties);
