@@ -170,6 +170,39 @@ class IndexQueueWorkerTest {
         assertThat(queue.lag().blockingGet().updates()).isZero();
     }
 
+    /**
+     * Storage that does not have the version of an update (restored from before it) gives the version before it when
+     * it is read as of the update: that content is not the update's, and is not sent under its version. In UTC, as
+     * core gives every version to the store (the memory store does not yet keep the instant of another zone).
+     */
+    @Test
+    void anUpdateOfAVersionStorageDoesNotHaveIsRemovedWithoutSendingTheVersionBeforeIt() {
+        store("ola", utc(VERSION), "Ola");
+        queue.add(new IndexUpdate("ns", "Person", "ola", utc(VERSION).plusHours(1),
+                IndexUpdate.Operation.CREATE_OR_OVERWRITE)).blockingAwait();
+
+        assertThat(worker.round().blockingGet()).isTrue();
+
+        assertThat(index.written).isEmpty();
+        assertThat(queue.lag().blockingGet().updates()).isZero();
+    }
+
+    /**
+     * A store keeps a version to the millisecond, and the update has the microseconds of the write: it is the same
+     * version, and is sent.
+     */
+    @Test
+    void aVersionStorageKeepsToTheMillisecondIsTheVersionOfItsUpdate() {
+        ZonedDateTime written = ZonedDateTime.parse("2026-01-01T00:00:00.123456Z");
+        store("kari", written, "Kari");
+        queue.add(new IndexUpdate("ns", "Person", "kari", written, IndexUpdate.Operation.CREATE_OR_OVERWRITE))
+                .blockingAwait();
+
+        worker.round().blockingGet();
+
+        assertThat(index.writtenNames).containsExactly("Kari");
+    }
+
     @Test
     void theUpdatesOfARoundAreSentInOneBatchAndAtMostOneHundred() {
         for (int i = 0; i < 150; i++) {
