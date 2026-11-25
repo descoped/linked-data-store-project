@@ -16,14 +16,16 @@ secondary-href: "/docs/user/concepts/"
 
 ## The problem
 
-Most stores keep the present state of their data. When a record changes, the value before it is gone, and a question
-such as "where did this person live on 1 June 2021" needs an audit table or a history put together afterwards.
+In most databases an update overwrites the record, and the value before it is gone. Keeping the history takes
+triggers and audit tables, or versioned rows joined on ranges of dates. A question such as "where did this person
+live on 1 June 2021, and who employed them then" becomes a query across several histories that must line up at the
+same instant.
 
-## The time machine
+## The solution
 
-Every write adds a version of a document, valid from the time given with the write, in the past, the present or the
-future, or else from the time LDS receives it. A read at an instant gives the document as it was then, and a whole
-namespace read at one instant is a snapshot: every document at its version valid then, every link resolved then.
+LDS keeps every version of every document, each valid from its own time, in the past, the present or the future. Ask
+for an instant and every document comes back as it was then, with each link followed to the version that was valid
+at the same instant. The history is the data: no audit tables, and no joins on ranges of dates.
 [Concepts](/docs/user/concepts/)
 
 ## What a document is made of
@@ -34,19 +36,45 @@ the version that was valid at the same instant. [The model](/docs/user/model/)
 
 ## A write is a saga
 
-The transaction log is written first, then the store, and with search an update is added to the index queue. Each
-step is recorded in a saga log, and a write that did not complete, because a step failed or LDS stopped, is run again
-from it later. [The write path](/docs/developer/core-write-path/)
+A write reaches more than one place: the transaction log, the store and, with search, the index queue. No
+transaction spans them, so a crash between two of them would leave them disagreeing. Each write is therefore a saga:
+its steps run one after the other, and the saga log notes each step that is done. A write that was cut off is run
+again from the saga log, with the request as it was first sent: the steps that are done are skipped, and the rest
+are run. With the saga log in PostgreSQL this holds across a restart.
+[Writes that fail](/docs/user/operations/#writes-that-fail-crashes-and-recovery)
 
-## A model, read at start
+## Describe your data once
 
-You describe the entity types as a GraphQL schema or as JSON Schema 2020-12 files. LDS makes its REST addresses and
-its GraphQL schema from the model, and checks every document against it before the document is written.
+Describe your entity types as a GraphQL schema or as JSON Schema 2020-12 files. LDS makes its REST API from the
+model, and from a GraphQL schema its GraphQL API too, and checks every document against the model before it is
+written. [The model](/docs/user/model/)
 
-## Storage you choose
+## Search
 
-Documents are kept in memory, in PostgreSQL 18 or in Neo4j 2026, and searched with Solr 10. Every persistence
-provider passes the same suite of tests against the real engine. [Architecture](/docs/developer/architecture/)
+With Solr 10, every text of a document is searched through GraphQL. A text written with its language is found by
+the stems of its words in Norwegian, Swedish, English, German or French, a word typed without its special letters
+finds the word with them, and a search sees each document as it was at a moment.
+[Search](/docs/user/graphql-api/#search)
+
+## Storage options
+
+The documents are kept in one of three stores, chosen in the configuration, and every store passes the same suite of
+tests against the real engine. The saga log and the transaction log are kept in memory or in PostgreSQL, and a write
+that a restart cut off is completed only with the saga log in PostgreSQL.
+[Configuration](/docs/user/configuration/#choosing-where-lds-keeps-its-data)
+
+### In memory
+
+The default, for trying LDS and for tests. Nothing is kept when LDS stops.
+
+### PostgreSQL 18
+
+Every document in one table, which LDS makes when it starts.
+
+### Neo4j 2026
+
+Every document a graph of nodes, and every link a relationship to the document it points at. The community
+edition is enough.
 
 ## See it
 
@@ -77,16 +105,20 @@ with you, and writes, reads and queries the documents for you. [With Claude Code
 
 ## When it fits
 
-When the history of the data is part of the data: registers, master data and reference data that change over time
-and are read as they were, and models whose documents link to each other.
+LDS fits data whose history is part of the data:
 
-## When it does not fit yet
+- registers, master data and reference data that change over time and are read as they were;
+- reports and audits that must show the data as it stood at a past date;
+- models whose documents link to each other, read together at one instant;
+- changes known in advance, written now with a valid time in the future.
 
-- When you need every part finished: 3.0.1 has known gaps, listed in its release notes.
-- When you need to know when a version was recorded as well as when it holds: LDS keeps valid time only.
-- When a write must be refused because its link points at nothing: links are not checked when written.
+## When it does not fit
 
-## Status
-
-LDS 3.0.1 is released as signed images on Docker Hub, `descoped/lds`, for Linux on amd64 and arm64.
-[Release notes](https://github.com/descoped/linked-data-store-project/releases/tag/3.0.1)
+- You need to know when a version was recorded as well as when it holds: LDS keeps valid time only, and a write at
+  the same valid time replaces the version that is there.
+- You need LDS to control who reads and writes: it has no authentication, and whoever reaches its port can read and
+  write every document.
+- A write must be refused when its link points at nothing: links are not checked, so a link can name a document that
+  is written later.
+- You need several namespaces over REST, or a model that changes while LDS runs: the REST API answers for one
+  namespace, and the model is read at start.

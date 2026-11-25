@@ -28,7 +28,7 @@ const user = docsCollection('user', 'user', '/docs/user/:slug/')
 const developer = docsCollection('developer', 'developer', '/docs/developer/:slug/')
 
 // The landing page, one document (home), rendered at /: its fields are the hero, and the `##` sections of its body
-// the rows below it, in the order of the section contract.
+// the rows below it, in the order of the section contract. The `###` headings of a section are its columns.
 const landing = defineCollection({
   name: 'landing',
   source: 'filesystem',
@@ -36,16 +36,16 @@ const landing = defineCollection({
   path: '/',
   sections: [
     'The problem',
-    'The time machine',
+    'The solution',
     'What a document is made of',
     'A write is a saga',
-    'A model, read at start',
-    'Storage you choose',
+    'Describe your data once',
+    'Search',
+    'Storage options',
     'See it',
     'With Claude',
     'When it fits',
-    'When it does not fit yet',
-    'Status',
+    'When it does not fit',
   ],
   archetype: defineDocumentArchetype({
     id: 'site/landing',

@@ -208,10 +208,13 @@ a {
   display: none;
 }
 
-/* The landing page: every section a row of the same two columns, on the same lines, so the eye reads down one edge.
-   No cards and no frames: space parts the rows, colour is kept for what acts or answers. The columns are 1 to 1.5
-   with a gap of 3rem: at a window of 1280 px the right one is about 700 px, as wide as the longest line of code on
-   the page needs (78 characters of 14 px mono, 658 px, in its block). Below 80rem a row is one column, 46rem at most. */
+/* The landing page: every section is a row of one of three kinds, each balanced on its own centre line. No cards and
+   no frames: space parts the rows, colour is kept for what acts or answers. Below 80rem a row is one column, 46rem
+   at most.
+   - 40/60 (`row-wide`): text beside a figure or code. At a window of 1280 px the right column is about 700 px, as wide
+     as the longest line of code on the page needs (78 characters of 14 px mono, 658 px, in its block).
+   - 50/50 (`row-halves`): two sections of a pair.
+   - thirds (`row-thirds`): a heading and text over the width, then three columns; three from 56rem. */
 .landing {
   margin: 0 auto;
   max-width: var(--width-content);
@@ -228,8 +231,31 @@ a {
 @media (min-width: 80rem) {
   .row {
     column-gap: 3rem;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
   }
+
+  .row-wide {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  }
+
+  .row-halves {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 56rem) {
+  .row-thirds {
+    column-gap: 3rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .row-thirds > .row-part {
+    grid-column: 1 / -1;
+  }
+}
+
+.row h3 {
+  font-size: var(--text-lg);
+  margin: 0 0 var(--space-2);
 }
 
 .row h2 {
@@ -244,15 +270,10 @@ a {
 }
 
 /* Text keeps a line that reads easily, about 85 characters; code and figures take the whole column */
-.row-part > .prose,
-.row-side.prose {
+.row-part > .prose {
   max-width: 42rem;
 }
 
-/* A section with text only: its text on the line of its heading */
-.row:has(> .row-side.prose) {
-  align-items: baseline;
-}
 
 .row-part .actions {
   margin-top: var(--space-6);

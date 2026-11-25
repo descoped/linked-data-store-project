@@ -24,17 +24,28 @@ function codeOf(html: string): { text: string; code: string } {
   return { text, code: blocks.join('') }
 }
 
+/** A section's HTML cut at its `###` headings: the text before the first, and a column for each */
+function columnsOf(html: string): { intro: string; columns: { title: string; html: string }[] } {
+  const parts = html.split(/(?=<h3[\s>])/)
+  const intro = parts[0]?.startsWith('<h3') ? '' : (parts.shift() ?? '')
+  const columns = parts.map((part) => {
+    const [, title = '', body = ''] = /^<h3[^>]*>([\s\S]*?)<\/h3>([\s\S]*)$/.exec(part) ?? []
+    return { title, html: body }
+  })
+  return { intro, columns }
+}
+
 /** The figure a section shows beside its text */
 const figureOf: Record<string, () => React.ReactElement> = {
   'What a document is made of': () => <CompositionFigure />,
   'A write is a saga': () => <SagaFigure />,
 }
 
-/** Sections shown side by side in one row: the first names the second */
+/** Sections shown side by side in one row, half and half: the first names the second */
 const pairOf: Record<string, string> = {
-  'The problem': 'The time machine',
-  'A model, read at start': 'Storage you choose',
-  'When it fits': 'When it does not fit yet',
+  'The problem': 'The solution',
+  'Describe your data once': 'Search',
+  'When it fits': 'When it does not fit',
 }
 
 /** A section's heading and its text */
@@ -50,10 +61,15 @@ function Part({ name, html, children }: { name: string; html: string; children?:
 
 /**
  * The landing page: the hero from the fields of landing/home, then the sections of the section contract
- * (`collections.landing.sections`), in that order, each a row of the same two columns: a section's heading and text on
- * the left, and on the right its figure, its code, or the second section of a pair; a section with neither has its
- * heading on the left and its text on the right. A section the document lacks is left out. krantho has given a link
- * to a page of the site (`/docs/...`) the path the site is served under.
+ * (`collections.landing.sections`), in that order, each a row of one of three kinds (globals.css, "The landing
+ * page"):
+ *
+ * - 40/60: a section's heading and text, beside its figure or its code;
+ * - 50/50: two sections of a pair, side by side;
+ * - thirds: a section whose `###` headings are columns, under its heading and text.
+ *
+ * A section the document lacks is left out. krantho has given a link to a page of the site (`/docs/...`) the path the
+ * site is served under.
  */
 export default async function Home(): Promise<React.ReactElement> {
   const doc = await site.loader.getPublished({ collection: 'landing', slug: 'home' })
@@ -75,24 +91,30 @@ export default async function Home(): Promise<React.ReactElement> {
     const second = pairOf[name]
     if (second && sections[second]) {
       return (
-        <section key={name} className="row">
+        <section key={name} className="row row-halves">
           <Part name={name} html={html} />
           <Part name={second} html={sections[second] ?? ''} />
         </section>
       )
     }
-    const { text, code } = codeOf(html)
-    const figure = figureOf[name]
-    if (!figure && !code) {
+    const { intro, columns } = columnsOf(html)
+    if (columns.length > 0) {
       return (
-        <section key={name} className="row">
-          <Part name={name} html="" />
-          <div className="prose row-side" dangerouslySetInnerHTML={{ __html: text }} />
+        <section key={name} className="row row-thirds">
+          <Part name={name} html={intro} />
+          {columns.map((column) => (
+            <div key={column.title} className="row-column">
+              <h3 dangerouslySetInnerHTML={{ __html: column.title }} />
+              <div className="prose" dangerouslySetInnerHTML={{ __html: column.html }} />
+            </div>
+          ))}
         </section>
       )
     }
+    const { text, code } = codeOf(html)
+    const figure = figureOf[name]
     return (
-      <section key={name} className="row">
+      <section key={name} className="row row-wide">
         <Part name={name} html={text}>
           {name === 'See it' && (
             <p className="actions">
@@ -111,7 +133,7 @@ export default async function Home(): Promise<React.ReactElement> {
   return (
     <main className="landing">
       <SeoJsonLd collection="landing" slug="home" />
-      <section className="row hero">
+      <section className="row row-wide hero">
         <div className="row-part">
           <p className="eyebrow">{f.eyebrow}</p>
           <h1>{f.headline}</h1>
