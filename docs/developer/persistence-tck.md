@@ -1,7 +1,8 @@
 ---
 title: "The shared suite"
 description: "The tests every persistence provider passes."
-order: 3
+order: 21
+section: Persistence
 ---
 
 # The shared suite for persistence providers

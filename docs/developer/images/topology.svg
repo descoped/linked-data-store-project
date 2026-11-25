@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 450" width="720" height="450" role="img" aria-labelledby="topology-title topology-desc">
+  <title id="topology-title">The topology of a running LDS</title>
+  <desc id="topology-desc">Clients ask LDS over HTTP: REST, GraphQL and the health addresses. LDS is one process. It keeps documents in a store (memory, PostgreSQL or Neo4j), the steps of each write in a saga log (memory or PostgreSQL), every write in a transaction log (none, memory or PostgreSQL), and with search the updates in an index queue kept where the transaction log is, and the index in Solr.</desc>
+  <style>
+    .bg { fill: var(--diagram-bg, #ffffff); }
+    .box { fill: var(--diagram-box, #f6f8fa); stroke: var(--diagram-line, #8c959f); stroke-width: 1.2; }
+    .lds { fill: var(--diagram-accent-bg, #ddf4ff); stroke: var(--diagram-accent, #0969da); stroke-width: 1.6; }
+    .part { fill: var(--diagram-bg, #ffffff); stroke: var(--diagram-accent, #0969da); stroke-width: 1; }
+    .api { fill: var(--diagram-box, #f6f8fa); stroke: var(--diagram-accent, #0969da); stroke-width: 1.6; }
+    .frame { fill: none; stroke: var(--diagram-line, #8c959f); stroke-width: 1.2; stroke-dasharray: 6 4; }
+    .dash { stroke-dasharray: 5 4; }
+    .edge { fill: none; stroke: var(--diagram-line, #8c959f); stroke-width: 1.5; }
+    .head { fill: var(--diagram-line, #8c959f); }
+    text { fill: var(--diagram-text, #1f2328); font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 13px; }
+    .title { font-size: 14px; font-weight: 600; }
+    .small { font-size: 11.5px; fill: var(--diagram-muted, #59636e); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; fill: var(--diagram-muted, #59636e); }
+    @media (prefers-color-scheme: dark) {
+      .bg, .part { fill: var(--diagram-bg, #0d1117); }
+      .box, .api { fill: var(--diagram-box, #161b22); }
+      .box, .frame { stroke: var(--diagram-line, #6e7681); }
+      .lds { fill: var(--diagram-accent-bg, #0c2d4d); stroke: var(--diagram-accent, #4493f8); }
+      .part, .api { stroke: var(--diagram-accent, #4493f8); }
+      .edge { stroke: var(--diagram-line, #6e7681); }
+      .head { fill: var(--diagram-line, #6e7681); }
+      text { fill: var(--diagram-text, #e6edf3); }
+      .small, .mono { fill: var(--diagram-muted, #9198a1); }
+    }
+  </style>
+  <defs>
+    <marker id="topology-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="head" d="M0 0 L10 5 L0 10 z"/>
+    </marker>
+  </defs>
+  <rect class="bg" width="720" height="450"/>
+  <rect class="box" x="12" y="40" width="168" height="64" rx="8"/>
+  <text class="title" x="26" y="64">Applications</text>
+  <text class="small" x="26" y="84">REST and GraphQL</text>
+  <path class="edge" d="M180 72 H214" marker-end="url(#topology-arrow)"/>
+  <rect class="box" x="12" y="124" width="168" height="64" rx="8"/>
+  <text class="title" x="26" y="148">A person, or Claude</text>
+  <text class="small" x="26" y="168">curl, GraphiQL, lds plugin</text>
+  <path class="edge" d="M180 156 H214" marker-end="url(#topology-arrow)"/>
+  <rect class="box" x="12" y="208" width="168" height="64" rx="8"/>
+  <text class="title" x="26" y="232">Whoever runs LDS</text>
+  <text class="small" x="26" y="252">/ping, /health/ready</text>
+  <path class="edge" d="M180 240 H214" marker-end="url(#topology-arrow)"/>
+  <rect class="lds" x="216" y="16" width="270" height="418" rx="12"/>
+  <text class="title" x="232" y="42">LDS: one process</text>
+  <text class="small" x="232" y="60">the image descoped/lds, port 9090</text>
+  <rect class="part" x="232" y="76" width="238" height="40" rx="6"/>
+  <text x="246" y="101">HTTP: REST, GraphQL, health</text>
+  <rect class="part" x="232" y="126" width="238" height="40" rx="6"/>
+  <text x="246" y="151">The model, read at start</text>
+  <rect class="part" x="232" y="176" width="238" height="56" rx="6"/>
+  <text x="246" y="201">A write: its turn, then a saga</text>
+  <text class="small" x="246" y="220">log, store, index queue</text>
+  <rect class="part" x="232" y="242" width="238" height="40" rx="6"/>
+  <text x="246" y="267">Reads of the store, streamed</text>
+  <rect class="part dash" x="232" y="292" width="238" height="56" rx="6"/>
+  <text x="246" y="317">The index queue's worker</text>
+  <text class="small" x="246" y="336">sends updates to Solr</text>
+  <rect class="part" x="232" y="358" width="238" height="56" rx="6"/>
+  <text x="246" y="383">Recovery of sagas</text>
+  <text class="small" x="246" y="402">unfinished writes are done</text>
+  <rect class="box" x="522" y="26" width="186" height="62" rx="8"/>
+  <text class="title" x="536" y="50">Store of documents</text>
+  <text class="mono" x="536" y="70">mem · postgres · neo4j</text>
+  <path class="edge" d="M486 57 H520" marker-end="url(#topology-arrow)"/>
+  <rect class="box" x="522" y="106" width="186" height="62" rx="8"/>
+  <text class="title" x="536" y="130">Saga log</text>
+  <text class="mono" x="536" y="150">memory · postgres</text>
+  <path class="edge" d="M486 137 H520" marker-end="url(#topology-arrow)"/>
+  <rect class="box" x="522" y="186" width="186" height="62" rx="8"/>
+  <text class="title" x="536" y="210">Transaction log</text>
+  <text class="small" x="536" y="230">none, memory or PostgreSQL</text>
+  <path class="edge" d="M486 217 H520" marker-end="url(#topology-arrow)"/>
+  <rect class="box dash" x="522" y="266" width="186" height="62" rx="8"/>
+  <text class="title" x="536" y="290">Index queue</text>
+  <text class="small" x="536" y="310">where the transaction log is</text>
+  <path class="edge dash" d="M486 297 H520" marker-end="url(#topology-arrow)"/>
+  <rect class="box dash" x="522" y="346" width="186" height="62" rx="8"/>
+  <text class="title" x="536" y="370">Search index</text>
+  <text class="small" x="536" y="390">Solr 10</text>
+  <path class="edge dash" d="M486 377 H520" marker-end="url(#topology-arrow)"/>
+  <text class="small" x="522" y="440">dashed: only with search</text>
+</svg>

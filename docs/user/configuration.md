@@ -2,6 +2,7 @@
 title: "Configuration"
 description: "Every key, its default and its meaning, and how keys are set."
 order: 6
+section: Reference
 ---
 
 # Configuration of Linked Data Store

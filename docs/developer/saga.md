@@ -3,7 +3,8 @@ title: "The saga engine"
 description: >-
   Cantara distributed saga as LDS uses it: the saga of a write, the saga log, recovery, the cluster, the thread
   pools, how LDS waits for a saga and how it stops them.
-order: 12
+order: 15
+section: Core
 ---
 
 # The saga engine

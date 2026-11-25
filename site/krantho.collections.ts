@@ -10,6 +10,7 @@ const fields = z.object({
   title: z.string(),
   description: z.string(),
   order: z.number().describe("The page's place in the sidebar").optional(),
+  section: z.string().describe("The group of the sidebar the page is indented under, in its folder's group").optional(),
 })
 
 const docsCollection = (name: string, folder: string, path: string, indexFile?: string) =>

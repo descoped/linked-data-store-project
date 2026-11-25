@@ -2,6 +2,7 @@
 title: "The model"
 description: "How to write a model, as a GraphQL schema or as JSON Schema files, and what LDS checks against it."
 order: 3
+section: Reference
 ---
 
 # The model

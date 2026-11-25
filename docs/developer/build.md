@@ -2,6 +2,7 @@
 title: "The build"
 description: "The reactor, the BOM, the rules of the build, the tests, CI."
 order: 1
+section: Overview
 ---
 
 # The build

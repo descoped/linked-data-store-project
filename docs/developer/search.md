@@ -1,7 +1,8 @@
 ---
 title: "Search"
 description: "The search interface, the index queue and the Solr provider."
-order: 7
+order: 30
+section: Search and the server
 ---
 
 # Search: the interface, the index queue and the Solr provider

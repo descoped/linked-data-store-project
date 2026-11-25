@@ -1,7 +1,8 @@
 ---
 title: "The load test"
 description: "What a run of the load test does and what it is made of."
-order: 15
+order: 2
+section: Overview
 ---
 
 # The load test

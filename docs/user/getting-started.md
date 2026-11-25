@@ -4,6 +4,7 @@ description: >-
   From nothing to a first document: start LDS, write a document, read it, read it as it was, link two documents, ask
   with GraphQL.
 order: 1
+section: Start
 ---
 
 # Getting started with Linked Data Store

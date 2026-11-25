@@ -4,6 +4,7 @@ description: >-
   The map of the code: the modules, the path of a read and of a write, the ideas that hold the code together and the
   rules a change must keep.
 order: 0
+section: Overview
 ---
 
 # The architecture of Linked Data Store
@@ -24,6 +25,15 @@ Every [version](../glossary.md#version) of a document has a [valid time](../glos
 [model](../glossary.md#model) is read when LDS starts. These words are explained for a user in
 [the concepts](../user/concepts.md).
 
+![The topology of a running LDS: clients ask one LDS process over HTTP; it keeps documents in a store, the steps of
+each write in a saga log, every write in a transaction log, and with search the updates in an index queue and the
+index in Solr](images/topology.svg)
+
+LDS is one process. Applications and people ask it over HTTP, by REST and GraphQL; whoever runs it asks `/ping` and
+`/health/ready`. It keeps what it is given in engines of its own choosing, each named by configuration: the store of
+the documents, the saga log of the steps of each write, the transaction log of every write, and, when search is on,
+the index queue and the search index. What each part of the process does is the rest of this document.
+
 The code has some words of its own:
 
 | In the code | Means |
@@ -41,6 +51,10 @@ The code has some words of its own:
 | [lifecycle](../glossary.md#lifecycle) | A subsystem that is started and stopped with LDS (`Lifecycle`, `Lifecycles`). |
 
 ## The modules
+
+![The software architecture: the server starts core; core holds HTTP, REST and GraphQL, the model, the write and its
+saga, the reads of the store, the transaction log, the index queue's worker and the lifecycles, and knows only the
+persistence API and the search API, which the providers implement](images/software-architecture.svg)
 
 LDS is one Maven reactor with the group `io.descoped.lds` and one version, which every module has. Every module with
 code is a JPMS module, except the [shared suite](../glossary.md#shared-suite) of tests for
@@ -303,6 +317,23 @@ of the valid time of the request, makes the change in it, and writes the whole d
 of a whole document has a saga of its own, `Delete managed resource`, with the same steps. Its `persistence` step
 removes nothing: it writes a [tombstone](../glossary.md#tombstone) (`RxJsonPersistence.markDocumentDeleted`), a
 version that says the document is not there from that time on. [The write path](core-write-path.md) has the detail.
+
+## Where LDS runs
+
+![Three ways to run LDS: one container in memory to try it; the compose file with Neo4j, PostgreSQL and Solr to
+develop; one container beside its engines, run by an orchestrator, as a service](images/deployment.svg)
+
+Every way runs the same image, `descoped/lds`, configured by environment variables `LDS_...`, each setting one key of
+[the configuration](../user/configuration.md):
+
+| Way | Started with | What it keeps |
+|---|---|---|
+| Try it | `docker run --rm -p 127.0.0.1:9090:9090 descoped/lds:3.0.1` | Everything in memory: what is written is gone when it stops. |
+| Develop | `docker compose -f linked-data-store-server/compose.yaml up --build` | Neo4j for the documents; PostgreSQL for the saga log, the transaction log and the index queue; Solr for search ([the server](server.md)). |
+| As a service | The image, beside its engines, run by an orchestrator that asks `/health/alive` and `/health/ready` | The store in PostgreSQL or Neo4j, the logs and the index queue in PostgreSQL, and Solr when search is on ([running LDS](../user/operations.md)). |
+
+Not finished: a service is one instance. Several LDS on one saga log need a `sagalog.config.cluster.instance-id` each,
+which nothing derives, and cannot share a topic of the transaction log in PostgreSQL ([the saga engine](saga.md)).
 
 ## The ideas that hold the code together
 

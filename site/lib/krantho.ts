@@ -33,6 +33,8 @@ export interface DocLink {
   title: string
   href: string
   group: string
+  /** The sidebar's subgroup the page is indented under, from its front matter; none for a page on its own */
+  section?: string
 }
 
 /** The address of a docs page: docs/README.md is the documentation's home page */
@@ -60,6 +62,7 @@ export async function docLinks(): Promise<DocLink[]> {
         title: String(doc.fields.title),
         href: docHref(collection, doc.slug),
         group: groupOf[collection],
+        ...(typeof doc.fields.section === 'string' ? { section: doc.fields.section } : {}),
       })
     }
   }

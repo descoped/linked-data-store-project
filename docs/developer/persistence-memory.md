@@ -1,7 +1,8 @@
 ---
 title: "The memory provider"
 description: "Persistence in memory, for tests and for trying LDS."
-order: 4
+order: 22
+section: Persistence
 ---
 
 # The memory provider

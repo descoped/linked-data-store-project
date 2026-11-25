@@ -1,7 +1,8 @@
 ---
-title: "Core: the application"
+title: "The application"
 description: "How LDS is put together, started and stopped."
-order: 8
+order: 10
+section: Core
 ---
 
 # Core: how the application is put together, started and stopped

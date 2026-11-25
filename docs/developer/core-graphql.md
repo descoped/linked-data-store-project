@@ -1,7 +1,8 @@
 ---
-title: "Core: GraphQL"
+title: "GraphQL"
 description: "How the GraphQL schema is built and how a query is answered."
 order: 13
+section: Core
 ---
 
 # Core: the GraphQL API and how its schema is built

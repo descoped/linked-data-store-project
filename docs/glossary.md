@@ -1,7 +1,7 @@
 ---
 title: "Glossary"
 description: "The terms of this documentation, each with one meaning."
-order: 1
+order: 2
 ---
 
 # Glossary

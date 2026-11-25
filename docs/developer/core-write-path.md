@@ -1,7 +1,8 @@
 ---
-title: "Core: the write path"
+title: "The write path"
 description: "The lock of a document, the sagas and their steps, the answer, recovery, the transaction log."
-order: 11
+order: 14
+section: Core
 ---
 
 # Core: the write path

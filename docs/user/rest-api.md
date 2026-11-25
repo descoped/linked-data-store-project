@@ -2,6 +2,7 @@
 title: "The REST API"
 description: "Every address, method, parameter and answer."
 order: 4
+section: Reference
 ---
 
 # The REST API

@@ -1,7 +1,8 @@
 ---
-title: "Core: the model"
+title: "The model"
 description: "How a model is read and how a document is checked against it."
-order: 9
+order: 11
+section: Core
 ---
 
 # Core: the model

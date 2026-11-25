@@ -1,7 +1,8 @@
 ---
 title: "The Neo4j provider"
 description: "Persistence as a graph in Neo4j."
-order: 6
+order: 24
+section: Persistence
 ---
 
 # The Neo4j persistence provider

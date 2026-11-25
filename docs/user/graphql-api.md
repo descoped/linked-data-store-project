@@ -2,6 +2,7 @@
 title: "The GraphQL API"
 description: "The queries LDS makes from a model, paging, links, as-of reads, search."
 order: 5
+section: Reference
 ---
 
 # The GraphQL API

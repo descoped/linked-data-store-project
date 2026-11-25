@@ -4,6 +4,7 @@ description: >-
   The ideas: document, entity type, namespace, version and valid time, link, model, provider, what a write goes
   through.
 order: 2
+section: Start
 ---
 
 # Concepts

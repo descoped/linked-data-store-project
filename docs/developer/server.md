@@ -1,7 +1,8 @@
 ---
 title: "The server"
 description: "The main class, the defaults of the configuration, the image, the compose file."
-order: 14
+order: 31
+section: Search and the server
 ---
 
 # The server module, its image and the compose file

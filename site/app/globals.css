@@ -4,7 +4,7 @@
   --font-mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
   --text-xs: 0.75rem;
   --text-sm: 0.8125rem;
-  --text-base: 0.9375rem;
+  --text-base: 0.90625rem;
   --text-lg: 1.125rem;
   --text-2xl: clamp(1.5rem, 1.25rem + 1vw, 1.9rem);
   --text-4xl: clamp(2rem, 1.4rem + 2.6vw, 3.2rem);
@@ -375,6 +375,31 @@ a {
   text-decoration: none;
 }
 
+/* A section of a group: its title, then its pages indented under it, on a line that marks where it ends */
+.sidebar-section {
+  margin: var(--space-3) 0 var(--space-2);
+}
+
+.sidebar-section-title {
+  color: var(--color-text-muted);
+  display: block;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  padding: 0.15rem 0;
+}
+
+.sidebar-section > ul {
+  border-left: 1px solid var(--color-border);
+  margin-left: 0.25rem;
+  padding-left: 0.75rem;
+}
+
+.sidebar-section a[aria-current='page'] {
+  border-left: 2px solid var(--color-accent);
+  margin-left: calc(-0.75rem - 1.5px);
+  padding-left: calc(0.75rem - 0.5px);
+}
+
 .sidebar a[aria-current='page'] {
   color: var(--color-accent);
   font-weight: 600;
@@ -597,11 +622,19 @@ a {
   padding: 0 var(--space-4);
 }
 
+/* A table fits the text's width: its code wraps where it must. One that cannot fit scrolls, and a shadow at an edge
+   shows that more is there (the shadows scroll with the table, the covers that hide them at its ends do not). */
 .prose table {
+  background:
+    linear-gradient(to right, var(--color-bg) 30%, transparent) left / 2rem 100% no-repeat local,
+    linear-gradient(to left, var(--color-bg) 30%, transparent) right / 2rem 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, rgb(0 0 0 / 0.18), transparent) left / 0.75rem 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, rgb(0 0 0 / 0.18), transparent) right / 0.75rem 100% no-repeat scroll;
   border-collapse: collapse;
   display: block;
   font-size: var(--text-sm);
   margin: var(--space-6) 0;
+  max-width: 100%;
   overflow-x: auto;
 }
 
@@ -619,8 +652,68 @@ a {
 
 .prose td code,
 .prose th code {
-  overflow-wrap: normal;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.prose td {
+  min-width: 6rem;
+}
+
+/* A figure of docs/ (lib/html.ts): its SVG at most as wide as the text, coloured by the page's theme */
+.diagram {
+  --diagram-bg: var(--color-bg);
+  --diagram-box: var(--color-sunken);
+  --diagram-line: #8a969f;
+  --diagram-text: var(--color-text);
+  --diagram-muted: var(--color-text-muted);
+  --diagram-accent: var(--color-accent);
+  --diagram-accent-bg: #e4f1f5;
+  margin: var(--space-6) 0;
+}
+
+.diagram svg {
+  display: block;
+  height: auto;
+  max-width: 100%;
+}
+
+/* On a phone a figure keeps a width its text can be read at, and scrolls */
+@media (max-width: 36rem) {
+  .diagram {
+    overflow-x: auto;
+  }
+
+  .diagram svg {
+    max-width: none;
+    width: 35rem;
+  }
+}
+
+.diagram .bg { fill: var(--diagram-bg); }
+.diagram .box { fill: var(--diagram-box); stroke: var(--diagram-line); stroke-width: 1.2; }
+.diagram .lds { fill: var(--diagram-accent-bg); stroke: var(--diagram-accent); stroke-width: 1.6; }
+.diagram .part { fill: var(--diagram-bg); stroke: var(--diagram-accent); stroke-width: 1; }
+.diagram .api { fill: var(--diagram-box); stroke: var(--diagram-accent); stroke-width: 1.6; }
+.diagram .frame { fill: none; stroke: var(--diagram-line); stroke-width: 1.2; stroke-dasharray: 6 4; }
+.diagram .dash { stroke-dasharray: 5 4; }
+.diagram .edge { fill: none; stroke: var(--diagram-line); stroke-width: 1.5; }
+.diagram .head { fill: var(--diagram-line); }
+.diagram text { fill: var(--diagram-text); font-family: var(--font-text); font-size: 13px; }
+.diagram .title { font-size: 14px; font-weight: 600; }
+.diagram .small { fill: var(--diagram-muted); font-size: 11.5px; }
+.diagram .mono { fill: var(--diagram-muted); font-family: var(--font-mono); font-size: 11px; }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .diagram {
+    --diagram-line: #64727c;
+    --diagram-accent-bg: #15303a;
+  }
+}
+
+:root[data-theme='dark'] .diagram {
+  --diagram-line: #64727c;
+  --diagram-accent-bg: #15303a;
 }
 
 .prose img {

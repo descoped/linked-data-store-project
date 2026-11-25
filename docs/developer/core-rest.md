@@ -1,7 +1,8 @@
 ---
-title: "Core: the REST API"
+title: "The REST API"
 description: "How a request becomes a read or a write of a document, a part of it, or a link."
-order: 10
+order: 12
+section: Core
 ---
 
 # Core: the REST API of documents

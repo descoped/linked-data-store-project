@@ -1,7 +1,8 @@
 ---
 title: "The persistence interface"
 description: "What a persistence provider implements: fragments, documents, reactive streams, transactions."
-order: 2
+order: 20
+section: Persistence
 ---
 
 # The persistence interface

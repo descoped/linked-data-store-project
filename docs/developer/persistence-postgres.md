@@ -1,7 +1,8 @@
 ---
 title: "The PostgreSQL provider"
 description: "Persistence in one table of PostgreSQL."
-order: 5
+order: 23
+section: Persistence
 ---
 
 # The PostgreSQL persistence provider

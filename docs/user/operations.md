@@ -2,6 +2,7 @@
 title: "Running LDS"
 description: "The image and the compose file, starting and stopping, health, logs, what is stored where."
 order: 7
+section: Operate
 ---
 
 # Running Linked Data Store
