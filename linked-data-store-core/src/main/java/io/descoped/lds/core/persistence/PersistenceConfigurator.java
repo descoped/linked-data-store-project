@@ -1,6 +1,6 @@
 package io.descoped.lds.core.persistence;
 
-import io.descoped.lds.core.utils.Jitter;
+import io.descoped.lds.core.utils.StartAttempts;
 import io.descoped.config.DynamicConfiguration;
 import io.descoped.lds.api.persistence.PersistenceInitializer;
 import io.descoped.lds.api.persistence.ProviderName;
@@ -9,13 +9,13 @@ import io.descoped.lds.api.specification.Specification;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 
 public class PersistenceConfigurator {
 
@@ -38,28 +38,10 @@ public class PersistenceConfigurator {
         Set<String> managedDomains = specification.getManagedDomains();
 
         int maxWaitSeconds = configuration.getInt("persistence.initialization.max-wait-seconds");
-        long start = System.currentTimeMillis();
-        for (int i = 1; ; i++) {
-            try {
-                LOG.info("Persistence provider initialization attempt # {}", i);
-                RxJsonPersistence persistence = initializer.initialize(namespace, configurationByKey, managedDomains);
-                LOG.info("Persistence service-provider configured");
-                return persistence;
-            } catch (RuntimeException e) {
-                long durationMs = System.currentTimeMillis() - start;
-                long remainingMs = TimeUnit.SECONDS.toMillis(maxWaitSeconds) - durationMs;
-                if (remainingMs > 0) {
-                    try {
-                        Thread.sleep(Math.min(Jitter.around(1000), remainingMs));
-                    } catch (InterruptedException _) {
-                        Thread.currentThread().interrupt();
-                        throw new RuntimeException("Interrupted while attempting to sleep, interrupt status preserved.", e);
-                    }
-                } else {
-                    throw e;
-                }
-            }
-        }
+        RxJsonPersistence persistence = StartAttempts.until("Persistence provider", Duration.ofSeconds(maxWaitSeconds),
+                Duration.ofSeconds(1), () -> initializer.initialize(namespace, configurationByKey, managedDomains));
+        LOG.info("Persistence service-provider configured");
+        return persistence;
     }
 
     /* The one initializer of the provider: annotated with its id, and giving that id itself. */

@@ -1,6 +1,6 @@
 package io.descoped.lds.core;
 
-import io.descoped.lds.core.utils.Jitter;
+import io.descoped.lds.core.utils.StartAttempts;
 import graphql.GraphQL;
 import graphql.schema.GraphQLSchema;
 import graphql.schema.idl.SchemaParser;
@@ -557,7 +557,7 @@ public class UndertowApplication implements Lifecycle {
         return jsonSchemaBasedSpecification;
     }
 
-    private static SagaLogPool configureSagaLogProvider(DynamicConfiguration configuration) {
+    static SagaLogPool configureSagaLogProvider(DynamicConfiguration configuration) {
         String providerClass = configuration.find("sagalog.provider").orElse(null);
         LOG.info("Using saga-log-pool provider-class: {}", providerClass);
         SagaLogInitializer initializer = sagaLogInitializer(providerClass);
@@ -566,28 +566,10 @@ public class UndertowApplication implements Lifecycle {
 
         int retryIntervalSeconds = configuration.getInt("sagalog.provider.initialization.retry-interval-seconds");
         int maxWaitSeconds = configuration.getInt("sagalog.provider.initialization.max-wait-seconds");
-        long start = System.currentTimeMillis();
-        for (int i = 1; ; i++) {
-            try {
-                LOG.info("SagaLogPool provider initialization attempt # {}", i);
-                SagaLogPool sagaLogPool = initializer.initialize(providerConfig);
-                LOG.info("SagaLogPool initialized!");
-                return sagaLogPool;
-            } catch (Exception e) {
-                long durationMs = System.currentTimeMillis() - start;
-                long remainingMs = TimeUnit.SECONDS.toMillis(maxWaitSeconds) - durationMs;
-                if (remainingMs > 0) {
-                    try {
-                        Thread.sleep(Math.min(Jitter.around(retryIntervalSeconds * 1000L), remainingMs));
-                    } catch (InterruptedException _) {
-                        Thread.currentThread().interrupt();
-                        throw new RuntimeException("Interrupted while attempting to sleep, interrupt status preserved.", e);
-                    }
-                } else {
-                    throw e;
-                }
-            }
-        }
+        SagaLogPool sagaLogPool = StartAttempts.until("SagaLogPool provider", Duration.ofSeconds(maxWaitSeconds),
+                Duration.ofSeconds(retryIntervalSeconds), () -> initializer.initialize(providerConfig));
+        LOG.info("SagaLogPool initialized!");
+        return sagaLogPool;
     }
 
     /*
@@ -680,28 +662,11 @@ public class UndertowApplication implements Lifecycle {
 
         int retryIntervalSeconds = configuration.getInt("txlog.rawdata.provider.initialization.retry-interval-seconds");
         int maxWaitSeconds = configuration.getInt("txlog.rawdata.provider.initialization.max-wait-seconds");
-        long start = System.currentTimeMillis();
-        for (int i = 1; ; i++) {
-            try {
-                LOG.info("Transaction-log provider initialization attempt # {}", i);
-                RawdataClient txLogRawdataClient = RawdataClient.create(providerConfig);
-                LOG.info("Transaction-log initialized");
-                return txLogRawdataClient;
-            } catch (Exception e) {
-                long durationMs = System.currentTimeMillis() - start;
-                long remainingMs = TimeUnit.SECONDS.toMillis(maxWaitSeconds) - durationMs;
-                if (remainingMs > 0) {
-                    try {
-                        Thread.sleep(Math.min(Jitter.around(retryIntervalSeconds * 1000L), remainingMs));
-                    } catch (InterruptedException _) {
-                        Thread.currentThread().interrupt();
-                        throw new RuntimeException("Interrupted while attempting to sleep, interrupt status preserved.", e);
-                    }
-                } else {
-                    throw e;
-                }
-            }
-        }
+        RawdataClient txLogRawdataClient = StartAttempts.until("Transaction-log provider",
+                Duration.ofSeconds(maxWaitSeconds), Duration.ofSeconds(retryIntervalSeconds),
+                () -> RawdataClient.create(providerConfig));
+        LOG.info("Transaction-log initialized");
+        return txLogRawdataClient;
     }
 
     public static Map<String, String> subMapFromPrefix(Map<String, String> configMap, String prefix) {
