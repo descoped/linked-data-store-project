@@ -77,6 +77,8 @@ sells, made only of what LDS does.
   tables"), "not X, but Y" framing, asides set off by dashes, stock phrases. Say it in a plain sentence.
 - No filler, no adjectives without a fact behind them, no claim of speed or scale without a measurement, nothing
   promised for later.
+- A list item on the landing page is a bold lead on a line of its own, then its words, and neither ends with a full
+  stop (a full stop stays between two sentences inside an item). The sentence that introduces the list keeps its own.
 
 The documentation (`docs/`) keeps its own established style, set in the project's `CLAUDE.md`; the voice above is
 for the landing page unless the owner extends it.
