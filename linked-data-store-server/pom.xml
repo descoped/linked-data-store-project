@@ -140,6 +140,14 @@
             <version>${project.version}</version>
             <scope>runtime</scope>
         </dependency>
+        <!-- The PostgreSQL driver of the modules, not the one the saga log or the transaction log brings: the
+             nearest declaration wins. -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>${postgresql.version}</version>
+            <scope>runtime</scope>
+        </dependency>
         <dependency>
             <groupId>io.descoped.lds</groupId>
             <artifactId>linked-data-store-persistence-provider-memory</artifactId>
