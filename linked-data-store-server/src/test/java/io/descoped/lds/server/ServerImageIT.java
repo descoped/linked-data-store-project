@@ -290,17 +290,24 @@ class ServerImageIT {
 
     /**
      * {@code docker stop} sends the signal to the JVM itself, which then stops the application in order and ends
-     * with 143, the code of a process that ended by that signal.
+     * with 143, the code of a process that ended by that signal. Its log has no warning of the JDK about
+     * {@code sun.misc.Unsafe}, which Undertow uses to free the buffers of the requests.
      */
     @Test
-    void theContainerStopsWhenItIsAskedTo() {
+    void theContainerStopsWhenItIsAskedTo() throws Exception {
         GenericContainer<?> another = start(IMAGE);
         try {
+            Lds anotherLds = new Lds(another.getMappedPort(PORT));
+            for (int i = 0; i < 100; i++) {
+                assertThat(anotherLds.put("/ns/Company/c" + i, "{\"name\":\"C" + i + "\"}").statusCode()).isEqualTo(201);
+                assertThat(anotherLds.get("/ns/Company/c" + i).statusCode()).isEqualTo(200);
+            }
             another.getDockerClient().stopContainerCmd(another.getContainerId()).withTimeout(60).exec();
 
             InspectContainerResponse.ContainerState state = another.getDockerClient().inspectContainerCmd(another.getContainerId()).exec().getState();
             assertThat(state.getExitCodeLong()).isEqualTo(143L);
-            assertThat(another.getLogs()).contains("ShutdownHook triggered", "Leaving.. Bye!");
+            assertThat(another.getLogs()).contains("ShutdownHook triggered", "Leaving.. Bye!")
+                    .doesNotContain("sun.misc.Unsafe");
         } finally {
             another.stop();
         }
