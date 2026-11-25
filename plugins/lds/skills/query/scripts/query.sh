@@ -32,11 +32,9 @@ else
   body="{\"query\": \"$escaped\", \"variables\": $variables}"
 fi
 
-# charset=utf-8: without it LDS reads the body as ISO-8859-1 and a letter outside ASCII is read wrongly.
-answer=$(curl -sS --fail-with-body "$url" -H 'Content-Type: application/json; charset=utf-8' \
-              --data-binary "$body") || {
+answer=$(curl -sS --fail-with-body "$url" -H 'Content-Type: application/json' --data-binary "$body") || {
   printf '%s\n' "$answer" >&2
-  echo "LDS did not answer 200 (see the status above). A 500 with no body is a request LDS could not read." >&2
+  echo "LDS did not answer 200 (see the status and the reason above)." >&2
   exit 2
 }
 

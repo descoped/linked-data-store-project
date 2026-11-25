@@ -28,27 +28,34 @@ key of every row.
 
 ## The examples in this document
 
-The outputs shown here were taken from LDS `3.0.0-SNAPSHOT` with the example model
-(`linked-data-store-server/schemas/schema.graphql`) and this provider. PostgreSQL was version 18.7, on the same
-machine, listening on the address `::1` and the port 19104, with a database `lds` and a user `lds` with the
-password `lds`. It was started with `log_statement=all`, so its log shows every statement LDS sent. LDS listened
-on `127.0.0.1`, port 19104. It was started from a folder that has every jar of the build in `lib`:
+The outputs shown here were taken from LDS 3.0.1, the image `descoped/lds:3.0.1` with the example model
+(`linked-data-store-server/schemas/schema.graphql`), and this provider. PostgreSQL was the image
+`postgres:18-alpine`, in a container of its own on the same Docker network, with a database `lds` and a user `lds`
+with the password `lds`. It was started with `log_statement=all`, so its log (`docker logs pg`) shows every
+statement LDS sent. LDS was published on `127.0.0.1`, port 19107. The two were started together:
 
 ```sh
-LDS_HTTP_PORT=19104 LDS_HTTP_HOST=127.0.0.1 LDS_PERSISTENCE_PROVIDER=postgres \
-  LDS_POSTGRES_DRIVER_HOST='[::1]' LDS_POSTGRES_DRIVER_PORT=19104 LDS_POSTGRES_DRIVER_PASSWORD=lds \
-  java -cp "lib/*" io.descoped.lds.server.Server > lds.log 2>&1 &
+docker network create lds-pg
+docker run -d --name pg --network lds-pg -e POSTGRES_USER=lds -e POSTGRES_PASSWORD=lds -e POSTGRES_DB=lds \
+  postgres:18-alpine -c log_statement=all
+docker run -d --name lds --network lds-pg -p 127.0.0.1:19107:9090 -e LDS_PERSISTENCE_PROVIDER=postgres \
+  -e LDS_POSTGRES_DRIVER_HOST=pg -e LDS_POSTGRES_DRIVER_PASSWORD=lds descoped/lds:3.0.1
 ```
+
+The first attempt to start the provider came before PostgreSQL took connections, and the second, two seconds
+later, succeeded (`docker logs lds`):
 
 ```
 ... PersistenceConfigurator - Using persistence provider: postgres
 ... PersistenceConfigurator - Persistence provider initialization attempt # 1
 ... com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Starting...
-... com.zaxxer.hikari.pool.HikariPool - HikariPool-1 - Added connection org.postgresql.jdbc.PgConnection@3e1162e7
-... com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Start completed.
+... PersistenceConfigurator - Persistence provider initialization attempt # 2
+... com.zaxxer.hikari.HikariDataSource - HikariPool-2 - Starting...
+... com.zaxxer.hikari.pool.HikariPool - HikariPool-2 - Added connection org.postgresql.jdbc.PgConnection@50b1f030
+... com.zaxxer.hikari.HikariDataSource - HikariPool-2 - Start completed.
 ... PersistenceConfigurator - Persistence service-provider configured
 ...
-... io.descoped.lds.server.Server - Server started in 467ms..
+... io.descoped.lds.server.Server - Server started in 2300ms..
 ```
 
 No test in the repository runs LDS as a whole on this provider (see [Not finished](#not-finished)).
@@ -105,13 +112,21 @@ a value at a path. The comments in `init-db.sql` give the two reasons for its fo
   type first, PostgreSQL may pick it in place of the primary key for a read or a delete of one document while the
   table has no statistics yet, and then walks every row of the entity type.
 
-The collation `POSIX` orders text by its bytes, which is the order of code points. Companies with the ids `Zeta`,
-`acme`, `alpha`, `big`, `kinds`, `~tilde` and `Ærlig` were listed in this order.
+The collation `POSIX` orders text by its bytes, which is the order of code points, the order of ids in every
+provider (`IdOrder` in the API module). Companies with the ids `Zeta`, `acme`, `alpha`, `big`, `kinds`, `nulls`,
+`~tilde` and `Ærlig` were listed in this order.
+
+The primary key also sets the limits of every provider (`Limits` in the API module, see
+[the persistence interface](persistence-api.md#limits)). PostgreSQL 18 keeps an entry of a B-tree index in at
+most 2,704 bytes, and one entry of `fragment_pkey` holds the namespace, the entity type, the id, the version, the
+path and the positions. A namespace of 64 bytes, an entity type of 128, an id of 1024, a path of 1024 and 32
+positions of 4 bytes take about 2,420 of them with the version and the headers. Core refuses a document past the
+limits before the provider sees it; the provider does not check them.
 
 This is the table as PostgreSQL describes it after the first start of LDS:
 
 ```sh
-PGPASSWORD=lds psql -h ::1 -p 19104 -U lds -d lds -X -c '\d fragment'
+docker exec pg psql -U lds -d lds -X -c '\d fragment'
 ```
 
 ```
@@ -136,7 +151,7 @@ with an [embedded object](../glossary.md#embedded-object) (`address`), a [link](
 (`employer`) and an array of links (`friends`):
 
 ```sh
-curl -s -i -X PUT 'http://127.0.0.1:19104/ns/Person/ola?sync=true&timestamp=2020-01-01T00:00:00Z' \
+curl -s -i -X PUT 'http://localhost:19107/ns/Person/ola?sync=true&timestamp=2020-01-01T00:00:00Z' \
   -H 'Content-Type: application/json' \
   -d '{
     "name": "Ola",
@@ -152,8 +167,8 @@ HTTP/1.1 201 Created
 ```
 
 ```sh
-PGPASSWORD=lds psql -h ::1 -p 19104 -U lds -d lds -X -c "select namespace, entity, id, version at time zone
-  'UTC' as version_utc, path, indices, type, convert_from(value, 'UTF8') as value from fragment
+docker exec pg psql -U lds -d lds -X -c "select namespace, entity, id, version at time zone 'UTC' as version_utc,
+  path, indices, type, convert_from(value, 'UTF8') as value from fragment
   order by namespace, entity, id, version, path, indices"
 ```
 
@@ -190,8 +205,9 @@ was stored as these rows (`value_as_text` is `convert_from(value, 'UTF8')`):
 
 A text is its UTF-8 bytes. A number is its text (`17`, `0.5`). `true` is one byte, 1, and `false` is one byte, 0.
 An empty array and an empty object are one row each with an empty value. A null is one row of type 0 with an
-empty value: `{"name":"N","listed":false,"extra":null}` was stored with `$.extra` as type 0 and `\x`, and
-`$.listed` as type 6 and `\x00`. Only a tombstone has no value (SQL null).
+empty value. Core writes a field whose value is null as absent and keeps a null item of an array, so
+`{"name":"N","listed":false,"extra":null,"list":[null]}` was stored with `$.list[]` as type 0 and `\x`, `$.listed`
+as type 6 and `\x00`, and no row for `$.extra`. Only a tombstone has no value (SQL null).
 
 A value is never split over several rows. `PostgresDbInitializer` gives the bridge a fragment capacity of
 `Integer.MAX_VALUE`, and `WriteBatch.add` refuses a fragment whose offset is not 0 with
@@ -228,23 +244,27 @@ LDS creates the table as that user.
 database, five times. `PostgresProviderTest.startingLeavesNoConnectionInUse` checks that the connection of step 3
 is back in the pool.
 
-The caller of `initialize` is `PersistenceConfigurator` in core. When `initialize` throws, it waits a second and
-tries again, until `persistence.initialization.max-wait-seconds` have passed. With PostgreSQL not running and the
-60 seconds of the server defaults, LDS made 31 attempts, one every two seconds, and then ended with exit code 1
-and this text:
+The caller of `initialize` is `PersistenceConfigurator` in core. When `initialize` throws, it waits a random time
+of about a second (half a second to a second and a half) and tries again, until
+`persistence.initialization.max-wait-seconds` have passed. With nothing listening at the address
+(`LDS_POSTGRES_DRIVER_HOST=127.0.0.1`, inside the container of LDS) and the 60 seconds of the server defaults, LDS
+made 27 attempts, about one every two seconds, and then ended with exit code 1 and this text:
 
 ```
+... ERROR io.descoped.lds.core.UndertowApplication - LDS could not be made; what was made is stopped
 Exception in thread "main" com.zaxxer.hikari.pool.HikariPool$PoolInitializationException: Failed to initialize
-pool: Connection to [::1]:19104 refused. Check that the hostname and port are correct and that the postmaster is
-accepting TCP/IP connections.
+pool: Connection to 127.0.0.1:5432 refused. Check that the hostname and port are correct and that the postmaster
+is accepting TCP/IP connections.
 ```
 
-When PostgreSQL was started 7 seconds after LDS, the fifth attempt succeeded and LDS started.
+When PostgreSQL and LDS were started together, the second attempt succeeded and LDS started (see
+[The examples in this document](#the-examples-in-this-document)).
 
 `PersistenceConfigurator` catches every `RuntimeException` and does not look at what failed. A wrong password, a
 database that does not exist and a port that is not a number are tried again in the same way until the wait is
-over. With a wait of 3 seconds, a wrong password gave two attempts and the port `notanumber` gave four, and
-LDS then ended with the exception of the last attempt.
+over. With a wait of 3 seconds, a wrong password gave three attempts and the port `notanumber` gave five, and
+LDS then ended with the exception of the last attempt (`password authentication failed for user "lds"`,
+`NumberFormatException: For input string: "notanumber"`).
 
 ## Writing
 
@@ -286,18 +306,19 @@ This is what PostgreSQL logged for the request above (the six inserts shortened 
 ```
 LOG:  statement: BEGIN
 LOG:  execute <unnamed>: DELETE FROM fragment WHERE namespace = $1 AND entity = $2 AND id = $3 AND version = $4
-DETAIL:  Parameters: $1 = 'ns', $2 = 'Person', $3 = 'ola', $4 = '2020-01-01 01:00:00+01'
+DETAIL:  Parameters: $1 = 'ns', $2 = 'Person', $3 = 'ola', $4 = '2020-01-01 00:00:00+00'
 LOG:  execute S_2: INSERT INTO fragment(namespace, entity, id, version, path, indices, type, value) VALUES ($1,
       $2, $3, $4, $5, $6, $7, $8)
-DETAIL:  Parameters: $1 = 'ns', $2 = 'Person', $3 = 'ola', $4 = '2020-01-01 01:00:00+01', $5 = '$.employer',
+DETAIL:  Parameters: $1 = 'ns', $2 = 'Person', $3 = 'ola', $4 = '2020-01-01 00:00:00+00', $5 = '$.employer',
       $6 = '{}', $7 = '4', $8 = '\x2f436f6d70616e792f61636d65'
 ...
 LOG:  execute S_1: COMMIT
 ```
 
-PostgreSQL writes a time in the zone of its session; `2020-01-01 01:00:00+01` is the instant
-`2020-01-01T00:00:00Z`. The `COMMIT` comes from core: `PersistenceCreateOrOverwriteSagaAdapter` opens the
-transaction in a try-with-resources block, and `Transaction.close` commits.
+PostgreSQL writes a time in the zone of its session, here UTC; a session in another zone writes the same instant
+in that zone. The `COMMIT` comes from core:
+`PersistenceCreateOrOverwriteSagaAdapter` writes through `WriteTransaction`, which commits when the write
+completed and cancels (`ROLLBACK`) when it failed, so a write that fails leaves nothing.
 
 ## Reading
 
@@ -316,44 +337,56 @@ with only an upper bound is read from the end, also without a limit.
 |---|---|
 | `read` | The rows of one document at the greatest version that is not after the snapshot. Ordered by path and positions. |
 | `readVersions` | The rows of every version of one document, oldest first, or newest first for a backward range. `before` is exclusive. `after` is not a strict bound: the version that was valid at that time is the first one. The limit counts versions. |
-| `readAll` | For every id of the entity type inside the range, the rows of the version valid at the snapshot. By ascending id, or descending for a backward range. Both bounds are exclusive. The limit counts documents. A document that is marked as deleted at the snapshot comes as its tombstone. |
+| `readAll` | For every id of the entity type inside the range, the rows of the version valid at the snapshot. By ascending id, or descending for a backward range. Both bounds are exclusive. A document that is marked as deleted at the snapshot is left out (`HAVING NOT EXISTS` a tombstone at that version), so the limit counts the documents that are returned. |
+| `readAllVersions` | Every row of the entity type in the namespace, in the order of the primary key: by id, oldest version first, path, positions. Tombstones included. |
 | `find` | The rows of every document whose version valid at the snapshot holds the given value at the given path. Same order, bounds and limit as `readAll`. |
-| `hasNext`, `hasPrevious` | `readAll` with the range `Range.firstAfter(1, id)` or `Range.lastBefore(1, id)`; the answer is whether a row came. Nothing calls these two: the bridge has its own (see [Not finished](#not-finished)), and no test calls them. |
+| `hasNext`, `hasPrevious` | `readAll` with the range `Range.firstAfter(1, id)` or `Range.lastBefore(1, id)`; the answer is whether a row came. Nothing calls these two: the bridge has its own, and no test calls them. |
 
 `read` is one statement with a subquery for the version. This is the statement of a `GET /ns/Person/ola`, from
 the log of PostgreSQL (wrapped here):
 
 ```
-LOG:  execute <unnamed>/C_3: SELECT f.id, f.version, f.path, f.indices, f.type, f.value FROM fragment f
+LOG:  execute <unnamed>/C_5: SELECT f.id, f.version, f.path, f.indices, f.type, f.value FROM fragment f
       WHERE f.namespace = $1 AND f.entity = $2 AND f.id = $3 AND f.version = (SELECT max(c.version) FROM
       fragment c WHERE c.namespace = $4 AND c.entity = $5 AND c.id = $6 AND c.version <= $7)
       ORDER BY f.path, f.indices
 DETAIL:  Parameters: $1 = 'ns', $2 = 'Person', $3 = 'ola', $4 = 'ns', $5 = 'Person', $6 = 'ola',
-      $7 = '2026-11-20 16:30:17.233+01'
+      $7 = '2026-11-24 23:28:25.123+00'
 ```
 
-The other three reads have two parts. An inner query picks the document versions: ids with their version, in
-the order of the result. `PostgresPersistence.documentsOf` completes the statement: it puts the limit of the
-range on the inner query, so that the limit counts document versions and not rows, and it fetches the rows of
-each picked version with `CROSS JOIN LATERAL`, one version after the other. The condition of the lateral part is
-on the first four columns of the primary key (namespace, entity, id, version). This is the statement of a list
-(`readAll`, no bounds), from the log:
+`readVersions`, `readAll` and `find` have two parts. An inner query picks the document versions: ids with their
+version, in the order of the result. `PostgresPersistence.documentsOf` completes the statement: it puts the limit
+of the range on the inner query, so that the limit counts document versions and not rows, and it fetches the rows
+of each picked version with `CROSS JOIN LATERAL`, one version after the other. The condition of the lateral part
+is on the first four columns of the primary key (namespace, entity, id, version). This is the first statement of
+the GraphQL query `{ Company(first: 2) { edges { node { name } } pageInfo { hasNextPage hasPreviousPage } } }`, a
+list with a limit and no bounds, from the log:
 
 ```
-LOG:  execute <unnamed>/C_12: SELECT f.id, f.version, f.path, f.indices, f.type, f.value FROM (SELECT c.id,
+LOG:  execute <unnamed>/C_7: SELECT f.id, f.version, f.path, f.indices, f.type, f.value FROM (SELECT c.id,
       max(c.version) AS version FROM fragment c WHERE c.namespace = $1 AND c.entity = $2 AND c.version <= $3
-      GROUP BY c.id ORDER BY c.id) d CROSS JOIN LATERAL (SELECT r.id, r.version, r.path, r.indices, r.type,
-      r.value FROM fragment r WHERE r.namespace = $4 AND r.entity = $5 AND r.id = d.id AND r.version =
-      d.version ORDER BY r.path, r.indices) f ORDER BY d.id, f.path, f.indices
+      GROUP BY c.id HAVING NOT EXISTS (SELECT 1 FROM fragment x WHERE x.namespace = $4 AND x.entity = $5 AND
+      x.id = c.id AND x.version = max(c.version) AND x.type = $6) ORDER BY c.id LIMIT $7) d CROSS JOIN LATERAL
+      (SELECT r.id, r.version, r.path, r.indices, r.type, r.value FROM fragment r WHERE r.namespace = $8 AND
+      r.entity = $9 AND r.id = d.id AND r.version = d.version ORDER BY r.path, r.indices) f
+      ORDER BY d.id, f.path, f.indices
+DETAIL:  Parameters: $1 = 'ns', $2 = 'Company', $3 = '2026-11-24 23:28:33.042+00', $4 = 'ns',
+      $5 = 'Company', $6 = '1', $7 = '2', $8 = 'ns', $9 = 'Company'
 ```
+
+The `HAVING NOT EXISTS` leaves out a document whose version at the snapshot is a tombstone (type 1), before the
+limit. The bridge answers `hasPreviousPage` and `hasNextPage` with two more lists of one: the same statement with
+`c.id < $4` and `ORDER BY c.id DESC LIMIT $8` (the id `Zeta`, the first of the page), and with `c.id > $4` and
+`ORDER BY c.id LIMIT $8` (the id `acme`, the last of the page). A list without a limit, `GET /ns/Company`, is the
+same statement without `LIMIT`.
 
 The Javadoc of `documentsOf` gives the reason for the lateral form. Written as a join of the two, PostgreSQL
 chooses the way to run it from its statistics, and without statistics (a table filled a moment ago) it compares
 every row with every document. In the lateral form the first document is returned before the next one is looked
 up, whatever the statistics say.
 
-How PostgreSQL reads the rows of one version is still its choice. `EXPLAIN` of the `find` statement, on the table
-of these examples with 210 rows, showed `Index Scan using fragment_value_idx` for the inner query,
+How PostgreSQL reads the rows of one version is still its choice. `EXPLAIN` of the `find` statement, on a table
+of 210 rows, showed `Index Scan using fragment_value_idx` for the inner query,
 `Index Only Scan Backward using fragment_pkey` for the newest version, and a sequential scan for the rows of each
 version. With sequential scans switched off (`set enable_seqscan = off`) it read those rows through
 `fragment_pkey`, at a cost it counted as a little higher on a table that small.
@@ -403,14 +436,13 @@ that requested it, and the JDBC call blocks that thread. These are the things to
   cancelled. An exception that `onNext` throws cancels the subscription and goes to `onError` of the same
   subscriber.
 
-A list of 27 rows shows the cursor in the log of PostgreSQL: the statement is run once with a named cursor
-(`C_12`) and then fetched from twice.
+A list of 15 rows (`GET /ns/Company`) shows the cursor in the log of PostgreSQL: the statement is run once with a
+named cursor (`C_6`), which gives the first ten rows, and then fetched from once.
 
 ```
 LOG:  statement: BEGIN
-LOG:  execute <unnamed>/C_12: SELECT f.id, f.version, ...
-LOG:  execute fetch from <unnamed>/C_12: SELECT f.id, f.version, ...
-LOG:  execute fetch from <unnamed>/C_12: SELECT f.id, f.version, ...
+LOG:  execute <unnamed>/C_6: SELECT f.id, f.version, ...
+LOG:  execute fetch from <unnamed>/C_6: SELECT f.id, f.version, ...
 LOG:  execute S_1: COMMIT
 ```
 
@@ -500,7 +532,7 @@ m.path = $3 AND sha256(m.value) = sha256($4) AND m.value = $5 AND m.version <= $
 max(c.version) FROM fragment c WHERE c.namespace = m.namespace AND c.entity = m.entity AND c.id = m.id AND
 c.version <= $7) ORDER BY m.id) d CROSS JOIN LATERAL ...
 DETAIL:  Parameters: $1 = 'ns', $2 = 'Person', $3 = '$.employer', $4 = '\x2f436f6d70616e792f61636d65',
-$5 = '\x2f436f6d70616e792f61636d65', $6 = '2026-11-20 16:30:59.688+01', $7 = '2026-11-20 16:30:59.688+01',
+$5 = '\x2f436f6d70616e792f61636d65', $6 = '2026-11-24 23:28:40.173+00', $7 = '2026-11-24 23:28:40.173+00',
 $8 = 'ns', $9 = 'Person'
 ```
 
@@ -529,22 +561,25 @@ roll back, then close the connection, which gives it back to the pool. The first
 The provider does not commit by itself, with one exception: the creation of the table at start.
 
 The provider has no thread and no scheduler. A statement runs on the thread that subscribes to the stream or
-requests from it, and that thread waits for PostgreSQL.
+requests from it, and that thread waits for PostgreSQL. Core calls the provider on threads of its own for that
+(the threads of the store, `StoreReads`, and the threads of the sagas), and a `GET` of one document in a
+`try (Transaction tx = ...)` block on the thread of the request.
 
 When all 10 connections are in use, the next `createTransaction` waits for one, for 30 seconds at most (the
-default of HikariCP), and then throws `PersistenceException`. With every read held by a lock on the table for 40
-seconds, 13 requests at once gave 10 that waited in PostgreSQL and were answered 200 when the lock was gone, and
-3 that were answered `500 Internal Server Error` after 30 seconds, with this in the log of LDS:
+default of HikariCP), and then throws `PersistenceException`. With the table locked for 40 seconds
+(`LOCK TABLE fragment IN ACCESS EXCLUSIVE MODE` in another session), 13 `GET` of one document at once gave 10 that
+waited in PostgreSQL and were answered 200 when the lock was gone, 42 to 51 seconds after they were sent, and 3
+that were answered `500 Internal Server Error` after 51 seconds, with this in the log of LDS for each:
 
 ```
-io.descoped.lds.api.persistence.PersistenceException: java.sql.SQLTransientConnectionException: HikariPool-1 -
-Connection is not available, request timed out after 30001ms (total=10, active=10, idle=0, waiting=2)
+io.descoped.lds.api.persistence.PersistenceException: java.sql.SQLTransientConnectionException: HikariPool-2 -
+Connection is not available, request timed out after 30925ms (total=10, active=10, idle=0, waiting=0)
 ```
 
-The pool finds its way back by itself. PostgreSQL was stopped while LDS ran. `GET /ns/Person/kari` was answered
-500: at once in a run where LDS had used a connection a second before the stop, and after 30 seconds in a run
-where it had not. `/health/alive` was answered 503 after 30 seconds. After PostgreSQL was started again, both
-were answered 200 without a restart of LDS.
+The pool finds its way back by itself. PostgreSQL was stopped while LDS ran (`docker stop pg`).
+`GET /ns/Person/kari` was answered 500 after 30 seconds, `/health/alive` 200, and `/health/ready` 503 after 2
+seconds, with the store `DOWN` (`no answer within 2000 ms`). After PostgreSQL was started again, the `GET` was
+answered as before (404, the document was never written) and `/health/ready` 200, without a restart of LDS.
 
 `createTransaction` throws `PersistenceException`, and a commit or a roll back that fails gives a future that
 failed with it. Everything else gives the `SQLException` of the driver as it is: a read (through the stream), a
@@ -554,7 +589,8 @@ After a statement has failed, PostgreSQL refuses every later statement of that t
 (`current transaction is aborted`) and answers its `COMMIT` with a roll back. In a transaction with one write
 that succeeded and one that failed, a read was refused, `commit` then gave a future that completed without an
 error, and the first write was not in the table afterwards. `Transaction.close` in place of `commit` did not
-throw either (see [Not finished](#not-finished)).
+throw either (see [Not finished](#not-finished)). Core does not commit after a write that failed: it cancels
+(`WriteTransaction`).
 
 `PostgresPersistence.close` closes the factory, and the factory closes the pool.
 
@@ -591,15 +627,18 @@ from the comments of the code.
   auto-commit on, the driver opens no cursor.
 - **Close the statement of every read.** A statement that is read in parts holds a cursor on the server until it
   is closed. `Flowable.using` closes it on every way out.
-- **Rows come in storage order:** id, version, path, positions. The bridge cuts the stream into documents where the
-  key changes (`RxGroupByTools.groupByOrdered`), so the rows of one document version must come together.
+- **Rows come in the order of the range:** by id ascending, or descending for a backward range, then version,
+  path, positions. The bridge cuts the stream into documents where the key changes
+  (`RxGroupByTools.groupByOrdered`) and never sorts, so the rows of one document version must come together. Ids
+  are in the order of code points (`COLLATE "POSIX"`), the order of every provider.
 - **No spliced identifiers.** Only text that is written in `PostgresPersistence` becomes part of a statement.
   Every value from outside (namespace, entity type, id, path, value, time, limit) is a parameter (`Query.value`). The
   names of the table and its columns are fixed text.
 - **Time.** A version is stored and compared as a UTC instant, cut to milliseconds. Every time that goes into a
   statement goes through `instantOf`.
 - **Transactions commit only when asked.** The provider never commits a transaction of a caller.
-- **The limit counts documents**, or versions in `readVersions`, never rows. It belongs on the inner query.
+- **The limit counts documents**, or versions in `readVersions`, never rows. It belongs on the inner query, and a
+  document deleted at the snapshot is left out before it.
 - **Keep the lateral form** of `documentsOf` and **keep the hash first** in `fragment_value_idx`. Both are there for
   a table without statistics; the reasons are given above.
 - **The start is safe for instances that start together.** Keep the advisory lock as the first statement of
@@ -634,7 +673,7 @@ module.
 
 | Class | Framework | What it checks |
 |---|---|---|
-| `PostgresIntegrationTest` | TestNG | The [shared suite](../glossary.md#shared-suite): it extends `PersistenceIntegrationTest` and gives it the provider. 32 tests, in the namespace `lds-provider-postgres-integration-test`. See [the shared suite](persistence-tck.md). |
+| `PostgresIntegrationTest` | TestNG | The [shared suite](../glossary.md#shared-suite): it extends `PersistenceIntegrationTest` and gives it the provider. 38 tests, in the namespace `lds-provider-postgres-integration-test`. See [the shared suite](persistence-tck.md). |
 | `ResultSetPublisherIntegrationTest` | TestNG | The Reactive Streams TCK (`PublisherVerification`) for `ResultSetPublisher`, over `SELECT * FROM GENERATE_SERIES(1, n)` with at most 1000 rows. It says that a call of `request` inside `onNext` goes at most one level deep (`boundedDepthOfOnNextAndRequestRecursion`). |
 | `ResultSetPublisherSignalsTest` | JUnit | That nothing follows the error of a request for zero rows. It needs no database: the result set is a proxy. |
 | `PostgresProviderTest` | JUnit | What the provider must do beyond the suite. 20 tests, each with an entity type of its own. |
@@ -643,7 +682,9 @@ module.
 
 - The start: no connection is left in use; four instances that start together on an empty database all start.
 - Namespaces: a document is seen in its own namespace only, by every kind of read and by a delete.
-- Ids: a list holds every id in the order of Java, with ids that have a space, `!`, `~`, `Æ`, `Å` and `日本`.
+- Ids: a list holds every id, with ids that have a space, `!`, `~`, `Æ`, `Å` and `日本`, in the order of Java's
+  sort, which for these ids is the order of code points. The ids where the two orders differ are in the shared
+  suite.
 - Versions: a version is the instant, whatever zone it was written with.
 - `find`: every match, the range, the version valid at the snapshot, no document marked as deleted, a value in
   an array once.
@@ -680,54 +721,16 @@ below. It was not run for this document.
 
 ## Not finished
 
-Not finished: a list is not read on demand through the bridge. `RxJsonPersistenceBridge.readDocuments`,
-`readDocumentVersions` and `findDocument` take the limit off the range (`Range.unlimited`) and sort the whole
-stream of fragments (`Flowable.sorted`) before they cut it into documents. So the statement has no `LIMIT`, and
-every row of it is fetched before the first document is given out. The GraphQL query below asks for two
-companies. It ran the list statement without `LIMIT` and fetched it to the end, the 33 rows of all three
-companies. It then ran two more statements without `LIMIT` for `hasNextPage` and `hasPreviousPage`, each with a
-bound on the id (`c.id < $4`, `c.id > $4`). The limit of the provider is reached only through
-`readSourceDocuments`, which gives its range to `find` as it is: a GraphQL query for `employees(first: 1)` of
-one company ran the `find` statement with `ORDER BY m.id LIMIT $8`. `PostgresPersistence.hasNext` and
-`hasPrevious` are not called by the bridge, which has its own.
-
-```graphql
-{ Company(first: 2) { edges { node { name } } pageInfo { hasNextPage hasPreviousPage } } }
-```
-
-```json
-{
-  "data": {
-    "Company": {
-      "edges": [
-        {
-          "node": {"name": "Acme"}
-        },
-        {
-          "node": {"name": "Big"}
-        }
-      ],
-      "pageInfo": {"hasNextPage": true, "hasPreviousPage": false}
-    }
-  }
-}
-```
-
-Not finished: the order of ids can differ between PostgreSQL and the bridge. PostgreSQL orders ids by their
-UTF-8 bytes, the order of code points. The bridge sorts by UTF-16 code units, as Java does. The Javadoc of
-`PostgresPersistence` says where the two differ: between a character from U+E000 to U+FFFF and one above U+FFFF.
-For ids with both, `hasNext` and `hasPrevious` can disagree with the list.
-
 Not finished: a transaction that is closed commits. `Transaction.close` in the API commits, and
 `PostgresTransaction` does not override it. A rule of the project is that a transaction commits only when asked
 and rolls back otherwise, and [the invariants](architecture.md#the-invariants) name this as not true yet. Core
-closes its read transactions the same way, so a read ends with `COMMIT` too.
+closes its read transactions with try-with-resources, so a read ends with `COMMIT`. Its writes commit only when
+they completed (`WriteTransaction`).
 
 Not finished: a commit does not tell that PostgreSQL rolled the transaction back. After a statement of the
 transaction has failed, `PostgresTransaction.commit` sends `COMMIT`, PostgreSQL rolls back, and the future
-completes without an error. In core the failure is still seen: a write that fails throws out of the
-try-with-resources block of `PersistenceCreateOrOverwriteSagaAdapter`, and the close that follows is this roll
-back.
+completes without an error. In core the failure is still seen: a write that fails throws, and `WriteTransaction`
+cancels the transaction instead of committing it.
 
 Not finished: the argument `readOnly` of `createTransaction`, the argument `PersistenceDeletePolicy` of the
 deletes and the argument `paths` of `deleteAllEntities` are not used.

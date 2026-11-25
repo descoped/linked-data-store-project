@@ -2,8 +2,8 @@
 title: "Linked Data Store"
 description: >-
   A time machine for JSON documents and the links between them: Linked Data Store keeps every version of every
-  document and reads any instant, over REST and GraphQL. LDS 3.0.0 is released as images on Docker Hub.
-eyebrow: "LDS 3.0.0 is released"
+  document and reads any instant, over REST and GraphQL. LDS 3.0.1 is released as images on Docker Hub.
+eyebrow: "LDS 3.0.1 is released"
 headline: "A time machine for your documents and the links between them"
 subline: >-
   Linked Data Store (LDS) keeps every version of every document, each valid from its own time. Read any instant, past,
@@ -48,8 +48,9 @@ its GraphQL schema from the model, and checks every document against it before t
 
 ### A write is a saga
 
-The transaction log is written first, then the store and the search index side by side. Each step is recorded in a
-saga log, and a write that did not complete, because a step failed or LDS stopped, is run again from it later.
+The transaction log is written first, then the store, and with search an update is added to the index queue, from
+which LDS sends it to the search index without the write waiting for it. Each step is recorded in a saga log, and a
+write that did not complete, because a step failed or LDS stopped, is run again from it later.
 [The write path](/docs/developer/core-write-path/)
 
 ### Storage you choose
@@ -62,7 +63,7 @@ provider passes the same suite of tests against the real engine. [Architecture](
 Start LDS from its image on Docker Hub, in memory, with an example model:
 
 ```sh
-docker run --rm -p 127.0.0.1:9090:9090 descoped/lds:3.0.0
+docker run --rm -p 127.0.0.1:9090:9090 descoped/lds:3.0.1
 ```
 
 Write Company/fjord, valid from 1 January 2020:
@@ -105,14 +106,14 @@ time and are read as they were, and models whose documents link to each other.
 
 It does not fit, as it is today, when:
 
-- you need every part finished: 3.0.0 has known gaps, listed in its release notes and in the documentation;
+- you need every part finished: 3.0.1 has known gaps, listed in its release notes and in the documentation;
 - you need to know when a version was recorded as well as when it holds: LDS keeps valid time only and is not
   bitemporal, and a version written again at the same valid time replaces the one before;
 - you need a write to be refused when its link points at nothing: links are not checked when written.
 
 ## Status
 
-LDS 3.0.0 is released: the server as images on Docker Hub, `descoped/lds`, for Linux on amd64 and arm64, in three
+LDS 3.0.1 is released: the server as images on Docker Hub, `descoped/lds`, for Linux on amd64 and arm64, in three
 variants (the regular image with a shell, one without, and one with the tools of the JDK for diagnostics), each signed,
-with the [release notes](https://github.com/descoped/linked-data-store-project/releases/tag/3.0.0) on GitHub. No jar
-is published; LDS is also built from the repository on JDK 27.
+with the [release notes](https://github.com/descoped/linked-data-store-project/releases/tag/3.0.1) on GitHub. No jar
+is released; LDS is also built from the repository on JDK 27.

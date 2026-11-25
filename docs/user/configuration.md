@@ -55,8 +55,9 @@ file is read as UTF-8.
 - Spaces at the end of a line belong to the value. With a space after `persistence.provider=mem`, LDS does not
   start and prints `No persistence providers found for providerId: mem` with the space at its end. A number
   and a truth value are read without the spaces around them.
-- LDS does not tell about a key it does not know. A key that is spelled wrong changes nothing and gives no
-  message.
+- LDS does not tell about a key it does not know in a file. A key that is spelled wrong in a file changes nothing and
+  gives no message. A variable that is spelled wrong stops the start; see [A variable or a system property sets only a
+  key that a file has](#a-variable-or-a-system-property-sets-only-a-key-that-a-file-has).
 
 With this file:
 
@@ -84,7 +85,7 @@ curl -s 'http://localhost:19306/data?schema'
 ### Environment variables
 
 The name of the variable is `LDS_`, then the key in upper case with `_` for every character that is not a letter
-or a digit:
+or a digit. The key may also keep its own case: `LDS_http_port` sets `http.port` too.
 
 | Key | Variable |
 |---|---|
@@ -135,10 +136,20 @@ variable `JAVA_TOOL_OPTIONS`: `JAVA_TOOL_OPTIONS=-Dhttp.port=19306`. The JVM the
 ### A variable or a system property sets only a key that a file has
 
 LDS takes a variable or a system property only for a key that is in one of the files: the built-in defaults,
-`conf/application.properties` or `conf_dev/application.properties`. A variable for any other key is passed over
-without a message.
+`conf/application.properties` or `conf_dev/application.properties`. A variable that starts with `LDS_` and is
+for no such key stops the start, so that a name that is spelled wrong is not a setting that is silently not made.
+`LDS_NAMESPACE_DEFALT=x` gives:
 
-The built-in defaults have the 60 keys of [The keys](#the-keys), so each of them can be set by a variable. The
+```
+io.descoped.config.ConfigurationException: environment variable(s) LDS_NAMESPACE_DEFALT match no configuration
+key: a variable LDS_<KEY> overrides a key that a source defines, written as the key, with every non-alphanumeric
+character as _, or that in upper case (LDS_SERVER_PORT for server.port)
+```
+
+LDS then ends at once with exit code 1. A system property for a key that no file has is passed over without a
+message.
+
+The built-in defaults have the 62 keys of [The keys](#the-keys), so each of them can be set by a variable. The
 [saga log](../glossary.md#saga-log) and the [transaction log](../glossary.md#transaction-log) read some more keys,
 listed in [Keys that no file has](#keys-that-no-file-has). Such a key is first written in
 `conf/application.properties`. After that a variable can set it too.
@@ -146,7 +157,8 @@ listed in [Keys that no file has](#keys-that-no-file-has). Such a key is first w
 An example, with the transaction log in PostgreSQL. It opens 10 connections unless
 `txlog.config.postgres.driver.max-pool-size` says another number, and no built-in file has that key.
 
-- With only the variable `LDS_TXLOG_CONFIG_POSTGRES_DRIVER_MAX_POOL_SIZE=3`, LDS opened 10 connections.
+- With only the variable `LDS_TXLOG_CONFIG_POSTGRES_DRIVER_MAX_POOL_SIZE=3`, LDS does not start: no file has
+  the key.
 - With the line `txlog.config.postgres.driver.max-pool-size=3` in `conf/application.properties`, LDS opened 3.
 - With that line and the variable `LDS_TXLOG_CONFIG_POSTGRES_DRIVER_MAX_POOL_SIZE=5`, LDS opened 5.
 
@@ -203,7 +215,7 @@ Three more rules:
 
 - `${key:default}` gives a value to use when no source has the key. The default does not make the key a key
   of a file: with `http.prefix=${my.prefix:/}` in the file and nothing else, the variable `LDS_MY_PREFIX=/lds`
-  is passed over and the prefix stays `/`.
+  sets no key and stops the start.
 - A reference to a key that no source has, without a default, stops LDS at start. So do two keys that refer to
   each other. See [A value that is wrong](#a-value-that-is-wrong).
 - `$${` is a literal `${`.
@@ -322,21 +334,27 @@ sagalog.config.connection-pool.max-size=50
 ```
 
 - The database (`sagalog` here) must be there before LDS starts. LDS makes a schema with the name of
-  `sagalog.config.cluster.owner` in it, and its tables in that schema.
-- `sagalog.config.cluster.owner` must be set. See the paragraph below.
+  `sagalog.config.cluster.owner` in it, `lds` when the key is not set, and its tables in that schema.
 - Every LDS that shares the saga log has the same `sagalog.config.cluster.owner` and
   `sagalog.config.cluster.name`, and its own `sagalog.config.cluster.instance-id`.
-- `sagalog.config.connection-pool.max-size` must be at least `saga.number-of-logs` (30 by default): each open
-  saga log holds one connection. With 30 saga logs and a pool of 5, LDS answered `/ping` with `200` and a write
-  with `500` after 30 seconds, and ended by itself 90 seconds after its start with exit code 1 and the message
-  `No database connection available within 30000 ms: the pool has 5 connections (5 active, 0 idle), and each
-  open saga log holds one. Raise connection-pool.max-size or open fewer saga logs at once.` The log of that
-  run never said `Server started`.
-
-Not finished: the default of `sagalog.config.cluster.owner` is `my.org`, and the saga log in PostgreSQL takes
-only letters, digits, `_` and `-` in that name. With the default LDS tries for 30 seconds and then ends with
-exit code 1 and `java.lang.IllegalArgumentException: schema (cluster.owner) must match [A-Za-z0-9_-]+:
-'my.org'`.
+  [Operations](operations.md#several-lds-on-one-saga-log) tells why.
+- `sagalog.config.connection-pool.max-size` must be at least `saga.number-of-logs` and 11 more: each open saga
+  log holds one connection, the completing of the writes of another LDS opens up to 10 of its saga logs at once,
+  and the pool needs one for its own questions. LDS checks it at start, before it connects. With
+  `LDS_SAGALOG_CONFIG_CONNECTION_POOL_MAX_SIZE=30` and 30 saga logs, LDS ended at once with exit code 1 and
+  `java.lang.IllegalStateException: The saga log has 30 connections in its pool
+  (sagalog.config.connection-pool.max-size) for 30 saga logs (saga.number-of-logs): each open saga log holds a
+  connection, recovery opens up to 10 logs of other instances at once, and the pool needs one for its own
+  queries. Give the pool at least 41 connections, or use fewer saga logs.`
+- At start the saga log takes every connection of its pool from PostgreSQL. When PostgreSQL refuses some of
+  them, because it has no more room, the try fails, and LDS ends when the wait of the saga log is over. In a run a
+  second LDS on a PostgreSQL that takes 100 connections, with the first LDS holding 60 of them, ended after 31
+  seconds with exit code 1 and `no.cantara.sagalog.postgres.PostgresSagaLogException: initialize failed on the
+  connection pool: the database gave the pool 30 of its 50 connections (connection-pool.max-size) and refused
+  more. ... Lower connection-pool.max-size, or make room on the server: raise max_connections or the CONNECTION
+  LIMIT, or close other clients' connections. Last refusal: FATAL: sorry, too many clients already. Server:
+  max_connections 100, superuser_reserved_connections 3, reserved_connections 0, 100 client connections in use.
+  (SQLState 53300)`.
 
 ### The transaction log
 
@@ -397,24 +415,34 @@ The compose file of the repository runs LDS with search. These are the variables
 
 `search.index.provider` is `solr` by default, so `graphql.search.enabled=true` and the address are enough. The
 address is that of one Solr core and ends with the name of the core. The core must be there; LDS does not make
-it. LDS is tested with Solr 10.1.
+it, and puts the fields it needs into the schema of the core itself, before the first write or search that
+reaches Solr. LDS is tested with Solr 10.1.
 
-LDS does not ask Solr anything when it starts. Started with `LDS_GRAPHQL_SEARCH_ENABLED=true` and no Solr, LDS
-starts, and GraphQL has the query `Search`:
+LDS starts without Solr. Started with `LDS_GRAPHQL_SEARCH_ENABLED=true` and no Solr, LDS starts, GraphQL has the
+query `Search`, and `/health/ready` says that search is away
+([Operations](operations.md#the-health-addresses)):
 
 ```
 ... Search index provider configured: solr
-... Initializing SolrSearchIndex
+... Initializing index queue ...
+... WARN  ... The index queue is in memory, as the transaction log (discard) is: updates the search index has not
+    taken when LDS stops are lost, and are found again only by a rebuild of the index
 ... Creating root "Query" search field and search types
 ```
 
-Search finds a document by the texts of its fields named `languageText`, and by nothing else. What search covers
-is under review. [The GraphQL API](graphql-api.md) has the query `Search`, and
-[Operations](operations.md) says what happens to writes and searches when Solr is away.
+A write does not wait for Solr. It adds an update to the index queue, and LDS sends the queue to Solr. The queue is
+kept where the transaction log is: with `txlog.rawdata.provider=postgres` in a table of that database,
+`lds_index_queue`, which LDS makes when it is missing, so no update is lost when LDS stops; with `discard` or
+`memory` in memory, as the warning above says.
+
+Search finds a document by every text in it. A text in an object with the fields `languageCode` and `languageText`
+is searched in the language of the code. [The GraphQL API](graphql-api.md) has the query `Search`, and
+[Operations](operations.md#the-search-index) says how long a write takes to be found and what happens when Solr is
+away.
 
 ## The keys
 
-These are the 60 keys of the built-in defaults, by what they are for. "Default" is the value LDS has when
+These are the 62 keys of the built-in defaults, by what they are for. "Default" is the value LDS has when
 nothing is set. An empty default is written "empty".
 
 ### HTTP
@@ -447,9 +475,10 @@ curl -s 'http://localhost:19306/lds/ns?schema'
 
 Not finished: with a prefix other than `/`, the addresses in the answer to `?schema` are without the prefix, as
 above. The address `/source/{source}` does not work under a prefix: it answers `{"lastSourceId":null}`
-whatever was written, and `500` with `txlog.split.sources=true`. The health check of the image asks `/ping`
-without the prefix and on the port of the variable `LDS_HTTP_PORT`. So in the image, leave `http.prefix` as it
-is and move the port with that variable, not in a file.
+whatever was written, and `500` with `txlog.split.sources=true`.
+
+With a prefix, whatever asks LDS whether it is up asks under the prefix: `/lds/ping` and `/lds/health/ready`
+answered `200`, and `/ping` and `/health/ready` `404`.
 
 With the example values of the five CORS keys above, a browser's question before a `PUT` from
 `https://app.example` is answered:
@@ -479,7 +508,7 @@ keeps the answer from the page. [The REST API](rest-api.md) has the rules of COR
 |---|---|---|---|
 | `graphql.schema` | `schemas/schema.graphql` | The file with the GraphQL schema that is the model. The path is relative to the working directory, or absolute. When the value is empty, the model is read from `specification.schema`. | `models/library.graphql` |
 | `specification.schema` | `schemas` | Read only when `graphql.schema` is empty. Files and folders, separated by commas. A file is the JSON Schema of one entity type, and the name of the file without `.json` is the name of the entity type. In a folder, every file whose name ends with `.json` is read. | `models/jsonschema` |
-| `namespace.default` | `ns` | The namespace of this LDS: the first part of the address of every document, and the namespace GraphQL reads from. An LDS answers for one namespace. An address with another first part is answered `400` with `Unsupported namespace: "data"`. | `data` |
+| `namespace.default` | `ns` | The namespace of this LDS: the first part of the address of every document, and the namespace GraphQL reads from. An LDS answers for one namespace. An address with another first part is answered `400` with `Unsupported namespace: "data"`. At most 64 bytes in UTF-8; LDS does not start with a longer one. | `data` |
 
 The default model is the example of the repository, with the entity types `Person` and `Company`.
 [The model](model.md) tells how to write one.
@@ -505,8 +534,9 @@ curl -s 'http://localhost:19306/ns?schema'
 With such a model LDS has no GraphQL API: a request to `/graphql` is answered `400` with
 `Unsupported namespace: "graphql"`.
 
-As it comes, the folder `schemas` has no `.json` file. So with `LDS_GRAPHQL_SCHEMA=` and nothing else, LDS
-starts with no entity type: the log says `No schemas configured!` and `/ns?schema` answers `[]`.
+As it comes, the folder `schemas` has no `.json` file. So with `LDS_GRAPHQL_SCHEMA=` and nothing else, the model
+has no entity type, and LDS does not start: `java.lang.IllegalStateException: The model schemas has no entity
+type`. A model needs at least one entity type.
 
 ### GraphQL
 
@@ -578,7 +608,7 @@ The warning, with `LDS_SAGA_THREADPOOL_QUEUE_CAPACITY=60`. It is one line of the
 | `sagalog.provider` | `no.cantara.sagalog.memory.MemorySagaLogInitializer` | Where the saga log is kept. The default keeps it in memory: a write that is cut off when LDS stops is lost. The other value keeps it in PostgreSQL. | `no.cantara.sagalog.postgres.PostgresSagaLogInitializer` |
 | `sagalog.provider.initialization.max-wait-seconds` | `30` | How long LDS keeps trying to start the saga log. | `60` |
 | `sagalog.provider.initialization.retry-interval-seconds` | `2` | The wait between two tries. | `5` |
-| `sagalog.config.cluster.owner` | `my.org` | In PostgreSQL: the name of the schema the saga log makes its tables in. Letters, digits, `_` and `-`. The default is refused there, so the key must be set. | `development` |
+| `sagalog.config.cluster.owner` | `lds` | In PostgreSQL: the name of the schema the saga log makes its tables in. Letters, digits, `_` and `-`. | `development` |
 | `sagalog.config.cluster.name` | `lds-test` | The name of the cluster. Every LDS with the same owner and name shares the saga log and completes the writes of the others that were cut off. In PostgreSQL: letters, digits and `-`. | `lds` |
 | `sagalog.config.cluster.instance-id` | `01` | The name of this LDS in the cluster. Each LDS of a cluster needs its own. In PostgreSQL: letters, digits and `-`. | `02` |
 | `sagalog.config.postgres.driver.host` | `localhost` | The saga log in PostgreSQL: the host. | `postgres` |
@@ -586,7 +616,7 @@ The warning, with `LDS_SAGA_THREADPOOL_QUEUE_CAPACITY=60`. It is one line of the
 | `sagalog.config.postgres.driver.user` | `lds` | The user. | `lds` |
 | `sagalog.config.postgres.driver.password` | empty | The password. It has no default and must be given. | `lds` |
 | `sagalog.config.postgres.driver.database` | `sagalog` | The database. It must be there. | `sagalog` |
-| `sagalog.config.connection-pool.max-size` | `50` | The most connections of the saga log to PostgreSQL. At least `saga.number-of-logs`. With the default, LDS had opened all 50 within 10 seconds of its start. | `50` |
+| `sagalog.config.connection-pool.max-size` | `50` | The connections of the saga log to PostgreSQL, all taken at start and kept. At least `saga.number-of-logs` and 11 more; LDS does not start with fewer, also with the saga log in memory, which has no pool. | `50` |
 
 ### The transaction log
 
@@ -621,9 +651,11 @@ starts and then answers every write `500`. That holds with `txlog.split.sources=
 
 | Key | Default | Meaning | Example |
 |---|---|---|---|
-| `graphql.search.enabled` | `false` | `true` turns search on: every write and every delete of a document also goes to the search index, and GraphQL gets the query `Search`. | `true` |
+| `graphql.search.enabled` | `false` | `true` turns search on: every write and every delete of a document is also sent to the search index, through the index queue, and GraphQL gets the query `Search`. | `true` |
 | `search.index.provider` | `solr` | The [search index provider](../glossary.md#search-index-provider). `solr` is the only one. Read only when search is on. | `solr` |
 | `search.index.url` | `http://localhost:8983/solr/lds-index` | The address of the Solr core, with the name of the core at its end. LDS does not check it at start. | `http://solr:8983/solr/lds-index` |
+| `search.index.commit-within` | `1000` | Within how many milliseconds Solr makes a version it is sent searchable. At least 1. | `500` |
+| `search.index.rebuild` | `false` | `true` rebuilds the search index from the stored documents at start. Meant for one start of one LDS; [Operations](operations.md#rebuild-the-search-index) tells what it does. | `true` |
 
 Not finished: search needs a model that is a GraphQL schema, because `Search` is a GraphQL query. With a model
 of JSON Schema files, search can be turned on and nothing can search.
@@ -668,13 +700,15 @@ not tried.
 - A user and a password for Solr.
 
 With everything in one PostgreSQL, one LDS opens 70 connections with the defaults: 10 for the documents, 50
-for the saga log and 10 for the transaction log.
+for the saga log and 10 for the transaction log. With search on, the index queue in the database of the
+transaction log has 4 more.
 
 ## When LDS does not start
 
 LDS has started when the log says `Server started`. When the start fails, the JVM prints the cause on standard error as
-`Exception in thread "main"` with a stack trace. It is not a line of the log. The process then ends with exit code 1,
-except in the cases of [A start that fails and a process that stays](#a-start-that-fails-and-a-process-that-stays).
+`Exception in thread "main"` with a stack trace. It is not a line of the log. When LDS had made part of itself before
+the fault, the log says `LDS could not be made; what was made is stopped` at the level `ERROR` first, and the
+connections it had opened are closed. The process then ends with exit code 1.
 
 ### A value that is wrong
 
@@ -686,15 +720,30 @@ except in the cases of [A start that fails and a process that stays](#a-start-th
 | Two keys that refer to each other | `io.descoped.config.ConfigurationException: Invalid configuration references: reference cycle a.b -> c.d -> a.b (...)` |
 | A properties file that is not UTF-8 | `io.descoped.config.ConfigurationException: Cannot read file .../conf/application.properties: not valid UTF-8` |
 | The file of `graphql.schema` is not there (`LDS_GRAPHQL_SCHEMA=models/missing.graphql`) | `java.lang.RuntimeException: java.nio.file.NoSuchFileException: models/missing.graphql` |
+| A variable `LDS_...` for a key that no file has (`LDS_NAMESPACE_DEFALT=x`) | `io.descoped.config.ConfigurationException: environment variable(s) LDS_NAMESPACE_DEFALT match no configuration key: a variable LDS_<KEY> overrides a key that a source defines, written as the key, with every non-alphanumeric character as _, or that in upper case (LDS_SERVER_PORT for server.port)` |
+| `persistence.provider` is empty (`LDS_PERSISTENCE_PROVIDER=`) | `java.lang.IllegalStateException: persistence.provider is not set: name the persistence provider, such as mem, postgres or neo4j` |
+| A `namespace.default` of more than 64 bytes | `java.lang.IllegalStateException: The namespace is at most 64 bytes in UTF-8: nnnn...` |
+| `saga.threadpool.core` larger than `saga.threadpool.max` | `java.lang.IllegalArgumentException: maximumPoolSize must be greater than or equal to corePoolSize` |
+| `saga.threadpool.queue.capacity=0` | `java.lang.IllegalArgumentException`, with no message |
+| `saga.recovery.interval.seconds.min` larger than `saga.recovery.interval.seconds.max` | `java.lang.IllegalArgumentException: illegal configuration: intervalMaxSec < intervalMinSec` |
+| One of these two above 86400 | `java.lang.IllegalArgumentException: illegal configuration: intervalMaxSec > 86400` |
+| `http.cors.allow.origin` is not a regular expression (`[`) | `java.util.regex.PatternSyntaxException: Unclosed character class near index 0` |
+| `sagalog.config.connection-pool.max-size` smaller than `saga.number-of-logs` and 11 more | `java.lang.IllegalStateException: The saga log has 30 connections in its pool (sagalog.config.connection-pool.max-size) for 30 saga logs (saga.number-of-logs): ... Give the pool at least 41 connections, or use fewer saga logs.` |
+| `search.index.commit-within` below 1, with search on | `java.lang.IllegalArgumentException: search.index.commit-within must be at least 1 ms: 0` |
 | A file of `specification.schema` is not there | `java.lang.IllegalArgumentException: Unable to find resource: models/jsonschema/Missing.json` |
+| The GraphQL schema has no type with `@domain` | `java.lang.IllegalStateException: The model models/library.graphql has no entity type: a GraphQL schema needs a type with @domain`, at once |
+| `specification.schema` names no `.json` file | `java.lang.IllegalStateException: The model schemas has no entity type`, at once |
+| Both `graphql.schema` and `specification.schema` are empty | `java.lang.IllegalStateException: No model is given: set graphql.schema or specification.schema`, at once |
 | An unknown `persistence.provider` (`nope`) | `java.lang.IllegalStateException: No persistence providers found for providerId: nope` |
 | An unknown `sagalog.provider` | `java.util.NoSuchElementException: No value present`. The message does not name the key. |
 | An unknown `txlog.rawdata.provider` (`nope`) | `io.descoped.service.provider.api.ProviderException: No provider named 'nope'; available: [discard, memory, postgres]`, after 30 seconds |
-| An unknown `search.index.provider` (`nope`), with search on | `java.lang.RuntimeException: No search index provider found for providerId: nope` |
+| An unknown `search.index.provider` (`nope`), with search on | `java.lang.IllegalStateException: No search index provider found for providerId: nope` |
 | The transaction log in PostgreSQL without a password | `java.lang.IllegalArgumentException: Missing configuration 'postgres.driver.password'`, after 30 seconds |
 | The saga log in PostgreSQL with a `sagalog.config.cluster.name` that has other characters (`my_cluster`) | `java.lang.IllegalArgumentException: namespace (cluster.name) must match [A-Za-z0-9-]+: 'my_cluster'`, after 30 seconds |
-| `http.host` is a name that is not known (`no.such.host.invalid`) | `java.lang.RuntimeException: java.net.UnknownHostException: no.such.host.invalid: ...` |
-| The port is taken by another program | `java.lang.RuntimeException: java.net.BindException: Address already in use` |
+| `http.host` is a name that is not known (`no.such.host.invalid`) | `java.lang.IllegalStateException: Linked Data Store could not start`, caused by `HTTP server could not start`, caused by `java.lang.RuntimeException: java.net.UnknownHostException: no.such.host.invalid: Name or service not known` |
+| The port is taken by another program | `java.lang.IllegalStateException: Linked Data Store could not start`, caused by `HTTP server could not start`, caused by `java.lang.RuntimeException: java.net.BindException: Address already in use` |
+
+Each of these ends LDS at once, except those marked "after 30 seconds".
 
 In such a message the value of a key that looks like a secret is written `'****'`: a key whose last part
 has `password`, `passwd`, `secret`, `token`, `credential`, `privatekey` or `apikey` in it.
@@ -736,24 +785,3 @@ ends with:
 - a wrong Neo4j password: `org.neo4j.driver.exceptions.AuthenticationException: The client is unauthorized due to
   authentication failure.`, and after several tries `org.neo4j.driver.exceptions.SecurityException: The client has
   provided incorrect authentication details too many times in a row.`
-
-### A start that fails and a process that stays
-
-Not finished: for some keys a wrong value stops the start but not the process. The cause is printed as above,
-LDS opens no port, and the process stays until it is ended from outside (`kill` ends it with exit code 143).
-The health check of the image asks `/ping`, so a container with such an LDS runs and does not become healthy.
-The keys are:
-
-- every key that starts with `saga.`: a value that is not a number or not a truth value,
-  `saga.threadpool.core` larger than `saga.threadpool.max`
-  (`java.lang.IllegalArgumentException: maximumPoolSize must be greater than or equal to corePoolSize`),
-  `saga.threadpool.queue.capacity=0` (`java.lang.IllegalArgumentException`, with no message),
-  `saga.recovery.interval.seconds.min` larger than `saga.recovery.interval.seconds.max`
-  (`java.lang.IllegalArgumentException: illegal configuration: intervalMaxSec < intervalMinSec`), and one of
-  these two below 1 or above 86400 (`illegal configuration: intervalMaxSec > 86400`);
-- `graphql.enabled` and `http.request.dump`: a value that is not a truth value;
-- `http.cors.allow.credentials` and `http.cors.allow.max-age`: a value of the wrong kind;
-- `http.cors.allow.origin`: a value that is not a regular expression, such as `[`
-  (`java.util.regex.PatternSyntaxException: Unclosed character class near index 0`).
-
-So after a change of one of these keys, look for `Server started` in the log, not only for a running process.

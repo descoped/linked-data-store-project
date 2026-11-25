@@ -4,7 +4,7 @@ Contents: [The file](#the-file) · [Names](#names) · [Fields](#fields) · [List
 [Embedded types](#embedded-types) · [Links](#links) · [Reverse links](#reverse-links) ·
 [Descriptions](#descriptions) · [Search](#search) · [A whole example](#a-whole-example)
 
-Every rule here was run against `descoped/lds:3.0.0`. The shapes that break are collected, with their messages, in
+Every rule here was run against `descoped/lds:3.0.1`. The shapes that break are collected, with their messages, in
 [checklist.md](checklist.md). Depth: [The model](https://lds.descoped.io/docs/user/model/#a-model-as-a-graphql-schema).
 
 ## The file
@@ -23,8 +23,9 @@ scalar DateTime
 
 - The two `directive` lines, as written. LDS does not add them, and an argument not declared is refused.
 - A type `Query`. LDS makes its own queries and does not use its fields; an empty `Query` is accepted.
-- A `scalar` line for each of `DateTime`, `Date` and `Time` the file uses. The other scalars LDS knows are
-  `String`, `Boolean`, `Int`, `Float` and `ID`, which are not declared. Any other scalar (`Long`, `JSON`) is refused.
+- A `scalar` line for each of `DateTime`, `Date`, `Time` and `Long` the file uses. The other scalars LDS knows are
+  `String`, `Boolean`, `Int`, `Float` and `ID`, which are not declared. Any other scalar (`JSON`, `BigDecimal`) is
+  refused.
 
 ## Names
 
@@ -32,7 +33,8 @@ scalar DateTime
   `type Member @domain` gives `/ns/Member/{id}`, `MemberById` and `Member`. Use one capitalised singular noun
   (`PurchaseOrder`, not `purchase_orders`).
 - Do not name a type `PageInfo`, `SearchResult` or `TypeFilters`, or anything ending in `Connection`, or an entity
-  type's name followed by `Edge`: LDS makes types of these names for GraphQL, and such a model hangs at start.
+  type's name followed by `Edge`: LDS makes types of these names for GraphQL. Such a model ends at start, or, with
+  `PageInfo`, starts and gives pages without `hasNextPage`.
 - Field names: letters, digits and `_`, not starting with a digit or `__`. No dots and no `[n]` at the end: such
   names do not come back from LDS as written. Do not start one with `_link_property_`, the name LDS uses for links.
 - Keep field names as the user's data has them (`favouriteGenres`, `postal_code`); a document must use exactly
@@ -44,27 +46,32 @@ scalar DateTime
 |---|---|---|---|
 | `String` | a text | yes | |
 | `Boolean` | `true` or `false` | yes | |
+| `Int` | a whole number from -2147483648 to 2147483647 | yes | `3000000000` is refused: `$.visits: must have a maximum value of 2147483647`; so is `1.5`. |
+| `Long` | a whole number of 64 bits, up to 9223372036854775807 | yes | Declare it: `scalar Long`. For a `BIGINT` and any count that can pass two billion. |
+| `Float` | a number | yes | A decimal with more digits than a 64-bit floating point number holds comes back changed. |
 | `DateTime` | `2026-11-20T10:00:00Z`, `2026-11-20T10:00:00+01:00` | yes | A time zone is required; `2026-11-20` and `2026-11-20T10:00:00` are refused. |
+| `Date` | `2026-11-20` | yes | A date-time is refused: `$.joined: does not match the date pattern must be a valid RFC 3339 full-date`. |
+| `Time` | `10:00:00Z`, `10:00:00+01:00` | yes | A time zone is required: `10:00:00` is refused. |
 | an enum: `status: MemberStatus` | one of its names, as a text: `"ACTIVE"` | yes | One field per enum in a type: see [Enums](#enums). |
-| `Int` | a whole number | no | GraphQL answers a value above 2147483647 with `null` and an error. Use `Float` for larger whole numbers. |
-| `Float` | a number | no | A decimal with more digits than a 64-bit floating point number holds comes back changed. |
 | `ID` | a text or a number | no | |
-| `Date` | `2026-11-20` | no | GraphQL answers any other form with `null` and an error. |
-| `Time` | `10:00:00Z`, `10:00:00+01:00` | no | A time zone is required: GraphQL answers `10:00:00` with `null` and an error. |
-| `[String]` | an array of texts | yes | One list type per type: see [Lists](#lists). |
-| `[Int]`, `[DateTime]`, other scalar lists | an array | the array only | Its items are not checked. |
+| `[String]`, `[Int]`, `[Date]`, other scalar lists | an array | yes, each item by its type | One list type per type: see [Lists](#lists). |
 | a list of an embedded type: `[Address]` | an array of objects | yes, each by its fields | |
 | a single embedded type: `address: Address` | an object | no | Not checked at all; see [Embedded types](#embedded-types). |
 | an entity type with `@link` | a link | yes | See [Links](#links). |
 
-Values that are not checked are stored as they come. A wrong one is found only when GraphQL reads it and answers it
-with `null` and an error such as `Can't serialize value (/b/born) : Invalid RFC3339 full date value : 'nope'`.
-Tell the user which of their fields are not checked, and that the program that writes must get them right; JSON
-Schema files check them ([json-schema.md](json-schema.md)).
+A value that does not fit is refused with `400 Schema validation error: [...]`, each fault as its place and what is
+wrong: `$.counts[1]: string found, integer expected`. What is not checked (an `ID`, a single embedded object, the
+fields listed in [checklist.md](checklist.md)) is stored as it comes, and a wrong value is found only when GraphQL
+reads it and answers it with `null` and an error. Tell the user which of their fields are not checked, and that the
+program that writes must get them right; JSON Schema files check them too ([json-schema.md](json-schema.md)).
 
 **Required.** `!` after the type (`name: String!`) means the field must be in every document. A field without
-`!` may be left out. In a checked field `null` is refused (`$.email: null found, string expected`): leave the
-field out of the document instead. A GraphQL schema cannot say that a checked field may be `null`.
+`!` may be left out.
+
+**`null`.** A field whose value is `null` is taken as a field that is not there, at any depth: `"email": null` is
+written as a document without `email`, and read back without it. So `null` in an optional field is accepted, and in
+a required one is refused as missing (`$: required property 'name' not found`). A `null` item of an array is kept,
+and refused where the items are checked (`$.counts[1]: null found, integer expected`).
 
 **Fields not in the model** are accepted, stored and given back by REST, but GraphQL cannot reach them, and they
 cannot be addressed as a part of the document. A GraphQL schema cannot refuse them.
@@ -91,8 +98,8 @@ type Book @domain {
 make the values an embedded type with one field. The same holds for any other list type used twice in one type
 (two `[Int]`).
 
-A list of lists, `[[String]]`, is read as `[String]`: an array of arrays is refused. Lists of links are not
-touched by this rule: a type can have any number of `[X] @link` fields.
+A list of lists, `[[String]]`, must be an array; its items are not checked. Lists of links are not touched by this
+rule: a type can have any number of `[X] @link` fields.
 
 ## Enums
 
@@ -108,8 +115,8 @@ enum MemberStatus {
 - One field per enum in a type. With `earlier: State` and `state: State`, only the first by name is checked and the
   other takes any value. For a second field, declare a second enum with the same names
   (`enum PreviousState { ... }`); both are then checked.
-- A list of an enum (`states: [State]`) does not work: an array is refused. Use `[String]` and put the allowed
-  names in the description; the items are then checked as texts only.
+- A list of an enum (`states: [State]`) must be an array, and its items are not checked: `["Z", 7]` is written,
+  and GraphQL answers such an item with `null` and an error. Tell the user.
 - The names are written in documents as they are in the enum, case and all (`"ACTIVE"`, or `"active"` when the
   enum says `active`).
 
@@ -161,7 +168,7 @@ union RightsHolder = Author | Publisher
 - A field may have any number of links to one entity type (`author` and `illustrator`, both `Person @link`).
 - Do not write `@link` on a field whose type is an embedded type: it then wants a text `/Cover/x` that points at
   nothing.
-- Do not link to an interface (`friends: [Named] @link`): LDS hangs at start. Link to a union of the entity types.
+- Do not link to an interface (`friends: [Named] @link`): LDS ends at start. Link to a union of the entity types.
 - A link inside an embedded type works forward in GraphQL. In a list of embedded objects it is not checked on write,
   and its reverse link was answered empty.
 - `pagination: false` makes a list of links a plain list in GraphQL, without pages (`lds:query`).
@@ -177,7 +184,7 @@ one, at the time of the query. It is not stored and not in REST.
 - Pick a name the target entity type does not have as a field. LDS does not check it: `reverseName: "name"` on a
   link to `Publisher` hides the publisher's own `name` in GraphQL.
 - Two links to different entity types may share a reverse name (`books` on `Author` and on `Publisher`).
-- Do not write `@reverseLink` in a model: LDS adds it, and a model that declares and uses it hangs at start.
+- Do not write `@reverseLink` in a model: LDS adds it, and a model that declares and uses it ends at start.
 
 ## Descriptions
 
@@ -187,13 +194,14 @@ right above a type or field is taken as its description too, so put file comment
 
 ## Search
 
-Search finds a document by the texts of its fields named `languageText`, anywhere in it, and by nothing else. It
-needs this GraphQL schema form, search turned on and Solr running (`lds:start`, `lds:query`). The form the example
-model of LDS uses:
+Search finds a document by every text in it, anywhere in it: texts, enum names, texts of embedded objects, and texts
+in fields the model does not have. Links, dates, times, numbers and `true`/`false` are not searched. It needs a
+GraphQL schema, search turned on and Solr running (`lds:start`, `lds:query`). A text is found word for word; a text
+in a language is found by the stem of its words when it is in this form, the one the example model of LDS uses:
 
 ```graphql
 """
-A text in one language. Search finds a document by the texts of its fields named languageText.
+A text in one language
 """
 type Text {
   languageCode: String
@@ -201,13 +209,19 @@ type Text {
 }
 ```
 
-with a field such as `summary: [Text]` on each entity type to be found by text. `@domain(searchable: false)` has no
-effect.
+with a field such as `summary: [Text]`. The `languageCode` names the language: `nb`, `nn` or `no` (Norwegian), `sv`,
+`en`, `de` or `fr`, in any case, also with a region (`nb-NO`); with another code, or none, the text is found word for
+word. In the example below `learning` and `wizards` find the book by its English summary (`A young wizard learns`),
+`New York` finds the publisher by its address, `GOOD` the copy by its condition; `183` (a number) and `1968` (a date)
+find nothing.
+
+`@domain(searchable: false)` keeps the documents of an entity type out of search. Such a type is not in the union of
+search results nor among its filters, so a search query cannot ask for it (`... on Loan` is an error).
 
 ## A whole example
 
-A lending library. LDS read it, and a document of each entity type was written and read back, and the reverse links
-answered.
+A lending library. LDS read it, a document of each entity type was written and read back, the reverse links
+answered, and search found the books, authors, publishers and copies by their texts and never a member or a loan.
 
 ```graphql
 directive @domain(searchable: Boolean) on OBJECT
@@ -219,7 +233,7 @@ A book: one title, of which the library may hold several copies
 type Book @domain {
   title: String!
   isbn: String
-  published: DateTime
+  published: Date
   pages: Int
   subjects: [String]
   summary: [Text]
@@ -249,7 +263,7 @@ An author
 """
 type Author @domain {
   name: String!
-  born: DateTime
+  born: Date
 }
 
 """
@@ -263,7 +277,7 @@ type Publisher @domain {
 """
 A member of the library
 """
-type Member @domain {
+type Member @domain(searchable: false) {
   name: String!
   email: String
   joined: DateTime!
@@ -279,7 +293,7 @@ enum MemberStatus {
 """
 A loan of one copy to one member
 """
-type Loan @domain {
+type Loan @domain(searchable: false) {
   copy: Copy! @link(reverseName: "loans")
   member: Member! @link(reverseName: "loans")
   lent: DateTime!
@@ -300,7 +314,7 @@ type Address {
 }
 
 """
-A text in one language. Search finds a document by the texts of its fields named languageText.
+A text in one language
 """
 type Text {
   languageCode: String
@@ -310,20 +324,22 @@ type Text {
 type Query {
 }
 
+scalar Date
 scalar DateTime
 ```
 
-`Publisher.address` is a single embedded object and is not checked; `Member.addresses` is a list and is. Documents
-that fit, written in this order (any order works, since links are not checked for existence):
+`Publisher.address` is a single embedded object and is not checked; `Member.addresses` is a list and is. Members and
+loans are kept out of search. Documents that fit, written in this order (any order works, since links are not
+checked for existence):
 
 ```sh
 curl -X PUT 'http://localhost:9090/ns/Author/le-guin?sync=true' -H 'Content-Type: application/json' \
-     -d '{"name": "Ursula K. Le Guin", "born": "1929-10-21T00:00:00Z"}'
+     -d '{"name": "Ursula K. Le Guin", "born": "1929-10-21"}'
 curl -X PUT 'http://localhost:9090/ns/Book/earthsea?sync=true' -H 'Content-Type: application/json' \
      -d '{
        "title": "A Wizard of Earthsea",
        "isbn": "978-0-553-26250-0",
-       "published": "1968-11-01T00:00:00Z",
+       "published": "1968-11-01",
        "pages": 183,
        "subjects": ["fantasy", "magic"],
        "summary": [
@@ -332,6 +348,8 @@ curl -X PUT 'http://localhost:9090/ns/Book/earthsea?sync=true' -H 'Content-Type:
        "authors": ["/Author/le-guin"],
        "publisher": "/Publisher/ace"
      }'
+curl -X PUT 'http://localhost:9090/ns/Publisher/ace?sync=true' -H 'Content-Type: application/json' \
+     -d '{"name": "Ace Books", "address": {"street": "Madison Avenue 200", "city": "New York"}}'
 curl -X PUT 'http://localhost:9090/ns/Copy/c-0001?sync=true' -H 'Content-Type: application/json' \
      -d '{
        "barcode": "0001",
@@ -370,4 +388,13 @@ HTTP/1.1 400 Bad Request
 Schema validation error: [$.addresses[0]: required property 'city' not found, $.joined: does not match the
 date-time pattern must be a valid RFC 3339 date-time, $.status: does not have a value in the enumeration
 ["ACTIVE", "SUSPENDED"]]
+```
+
+A book with `"pages": "many"` and `"published": "1968"` was answered:
+
+```
+HTTP/1.1 400 Bad Request
+
+Schema validation error: [$.pages: string found, integer expected, $.published: does not match the date pattern
+must be a valid RFC 3339 full-date]
 ```

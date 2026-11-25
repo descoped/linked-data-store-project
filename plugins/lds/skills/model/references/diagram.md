@@ -38,7 +38,7 @@ classDiagram
         <<entity>>
         title : String!
         isbn : String
-        published : DateTime
+        published : Date
         pages : Int
         subjects : [String]
     }
@@ -50,7 +50,7 @@ classDiagram
     class Author {
         <<entity>>
         name : String!
-        born : DateTime
+        born : Date
     }
     class Publisher {
         <<entity>>
@@ -116,5 +116,5 @@ classDiagram
 
 What to say with it: "A book is written by authors and published by a publisher; the library holds copies of it.
 A loan is one copy lent to one member, with its renewals as part of it. Addresses and summaries are parts of the
-record they are in. LDS will not check a publisher's single address or a book's page count; everything else marked
-here is checked when a record is written."
+record they are in. LDS will not check a publisher's single address; everything else marked here is checked when a
+record is written. Members and loans are not found by search."

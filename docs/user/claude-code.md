@@ -40,7 +40,7 @@ The plugin is five skills. Claude picks the one that fits what you ask; you can 
 | `lds:model` | make a model of your domain, from a description, sample JSON, a CSV file, an SQL schema or an OpenAPI description; check it; draw it; give it to LDS | "Model a library with books, authors and loans" |
 | `lds:data` | write, read and delete documents, versions at a time, links and parts of documents over REST; load existing data with its history; export | "Load these members from members.csv" |
 | `lds:query` | write GraphQL queries from your own model, follow links, read at an instant, search; show what changed between two dates | "Which books did Ada have on loan on 1 March?" |
-| `lds:operate` | check health, read logs, recover after a crash, back up, diagnose with the debug image, move to a newer image | "LDS answers 503, what is wrong?" |
+| `lds:operate` | check whether LDS can take writes, read logs, recover after a crash, back up, rebuild the search index, diagnose with the debug image, move to a newer image | "LDS answers 503, what is wrong?" |
 
 ## What it needs
 

@@ -50,7 +50,7 @@ checks that `persistenceProviderId()` returns the same value. Both are `neo4j` i
 
 | Part | Label or type | Properties | What it is |
 |---|---|---|---|
-| Document node | The name of the entity type, for example `Person` | `namespace`, `id` | One node for each document. `namespace` and `id` are unique together. The node is also made for a document that is only linked to, or only marked as deleted. |
+| Document node | The name of the entity type, for example `Person` | `namespace`, `id`, `idOrder` | One node for each document. `namespace` and `id` are unique together. `idOrder` is the id as a key in the order of code points (`IdOrder.key` of the API module), by which a list is ordered and bounded. The node is also made for a document that is only linked to, or only marked as deleted. |
 | `VERSION` relationship | From the document node to a root | `from`, `to` | One version of the document. It is valid from `from`, its [valid time](../glossary.md#valid-time), until `to`; `to` is not part of it. Both are date-times in the zone `Etc/UTC`. |
 | Root | `<entity>_E`, for example `Person_E` | `type: 'map'`, `path: '$'`, and `deleted: true` on a version that marks the document as deleted (a [tombstone](../glossary.md#tombstone)) | The object that the document of one version is. |
 | Node below the root | `<entity>_E` | `type`, `path`. A node that holds a value also has `value`, `hashOrValue` and `namespace`. | One node for every object, array, value and null of the document. |
@@ -90,10 +90,10 @@ an entity type the field may not link to, `/Entity/` without an id, `Entity/id` 
 null. A text `/Entity/id` in a field that the model does not call a link is a node of type `string`.
 
 A request to LDS does not bring such a value to the provider. Core validates a document before the write, and
-with the example model it answers 400 to each of these values in a link field (`Schema validation error: Not a
-valid link. ...`, `Illegal linked-domain: ...`, `... integer found, string expected`). This was run with the
-provider `mem`; the validation is in `ManagedResourceHandler` of core, before the saga, and does not ask the
-provider.
+with the example model it answers 400 to each of these values in a link field but null (`Schema validation error:
+Not a valid link. ...`, `Illegal linked-domain: ...`, `... integer found, string expected`). A field whose value
+is null is written as absent: the document is stored without the field. This was run with the provider `mem`;
+the validation is in `ManagedResourceHandler` of core, before the saga, and does not ask the provider.
 
 When a document is read, a `REF` gives the text `/` + the label of the target node + `/` + its `id`.
 
@@ -131,12 +131,15 @@ in the namespace `ns`, written with the version `2026-11-20T10:15:30+01:00[Europ
 }
 ```
 
-`Neo4jDocumentWriter.record` makes these parameters of it. `employer` and `friends` are link fields in the
-model; `shoe`, `vegetarian`, `nickname` and `motto` are not in the model. The line of `motto` is broken here.
+`Neo4jDocumentWriter.documentParameters` makes these parameters of it. `employer` and `friends` are link fields in
+the model; `shoe`, `vegetarian`, `nickname` and `motto` are not in the model. The line of `motto` is broken here.
+The document is given to the provider as it is written here; through LDS, core writes the null of `nickname` as
+absent before the provider sees it.
 
 ```
 namespace: ns
 id: ola
+idOrder: ola
 version: 2026-11-20T09:15:30Z[Etc/UTC]
 nodes:
   {parent=0, name=name, type=string, path=$.name, value=Ola}
@@ -152,8 +155,8 @@ nodes:
   {parent=0, name=motto, type=string, path=$.motto, value=A text of more than forty characters is looked up
    by its hash., hash=cdf914ba5c916046eb64e464f2f063c460d45864}
 links:
-  [{parent=0, name=employer, id=acme}]
-  [{parent=6, name=[], index=0, id=kari}]
+  [{parent=0, name=employer, id=acme, idOrder=acme}]
+  [{parent=6, name=[], index=0, id=kari, idOrder=kari}]
 ```
 
 `nodes` is in the order of the document, parents before their children. `parent` is the place of the parent in
@@ -162,7 +165,7 @@ document may link to, here `Company` and `Person`, in that order. The write stat
 parameters (the properties of most value nodes are left out here):
 
 ```
-(:Person {namespace: 'ns', id: 'ola'})
+(:Person {namespace: 'ns', id: 'ola', idOrder: 'ola'})
   -[:VERSION {from, to}]-> (:Person_E {type: 'map', path: '$'})
      -[:EMBED {path: 'name'}]-> (:Person_E {type: 'string', path: '$.name', value: 'Ola',
                                            hashOrValue: 'Ola', namespace: 'ns'})
@@ -171,34 +174,49 @@ parameters (the properties of most value nodes are left out here):
         -[:EMBED {path: 'street'}]-> (:Person_E {type: 'string', path: '$.address.street', ...})
         -[:EMBED {path: 'city'}]-> (:Person_E {type: 'string', path: '$.address.city', ...})
      -[:EMBED {path: 'friends'}]-> (:Person_E {type: 'array', path: '$.friends'})
-        -[:REF {path: '[]', index: 0}]-> (:Person {namespace: 'ns', id: 'kari'})
+        -[:REF {path: '[]', index: 0}]-> (:Person {namespace: 'ns', id: 'kari', idOrder: 'kari'})
         -[:EMBED {path: '[]', index: 1}]-> (:Person_E {type: 'string', path: '$.friends[]', ...})
      -[:EMBED {path: 'shoe'}]-> (:Person_E {type: 'number', path: '$.shoe', value: 43, ...})
      -[:EMBED {path: 'vegetarian'}]-> (:Person_E {type: 'boolean', path: '$.vegetarian', value: false, ...})
      -[:EMBED {path: 'nickname'}]-> (:Person_E {type: 'null', path: '$.nickname'})
      -[:EMBED {path: 'motto'}]-> (:Person_E {type: 'string', path: '$.motto', value: 'A text of ...',
                                             hashOrValue: 'cdf914ba...', namespace: 'ns'})
-     -[:REF {path: 'employer'}]-> (:Company {namespace: 'ns', id: 'acme'})
+     -[:REF {path: 'employer'}]-> (:Company {namespace: 'ns', id: 'acme', idOrder: 'acme'})
 ```
+
+`idOrder` is the id itself for an id of characters below U+D800, as here. A character from U+E000 is written as
+two characters of U+E000 to U+EFFF, so that Neo4j, which compares texts by UTF-16, orders the ids by their code
+points, as every provider does (see
+[the persistence interface](persistence-api.md#the-order-of-ids)).
 
 ## Constraints and indexes
 
-`Neo4jIndexManagement` wants two things for each entity type of the model (`Specification.getManagedDomains`):
+`Neo4jIndexManagement` wants three things for each entity type of the model (`Specification.getManagedDomains`):
 
 - a constraint that makes `namespace` and `id` unique together on the label of the entity type. A document node is
-  matched by these two properties, and a list of documents is ordered by `id`.
+  matched by these two properties.
+- an index on `namespace` and `idOrder` of the label of the entity type. A list of documents is ordered and
+  bounded by `idOrder`, in a namespace.
 - an index on `namespace`, `path` and `hashOrValue` of the label `<entity>_E`. `findDocument` looks a value up
   in it.
 
-For the example model these are the statements of the first start. The constraint of an entity type comes before its
-index. The order of the entity types is not fixed: they come as a set.
+For the example model these are the statements of the first start, from the log of LDS 3.0.1. The constraint of
+an entity type comes before its indexes. The order of the entity types is not fixed: they come as a set.
 
 ```cypher
 CREATE CONSTRAINT IF NOT EXISTS FOR (n:`Company`) REQUIRE (n.`namespace`, n.`id`) IS UNIQUE
+CREATE INDEX IF NOT EXISTS FOR (n:`Company`) ON (n.`namespace`, n.`idOrder`)
 CREATE INDEX IF NOT EXISTS FOR (n:`Company_E`) ON (n.`namespace`, n.`path`, n.`hashOrValue`)
 CREATE CONSTRAINT IF NOT EXISTS FOR (n:`Person`) REQUIRE (n.`namespace`, n.`id`) IS UNIQUE
+CREATE INDEX IF NOT EXISTS FOR (n:`Person`) ON (n.`namespace`, n.`idOrder`)
 CREATE INDEX IF NOT EXISTS FOR (n:`Person_E`) ON (n.`namespace`, n.`path`, n.`hashOrValue`)
 ```
+
+A key of each of these holds about 8,150 bytes in Neo4j 2026: the namespace and the id, the namespace and
+`idOrder` (at most twice the bytes of the id), the namespace, the path and the value. That is more than the
+limits of every provider take (`Limits` of the API module, see
+[the persistence interface](persistence-api.md#limits)), which PostgreSQL sets. The provider does not check them;
+core does, before a write.
 
 The constructor reads what the database has (`SHOW INDEXES YIELD name, labelsOrTypes, properties,
 owningConstraint WHERE labelsOrTypes IS NOT NULL`). An index that a constraint owns counts as that constraint; the
@@ -234,7 +252,8 @@ entity types of the model. It does this, in order:
 4. When that fails, it closes the driver and the error goes to the caller. Otherwise it returns a
    `Neo4jPersistence` with a `Neo4jTransactionFactory` that holds the driver.
 
-`Neo4jPersistence.close` closes the driver. Core calls it when LDS stops (`UndertowApplication.stop`).
+`Neo4jPersistence.close` closes the driver. Core calls it when LDS stops, as the last of its subsystems (the
+lifecycle `Store` of `UndertowApplication`).
 
 ## A write
 
@@ -273,6 +292,7 @@ This is the statement of `Person` of the example model. The two long lines are b
 UNWIND $batch AS record
 CALL (record) {
   MERGE (r:`Person` {namespace: record.namespace, id: record.id})
+  SET r.idOrder = record.idOrder
   WITH r, record
   CALL (r, record) {
     OPTIONAL MATCH (r)-[:VERSION {from: record.version}]->(old)
@@ -306,12 +326,14 @@ CALL (record) {
   CALL (nodes, record) {
     UNWIND record.links[0] AS link
     MERGE (target:`Company` {namespace: record.namespace, id: link.id})
+    SET target.idOrder = link.idOrder
     WITH nodes[link.parent] AS parent, link, target
     CREATE (parent)-[:REF {path: link.name, index: link.index}]->(target)
   }
   CALL (nodes, record) {
     UNWIND record.links[1] AS link
     MERGE (target:`Person` {namespace: record.namespace, id: link.id})
+    SET target.idOrder = link.idOrder
     WITH nodes[link.parent] AS parent, link, target
     CREATE (parent)-[:REF {path: link.name, index: link.index}]->(target)
   }
@@ -320,7 +342,7 @@ CALL (record) {
 
 What it does for each document of the batch, in order:
 
-1. It finds or creates the document node.
+1. It finds or creates the document node, and sets its `idOrder`.
 2. It deletes the version with the same `from`, with everything below its root. The root is matched on its own,
    because a version that holds nothing, or links only, has no node below the root.
 3. It finds the version that the new one falls into (`before`) and the first version after it (`next`), creates
@@ -329,7 +351,8 @@ What it does for each document of the batch, in order:
    `CREATE`, because the places of the list are what joins a node to its parent. A property that is null is not
    written.
 5. It joins each node to its parent with `EMBED`. Place 0 is the root.
-6. For each entity type that may be linked to, it finds or creates the target document node and creates the `REF`.
+6. For each entity type that may be linked to, it finds or creates the target document node, sets its `idOrder`,
+   and creates the `REF`.
    `record.links[n]` holds the links to `linkTargets.get(n)`.
 
 Each document is written by itself (`CALL (record) { ... }`), one after the other, so that several versions of
@@ -375,42 +398,48 @@ orders them, capital letters before small ones. The items of an array keep their
 | Method | The statement |
 |---|---|
 | `readDocument` | Matches the document node by label, `namespace` and `id`, and the version that is valid at the time and is not a tombstone. The first record is the answer. |
-| `readDocuments` | Matches the document nodes of the label in the namespace, with the version that is valid at the time and is not a tombstone. The range is on `r.id`. |
+| `readDocuments` | Matches the document nodes of the label in the namespace, with the version that is valid at the time and is not a tombstone. The range is on `r.idOrder`. |
 | `readDocumentVersions` | Matches every version of one document, also a tombstone. The bounds of the range are on `v.from`, and the order is `v.from`. |
-| `readTargetDocuments` | Goes from the source document and its version at the time, down `EMBED` to the node whose `path` is the path of the link without its last part, along the `REF` whose `path` is the last part, to the target document node. The bounds of the range are on the id of the target. Each target is taken once. Then it matches the version of the target that is valid at the time and is not a tombstone. The order and the limit come after that, so a limit counts the targets that are written. |
-| `readSourceDocuments` | The same path from the other end: from the target document node, back along `REF` and `EMBED` to the root and the document node of the source, with the version of the source that is valid at the time. Each source is taken once. The range is on the id of the source. The versions of the target are not looked at: a document is a source also when the target is not written, or is marked as deleted at the time. |
-| `findDocument` | Matches a value node of `<entity>_E` by `namespace`, `path` and `hashOrValue` (the index), goes up `EMBED` to the root and the document node, and takes the version that is valid at the time. A value of more than 40 characters is looked up by its hash. A document is taken once, also when an array holds the value twice. The range is on `r.id`. |
+| `readAllDocumentVersions` | Matches every version of every document node of the label in the namespace, ordered by `r.idOrder` and then `v.from`. A tombstone is given as a document whose tree is null (`deleted()` is true). One statement; a record is taken from the driver when a document is asked for. |
+| `readTargetDocuments` | Goes from the source document and its version at the time, down `EMBED` to the node whose `path` is the path of the link without its last part, along the `REF` whose `path` is the last part, to the target document node. The bounds of the range are on the `idOrder` of the target. Each target is taken once. Then it matches the version of the target that is valid at the time and is not a tombstone. The order and the limit come after that, so a limit counts the targets that are written. |
+| `readSourceDocuments` | The same path from the other end: from the target document node, back along `REF` and `EMBED` to the root and the document node of the source, with the version of the source that is valid at the time. Each source is taken once. The range is on the `idOrder` of the source. The versions of the target are not looked at: a document is a source also when the target is not written, or is marked as deleted at the time. |
+| `findDocument` | Matches a value node of `<entity>_E` by `namespace`, `path` and `hashOrValue` (the index), goes up `EMBED` to the root and the document node, and takes the version that is valid at the time. A value of more than 40 characters is looked up by its hash. A document is taken once, also when an array holds the value twice. The range is on `r.idOrder`. |
 | `hasPrevious`, `hasNext` | `readDocuments` with `Range.lastBefore(1, id)` or `Range.firstAfter(1, id)`: true when a document comes back. |
 
 "Valid at the time" is `v.from <= $snapshot AND $snapshot < v.to`. "Not a tombstone" is
 `m.deleted IS NULL`.
 
 A range becomes conditions and an order (`idConditions`, `orderAndLimit`). `after` and `before` are both
-exclusive. The order is ascending, or descending when the range is backward (`Range.isBackward`: it has `last`,
-or it has `before` and no `after`). The documents of a backward range come in descending order; the provider
-does not turn them around. A range with `first` or `last` adds `LIMIT`. The bounds and the limit are parameters.
+exclusive, and are given as their keys (`IdOrder.key`) and compared with `idOrder`. The order is ascending by
+`idOrder`, which is the order of code points of the ids, or descending when the range is backward
+(`Range.isBackward`: it has `last`, or it has `before` and no `after`). The documents of a backward range come in
+descending order; the provider does not turn them around. A range with `first` or `last` adds `LIMIT`. The bounds
+and the limit are parameters.
 
 This is `readDocuments` for `Person` with `Range.firstAfter(3, "kari")`, with the parameters written into it as
-`Neo4jTransaction.interactive` writes them. Long lines are broken here, also in the next statement.
+`Neo4jTransaction.interactive` writes them: the statement that LDS 3.0.1 logged, with `neo4j.cypher.show` set to
+`true`, for the GraphQL query `{ Person(first: 3, after: "kari") { edges { node { name } } } }` with
+`snapshot=2026-11-20T12:00:00Z`. Long lines are broken here, also in the next statement.
 
 ```cypher
 MATCH (r:`Person` {namespace: 'ns'})-[v:VERSION]->(m)
 WHERE v.from <= datetime('2026-11-20T12:00Z[Etc/UTC]') AND datetime('2026-11-20T12:00Z[Etc/UTC]') < v.to
-  AND m.deleted IS NULL AND 'kari' < r.id
-WITH r, v, m ORDER BY r.id LIMIT 3
+  AND m.deleted IS NULL AND 'kari' < r.idOrder
+WITH r, v, m ORDER BY r.idOrder LIMIT 3
 RETURN r, v, m, [p = (m)-[:EMBED|REF*]->(e) | [relationships(p), e]] AS leaves
 ```
 
-And `readTargetDocuments` from the person `ola` along `$.friends[]` with `Range.first(10)`:
+And `readTargetDocuments` from the person `ola2` along `$.friends[]` with `Range.first(10)`, for the query
+`{ PersonById(id: "ola2") { friends(first: 10) { edges { node { name } } } } }`:
 
 ```cypher
-MATCH (elem:`Person` {namespace: 'ns', id: 'ola'})-[version:VERSION]->(root:`Person_E`)-[:EMBED*0..]->
+MATCH (elem:`Person` {namespace: 'ns', id: 'ola2'})-[version:VERSION]->(root:`Person_E`)-[:EMBED*0..]->
       (edge:`Person_E` {path: '$.friends'})-[:REF {path: '[]'}]->(r:`Person`)
 WHERE version.from <= datetime('2026-11-20T12:00Z[Etc/UTC]') AND datetime('2026-11-20T12:00Z[Etc/UTC]') < version.to
 WITH DISTINCT r
 MATCH (r)-[v:VERSION]->(m) WHERE v.from <= datetime('2026-11-20T12:00Z[Etc/UTC]')
   AND datetime('2026-11-20T12:00Z[Etc/UTC]') < v.to AND m.deleted IS NULL
-WITH r, v, m ORDER BY r.id LIMIT 10
+WITH r, v, m ORDER BY r.idOrder LIMIT 10
 RETURN r, v, m, [p = (m)-[:EMBED|REF*]->(e) | [relationships(p), e]] AS leaves
 ```
 
@@ -440,7 +469,7 @@ that asks for a record waits for it.
 
 | Method | What it does |
 |---|---|
-| `markDocumentDeleted` | Writes a tombstone: a version whose root has `deleted: true`. It finds or creates the document node, replaces a version of the same time, and keeps the versions without a gap as a write does. Core calls it for a delete (`PersistenceDeleteSagaAdapter`). |
+| `markDocumentDeleted` | Writes a tombstone: a version whose root has `deleted: true`. It finds or creates the document node, sets its `idOrder`, replaces a version of the same time, and keeps the versions without a gap as a write does. Core calls it for a delete (`PersistenceDeleteSagaAdapter`). |
 | `deleteDocument` | Removes one version, with everything below its root. The version before it becomes valid until the end of the removed one, as if the removed version was never written. The document node is removed when no relationship is left on it. |
 | `deleteAllDocumentVersions` | Removes every version of one document. The document node is removed unless a relationship points at it (a link from another document). |
 | `deleteAllEntities` | The same for every document of an entity type in one namespace. |
@@ -466,16 +495,17 @@ fails, and so does `close` (`Neo4jTransactionTest.aCommitThatFailsFailsItsFuture
 
 `Neo4jTransaction` has no lock. `Neo4jPersistence` casts the `Transaction` it is given to `Neo4jTransaction`.
 
-The health check of core (`HealthCheckHandler`, `/health/alive`) opens a read-only transaction and cancels it.
-With this provider that is a session of the driver and a transaction in it for every check.
+The readiness check of core (`/health/ready`) reads one document of an entity type in a read-only transaction
+and closes it, within 2 seconds. With this provider that is a session of the driver and a transaction in it for
+every check. `/health/alive` does not touch the store.
 
 With `neo4j.cypher.show` set to `true`, `Neo4jTransaction` logs every statement before it runs it, at `INFO`,
 with the parameters written into the statement (`interactive`). The statements of the start
 (`Neo4jIndexManagement`) do not go through `Neo4jTransaction` and are not logged in this way.
 
 ```
-... [main] INFO  i.d.lds.core.persistence.neo4j.Neo4jTransaction - :: CYPHER ::
-MATCH (r:`Person` {namespace: 'ns', id: 'ola'})-[v:VERSION]->(m) WHERE v.from <= ... AND m.deleted IS NULL
+... [XNIO-1 task-2] INFO  i.d.lds.core.persistence.neo4j.Neo4jTransaction - :: CYPHER ::
+MATCH (r:`Person` {namespace: 'ns', id: 'ola2'})-[v:VERSION]->(m) WHERE v.from <= ... AND m.deleted IS NULL
 RETURN r, v, m, [p = (m)-[:EMBED|REF*]->(e) | [relationships(p), e]] AS leaves
 ```
 
@@ -523,8 +553,8 @@ each key.
 A new key is added to `configurationKeys` and to `application-server-defaults.properties`.
 
 Two keys of core decide about the provider: `persistence.provider` (`neo4j`) and
-`persistence.initialization.max-wait-seconds`. Core calls `initialize` again, one second after a failure, until
-that many seconds have passed since the first call.
+`persistence.initialization.max-wait-seconds`. Core calls `initialize` again, after a random wait of about a
+second (half a second to a second and a half), until that many seconds have passed since the first call.
 
 When Neo4j cannot be reached, one call of `initialize` takes from about half a minute to about a minute, because
 the driver tries its transaction again by itself. It waits about 1, 2, 4, 8 and 16 seconds between its tries,
@@ -533,35 +563,36 @@ each a little more or less. It gives up when 30 seconds have passed, which is th
 seconds more and tries one last time. Each failed try is in the log at `WARN` with its stack trace, about 100
 lines.
 
-This was run in a folder with every jar of LDS in `lib`, with nothing listening on port 19205:
+This was run with the image of LDS 3.0.1, with nothing listening at the address it was given (port 7687 inside
+the container of LDS):
 
 ```sh
-LDS_HTTP_PORT=19205 LDS_PERSISTENCE_PROVIDER=neo4j LDS_NEO4J_DRIVER_URL=bolt://127.0.0.1:19205 \
-  LDS_NEO4J_DRIVER_PASSWORD=lds-development LDS_PERSISTENCE_INITIALIZATION_MAX_WAIT_SECONDS=0 \
-  java -cp "lib/*" io.descoped.lds.server.Server
+docker run --name lds -e LDS_PERSISTENCE_PROVIDER=neo4j -e LDS_NEO4J_DRIVER_URL=bolt://127.0.0.1:7687 \
+  -e LDS_NEO4J_DRIVER_PASSWORD=lds-development -e LDS_PERSISTENCE_INITIALIZATION_MAX_WAIT_SECONDS=0 \
+  descoped/lds:3.0.1
 ```
 
 The lines of the log are shortened, and the last one is broken:
 
 ```
-...T16:49:01.182+01:00 ... PersistenceConfigurator - Persistence provider initialization attempt # 1
-...T16:49:01.255+01:00 ... DriverFactory - Driver instance 1747702724 created for server uri 'bolt://127.0.0.1:19205'
-...T16:49:01.323+01:00 ... ExponentialBackoffRetryLogic - Transaction failed and will be retried in 1062ms
+...T23:39:43.821Z ... PersistenceConfigurator - Persistence provider initialization attempt # 1
+...T23:39:43.906Z ... DriverFactory - Driver instance 1095849663 created for server uri 'bolt://127.0.0.1:7687'
+...T23:39:43.964Z ... ExponentialBackoffRetryLogic - Transaction failed and will be retried in 1114ms
 ...
-...T16:49:31.149+01:00 ... ExponentialBackoffRetryLogic - Transaction failed and will be retried in 29724ms
-...T16:50:00.881+01:00 ... InternalDriver - Closing driver instance 1747702724
+...T23:40:12.768Z ... ExponentialBackoffRetryLogic - Transaction failed and will be retried in 33985ms
+...T23:40:46.756Z ... InternalDriver - Closing driver instance 1095849663
+...T23:40:46.964Z ... UndertowApplication - LDS could not be made; what was made is stopped
 Exception in thread "main" org.neo4j.driver.exceptions.ServiceUnavailableException: Unable to connect to
-  127.0.0.1:19205, ensure the database is running and that there is a working network connection to it.
+  127.0.0.1:7687, ensure the database is running and that there is a working network connection to it.
 ```
 
-LDS then ends with exit code 1, 60 seconds after the attempt began. Nothing listens on the HTTP port of LDS in
+LDS then ends with exit code 1, 63 seconds after the attempt began. Nothing listens on the HTTP port of LDS in
 that time: the port is opened after the provider has started.
 
-With the default of the server, 60 seconds, LDS ends after one call or after two. The command was run again
-without `LDS_PERSISTENCE_INITIALIZATION_MAX_WAIT_SECONDS` and without the password. The first call took 32
-seconds. Fewer than 60 seconds had passed, so core called `initialize` again one second later. The second call
-took 66 seconds, and LDS ended with exit code 1, 101 seconds after it was started. When the first call takes 60
-seconds or more, there is no second.
+With the default of the server, 60 seconds, LDS ends after one call or after two: when the first call takes
+fewer than 60 seconds, core calls `initialize` again. The command was run again without
+`LDS_PERSISTENCE_INITIALIZATION_MAX_WAIT_SECONDS` and without the password. The first call took 65 seconds, so
+there was no second, and LDS ended with exit code 1.
 
 ## Rules to keep
 
@@ -576,6 +607,10 @@ comments of the code.
   [schema validation](../glossary.md#schema-validation) before a write to say. The model tells the provider one thing:
   which fields are links. The [shared suite](../glossary.md#shared-suite) holds every provider to this
   ([the shared suite](persistence-tck.md)).
+- **Ids are ordered and bounded by `idOrder`, never by `id`.** Neo4j compares texts by UTF-16, and the order of
+  ids is the order of code points in every provider. Every statement that makes or finds a document node by
+  `MERGE` (a write, a link, a tombstone) sets `idOrder`, and the index on `namespace` and `idOrder` is created at
+  start with the others.
 - **A link is the text `/Entity/id`**, as it is for the providers that keep it as text, so that every provider
   follows the same texts and reads back the text that was written.
 - **Only labels are written into Cypher**, and only through `Cypher.label`. Namespaces, ids, values, paths and

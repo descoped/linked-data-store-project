@@ -15,7 +15,7 @@ Linked Data Store (LDS) is a server that gives REST and GraphQL access to versio
 instant asked for.
 
 This documentation is in two parts, for two kinds of reader, and a [glossary](glossary.md) of the terms both use.
-Every document is written from the code as it is, and every request shown in it was run. LDS 3.0.0 is released as
+Every document is written from the code as it is, and every request shown in it was run. LDS 3.0.1 is released as
 images on Docker Hub (`descoped/lds`) and is built from the repository, where its releases are tagged. What is
 unfinished is said where a reader meets it, in a paragraph that starts with "Not finished:".
 
@@ -54,7 +54,8 @@ the ideas that hold the code together and the rules a change must keep. Then one
 | [Core: the application](developer/core-application.md) | How LDS is put together, started and stopped. |
 | [Core: the model](developer/core-model.md) | How a model is read and how a document is checked against it. |
 | [Core: the REST API](developer/core-rest.md) | How a request becomes a read or a write of a document, a part of it, or a link. |
-| [Core: the write path](developer/core-write-path.md) | Sagas, the saga log, the transaction log, recovery. |
+| [Core: the write path](developer/core-write-path.md) | The lock of a document, the sagas and their steps, the answer, recovery, the transaction log. |
+| [The saga engine](developer/saga.md) | Cantara distributed saga as LDS uses it: the saga log, recovery, the cluster, the threads, the stop. |
 | [Core: GraphQL](developer/core-graphql.md) | How the GraphQL schema is built and how a query is answered. |
 | [The server](developer/server.md) | The main class, the defaults of the configuration, the image, the compose file. |
 | [The load test](developer/loadtest.md) | What a run of the load test does and what it is made of. |

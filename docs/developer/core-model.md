@@ -81,10 +81,21 @@ specification.schema -> files, one for each entity ----------------------+      
    in any case of the letters; folders inside it are not read. Any other part is one file, read from the file
    system when it exists and else from the class path (`FileAndClasspathReaderUtils.readFileOrClasspathResource`).
    The name of the entity type is the name of the file without its last five characters.
-3. When both keys are empty, LDS starts with no entity type and logs `No schemas configured!`. The same happens when
-   `specification.schema` names only folders without a `.json` file. With the defaults of the server that is the
-   case as soon as `graphql.schema` alone is set to empty: `specification.schema` is `schemas` there, and that
-   folder holds only `schema.graphql`.
+3. A model with no entity type stops the start at once, before the persistence provider is started and given
+   time to come up (`UndertowApplication.initializeUndertowApplication`), with an `IllegalStateException` that
+   names the model: when both keys are empty (`No model is given: ...`), when `specification.schema` names only
+   folders without a `.json` file, and when a GraphQL schema has no type with `@domain`. With the defaults of the
+   server the second is the case as soon as `graphql.schema` alone is set to empty: `specification.schema` is
+   `schemas` there, and that folder holds only `schema.graphql`. `ModelAtStartTest` holds this. The start is not
+   tried again, and the process ends with exit code 1. The three texts, seen with the image of the server:
+
+   | The model | The message of the `IllegalStateException` |
+   |---|---|
+   | a GraphQL file without `@domain` | `The model /lds/b/noentity.graphql has no entity type: a GraphQL schema needs a type with @domain` |
+   | both keys empty | `No model is given: set graphql.schema or specification.schema` |
+   | `graphql.schema` empty, `specification.schema` the folder `schemas` of the server | `The model schemas has no entity type` |
+
+4. The names are checked (`UndertowApplication.checkNames`); see [The limits of names](#the-limits-of-names).
 
 The log says which was used. With a GraphQL file the converter has done its work before the line of
 `UndertowApplication` is written, so the entity types come first:
@@ -99,9 +110,12 @@ The GraphQL file is parsed a second time in the constructor of `UndertowApplicat
 
 ### From a GraphQL schema to JSON Schema
 
-`GraphQLSchemaBuilder.parseSchema` builds the schema with graphql-java. It knows three scalars beside those of
-GraphQL itself: `DateTime`, `Date` and `Time`. A file that declares another scalar is refused
-(`There is no scalar implementation for the named  'Long' scalar type`). The file must declare the directives it
+`GraphQLSchemaBuilder.parseSchema` builds the schema with graphql-java. It knows four scalars beside those of
+GraphQL itself: `DateTime` (`DateTimeScalar` of LDS), and `Date`, `Time` and `Long` of
+graphql-java-extended-scalars. A file declares those it uses (`scalar Long`). A file that declares another scalar is
+refused, and LDS does not start
+(`SchemaProblem{errors=[There is no scalar implementation for the named  'Money' scalar type]}`). The file must
+declare the directives it
 uses, with the arguments it uses; graphql-java refuses the file otherwise. The parts of a type are put in the
 order of their names (`SchemaElements.ORDER`), so the converter meets fields, enum values and the members of a
 union in that order.
@@ -142,17 +156,53 @@ in the next section. What comes out:
 |---|---|
 | `String` | `{"type": "string"}` |
 | `Boolean` | `{"type": "boolean"}` |
+| `Int` | `{"type": "integer", "minimum": -2147483648, "maximum": 2147483647}`: an integer of 32 bits |
+| `Long` | `{"type": "integer", "minimum": -9223372036854775808, "maximum": 9223372036854775807}`: an integer of 64 bits |
+| `Float` | `{"type": "number"}` |
 | `DateTime` | `{"type": "string", "format": "date-time"}` |
-| `Int`, `Float`, `ID`, `Date`, `Time` | no `type`: any value is valid |
+| `Date` | `{"type": "string", "format": "date"}` |
+| `Time` | `{"type": "string", "format": "time"}`: a time of RFC 3339, with an offset |
+| `ID` | no `type`: any value is valid |
 | an enum | `{"type": "string", "enum": [...]}`, the values in the order of their names |
 | `[String]` | `{"type": "array", "items": {"type": "string"}}` |
-| a list of another scalar | `{"type": "array", "items": {}}`. `[DateTime]` also keeps `"format": "date-time"` beside `"type": "array"`; the items are not checked. |
+| a list of another scalar | `{"type": "array", "items": ...}` with the items of the type of the scalar. The keywords of the scalar but `type` are written on the field as well (`"format": "date"` on `[Date]`, `minimum` and `maximum` on `[Int]`), where the validator applies them to no array. |
 | a list of an enum | `{"type": "array"}` |
 | an embedded type (a type without `@domain`) | no `type` and no `$ref`: any value is valid. The type is still written as a definition in `$defs`. |
 | a list of an embedded type | `{"type": "array", "items": {"$ref": "#/$defs/Address"}}`, and the type as a definition in `$defs` |
 | an entity type with `@link` | `{"type": "string"}` and beside it `_link_property_<field>` with the entity type as its one property |
 | a list of an entity type with `@link` | `{"type": "array", "items": {"type": "string"}}` and beside it `_link_property_<field>` |
 | a union with `@link`, or a list of one | as a link to an entity type, with one property in `_link_property_<field>` for each member of the union |
+
+So a value GraphQL cannot give back is refused when it is written: an `Int` out of the range of 32 bits, a `Date`
+that is no date. With a model of one entity type `Measure` that has a field of each scalar (`count: Int`,
+`total: Long`, `day: Date`, `at: Time`, `when: DateTime`, `counts: [Int]`, ...), run with the image of the server on
+port 19106:
+
+```sh
+curl -s -X PUT 'http://localhost:19106/ns/Measure/m1' -H 'Content-Type: application/json' \
+     -d '{
+       "name": "a",
+       "count": 2147483648,
+       "total": 9007199254740993,
+       "ratio": 0.5,
+       "day": "2026-02-30",
+       "at": "12:00:00",
+       "counts": [1, "two"],
+       "days": ["2026-01-01"],
+       "key": 7,
+       "when": "2026-01-01T00:00:00"
+     }'
+```
+
+```
+Schema validation error: [$.at: does not match the time pattern must be a valid RFC 3339 time, $.count: must have a
+maximum value of 2147483647, $.counts[1]: string found, integer expected, $.day: does not match the date pattern
+must be a valid RFC 3339 full-date, $.when: does not match the date-time pattern must be a valid RFC 3339 date-time]
+```
+
+The answer is one line. `total`, `ratio` and `days` are valid, and `key` is an `ID`, which takes any value. A
+document with `"total": 9007199254740993` (a `Long` above the integers a double holds exactly) was written, and
+GraphQL gave it back as it was.
 
 The arguments of `@domain` (`searchable`) and of `@link` (`pagination`, `reverseName`) change nothing in the JSON
 Schema. They are read when the GraphQL schema is built.
@@ -161,7 +211,7 @@ This is the schema of `Person` of the example model (`linked-data-store-server/s
 from a running LDS. The answer is one line; it is shown here on several.
 
 ```sh
-curl -s 'http://localhost:19110/ns/Person?schema'
+curl -s 'http://localhost:19106/ns/Person?schema'
 ```
 
 ```json
@@ -271,12 +321,12 @@ it, or is in the golden files:
 - **The arguments of the declaration of another directive on a field** are walked in the same way. With
   `directive @mark(level: Int!) on FIELD_DEFINITION`, a field `e: String @mark(level: 2)` is in `required`. With
   `directive @tagged(tags: [Int]) on FIELD_DEFINITION`, a field `g: String @tagged(tags: [1])` is
-  `{"type": "array", "items": {}}`. The arguments of `@link` as the example model declares them are scalars
-  without `!` and change nothing. A directive on a type is not walked.
+  `{"type": "array", "items": {"type": "integer", ...}}`. The arguments of `@link` as the example model declares
+  them are scalars without `!` and change nothing. A directive on a type is not walked.
 - **`@link` on a field whose type is an embedded type** is written as a link to the name of that type, and the type
   gets no definition from that field.
 
-`GraphQLSchemaGoldenTest` holds what the converter writes for twelve schema files, among them several of these
+`GraphQLSchemaGoldenTest` holds what the converter writes for ten schema files, among them several of these
 shapes (`syn-embedded`, `syn-shared-embedded`, `syn-abstract`).
 
 ### Reading a JSON Schema
@@ -387,11 +437,31 @@ Who reads the specification: `ResourceContext` (which path is a document, a part
 in the persistence API, and the Neo4j provider, which takes from it which fields are links. Persistence is given
 the names of the entity types at start (`PersistenceConfigurator`).
 
+### The limits of names
+
+The namespace and the names of the entity types are checked when the model is read, before the persistence provider
+is made (`UndertowApplication.checkNames`), against the limits every provider keeps, in bytes of UTF-8 (`Limits` in
+the persistence API): a namespace of at most 64 bytes (`NAMESPACE_BYTES`), the name of an entity type of at most
+128 bytes (`ENTITY_BYTES`). A name past its limit stops the start, with its first 80 characters and `...`:
+
+| The configuration | The message of the `IllegalStateException` |
+|---|---|
+| `LDS_NAMESPACE_DEFAULT` of 65 letters `n` | `The namespace is at most 64 bytes in UTF-8: ` and the 65 letters |
+| a GraphQL file with an entity type of 129 letters `E` | `The name of an entity type is at most 128 bytes in UTF-8: ` and the first 80 letters, then `...` |
+
+The names are not otherwise validated: they come from the model, and the store gets them as values (the Neo4j
+provider writes an entity type as a quoted label). The limits of ids and of the paths in a document are checked on
+a write ([the REST API](core-rest.md#ids-and-limits)). `ModelAtStartTest` holds the limits of names, also counted
+in bytes (`日` is three, `Ø` two).
+
 ### Validation of a document
 
 `ManagedResourceHandler.putManaged` validates the body of a `PUT` or `POST` of a document.
 `EmbeddedResourceHandler.putEmbedded` (`PUT` or `POST` of a part) validates the whole document after the part was
-put into it. Both make a `LinkedDocumentValidator` and answer 400 with `Schema validation error: ` and the message
+put into it. Before that, both remove every field whose value is `null` (a null field is a field that is not there,
+`NullFields`) and check the limits of the paths of the document ([the REST API](core-rest.md#ids-and-limits)), so
+the schema never sees a null field. Both make a `LinkedDocumentValidator` and answer 400 with
+`Schema validation error: ` and the message
 of the exception. A link that is put through its own path is not validated here; `ResourceContext` checks its
 entity type (`Reference resource does not support link to managed-domain "Person". Must be one of: [Company]`).
 
@@ -408,9 +478,11 @@ entity type (`Reference resource does not support link to managed-domain "Person
    check. A value of an array field is checked item by item, nulls left out. An array field is one whose types
    (`getJsonTypes`) include `array`; when the schema also lets such a field be a text
    (`"type": ["array", "string"]`), a text there is not checked. A link must match `/([^/]+)/([^/]+)` as a whole
-   (`/Entity/id`), and the entity type must be among the link targets. The first link that fails ends the check:
-   `Not a valid link. Navigation: employer: "acme"` or
-   `Illegal linked-domain: "Person". Navigation: employer: "/Person/ola"`.
+   (`/Entity/id`), the entity type must be among the link targets, and the id must be one LDS takes
+   (`ResourceContext.whatIsWrongWithId`: at most 1024 bytes in UTF-8, no `/`, no control character, no half of a
+   character). The first link that fails ends the check: `Not a valid link. Navigation: employer: "acme"`,
+   `Illegal linked-domain: "Person". Navigation: employer: "/Person/ola"` or
+   `A link names an id that is not valid: An id is at most 1024 bytes in UTF-8. Navigation: employer`.
 
 That the document a link points at exists is not checked, by intent: a link may point at a document that does not
 exist yet (a dangling reference).
@@ -418,7 +490,7 @@ exist yet (a dangling reference).
 Seen on a running LDS with the example model:
 
 ```sh
-curl -s -i -X PUT 'http://localhost:19110/ns/Person/p1?sync=true' -H 'Content-Type: application/json' \
+curl -s -i -X PUT 'http://localhost:19106/ns/Person/p1' -H 'Content-Type: application/json' \
      -d '{
        "name": 7,
        "born": "yesterday",
@@ -435,7 +507,7 @@ $.friends: string found, array expected, $.name: integer found, string expected]
 ```
 
 ```sh
-curl -s -i -X PUT 'http://localhost:19110/ns/Person/p1?sync=true' -H 'Content-Type: application/json' \
+curl -s -i -X PUT 'http://localhost:19106/ns/Person/p1' -H 'Content-Type: application/json' \
      -d '{
        "name": "Per",
        "friends": ["/Person/ola", "/Company/acme"]
@@ -482,7 +554,7 @@ the parameter is not looked at. An entity type the model does not have is answer
   validator sees two ordinary properties and LDS checks the link itself), the check of `format`, and the form of
   an error (the place as LDS writes a path, then the message of the validator). Clients read these texts.
 - **What the converter writes is pinned.** `GraphQLSchemaGoldenTest` compares the JSON Schema and the specification
-  of twelve schema files with the files in `src/test/resources/graphql-golden`. A difference is a change in what LDS
+  of ten schema files with the files in `src/test/resources/graphql-golden`. A difference is a change in what LDS
   gives its clients and stores as links; understand it before an expected file is changed.
 - **Keep `TypeTraverser`.** The visitors depend on the order of its walk and on where it stops. The
   `SchemaTraverser` of graphql-java walks differently.
@@ -509,18 +581,18 @@ the parameter is not looked at. An entity type the model does not have is answer
 | `graphql.enabled` | `true` | Whether the GraphQL API is served. It does not change which model is read. |
 | `namespace.default` | `ns` | The namespace on which `?schema` is answered. |
 
-A path is relative to the working directory of the process. To start the built LDS with JSON Schema files
-(`$M` is a folder with one `.json` file for each entity type; the command was run in a folder with every jar in `lib`,
-and in the repository the class path is `target/*:target/lib/*` under `linked-data-store-server`, as the README
-says):
+A path is relative to the working directory of the process. The image of the server with a folder of JSON Schema
+files, one for each entity type (`json` holds `Person.json` and `Company.json`, the schemas `?schema` gave for the
+example model):
 
 ```sh
-LDS_HTTP_PORT=19110 LDS_GRAPHQL_SCHEMA= LDS_SPECIFICATION_SCHEMA=$M java -cp "lib/*" io.descoped.lds.server.Server
+docker run -d --rm --name lds -p 127.0.0.1:19106:9090 -v "$PWD/json:/lds/json:ro" \
+  -e LDS_GRAPHQL_SCHEMA= -e LDS_SPECIFICATION_SCHEMA=/lds/json descoped/lds:3.0.1
 ```
 
 ```
-... UndertowApplication - Creating specification using json-schema: .../json2
-... JsonSchemaBasedSpecification - Managed domains: /Company /Person
+INFO  io.descoped.lds.core.UndertowApplication - Creating specification using json-schema: /lds/json
+INFO  i.d.l.c.specification.JsonSchemaBasedSpecification - Managed domains: /Company /Person
 ```
 
 The GraphQL API is not served then (`/graphql` is answered `Unsupported namespace: "graphql"`).
@@ -533,10 +605,11 @@ All are in `linked-data-store-core/src/test`.
 |---|---|---|
 | `JsonSchemaBuilderTest` | JUnit | What is read from a schema, the text kept for `?schema`, a schema without `$schema`, `displayName` and an unknown keyword, definitions shared between entity types, earlier drafts refused, a `$ref` that leads nowhere, what is no schema. |
 | `DocumentValidationTest` | JUnit | The text of every kind of error, that all errors are given, date-times that are valid and texts that are not, links, a null where a link could be. |
-| `GraphQLSchemaGoldenTest` | JUnit | The JSON Schema and the specification the converter gives for twelve schema files, against the files in `graphql-golden` (written with `CanonicalText`). Also the GraphQL schema that is served. |
+| `GraphQLSchemaGoldenTest` | JUnit | The JSON Schema and the specification the converter gives for ten schema files, against the files in `graphql-golden` (written with `CanonicalText`). Also the GraphQL schema that is served. |
 | `GraphQLToJsonConverterTest` | TestNG | The conversion of `spec/abstract/graphqlschemas/schema.graphql`: dialect, `$ref`, `displayName`, `required`. |
 | `JsonSchemaBasedSpecificationTest`, `SpecificationJsonSchemaBuilderTest` | TestNG | That link fields are `REF` and others `EMBEDDED`, and the count of elements of each type for `spec/agent/Agent.json`. |
 | `LinkedDocumentValidatorTest` | TestNG | Links to the right and the wrong entity type, single and in an array, with `spec/schemas`. |
+| `ModelAtStartTest` | JUnit | A model with no entity type is refused at once, with its three texts; a namespace and an entity type within the limits are taken, and one past them refused, counted in bytes. |
 | `NamespaceSchemaTest`, `ManagedResourceHandlerTest` | TestNG | `?schema` on the namespace and on an entity type, and the 400 for a document that is not valid, through HTTP. |
 
 The tests that go through HTTP take their server from `TestServerListener`, which reads
@@ -564,7 +637,9 @@ Not finished: the converter does not write what the GraphQL schema says for the 
 from the walk of a GraphQL schema". The golden files hold several of them, so a correction changes expected files.
 
 Not finished: a single field of an embedded type gets no `$ref` from the converter. Such a field is not
-validated, its links are not checked, and a path into it is refused (`Not a valid path element: "street"`).
+validated, its links are not checked, and a path into it is refused (`Not a valid path element: "street"`). With
+`home: Place` and `places: [Place]` in one entity type, a `home` with `"city": 7` was written, and a `places` item
+without `city` was refused (`$.places[0]: required property 'city' not found`).
 
 Not finished: the links inside the items of an array of objects are not checked. `SpecificationTraversal` walks
 `getProperties` and not `getItems`, so `LinkedDocumentValidator` never comes to them. A document with
@@ -584,16 +659,11 @@ Not finished: a file model is not checked for being usable. An entity type whose
 file name is not the name of its definition, is listed by `?schema` and every request to it is answered
 `Not a managed resource name`. A file without `$ref` at its root is read, and its documents are then not
 validated. A file given by name that does not end in `.json` loses its last five characters all the same
-(`Firm.schema` becomes the entity type `Firm.s`). A folder without a `.json` file gives a model with no entity
-type, and LDS starts.
+(`Firm.schema` becomes the entity type `Firm.s`).
 
 Not finished: a definition that holds itself, directly or through others, ends the start with a
 `StackOverflowError`. This is so for `$ref` in a file and for embedded types in a GraphQL schema
 (`type Branch { branches: [Branch] }`). A link from an entity type to itself is no such case.
-
-Not finished: a GraphQL schema with no type with `@domain` gives no specification
-(`createJsonSpecification` returns null). The start then fails with a `NullPointerException` in
-`PersistenceConfigurator`, after it has tried for `persistence.initialization.max-wait-seconds`.
 
 A list of an entity type without `@link` (`support: [Support]`) is held by value, as an embedded object, when that
 entity type has a field whose type is an entity type: `AddDefinitionVisitor.visitGraphQLList` then writes the field
@@ -610,8 +680,9 @@ with a `NullPointerException` when it meets a list of a list.
 
 Not finished: a list of links to an interface gets a JSON Schema and a specification, and the GraphQL schema is
 then refused with a `ClassCastException` (`GraphQLSchemaGoldenTest.aListOfLinksToAnInterfaceIsRefusedAsItWas`).
-The exception comes in the constructor of `UndertowApplication`, after the thread pools of the sagas are made, and
-the process stays up without listening.
+The exception comes in the constructor of `UndertowApplication`, after the store, the saga log and the thread pools
+of the sagas are made; what was made is stopped (`LDS could not be made; what was made is stopped`), and the process
+ends with exit code 1.
 
 Not finished: `JsonSchemaBuilder.build` does not remove the link directives from the schema. The
 `_link_property_<field>` objects stay in the schema that validates, so a document may hold a field of that name

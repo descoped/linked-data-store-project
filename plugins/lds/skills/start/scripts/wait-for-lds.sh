@@ -9,7 +9,8 @@
 #   seconds    how long to wait, default 120 (LDS waits up to 60 s for the store of the documents, and with
 #              Neo4j away it takes about 90 s to give up)
 #
-# Exit 0: LDS answers /ping with 200. Exit 1: it did not; the reason is printed.
+# Exit 0: LDS answers /ping with 200 and /health/ready with 200 (UP, or DEGRADED: search is away or behind).
+# Exit 1: it did not; the reason is printed, or the answer of /health/ready when a part a write needs is DOWN.
 
 url=${1:-http://localhost:9090}
 url=${url%/}
@@ -23,9 +24,11 @@ current_log() {
 
 failure() {
   echo "LDS did not start: $1" >&2
-  if [ -n "$container" ]; then
+  cause=
+  [ -n "$container" ] && cause=$(current_log | grep -E 'Exception in thread|^Caused by' | head -n 4)
+  if [ -n "$cause" ]; then
     echo "--- the cause, from the log of $container:" >&2
-    current_log | grep -E 'Exception in thread|^Caused by' | head -n 4 >&2
+    printf '%s\n' "$cause" >&2
   fi
   exit 1
 }
@@ -35,10 +38,18 @@ while [ "$i" -lt "$seconds" ]; do
   code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "$url/ping")
   if [ "$code" = 200 ]; then
     echo "LDS answers at $url"
+    ready=$(curl -s --max-time 10 -w '\n%{http_code}' "$url/health/ready")
+    status=$(printf '%s' "$ready" | sed -n 's/^{"status":"\([A-Z]*\)".*/\1/p')
+    echo "Ready: ${status:-no answer}"
     if [ -n "$container" ]; then
       lines='Managed domains|Using (persistence|saga-log|transaction-log)'
       lines="$lines|Search index provider|GraphQL Search is disabled"
       current_log | grep -E "$lines" | sed 's/^.* - //'
+    fi
+    if [ "$(printf '%s' "$ready" | tail -n 1)" != 200 ]; then
+      echo "A part that writes need does not answer; /health/ready answered:" >&2
+      printf '%s\n' "$ready" | sed '$d' >&2
+      exit 1
     fi
     exit 0
   fi
@@ -52,6 +63,10 @@ while [ "$i" -lt "$seconds" ]; do
     fi
     if current_log | grep -q 'Exception in thread "main"'; then
       failure "the start failed and the process stays without opening its port; stop the container"
+    fi
+    if [ "$i" -ge 10 ] && current_log | grep -q 'Server started'; then
+      failure "it has started in the container and does not answer at $url: is http.host set, or does the \
+port on the machine lead to another port than LDS listens on?"
     fi
   fi
   if [ "$code" != 000 ]; then

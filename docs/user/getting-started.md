@@ -27,7 +27,7 @@ shows this at work; [Concepts](concepts.md) explains the ideas.
 The quickest way is the image on Docker Hub:
 
 ```sh
-docker run --rm -p 127.0.0.1:9090:9090 descoped/lds:3.0.0
+docker run --rm -p 127.0.0.1:9090:9090 descoped/lds:3.0.1
 ```
 
 As it comes, that is with no configuration of your own, LDS keeps everything in memory, has an example
@@ -71,8 +71,8 @@ Two things differ from the other ways:
   ```sh
   docker compose -f linked-data-store-server/compose.yaml down -v
   ```
-- Search is on. Search finds a document by the texts of its fields named `languageText`. What search covers is
-  under review. [The GraphQL API](graphql-api.md) tells how to search.
+- Search is on. Search finds a document by the texts in it, and a text in an object with the fields `languageCode`
+  and `languageText` in the language of the code. [The GraphQL API](graphql-api.md#search) tells how to search.
 
 [Operations](operations.md) tells more about the image and the stack.
 
@@ -96,19 +96,33 @@ Server started in 457ms..
 ### Check that LDS answers
 
 ```sh
-curl -i 'http://localhost:9090/ping'
+curl -i 'http://localhost:9090/health/ready'
 ```
 
 ```http
 HTTP/1.1 200 OK
+
+{
+  "status": "UP",
+  "checks": {
+    "persistence": {"status": "UP", "millis": 8},
+    "sagaLog": {"status": "UP", "millis": 2, "logs": 30},
+    "transactionLog": {"status": "UP", "millis": 0, "keepsMessages": false}
+  }
+}
 ```
+
+`/health/ready` asks every part a write needs, and answers `200` when LDS can take writes. With the stack it also
+asks Solr and the index queue of search. `/ping` answers `200` as soon as LDS answers at all.
+[Operations](operations.md#the-health-addresses) tells what each answer means.
 
 If another program uses port 9090, LDS on the JDK ends with an error that says `Address already in use`.
 Give LDS another port with the environment variable `LDS_HTTP_PORT`: write `LDS_HTTP_PORT=9190` in front of
-`java`. For the stack, write `LDS_PORT=9190` in front of `docker compose`. Then use that port in every address
-below. [Configuration](configuration.md) has every setting.
+`java`. For the stack, write `SERVER_PORT=9190` in front of `docker compose`; no variable of the compose file
+starts with `LDS_`, the prefix of the variables LDS reads itself. Then use that port in every address below.
+[Configuration](configuration.md) has every setting.
 
-The answers in this guide come from LDS started on the JDK, in memory. Each answer is shown as its status line
+The answers in this guide come from LDS 3.0.1 in memory. Each answer is shown as its status line
 and its body; the headers are left out. LDS sends a body on one line; here it is shown
 formatted, with the fields in the order LDS sent them.
 
@@ -264,14 +278,27 @@ Schema validation error: [$.name: integer found, string expected]
 A field that the model does not have is not refused: LDS writes it with the document.
 [The model](model.md) tells what LDS checks.
 
-Not finished: with a model that is a GraphQL schema, as the example model is, LDS does not check a single embedded
-object, such as `address`. The example model says that an address must have a `city`, and a person whose address has no
-`city` is written all the same.
+Not finished: with a model that is a GraphQL schema, as the example model is, LDS does not check the inside of a
+single embedded object, such as `address`. The example model says that an address must have a `city`, and a person
+whose address has no `city` is written all the same. A list of embedded objects is checked.
 
-Not finished: a write with a body that LDS cannot read is answered `500 Internal Server Error` with no body, and
-the reason is only in the log of LDS. This happens when the body is not JSON. It also happens when the header
-`Content-Type: application/json` is left out of a `curl -d` command, because `curl` then names another content
-type.
+A body that is not JSON is refused before it is checked, with the place of the fault:
+
+```sh
+curl -i -X PUT 'http://localhost:9090/ns/Person/kari?sync=true' -H 'Content-Type: application/json' \
+     -d '{"name": "Kari"'
+```
+
+```
+HTTP/1.1 400 Bad Request
+
+The body cannot be read at line 1, column 13: Unexpected end-of-input: expected close marker for Object. Send the
+body as JSON, with Content-Type: application/json
+```
+
+Without the header `Content-Type: application/json`, `curl -d` names another content type, and LDS answers
+`415 Unsupported Media Type` with `Unsupported Content-Type: application/x-www-form-urlencoded. Send the body as
+JSON, with Content-Type: application/json`.
 
 ## Read the documents
 
@@ -395,7 +422,7 @@ HTTP/1.1 200 OK
     }
   },
   {
-    "version": "2026-11-20T16:39:29.602Z[Etc/UTC]",
+    "version": "2026-11-24T23:37:56.911Z[Etc/UTC]",
     "document": {
       "name": "Ola",
       "address": {"city": "Oslo", "street": "Storgata 1"}
@@ -505,8 +532,9 @@ HTTP/1.1 201 Created
 LDS makes a GraphQL API from the model, at `/graphql`. GraphQL reads documents; they are written with REST. For every
 entity type LDS makes a query that gives one document by its id: `PersonById` and `CompanyById` here.
 
-The examples send a query with `POST`, as JSON. The header `Content-Type: application/json` must be there:
-without it LDS answers `415 Unsupported Media Type`.
+The examples send a query with `POST`, as the body, with the header `Content-Type: application/graphql`. A query
+can also be sent as JSON, `{"query": "..."}` with `Content-Type: application/json`. With another content type LDS
+answers `415 Unsupported Media Type`.
 
 A query follows links by itself. One request gives the person and the company the person links to:
 
@@ -608,8 +636,8 @@ HTTP/1.1 200 OK
 }
 ```
 
-An id that LDS has no document for is answered in another way than with REST. The answer is `200 OK`, with an
-error and no data:
+An id that LDS has no document for is answered in another way than with REST. The answer is `200 OK`, and the
+field is `null`:
 
 ```sh
 curl -i 'http://localhost:9090/graphql' -H 'Content-Type: application/graphql' \
@@ -620,11 +648,12 @@ curl -i 'http://localhost:9090/graphql' -H 'Content-Type: application/graphql' \
      }'
 ```
 
-```
+```http
 HTTP/1.1 200 OK
 
-{"errors":[{"message":"The field at path '/PersonById' was declared as a non null type, but ...",...}],
- "data":null}
+{
+  "data": {"PersonById": null}
+}
 ```
 
 GraphQL makes as-of reads too. The time is the query parameter `snapshot` in the address, and the whole query, with the
@@ -655,11 +684,8 @@ HTTP/1.1 200 OK
 }
 ```
 
-Not finished: a `snapshot` that LDS cannot read as a time, a date alone for example, is not refused. The query
-is then answered as of now, with no error.
-
-Not finished: a query that asks for a single link, such as `employer`, of a document that does not have that
-field gets an error for the field. The version of Ola from 2020 has no `employer`:
+A version that does not have a link field answers the link with `null`. The version of Ola from 2020 has no
+`employer`:
 
 ```sh
 curl -i 'http://localhost:9090/graphql?snapshot=2021-06-01T00:00:00Z' -H 'Content-Type: application/graphql' \
@@ -673,11 +699,39 @@ curl -i 'http://localhost:9090/graphql?snapshot=2021-06-01T00:00:00Z' -H 'Conten
      }'
 ```
 
-```
+```http
 HTTP/1.1 200 OK
 
-{"errors":[{"message":"Exception while fetching data (/PersonById/employer) : ...",...}],
- "data":{"PersonById":{"name":"Ola","employer":null}}}
+{
+  "data": {
+    "PersonById": {"name": "Ola", "employer": null}
+  }
+}
+```
+
+A `snapshot` that LDS cannot read as a time, a date alone for example, is refused:
+
+```sh
+curl -i 'http://localhost:9090/graphql?snapshot=2021-06-01' -H 'Content-Type: application/graphql' \
+     -d '{
+       PersonById(id: "ola") {
+         name
+       }
+     }'
+```
+
+```http
+HTTP/1.1 200 OK
+
+{
+  "errors": [
+    {
+      "message": "The query parameter snapshot '2021-06-01' is not an ISO-8601 time. Example of a valid formatted time is '2018-12-06T11:05:31.000+01:00'",
+      "locations": [],
+      "extensions": {"classification": "ValidationError"}
+    }
+  ]
+}
 ```
 
 `http://localhost:9090/graphiql` is a page for writing and sending queries in a browser. The page fetches its

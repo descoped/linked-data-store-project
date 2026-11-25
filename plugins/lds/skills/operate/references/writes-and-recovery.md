@@ -10,17 +10,24 @@ as it does them:
 
 1. an entry in the transaction log;
 2. the document written to (or marked deleted in) the store of the documents;
-3. the search index updated, when search is on.
+3. with search on, an update added to the index queue.
 
-Step 1 comes first; 2 and 3 follow side by side. A step that was done is not undone when a later one fails. A saga
-that does not complete stays in the saga log and is run again later with the request as it was first sent, the
-same document and the same valid time (forward recovery).
+The steps run in that order. A step that was done is not undone when a later one fails. A saga that does not
+complete stays in the saga log and is run again later with the request as it was first sent, the same document and
+the same valid time (forward recovery). The search index is not a step: a worker of LDS sends the updates of the
+queue to Solr, reads each document from the store at its version, and keeps an update Solr does not take, trying
+it again (after one second, doubled each time, at most a minute apart). So no write fails because of Solr, and no
+update of the index is lost.
 
-The answer to a write is `{"saga-execution-id": "..."}`, the id of the saga and of its transaction log entry. A
-write that LDS waits for (a synchronous write: a whole document by default, or any write with `sync=true`) is
-answered when every step has ended. Any other write is answered as soon as the saga is in the saga log: a `2xx`
-then means "noted", not "done". [Concepts: What a write goes
-through](https://lds.descoped.io/docs/user/concepts/#what-a-write-goes-through).
+Writes of one document are done one at a time, in the order they came; writes of different documents run side
+by side.
+
+The answer to a write is `{"saga-execution-id": "..."}`, the id of the saga and of its transaction log entry (a
+delete of a whole document LDS waited for is `204` with no body). Every write, of a document, a part or a link, is
+answered when every step has ended, unless it says `sync=false`: then it is answered as soon as the saga is in the
+saga log, and a `2xx` means "noted", not "done". A write with `searchable=true` is answered when search finds it as
+well, at most 10 seconds later, with the header `LDS-Searchable: true` or `false` (`lds:data`).
+[Concepts: What a write goes through](https://lds.descoped.io/docs/user/concepts/#what-a-write-goes-through).
 
 ## When a write is run again
 
@@ -38,10 +45,9 @@ A `500` or a lost connection does not say whether the write will be done:
 
 | Situation | Answer | Done later? |
 |---|---|---|
-| Neo4j (documents) away | `500` at once | Yes, if the saga log is kept: in a run the next round after Neo4j came back did it. |
-| PostgreSQL (documents) away | `500` after 30 seconds | Yes, by a round after PostgreSQL is back, if the saga log could note it. |
-| PostgreSQL (saga log) away | `500` after 30 seconds, also with `sync=false` | No: LDS could note it nowhere. |
-| Solr away | `201`; the document is stored, not indexed | The document yes; the index entry never. A delete is `500`, the document is deleted, and the index step keeps failing. |
+| Neo4j (documents) away | `500` at once; `201` with `sync=false` | Yes, if the saga log is kept: in a run the next round after Neo4j came back did both. |
+| PostgreSQL (saga log, transaction log, index queue) away | `500` after 30 seconds, also with `sync=false` | No: LDS could note it nowhere. |
+| Solr away | `201`, a delete `204`; the document is stored | Yes: the update waits in the index queue and is sent when Solr is back. |
 | LDS crashed (`kill -9`, power, a stop that ran out of time) | no answer | Yes with the saga log in PostgreSQL (at the next start, or by another LDS of the cluster within about a minute). No with the saga log in memory. |
 
 So tell callers: **a write that got no `2xx` is sent again**. Every call of the HTTP API is idempotent and safe to
@@ -96,26 +102,32 @@ callers send those writes again, which is safe.
 
 LDS keeps running, does not end, and connects again by itself when the engine is back. No restart:
 
-| Away | Reads | Writes | `/health/alive` | Back |
+These ran on the full stack of `lds:start` (Neo4j for the documents; PostgreSQL for the saga log, the transaction
+log and the index queue):
+
+| Away | Reads | Writes | `/health/ready` | Back |
 |---|---|---|---|---|
-| Neo4j | `500` (the first after about 20 s) | `500` at once, done later | `503` at once | `200` 4 s after Neo4j started; the failed write done at the next round |
-| PostgreSQL with the documents | `500` at once | `500` after 30 s, done later if noted | `503`, after up to 30 s | `200` within 3 s |
-| PostgreSQL with the saga log | work | `500` after 30 s, not done later | `200` | the next write works (the first took about 7 s) |
-| Solr | work, search answers `200` with an error in its body | `201`, not indexed; a delete `500` | `200` | new writes are indexed; earlier ones only when written again |
+| Neo4j | `500` (the first after 30 s) | `500` at once, done later | `503`, `persistence` `DOWN` | `200` 7 s after Neo4j started; the failed writes done at the next round |
+| PostgreSQL | work | `500` after 30 s, not done later | `503`, `sagaLog`, `transactionLog`, `indexQueue` `DOWN` | `200` 12 s after PostgreSQL started; the next write works |
+| Solr | work, search answers `200` with an error in its body | `201`, wait in the index queue | `200`, `DEGRADED` | the queue sends what waited; search found every write |
 
 ## Several LDS on one saga log
 
-Several LDS can share one saga log in PostgreSQL and one store of documents (PostgreSQL or Neo4j), as a cluster.
-Each needs:
+Several LDS can share one saga log in PostgreSQL, one store of documents (PostgreSQL or Neo4j) and one Solr, as a
+cluster. Each needs:
 
 - the same `sagalog.config.cluster.owner` and `sagalog.config.cluster.name`;
 - its own `sagalog.config.cluster.instance-id` (the default `01` is the same for all; two with one id make every
   write through the second `500` with `Unable to acquire exclusive lock on ...`);
 - its own transaction log: its own `txlog.rawdata.topic-prefix` when they share PostgreSQL (`txlog-02-`), because
-  only one LDS can write one transaction log (not finished in LDS).
+  only one LDS can write one transaction log (not finished in LDS);
+- room in PostgreSQL: the full stack's LDS holds 64 of its 100 connections, and a second LDS with the defaults
+  (64 more) ends at start with `PostgresSagaLogException: initialize failed on the connection pool: ...`. Raise
+  `max_connections` of PostgreSQL, or give the second LDS fewer saga logs and a smaller pool, as below.
 
-A second LDS joined the compose stack with these variables, and writes through both were answered `201` and read
-through either:
+The index queue in PostgreSQL is shared: each update is sent by one of them. A second LDS joined the compose stack
+with these variables; a write through it was answered `201` and read through the first, a write through the first
+was read through it, and search found both:
 
 ```sh
 docker run -d --name lds-02 --network lds_default -p 127.0.0.1:9091:9090 \
@@ -124,13 +136,17 @@ docker run -d --name lds-02 --network lds_default -p 127.0.0.1:9091:9090 \
   -e LDS_SAGALOG_PROVIDER=no.cantara.sagalog.postgres.PostgresSagaLogInitializer \
   -e LDS_SAGALOG_CONFIG_CLUSTER_OWNER=development -e LDS_SAGALOG_CONFIG_CLUSTER_NAME=lds \
   -e LDS_SAGALOG_CONFIG_CLUSTER_INSTANCE_ID=02 \
+  -e LDS_SAGA_NUMBER_OF_LOGS=5 -e LDS_SAGALOG_CONFIG_CONNECTION_POOL_MAX_SIZE=16 \
   -e LDS_SAGALOG_CONFIG_POSTGRES_DRIVER_HOST=postgres -e LDS_SAGALOG_CONFIG_POSTGRES_DRIVER_PASSWORD=lds \
   -e LDS_TXLOG_RAWDATA_PROVIDER=postgres -e LDS_TXLOG_RAWDATA_TOPIC_PREFIX=txlog-02- \
   -e LDS_TXLOG_CONFIG_POSTGRES_DRIVER_HOST=postgres -e LDS_TXLOG_CONFIG_POSTGRES_DRIVER_PASSWORD=lds \
-  descoped/lds:3.0.0
+  -e LDS_GRAPHQL_SEARCH_ENABLED=true -e LDS_SEARCH_INDEX_URL=http://solr:8983/solr/lds-index \
+  descoped/lds:3.0.1
 ```
 
-(`lds_default` is the network of the compose project `lds`; the passwords are the development defaults.)
+(`lds_default` is the network of the compose project `lds`; the passwords are the development defaults. Five saga
+logs and a pool of 16 fit in the room the first LDS leaves; with a PostgreSQL of more connections, leave the two
+variables out.)
 
 What the cluster does:
 
@@ -139,7 +155,7 @@ What the cluster does:
   removes their tables. In a run instance `02` completed a write of a killed `01` within 47 seconds.
 - The saga logs of a running LDS are left alone, and `dead-saga` is never looked at.
 - Each LDS has its own transaction log, so `GET /source/{source}` answers for the writes of the LDS asked.
-- Mind the connections: 70 per LDS in one PostgreSQL, which takes 100 as it comes.
+- Mind the connections: 64 to 74 for each LDS with the defaults, in a PostgreSQL that takes 100 as it comes.
 
 An LDS with its documents in memory shares them with no one; a cluster needs PostgreSQL or Neo4j.
 

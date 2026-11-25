@@ -1,16 +1,16 @@
 # Refused writes: what LDS said, what it means, the fix
 
-Every row was caused on `descoped/lds:3.0.0` with the example model (`Person` has `name` required, `born` a
+Every row was caused on `descoped/lds:3.0.1` with the example model (`Person` has `name` required, `born` a
 date-time, `address` an embedded object, `employer` a link to `Company`, `friends` a list of links to `Person`).
 Replace the names with those of the user's model. Depth:
 https://lds.descoped.io/docs/user/model/#what-lds-checks-when-a-document-is-written
 
 ## How to use this
 
-1. Get the status and the body: `curl -s -w '\n%{http_code}\n' ...`. A 400 always has a text; a 404 and a 500
-   never have one.
+1. Get the status and the body: `curl -s -w '\n%{http_code}\n' ...`. A 400 and a 415 have a text (one 400 has
+   none, below); a 404 and a 500 never have one.
 2. Find the row. Tell the user the plain meaning, then the fix, in their words and with their field names.
-3. A 400 or 404 wrote nothing. A 500 may have written, or may still write later (see the last section).
+3. A 400, 404 or 415 wrote nothing. A 500 may have written, or may still write later (see the last section).
 
 ## Reading a `Schema validation error`
 
@@ -35,13 +35,17 @@ names the entity types the field may link to.
 | `[$: array found, object expected]` | The body was a list; a document is one JSON object | Send each item as its own document, at its own id |
 | `[$.born: does not match the date-time pattern must be a valid RFC 3339 date-time]` | A date-time needs a date, `T`, a time with seconds, and `Z` or an offset. `yesterday`, `2026-11-20` and `2026-11-20T10:00:00` are refused | Send `2026-11-20T10:00:00Z` (or `...+01:00`) |
 | `[$.friends: string found, array expected]` | `friends` holds a list of links, and one text was sent | Send `["/Person/ola"]` |
-| `[$.employer: null found, string expected]` | `null` is not accepted for this field | Leave the field out instead of sending `null` |
 | `Not a valid link. Navigation: employer: "acme"` | A link is the text `/Entity/id`; `acme` lacks `/Company/` | Send `"/Company/acme"`. Also refused: `""`, `/ns/Company/acme` (no namespace in a link), `/Company/a/b` |
 | `Not a valid link. Navigation: friends: "Person/kari"` | One item of the list of links lacks the leading `/` | Send `"/Person/kari"` |
 | `Illegal linked-domain: "Person". Navigation: employer: "/Person/ola"` | `employer` may only point at a `Company` | Point it at an entity type the model allows, or change the model (`lds:model`) |
-| `Payload was empty!` | The body was empty | Send the whole document as the body |
+| `Payload was empty!` | The body was empty, or only spaces | Send the whole document as the body |
+| `The body cannot be read at line 1, column 12: Unexpected end-of-input: expected close marker for Object. Send the body as JSON, with Content-Type: application/json` | The body is not JSON: here a `}` is missing at the end | Check it with `jq . file.json`; send one JSON value |
+| `The body cannot be read at line 1, column 14: Unrecognized token 'x': ...` | Something comes after the JSON value | Send one JSON value and nothing after it |
 | `Id was empty!` | The address has no id: `PUT /ns/Person` | Put the id last: `/ns/Person/ola` |
 | `Managed resource id cannot be empty.` | The id was only spaces | Choose a real id |
+| `An id cannot hold a '/': "a/b"` | The id has a `/`, also when it is sent as `%2F` | Choose an id without `/` |
+| `An id is at most 1024 bytes in UTF-8` | The id is too long (a letter outside ASCII takes two to four bytes) | A shorter id |
+| `An id cannot hold a control character` | The id has a line break, a tab or another control character | Take it out |
 
 Two faults at once come in one answer (`{"born": "yesterday"}`):
 
@@ -68,13 +72,20 @@ written later or may have existed earlier. Do not "fix" such links.
 | `Reference resource does not support link to managed-domain "Person". Must be one of: [Company]` | The link address names an entity type the field may not point at | Use one from the list |
 | `Reference resource path-element: "employer" must be part of pattern ending like: ...` | The link address lacks the target id | `/ns/Person/kari/employer/Company/acme` |
 | `Resource path cannot navigate through REF property: "employer"` | A path cannot go through a link into the target | Read the target at its own address: `/ns/Company/acme/name` |
-| 400 with no body | The address has a `%` not followed by two hex digits | Percent-encode the id properly |
+| 400 with no body | The address has a `%` not followed by two hex digits | Percent-encode the id properly (`jq -rn --arg id "$ID" '$id\|@uri'`) |
 
 ## No document at that time (404, no body)
 
 | Request | In plain words | Fix |
 |---|---|---|
 | `PUT`/`POST`/`DELETE` of a part, `PUT`/`POST` of a link | A part or a link can only be written into a document that exists at the time of the write, and there is none then (never written, deleted then, or the `timestamp` is before its first version) | Write the whole document first, or give a `timestamp` at which it exists. Check with `?timeline` |
+
+## Not JSON (415)
+
+| LDS answered | In plain words | Fix |
+|---|---|---|
+| `Unsupported Content-Type: application/x-www-form-urlencoded. Send the body as JSON, with Content-Type: application/json` | `curl -d` without `-H 'Content-Type: application/json'` | Add the header |
+| `Unsupported Content-Type: text/plain. ...` | Another content type | Send JSON with the JSON content type |
 
 ## No answer text (500)
 
@@ -83,12 +94,7 @@ are what the log said for each.
 
 | Cause | Log says | Fix |
 |---|---|---|
-| `curl -d` without `-H 'Content-Type: application/json'` | `Unsupported Content-Type: application/x-www-form-urlencoded` | Add the header |
-| Another content type (`text/plain`, MessagePack) | `Unsupported Content-Type: ...` | Send JSON with the JSON content type |
-| The body is not valid JSON, or has something after the JSON | `Unexpected end-of-input: ...`, or `Trailing token ... found after value` | Check with `jq . file.json`; send one JSON value |
 | The address names an embedded type, not an entity type (`/ns/Address/a1`) | `No JSON Schema for the entity Address` | Embedded objects are written inside their document |
-| An id with `%` in it (`100%25`) | | Choose ids without `%` (and without `+`) |
-| With the memory provider, an id of about 240 letters | | Keep ids short; such a write can leave part of a document behind |
 | The saga of the write failed (an engine away, a stop) | `Observed Saga failure during execution` | Send the same request again; see `lds:operate` |
 | The write waited 10 seconds for its turn | | Send fewer writes at one time, then send it again |
 
@@ -98,6 +104,8 @@ saga again. A request with a `timestamp` can be sent again safely: it writes the
 ## Not refused, though a user may expect it
 
 - A field the model does not have is stored, unless a JSON Schema model forbids extra fields.
+- A field written as `null` is left out of the document: `{"name": "A", "employer": null}` is written as
+  `{"name": "A"}`. A `null` in a required field counts as missing.
 - A link to a document that does not exist is stored (by design).
 - With a GraphQL schema as model, a single embedded object is not checked: `"address": 7` is accepted.
 - A `source` other than letters, digits, `_`, `.`, `-` is accepted with the image as it comes; it fails with

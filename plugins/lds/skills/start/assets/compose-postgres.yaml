@@ -1,4 +1,4 @@
-# Linked Data Store (LDS) 3.0.0 with everything in one PostgreSQL: the documents, the saga log and the
+# Linked Data Store (LDS) 3.0.1 with everything in one PostgreSQL: the documents, the saga log and the
 # transaction log. No search. For development only: the password is written here.
 # The port is published on localhost (127.0.0.1), because LDS asks no caller who it is.
 #
@@ -7,17 +7,17 @@
 #   docker compose down                stop; the data stays in the volume
 #   docker compose down -v             stop and remove the data
 #
-# A port that is taken on the machine is moved with LDS_PORT: LDS_PORT=9190 docker compose up -d --wait
+# A port that is taken on the machine is moved with SERVER_PORT: SERVER_PORT=9190 docker compose up -d --wait
 name: lds-postgres
 
 services:
 
   lds:
-    image: descoped/lds:3.0.0
+    image: descoped/lds:3.0.1
     # LDS can need 30 seconds or more to stop in order while a write is held up; Docker's 10 would cut it short.
     stop_grace_period: 60s
     ports:
-      - "127.0.0.1:${LDS_PORT:-9090}:9090"
+      - "127.0.0.1:${SERVER_PORT:-9090}:9090"
     environment:
       LDS_PERSISTENCE_PROVIDER: postgres
       LDS_POSTGRES_DRIVER_HOST: postgres
@@ -40,6 +40,15 @@ services:
     # Without these two lines LDS has the example model of the image. With them it reads ./schemas/schema.graphql.
     # volumes:
     #   - ./schemas:/lds/schemas:ro
+    # LDS answers /health/ready on the port it listens on in the container (9090): 200 when every part a write
+    # needs answers, 503 when one does not. "docker compose up --wait" waits for it.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9090/health/ready"]
+      start_period: 60s
+      start_interval: 2s
+      interval: 10s
+      timeout: 5s
+      retries: 5
     depends_on:
       postgres:
         condition: service_healthy

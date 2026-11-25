@@ -2,7 +2,7 @@
 
 Read this when the user has data elsewhere (CSV, JSON, a database export, another system) and wants it in LDS.
 The loader is `scripts/lds-load.sh` in this skill's directory. Every step below was run against
-`descoped/lds:3.0.0`.
+`descoped/lds:3.0.1`.
 
 ## Why each record carries its valid time
 
@@ -22,8 +22,9 @@ when". So the valid time is what a load must get right, for two reasons:
    and link fields (a sibling `_link_property_<field>` names the targets).
 2. **Map each source record to a document** of an entity type, with the user. Decide:
    - the **id**: a stable key from the source (a customer number, an org number), so the same thing always gets
-     the same id. LDS makes no ids. Avoid `+` and `%` in ids (they cannot be used in LDS 3.0) and field names
-     with a `.` (they come back as nested objects).
+     the same id. LDS makes no ids. An id has no `/` and no control character, and at most 1024 bytes of UTF-8;
+     `+`, `%`, spaces and letters outside ASCII are fine (the loader encodes them). Avoid field names with a `.`
+     (they come back as nested objects).
    - the **valid time** of each record: the date the record took effect ("valid from", "effective date",
      "changed at"). When the source holds only the current state, use one instant for all records, such as the
      date of the extract, and tell the user that history before it is not in LDS. A date alone becomes
@@ -64,26 +65,29 @@ LDS=http://localhost:9090 NS=ns sh "<skill dir>/scripts/lds-load.sh" records.ndj
 ```
 
 It needs `curl` and `jq` and says so when one is missing; it checks `$LDS/ping` first. When LDS has an
-`http.prefix`, put it in `LDS` (`http://localhost:9090/api`). Output, from a file with seven good records and
-two bad ones (each refusal is one line; cut here):
+`http.prefix`, put it in `LDS` (`http://localhost:9090/api`). Output, from a file with eight good records (ids
+`a+b`, `100%` and `åse` among them) and four bad ones (each refusal is one line; cut here):
 
 ```
 400 http://localhost:9090/ns/Person/bad?timestamp=2020-01-01T00%3A00%3A00Z Schema validation error: [$.name: ...
 400 http://localhost:9090/ns/Person/bad2?timestamp=2020-01-01 The 'timestamp' query-parameter must follow the ...
-written: 7, not written: 2 (see people.failed.ndjson)
+400 http://localhost:9090/ns/Person/a%2Fb?timestamp=2020-01-01T00%3A00%3A00Z An id cannot hold a '/': "a/b"
+skipped (not JSON, or no entity, id or validFrom): {"entity": "Person", "id": "nov", "document": {"name": "x"}}
+written: 8, not written: 4 (see people.failed.ndjson)
 ```
 
-Run again, it wrote the same seven, and the timelines kept the same number of versions. A record that is not
-JSON, has no `validFrom`, or has `+` or `%` in its id is skipped and put in the failed file before any request.
+Run again, it wrote the same eight, and the timelines kept the same number of versions. A record that is not
+JSON, or has no `entity`, `id` or `validFrom`, is skipped and put in the failed file before any request.
 
 A 201 or 204 means the version is written (a whole-document write waits for its saga). A 500 means the saga
 failed or waited too long; the record is in the failed file, and LDS may still complete it later. Sending it
 again is safe.
 
-**Speed.** One loader wrote 500 records in 14 seconds (memory provider, a laptop). For more, split the file
+**Speed.** One loader wrote 500 records in 17 seconds (memory provider, a laptop). For more, split the file
 and run up to four loaders at once: 450 records, 150 documents with three versions each spread over four
 parts, were written in under 5 seconds, every timeline complete. Writes of whole documents do not interfere,
-also not versions of one document. LDS carries out at most 30 writes at one time with its defaults.
+also not versions of one document: LDS does the writes of one document one at a time. It carries out at most 30
+writes at one time with its defaults.
 
 ```sh
 split -l 10000 records.ndjson part- && for f in part-*; do mv "$f" "$f.ndjson"; done
@@ -128,8 +132,8 @@ jq -R -c 'select(length > 0) | split(",")' people.csv | jq -c -s '
        + (if .employer_id != "" then {employer: "/Company/\(.employer_id)"} else {} end))}' > people.ndjson
 ```
 
-Leave a field out when the source has no value: a `null` is refused for most fields
-(`$.employer: null found, string expected`).
+Leave a field out when the source has no value. A `null` is left out by LDS too, so `"employer": null` is the same
+as no `employer`; in a required field it is refused as missing (`$: required property 'name' not found`).
 
 ## What a load cannot do
 
@@ -137,7 +141,8 @@ Leave a field out when the source has no value: a `null` is refused for most fie
   tombstone, never removed. Running a corrected file again replaces the versions at the same valid times; a
   version whose valid time is no longer in the file stays.
 - **Check that links lead somewhere.** That is by design; check the source data instead if it matters.
-- **Find "the last record loaded".** `source` and `sourceId` can be sent with writes, but with the image as it
-  comes the transaction log is not kept and `/source/<name>` always answers `{"lastSourceId":null}`. Resume by
-  running the failed file, or the whole file, again.
+- **Find "the last record loaded"** with the image as it comes. `source` and `sourceId` can be sent with writes,
+  but the transaction log is not kept and `/source/default` answers `409`. With a transaction log (the compose
+  files of `lds:start`) it answers `{"lastSourceId":"..."}` of the last write. Resume by running the failed file,
+  or the whole file, again.
 - **Load several namespaces.** One LDS serves one namespace.

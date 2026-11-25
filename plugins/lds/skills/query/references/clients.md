@@ -1,8 +1,8 @@
 # Clients
 
 A small function that sends one query to LDS, in TypeScript, Python and Java, each with no library beyond what
-the language comes with. Each was run against `descoped/lds:3.0.0` as it is written here (TypeScript with Node 26,
-Bun and `tsc --strict`; Python 3.13; Java 27 as a single source file).
+the language comes with. Each was run against LDS 3.0.1 (`descoped/lds:3.0.1`) as it is written here (TypeScript
+with Node 26, Bun and `tsc --strict`; Python 3.13; Java 27 as a single source file).
 
 To fit them to the user:
 
@@ -10,15 +10,13 @@ To fit them to the user:
   schema LDS made (`scripts/schema.sh`): the user's entity types and fields, not `Person`.
 - Keep the values of the user out of the query text: declare variables (`$id: ID!`) and send them in
   `variables`. That way an id with a quote in it cannot break the query.
-- Keep `charset=utf-8` in the content type. Without it LDS reads the body as ISO-8859-1, and an id or a text with
-  a letter outside ASCII is not found. Most HTTP clients leave the charset out unless told.
 - Look at `errors` as well as the status. LDS answers `200` when a query is wrong or a field fails, with the
   reason in `errors` and what could be read in `data`. These snippets treat any error as a failure; a program
-  that should keep the partial `data` (a document without its link field gives an error for that field,
-  see [query-shapes.md](query-shapes.md#links)) checks the `path` of each error instead.
-- An as-of read is the query parameter `snapshot`, a time with `Z`. LDS answers a time it cannot read as of now,
-  without an error ([time-machine.md](time-machine.md#the-rules-of-the-time)), so build the time from a date type
-  of the language rather than from text the user typed.
+  that should keep the partial `data` checks the `path` of each error instead.
+- A document that is not there at the time is `null`, with no error: the type of the answer allows it.
+- An as-of read is the query parameter `snapshot`, a time with `Z`. LDS refuses a time it cannot read with an
+  error ([time-machine.md](time-machine.md#the-rules-of-the-time)); build the time from a date type of the
+  language rather than from text the user typed.
 - LDS has no authentication, so there is no token to send. Do not put an LDS that has data of worth where others
   can reach it (`lds:operate`).
 
@@ -43,7 +41,7 @@ export async function ldsQuery<T>(
   if (snapshot) url.searchParams.set("snapshot", snapshot); // an as-of read; write the time with Z
   const response = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json; charset=utf-8" },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query, variables }),
   });
   if (!response.ok) throw new Error(`LDS answered ${response.status}`);
@@ -62,8 +60,8 @@ const query = `
     }
   }`;
 
-const now = await ldsQuery<{ PersonById: Person }>(query, { id: "ola" });
-const then = await ldsQuery<{ PersonById: Person }>(query, { id: "ola" }, "2021-06-01T00:00:00Z");
+const now = await ldsQuery<{ PersonById: Person | null }>(query, { id: "ola" });
+const then = await ldsQuery<{ PersonById: Person | null }>(query, { id: "ola" }, "2021-06-01T00:00:00Z");
 console.log(now.PersonById, then.PersonById);
 ```
 
@@ -92,7 +90,7 @@ def lds_query(query, variables=None, snapshot=None):
     body = json.dumps({"query": query, "variables": variables or {}}).encode("utf-8")
     request = urllib.request.Request(
         url, data=body, method="POST",
-        headers={"Content-Type": "application/json; charset=utf-8"})
+        headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(request) as response:
         answer = json.load(response)
     if answer.get("errors"):
@@ -118,7 +116,7 @@ print(now["PersonById"], then["PersonById"])
 {'name': 'Ola Nordmann', 'employer': {'name': 'Globex'}} {'name': 'Ola', 'employer': {'name': 'Acme'}}
 ```
 
-`urlopen` raises `HTTPError` for a status other than 2xx (a `415` or a `500`). A time from
+`urlopen` raises `HTTPError` for a status other than 2xx (a `400`, a `415` or a `500`). A time from
 `datetime.now(timezone.utc).isoformat()` ends in `+00:00`, which LDS reads; `urlencode` writes its `+` as `%2B`.
 
 ## Java (java.net.http)
@@ -148,7 +146,7 @@ public class LdsQuery {
         }
         String body = "{\"query\": " + jsonText(query) + ", \"variables\": " + variablesJson + "}";
         HttpRequest request = HttpRequest.newBuilder(URI.create(url))
-                .header("Content-Type", "application/json; charset=utf-8")
+                .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
                 .build();
         HttpResponse<String> response =

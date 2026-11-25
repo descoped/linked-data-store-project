@@ -7,7 +7,8 @@ then. This file is the rules of that time in the GraphQL API, and a tour to give
 
 The examples ran on the compose stack with the example model: the person `ola` has a version from 2020 (Ola,
 Bergen, works at Acme, friend `kari`) and one from 2022 (Ola Nordmann, Oslo, works at Globex, friends `anne`,
-`kari`, `per`); `per` is deleted from 2025; the company `globex` has a version written now for 2030.
+`kari`, `per`); `per` is deleted from 2025; the company `acme` is renamed Acme Corp from 2024; the company `globex`
+has a version written now for 2030, Globex Group.
 
 ## The rules of the time
 
@@ -16,25 +17,28 @@ Bergen, works at Acme, friend `kari`) and one from 2022 (Ola Nordmann, Oslo, wor
   it is refused with `Unused variable '__snapshot'`). When both are there, `snapshot` wins.
   `scripts/query.sh file '' <time>` sets `snapshot`.
 - One time for the whole request. Two times are two requests.
-- Write the time as a date and a time with `Z`: `2021-06-01T00:00:00Z`. The `version` text of a timeline is
-  taken as it is (`2022-01-01T00:00Z[Etc/UTC]`, with `[` and `]` written `%5B` and `%5D` in an address;
-  `scripts/query.sh` does that).
+- Write the time as a date and a time with `Z`: `2021-06-01T00:00:00Z`. An offset is read too
+  (`2022-01-01T00:30:00+01:00` is half an hour before 2022 in UTC, and gave the 2020 version); in an address its
+  `+` must be `%2B`. The `version` text of a timeline is taken as it is (`2022-01-01T00:00Z[Etc/UTC]`, with `[`
+  and `]` written `%5B` and `%5D` in an address). `scripts/query.sh` encodes all three.
 - A version is read from its valid time on: at `2022-01-01T00:00:00Z` `ola` is Ola Nordmann, at
   `2021-12-31T23:59:59Z` still Ola.
 - Before the first version, and from a delete until the next version, the document is not there: `XById` gives
-  the error `The field at path '/PersonById' was declared as a non null type, ...` and `data` is `null`, and the
-  document is not in lists, links or reverse links.
+  `null`, with no error, and the document is not in lists, links or reverse links.
 - A time in the future is allowed. A version written for the future is not read now; it is read with a
   `snapshot` at or after its time.
 - The model is the same for every time: LDS reads one model at start and serves every snapshot with it.
+- A `snapshot` that is not a time (`yesterday`, `2020-06-01` without a time, a time without `Z` or an offset, or
+  a `+` sent as it is, which an address reads as a space) is refused, and the query is not run. The answer has
+  one error, of the classification `ValidationError` (one line in the answer, broken here):
 
-Not finished: a `snapshot` that is not a time (`yesterday`, `2020-06-01` without a time, a time without `Z` or an
-offset) is not refused: the query is answered as of now, without an error. A typo therefore looks like a correct
-answer for today. Check the time you send, and say to the user which time the answer is for.
+  ```
+  The query parameter snapshot 'yesterday' is not an ISO-8601 time. Example of a valid formatted time is
+  '2018-12-06T11:05:31.000+01:00'
+  ```
 
-Not finished: a time with an offset other than `Z` can give the wrong version (with LDS in memory, half an hour
-before a version, `+01:00` gave that version). Turn the user's local time into UTC and write it with `Z`. In an
-address a `+` must be `%2B`, or it becomes a space and the time is not read; `scripts/query.sh` encodes it.
+  The variable `__snapshot` is refused the same way (`The variable __snapshot 'nope' is not an ISO-8601 time.
+  ...`). Say to the user which time the answer is for.
 
 ## The tour
 
@@ -48,9 +52,9 @@ version, oldest first. GraphQL has no field for it. Ask the user which document 
 know, count the versions of the documents of an entity type:
 
 ```sh
-for id in $(echo '{ Person { edges { cursor } } }' | RAW=1 scripts/query.sh - | jq -r '.data.Person.edges[].cursor')
-do
-  printf '%s %s\n' "$id" "$(curl -s "$LDS/ns/Person/$id?timeline" | jq length)"
+echo '{ Person { edges { cursor } } }' | RAW=1 scripts/query.sh - | jq -r '.data.Person.edges[].cursor' |
+while IFS= read -r id; do
+  printf '%s %s\n' "$id" "$(curl -s "$LDS/ns/Person/$(printf '%s' "$id" | jq -sRr @uri)?timeline" | jq length)"
 done
 ```
 
@@ -61,8 +65,9 @@ ola 2
 åse 1
 ```
 
-A document deleted now is not in the list of now; ask for the list at an earlier `snapshot` to find it. An id with
-letters outside ASCII or a `/` needs URL-encoding in the REST address (`lds:data`).
+A document deleted now is not in the list of now; ask for the list at an earlier `snapshot` to find it. The loop
+percent-encodes each id for the REST address (`åse` is `%C3%A5se`), as an id with a space or a letter outside ASCII
+needs (`lds:data`).
 
 ### 2. Show the timeline
 
@@ -202,9 +207,19 @@ Tell it in words: Ola moved from Bergen to Oslo, changed employer from Acme to G
 and gained two friends. For `added` and `removed` the cursor (the id) is in the path; `null` there only means the
 query asked for no fields of that document.
 
-When the document is missing at one of the times, `compare.sh` first prints the error of that time
-(`{"at": "...", "error": "The field at path '/PersonById' ..."}`) and then every value as `added` or `removed`:
-the document came into being or was deleted between the two.
+When the document is missing at one of the times, `XById` is `null` then, and `compare.sh` gives every value as
+`added` or `removed`: the document came into being or was deleted between the two. Per, deleted from 2025:
+
+```sh
+scripts/compare.sh per.graphql 2024-01-01T00:00:00Z 2026-01-01T00:00:00Z
+```
+
+```
+{"path":"PersonById.address.city","change":"removed","before":"Oslo","after":null}
+{"path":"PersonById.name","change":"removed","before":"Per","after":null}
+```
+
+with `per.graphql` asking `{ PersonById(id: "per") { name address { city } } }`.
 
 ### 5. The whole snapshot: what changed in an entity type
 
@@ -267,5 +282,3 @@ Now it is Globex; from 2030 it will be Globex Group, with no write needed then.
 - When a version was written. LDS keeps the valid time only; the time of the write is not read by any query.
 - A version that was replaced: a write at the exact valid time of a version replaces it, and the old one is gone.
 - The model a version was written under. Every snapshot is served with the model LDS runs with now.
-- Search at a time: hits are read at the time of the query, but a document is also found by a text that only
-  another of its versions has ([query-shapes.md](query-shapes.md#search)).

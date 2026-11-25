@@ -7,8 +7,8 @@
 #
 # LDS answers on http://localhost:9090 with the model in schemas/ (restart the server after changing it). The
 # data is kept in volumes between runs; "docker compose -f linked-data-store-server/compose.yaml down -v"
-# removes it. A port that is taken on the machine is moved with LDS_PORT, NEO4J_HTTP_PORT, NEO4J_BOLT_PORT or
-# SOLR_PORT (LDS_PORT=9190 docker compose ... up).
+# removes it. A port that is taken on the machine is moved with SERVER_PORT, NEO4J_HTTP_PORT, NEO4J_BOLT_PORT or
+# SOLR_PORT (SERVER_PORT=9190 docker compose ... up).
 name: lds
 
 services:

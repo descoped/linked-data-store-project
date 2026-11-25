@@ -10,6 +10,8 @@ description: >
   bring into LDS, wants to add or change a type or a field, or LDS refuses, hangs on or ignores their schema at
   start, even when they never say "model" or "schema".
 compatibility: LDS 3.0; Claude Code
+metadata:
+  lds-version: 3.0.1
 ---
 
 # Model a domain for LDS
@@ -39,9 +41,9 @@ show them the result as a diagram, not as code, before anything else.
    [references/json-schema.md](references/json-schema.md). Put it in a folder of its own (`model/`), one file
    `schema.graphql`, or one `<Entity>.json` for each entity type.
 5. **Check it line by line** against [references/checklist.md](references/checklist.md). Several shapes look right,
-   start without a word, and then check nothing or the wrong thing; others make LDS hang. Fix them before LDS sees
-   the file, and tell the user about any limit that stays (for example that a single embedded object is not checked
-   in a GraphQL schema).
+   start without a word, and then check nothing or the wrong thing; others stop LDS at start. Fix them before LDS
+   sees the file, and tell the user about any limit that stays (for example that a single embedded object is not
+   checked in a GraphQL schema).
 6. **Draw it** as a Mermaid class diagram ([references/diagram.md](references/diagram.md)): a filled diamond for an
    embedded type, an arrow for a link. Show it with a short list of what LDS will refuse and what it will take as it
    comes, and ask the user to confirm or correct. Go back to step 2 for each correction.
@@ -99,9 +101,10 @@ LDS versions every document on its own: a write adds a version valid from the ti
 | | GraphQL schema (one file) | JSON Schema 2020-12 (one file per entity type) |
 |---|---|---|
 | GraphQL API, reverse links, search | yes | no: `/graphql` answers `400 Unsupported namespace: "graphql"` |
-| Text, `true`/`false`, date-time, enum name, list of texts, list of embedded objects | checked | checked |
-| Numbers, dates, times of day, a single embedded object | not checked | checked |
-| `null` as a value | refused in a checked field | accepted where the schema says so |
+| Text, `true`/`false`, whole numbers (`Int`, `Long`), numbers (`Float`), date-time, date, time of day, enum name | checked | checked |
+| Lists of these, list of embedded objects | checked, each item | checked |
+| A single embedded object | not checked | checked |
+| A field that is `null` | left out: written and read back as a field that is not there | the same |
 | Limits (shortest text, smallest number, a pattern), no fields beyond the model | cannot be said | checked |
 
 Suggest the GraphQL schema first, because most users want to query and follow links both ways, and only it gives
@@ -152,16 +155,18 @@ type Query {
 scalar DateTime
 ```
 
-The two `directive` lines, the type `Query` and a `scalar` line for each of `DateTime`, `Date`, `Time` in use are
-required; LDS ends at start without them. `@domain` makes an entity type, a type without it is embedded, `!` makes a
-field required, `@link` makes a link. Everything else is in
+The two `directive` lines, the type `Query` and a `scalar` line for each of `DateTime`, `Date`, `Time` and `Long`
+in use are required; LDS ends at start without them. `@domain` makes an entity type, a type without it is embedded,
+`!` makes a field required, `@link` makes a link. Everything else is in
 [references/graphql-schema.md](references/graphql-schema.md).
 
 ## Search
 
-Search finds a document only by the texts of fields named `languageText`, anywhere in the document, and only with
-a GraphQL schema, with search turned on and Solr running (`lds:start`). When the user wants to find documents by
-text, give the entity a list of an embedded type with that field:
+Search finds a document by every text in it, wherever it is in the document: a `String`, an enum name, a field the
+model does not have. Links, dates, times, numbers and `true`/`false` are not searched. It needs a GraphQL schema,
+with search turned on and Solr running (`lds:start`). A text is found word for word, with or without its accents
+(`Bjorn` finds `Bjørn`). When the user's texts are in a language, give the entity a list of an embedded type with
+these two fields:
 
 ```graphql
 type Text {
@@ -170,8 +175,12 @@ type Text {
 }
 ```
 
-and a field such as `description: [Text]`. No other field is searched, whatever its name, and `@domain(searchable:
-...)` has no effect. Tell the user plainly that search covers only these texts.
+and a field such as `description: [Text]`. A `languageText` beside a `languageCode` of Norwegian (`nb`, `nn`, `no`),
+Swedish (`sv`), English (`en`), German (`de`) or French (`fr`) is found by the stem of its words in that language
+(`learning` finds `A young wizard learns`); with another code it is found word for word, as every other text.
+
+`@domain(searchable: false)` on an entity type keeps its documents out of search, for a type no one looks for by
+words (a loan). Search never gives one, and the type is not among the types a search can be limited to.
 
 ## One namespace
 
@@ -183,8 +192,8 @@ used as written in every address: `/ns/Member`, not `/ns/member`.
 
 Run the script of this skill on the model folder. Its scripts are in `${CLAUDE_SKILL_DIR}/scripts/`: run them as `sh
 "${CLAUDE_SKILL_DIR}/scripts/<name>"`, from any folder. The references name them `scripts/<name>`, and `<skill dir>`
-there is `${CLAUDE_SKILL_DIR}`. It starts `descoped/lds:3.0.0` in memory in a throwaway container (`lds-model-try`, on
-`localhost:9098`), waits until LDS answers, ends or hangs, and prints what LDS read, or the reason from its log. It also
+there is `${CLAUDE_SKILL_DIR}`. It starts `descoped/lds:3.0.1` in memory in a throwaway container (`lds-model-try`, on
+`localhost:9098`), waits until LDS answers or ends, and prints what LDS read, or the reason from its log. It also
 asks every entity type for its list, which catches JSON Schema files that LDS lists and cannot use.
 
 ```sh
@@ -192,14 +201,14 @@ sh "${CLAUDE_SKILL_DIR}/scripts/try-model.sh" model
 ```
 
 ```
-Trying the GraphQL schema (schema.graphql) with descoped/lds:3.0.0 on http://localhost:9098
+Trying the GraphQL schema (schema.graphql) with descoped/lds:3.0.1 on http://localhost:9098
 Managed domains: /Loan /Member
 GET /ns?schema: ["/ns/Loan?schema","/ns/Member?schema"]
 Every entity type answers.
 ```
 
-Exit status 0 means LDS read the model; 1 means it ended, hung or cannot use a file, and the reason is printed;
-[references/checklist.md](references/checklist.md) has every message with its fix. Give a port as the second
+Exit status 0 means LDS read the model; 1 means it ended, did not answer or cannot use a file, and the reason is
+printed; [references/checklist.md](references/checklist.md) has every message with its fix. Give a port as the second
 argument when 9098 is taken. With `--keep` before the folder LDS keeps running, for test writes on that port:
 
 ```sh
@@ -226,7 +235,7 @@ memory (as it comes) a restart loses every document; say so before restarting th
 
 ```sh
 docker rm -f lds
-docker run -d --name lds -p 127.0.0.1:9090:9090 -v "$PWD/model:/lds/schemas:ro" descoped/lds:3.0.0
+docker run -d --name lds -p 127.0.0.1:9090:9090 -v "$PWD/model:/lds/schemas:ro" descoped/lds:3.0.1
 ```
 
 - The folder is mounted at `/lds/schemas`. A GraphQL schema there must be named `schema.graphql`, or named in
@@ -256,7 +265,7 @@ without `"type"` in it is not checked. Read it when LDS takes or refuses a docum
 | [references/converting.md](references/converting.md) | The user brings sample JSON, CSV, SQL DDL or OpenAPI. |
 | [references/graphql-schema.md](references/graphql-schema.md) | Writing or changing a GraphQL schema: every field kind, links, unions, reverse links, a whole example. |
 | [references/json-schema.md](references/json-schema.md) | The user wants JSON Schema files, or brings JSON Schema or OpenAPI 3.1. |
-| [references/checklist.md](references/checklist.md) | Before every try, and whenever LDS ends, hangs or checks the wrong thing at start. |
+| [references/checklist.md](references/checklist.md) | Before every try, and whenever LDS ends at start or checks the wrong thing. |
 | [references/diagram.md](references/diagram.md) | Drawing the model for the user to confirm. |
 
 The documentation behind this skill: [The model](https://lds.descoped.io/docs/user/model/),

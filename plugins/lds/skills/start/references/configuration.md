@@ -1,7 +1,7 @@
 # Configuring LDS in a container
 
-How the image `descoped/lds:3.0.0` is given its configuration, the rules that make a setting work or be passed
-over in silence, and the keys to leave alone in the image. Every key, its default and its meaning:
+How the image `descoped/lds:3.0.1` is given its configuration, the rules that make a setting work or stop the
+start, and the keys to leave alone in the image. Every key, its default and its meaning:
 https://lds.descoped.io/docs/user/configuration/#the-keys.
 
 ## How a key is set
@@ -27,7 +27,7 @@ The sources, a later one winning over an earlier one:
 | `sagalog.config.connection-pool.max-size` | `LDS_SAGALOG_CONFIG_CONNECTION_POOL_MAX_SIZE` |
 
 ```sh
-docker run -d --name lds -p 127.0.0.1:9090:9090 -e LDS_NAMESPACE_DEFAULT=data descoped/lds:3.0.0
+docker run -d --name lds -p 127.0.0.1:9090:9090 -e LDS_NAMESPACE_DEFAULT=data descoped/lds:3.0.1
 curl -s 'http://localhost:9090/data?schema'
 ```
 
@@ -39,7 +39,7 @@ curl -s 'http://localhost:9090/data?schema'
 
 ```sh
 docker run -d --name lds -p 127.0.0.1:9090:9090 \
-  -v "$PWD/application.properties:/lds/conf/application.properties:ro" descoped/lds:3.0.0
+  -v "$PWD/application.properties:/lds/conf/application.properties:ro" descoped/lds:3.0.1
 ```
 
 With `namespace.default=data` in the file, `/data?schema` answered as above and `/ns?schema` answered
@@ -51,13 +51,15 @@ starts with `Picked up JAVA_TOOL_OPTIONS: ...`.
 
 ## The rules that bite
 
-- **A variable sets only a key that a file has.** The built-in defaults hold the 60 keys of the documentation, so
+- **A variable sets only a key that a file has.** The built-in defaults hold the keys of the documentation, so
   each of those can be set by a variable. A few keys of the saga log and the transaction log in PostgreSQL are in no
   file (https://lds.descoped.io/docs/user/configuration/#keys-that-no-file-has): write such a key in a mounted
   `application.properties` first; after that a variable can set it too.
-- **A key that is spelled wrong is passed over without a message.** `LDS_NAMESPACE_DEFALT=x` changed nothing and
-  the log did not name it. So after setting a key, check its effect: the `Using ...` lines of the log name the stores,
-  `/ns?schema` shows the namespace and the model.
+- **A variable `LDS_...` that sets no key stops the start.** `-e LDS_NAMESPACE_DEFALT=x` ended LDS at once with
+  `environment variable(s) LDS_NAMESPACE_DEFALT match no configuration key: ...`. So no variable of one's own may
+  start with `LDS_` in the environment of LDS. A system property for no key is passed over without a message
+  (`-Dnamespace.defalt=z` in `JAVA_TOOL_OPTIONS` changed nothing). After setting a key, check its effect: the
+  `Using ...` lines of the log name the stores, `/ns?schema` shows the namespace and the model.
 - **Values**: a truth value is `true` or `false`; a number is a whole number; a list is separated by commas with no
   space after a comma; spaces at the end of a line in the file belong to the value (`persistence.provider=mem ` with
   a space does not start). A wrong truth value or number stops the start; see
@@ -69,9 +71,9 @@ starts with `Picked up JAVA_TOOL_OPTIONS: ...`.
 
 | Key | Why |
 |---|---|
-| `http.host` | It is `0.0.0.0`, every address of the container, so Docker can forward the port. With `LDS_HTTP_HOST=127.0.0.1` the container was healthy (its check asks from inside) and nothing answered from the machine. |
-| `http.port` | Keep 9090 inside and move the port on the machine with `-p 127.0.0.1:9191:9090`. If it must change, set it only with `LDS_HTTP_PORT` (the health check reads that variable, not a file) and publish that port: `-p 127.0.0.1:9191:9191 -e LDS_HTTP_PORT=9191` was healthy. |
-| `http.prefix` | With `LDS_HTTP_PREFIX=/lds`, `/ping` answered `404` and `/lds/ping` `200`; the image's health check asks `/ping`, so the container is called unhealthy while LDS runs. Put a prefix in a proxy in front instead. |
+| `http.host` | It is `0.0.0.0`, every address of the container, so Docker can forward the port. With `LDS_HTTP_HOST=127.0.0.1` the log said `Server started` and `Listening on 127.0.0.1:9090`, and nothing answered from the machine. |
+| `http.port` | Keep 9090 inside and move the port on the machine with `-p 127.0.0.1:9191:9090`. The health check of the compose files asks 9090 inside the container. |
+| `http.prefix` | With `LDS_HTTP_PREFIX=/lds`, `/ping` answered `404` and `/lds/ping` and `/lds/health/ready` `200`; the health check of the compose files asks `/health/ready`, so the container is called unhealthy while LDS runs. Put a prefix in a proxy in front instead. |
 
 ## Engines outside the container
 
@@ -89,7 +91,7 @@ Inside the container `localhost` is the container itself. LDS with `LDS_POSTGRES
     -e LDS_POSTGRES_DRIVER_HOST=host.docker.internal \
     -e LDS_POSTGRES_DRIVER_PORT=19415 \
     -e LDS_POSTGRES_DRIVER_PASSWORD=lds \
-    descoped/lds:3.0.0
+    descoped/lds:3.0.1
   ```
 
   On Linux with Docker Engine the name exists only when the container is started with

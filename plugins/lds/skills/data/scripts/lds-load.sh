@@ -20,11 +20,11 @@ body=$(mktemp)
 ok=0 bad=0
 while IFS= read -r rec || [ -n "$rec" ]; do
   [ -z "$rec" ] && continue
-  # An id with + or % cannot be used in LDS (it is decoded twice); a record without validFrom has no valid time.
-  check=$(printf '%s' "$rec" | jq '(.id | tostring | test("[+%]")) or (.validFrom == null)' 2>/dev/null)
+  # A record without validFrom has no valid time; one without entity or id has no address.
+  check=$(printf '%s' "$rec" | jq '(.validFrom == null) or (.entity == null) or (.id == null)' 2>/dev/null)
   if [ "$check" != false ]; then
     bad=$((bad + 1)); printf '%s\n' "$rec" >> "$failed"
-    echo "skipped (not JSON, no validFrom, or an id with + or %): $rec" >&2; continue
+    echo "skipped (not JSON, or no entity, id or validFrom): $rec" >&2; continue
   fi
   url=$(printf '%s' "$rec" | jq -r --arg base "$LDS/$NS" \
     '"\($base)/\(.entity | @uri)/\(.id | @uri)?timestamp=\(.validFrom | @uri)"')
