@@ -14,8 +14,6 @@ import io.descoped.lds.api.persistence.json.JsonToFlattenedDocument;
 import io.descoped.lds.api.persistence.streaming.Fragment;
 import io.descoped.lds.api.persistence.streaming.FragmentType;
 import io.descoped.lds.api.specification.Specification;
-import io.descoped.lds.api.specification.SpecificationElement;
-import io.descoped.lds.api.specification.SpecificationTraversal;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Flowable;
 import io.reactivex.rxjava3.core.Maybe;
@@ -272,10 +270,8 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
     @Override
     public Completable deleteAllEntities(Transaction tx, String namespace, String entity, Specification
             specification) {
-        List<String> paths = new ArrayList<>();
-        SpecificationElement entityElement = JsonNavigationPath.from("$").toSpecificationElement(specification, entity);
-        SpecificationTraversal.depthFirstPreOrderFullTraversal(entityElement, (_, element) -> paths.add(JsonNavigationPath.from(element).serialize()));
-        return persistence.deleteAllEntities(tx, namespace, entity, paths);
+        // The store deletes what it holds of the entity: the specification does not say what that is.
+        return persistence.deleteAllEntities(tx, namespace, entity);
     }
 
     @Override

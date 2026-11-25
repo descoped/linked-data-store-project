@@ -1699,6 +1699,27 @@ public abstract class PersistenceIntegrationTest {
     }
 
     /**
+     * Every document of an entity is deleted, every version of it, also of an entity that the specification does
+     * not have, and nothing of another entity or namespace.
+     */
+    @Test
+    public void thatAllDocumentsOfAnEntityAreDeletedAlsoOfAnEntityTheSpecificationDoesNotHave() {
+        try (Transaction tx = persistence.createTransaction(false)) {
+            writeAndRead(tx, specification, "Stranger", "gone-1", json("{'name':'S','more':{'list':[1,'two']}}"));
+            writeAndRead(tx, specification, "Stranger", "gone-2", json("{'name':'T'}"));
+            persistence.createOrOverwrite(tx, toDocument(namespace, "Stranger", "gone-2", json("{'name':'U'}"), Y2020.plusYears(1)), specification).blockingAwait();
+            writeAndRead(tx, specification, "Address", "kept", json("{'city':'S'}"));
+
+            persistence.deleteAllEntities(tx, namespace, "Stranger", specification).blockingAwait();
+
+            assertThat(persistence.readDocuments(tx, Y2020.plusYears(2), namespace, "Stranger", Range.unbounded()).toList().blockingGet()).isEmpty();
+            assertThat(persistence.readDocumentVersions(tx, namespace, "Stranger", "gone-2", Range.unbounded()).toList().blockingGet()).isEmpty();
+            assertThat(idsFound(tx, "Stranger", "$.name", "S")).isEmpty();
+            assertThat(cityAt(tx, "kept", Y2020)).isEqualTo("S");
+        }
+    }
+
+    /**
      * Several versions of one document that are written together, not in the order of time: each is valid from
      * its own time until the next one.
      */

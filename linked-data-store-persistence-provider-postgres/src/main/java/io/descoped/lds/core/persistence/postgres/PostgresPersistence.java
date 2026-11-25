@@ -273,7 +273,7 @@ final class PostgresPersistence implements RxPersistence {
     }
 
     @Override
-    public Completable deleteAllEntities(Transaction transaction, String namespace, String entity, Iterable<String> paths) {
+    public Completable deleteAllEntities(Transaction transaction, String namespace, String entity) {
         Query query = new Query();
         query.sql(DELETE_WHERE_NAMESPACE).value(namespace)
                 .sql(AND_ENTITY).value(entity);

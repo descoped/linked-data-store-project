@@ -127,6 +127,16 @@ public interface RxJsonPersistence {
     Completable deleteAllDocumentVersions(Transaction tx, String ns, String entity, String id,
                                           PersistenceDeletePolicy policy);
 
+    /**
+     * Deletes every version of every document of the entity in the namespace, also of an entity that the
+     * specification does not have.
+     *
+     * @param tx            the transaction
+     * @param namespace     the namespace
+     * @param entity        the entity
+     * @param specification the specification of the documents
+     * @return completes when every document is deleted
+     */
     Completable deleteAllEntities(Transaction tx, String namespace, String entity, Specification specification);
 
     /**

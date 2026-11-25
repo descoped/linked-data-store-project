@@ -18,7 +18,6 @@ import io.reactivex.rxjava3.core.Single;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -484,21 +483,19 @@ public class MemoryRxPersistence implements RxPersistence {
     }
 
     @Override
-    public Completable deleteAllEntities(Transaction transaction, String namespace, String entity, Iterable<String> paths) {
-        return doDeleteAllEntities((OrderedKeyValueTransaction) transaction, namespace, entity, paths);
+    public Completable deleteAllEntities(Transaction transaction, String namespace, String entity) {
+        return doDeleteAllEntities((OrderedKeyValueTransaction) transaction, namespace, entity);
     }
 
-    private Completable doDeleteAllEntities(OrderedKeyValueTransaction transaction, String namespace, String entity, Iterable<String> paths) {
-        return Completable.merge(List.of(
-                Completable.defer(() -> getPrimary(namespace, entity).flatMapCompletable(primary -> {
-                    transaction.clearRange(primary.range(), PRIMARY_INDEX);
-                    return Completable.complete();
-                })),
-                Flowable.fromIterable(paths).flatMapCompletable(path -> getIndex(namespace, entity, path).flatMapCompletable(index -> {
-                    transaction.clearRange(index.range(), PATH_VALUE_INDEX);
-                    return Completable.complete();
-                }))
-        ));
+    /*
+     * The index entry of each fragment of the entity, then the entity, as deleteAllVersions does for one document: the
+     * index is cleared at every path the documents hold a value, whatever the specification says.
+     */
+    private Completable doDeleteAllEntities(OrderedKeyValueTransaction transaction, String namespace, String entity) {
+        return Completable.defer(() -> getPrimary(namespace, entity)
+                .flatMapCompletable(primary -> Flowable.fromPublisher(new AsyncIterablePublisher<>(transaction.getRange(primary.range(), PRIMARY_INDEX, ROW_LIMIT_UNLIMITED)))
+                        .flatMapCompletable(kv -> deleteFragmentFromPathValueIndex(transaction, namespace, entity, primary, kv))
+                        .doOnComplete(() -> transaction.clearRange(primary.range(), PRIMARY_INDEX))));
     }
 
     @Override
