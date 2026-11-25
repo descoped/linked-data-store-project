@@ -304,6 +304,15 @@ public class UndertowApplication implements Lifecycle {
         }
     }
 
+    /*
+     * The files and folders of JSON Schemas that specification.schema names, separated by commas: each without the
+     * spaces around it.
+     */
+    static String[] specificationSchemaFiles(String configured) {
+        return "".equals(configured) ? new String[0] : Stream.of(configured.split(",")).map(String::trim)
+                .toArray(String[]::new);
+    }
+
     /** The class path resource that holds the defaults of the configuration of core */
     public static final String DEFAULT_CONFIGURATION_RESOURCE_PATH = "application-defaults.properties";
 
@@ -361,7 +370,7 @@ public class UndertowApplication implements Lifecycle {
 
         } else {
             String schemaConfigStr = configuration.get("specification.schema");
-            String[] specificationSchema = ("".equals(schemaConfigStr) ? new String[0] : schemaConfigStr.split(","));
+            String[] specificationSchema = specificationSchemaFiles(schemaConfigStr);
             LOG.info("Creating specification using json-schema: {}", schemaConfigStr);
             specification = JsonSchemaBasedSpecification.create(specificationSchema);
         }
