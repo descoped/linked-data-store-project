@@ -1,6 +1,7 @@
 ---
 title: "Roadmap"
-description: "What LDS is to do next, and what is being considered: security, the model, tools, writes and reads, running it."
+description: >-
+  What LDS is to do next, and what is being considered: security, the model, tools, writes and reads, running it.
 order: 2
 ---
 

@@ -361,7 +361,8 @@ it): the one line of the landing page, so it is moved or renamed only with the p
 `docs/` is Markdown as GitHub renders it, in two parts with two readers, and a document is for exactly one of
 them: `docs/user/` for those who use LDS (they run it, give it a model, read and write documents; no class, module
 or package names there) and `docs/developer/` for those who change the code (`architecture.md` is the map, then
-one document for each part of the code). `docs/README.md` is the index. Keep these when changing it:
+one document for each part of the code). The root of `docs/` holds what both readers share: `README.md`, the index;
+`glossary.md`; `whats-new.md`; and `roadmap.md`. Keep these when changing it:
 
 - **Only what the code does.** A statement is one found in the code, in a test or by running LDS, and every
   request shown was run, with the answer that came.
@@ -375,6 +376,9 @@ one document for each part of the code). `docs/README.md` is the index. Keep the
   described.
 - **What is unfinished is said where the reader meets it**, in a paragraph that starts with `Not finished:`. When
   the fault is corrected, the paragraph goes.
+- **What's new is the one document about releases** (`docs/whats-new.md`): what each release gives those who use
+  LDS, under the release's name, and what to do when moving up to it. It is the exception to "not a changelog" and
+  "not its history", and names LDS versions; every other document describes the latest release as it is.
 - **The roadmap is the one document about the future** (`docs/roadmap.md`, owner's request): what LDS is to do
   (Next, Later) and what is considered (To be evaluated, never promised), in categories, with no dates and no LDS
   versions. Each item is grounded in the code: what LDS lacks today is checked in the code and linked to the

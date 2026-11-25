@@ -27,6 +27,34 @@ function nameOf(figure: HTMLElement): string {
  * the page's theme), and closes with Escape, its button, or a click beside the drawing. A figure is told to a screen
  * reader as a button that opens it. Without JavaScript the figures are shown as they are.
  */
+/**
+ * The copy of a drawing with ids of its own: each id gets `-zoom`, and so does every reference to it (an ARIA label,
+ * `url(#…)`, `href="#…"`, and the selectors of a `<style>` in the drawing, as Mermaid's), so the page has no id twice
+ * and the copy is labelled by its own title.
+ */
+function withOwnIds(svg: SVGSVGElement): SVGSVGElement {
+  const ids = [svg, ...svg.querySelectorAll('[id]')].map((element) => element.id).filter(Boolean)
+  if (ids.length === 0) return svg
+  const escaped = ids.map((id) => id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  const reference = new RegExp(`#(${escaped.join('|')})(?![\\w-])`, 'g')
+  const own = (text: string): string => text.replace(reference, '#$1-zoom')
+  for (const element of [svg, ...svg.querySelectorAll('*')]) {
+    if (element.id) element.id = `${element.id}-zoom`
+    for (const attribute of [...element.attributes]) {
+      if (attribute.name === 'aria-labelledby' || attribute.name === 'aria-describedby') {
+        attribute.value = attribute.value
+          .split(/\s+/)
+          .map((id) => (ids.includes(id) ? `${id}-zoom` : id))
+          .join(' ')
+      } else if (attribute.name !== 'id' && attribute.value.includes('#')) {
+        attribute.value = own(attribute.value)
+      }
+    }
+    if (element.localName === 'style' && element.textContent) element.textContent = own(element.textContent)
+  }
+  return svg
+}
+
 export function FigureZoom(): null {
   useEffect(() => {
     const dialog = document.createElement('dialog')
@@ -43,7 +71,7 @@ export function FigureZoom(): null {
     const open = (figure: HTMLElement): void => {
       const drawing = figure.querySelector('svg')
       if (!drawing) return
-      const copy = drawing.cloneNode(true) as SVGSVGElement
+      const copy = withOwnIds(drawing.cloneNode(true) as SVGSVGElement)
       copy.removeAttribute('height')
       copy.setAttribute('width', '100%')
       copy.style.maxWidth = 'none'

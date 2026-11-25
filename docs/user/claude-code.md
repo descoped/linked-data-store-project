@@ -1,6 +1,7 @@
 ---
 title: "With Claude Code"
-description: "The plugin lds for Claude Code: start LDS, make a model of a domain, write, read and query documents by asking."
+description: >-
+  The plugin lds for Claude Code: start LDS, make a model of a domain, write, read and query documents by asking.
 order: 8
 section: Operate
 ---

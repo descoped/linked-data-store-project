@@ -55,7 +55,7 @@ function getHighlighter(): Promise<Highlighter> {
  * variables (`--shiki-light`, `--shiki-dark`), and the stylesheet picks one by the page's theme. A language that is
  * not known, and a block without one, is shown as plain text. The block is labelled with its language, and the page
  * adds a copy button to it. A block of HTTP is an answer, which scrolls when it is long; an answer, a console session and a
- * block of text wrap their lines. A block with an HTML comment right before it (`<!-- The whole stack -->`) is labelled with
+ * block of text wrap their lines. A block with a comment `<!-- label: ... -->` right before it (`<!-- label: The whole stack -->`) is labelled with
  * that text instead, saying what the block is for rather than what language it is in.
  */
 async function highlight(lang: string, escaped: string, title?: string): Promise<string> {
@@ -159,7 +159,7 @@ export async function prepareHtml(source: string): Promise<{ html: string; toc: 
 export async function highlightCode(html: string): Promise<string> {
   return replaceAsync(
     html,
-    /(?:<!--\s*([^<>]*?)\s*-->\s*)?<pre><code(?: class="language-([\w-]+)")?>([\s\S]*?)<\/code><\/pre>/g,
+    /(?:<!--\s*label:\s*([^<>]*?)\s*-->\s*)?<pre><code(?: class="language-([\w-]+)")?>([\s\S]*?)<\/code><\/pre>/g,
     (_, title = '', lang = '', code = '') => highlight(lang, code, title || undefined),
   )
 }
