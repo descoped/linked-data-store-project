@@ -123,19 +123,19 @@ books, authors and loans, and load these members from members.csv". [With Claude
 
 LDS fits data whose history is part of the data.
 
-- **Registers and master data.** Data that changes over time and is read as it was.
-- **Reports and audits.** The data as it stood on a past date.
-- **Linked models.** Documents that link to each other, read together at one moment.
-- **Planned changes.** Written today, with a date in the future.
+- **Registers and master data** Data that changes over time and is read as it was
+- **Reports and audits** The data as it stood on a past date
+- **Linked models** Documents that link to each other, read together at one moment
+- **Planned changes** Written today, with a date in the future
 
 ## Where LDS does not fit
 
 These are facts of LDS 3.0.
 
-- **Recorded time.** You need to know when a version was recorded as well as when it is valid. LDS keeps the valid
-  time only.
-- **Access control.** LDS has no authentication, so anyone who reaches its port can read and write.
-- **Checked links.** You need a link checked on write, or a delete refused while other documents link to it. LDS
-  does neither.
-- **Several writers.** Several LDS write the same document at the same time. Writes to one document take turns
-  within one LDS, not across several.
+- **Recorded time** You need to know when a version was recorded as well as when it is valid. LDS keeps the valid
+  time only
+- **Access control** LDS has no authentication, so anyone who reaches its port can read and write
+- **Checked links** You need a link checked on write, or a delete refused while other documents link to it. LDS
+  does neither
+- **Several writers** Several LDS write the same document at the same time. Writes to one document take turns
+  within one LDS, not across several
