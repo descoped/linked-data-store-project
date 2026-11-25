@@ -560,8 +560,7 @@ public class UndertowApplication implements Lifecycle {
     private static SagaLogPool configureSagaLogProvider(DynamicConfiguration configuration) {
         String providerClass = configuration.find("sagalog.provider").orElse(null);
         LOG.info("Using saga-log-pool provider-class: {}", providerClass);
-        ServiceLoader<SagaLogInitializer> loader = ServiceLoader.load(SagaLogInitializer.class);
-        SagaLogInitializer initializer = loader.stream().filter(c -> providerClass.equals(c.type().getName())).findFirst().orElseThrow().get();
+        SagaLogInitializer initializer = sagaLogInitializer(providerClass);
         Map<String, String> providerConfig = subMapFromPrefix(configuration.asMap(), "sagalog.config.");
         checkSagaLogPool(initializer, providerConfig, configuration.getInt("saga.number-of-logs"));
 
@@ -589,6 +588,26 @@ public class UndertowApplication implements Lifecycle {
                 }
             }
         }
+    }
+
+    /*
+     * The saga log provider whose class has the name given (sagalog.provider). A name that is missing, or that no
+     * provider on the class path has, stops the start with the key and the names there are.
+     */
+    static SagaLogInitializer sagaLogInitializer(String providerClass) {
+        List<ServiceLoader.Provider<SagaLogInitializer>> providers = ServiceLoader.load(SagaLogInitializer.class)
+                .stream().toList();
+        Set<String> names = providers.stream().map(provider -> provider.type().getName())
+                .collect(Collectors.toCollection(TreeSet::new));
+        if (providerClass == null || providerClass.isBlank()) {
+            throw new IllegalStateException("sagalog.provider is not set: name the class of the saga log provider, "
+                    + "one of " + names);
+        }
+        String name = providerClass.trim();
+        return providers.stream().filter(provider -> provider.type().getName().equals(name)).findFirst()
+                .orElseThrow(() -> new IllegalStateException("No saga log provider " + name + " (sagalog.provider);"
+                        + " there are: " + names))
+                .get();
     }
 
     /*
