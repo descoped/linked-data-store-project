@@ -55,7 +55,7 @@ const layoutOf: Record<string, 'split' | 'fit' | 'quiet'> = {
 /** Sections shown as two cards in one band: the first names the second */
 const pairOf: Record<string, string> = { 'The problem': 'The time machine', 'See it': 'With Claude' }
 
-/** Pairs whose cards are one above the other, each as wide as the page: their code needs the width */
+/** Pairs shown one above the other in a column of their own, without cards: their code needs the width */
 const stacked = new Set(['See it'])
 
 /** The figure a section of the contract shows after its text; its words are the section's */

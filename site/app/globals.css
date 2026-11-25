@@ -337,9 +337,20 @@ a {
   }
 }
 
-/* Two cards one above the other, each as wide as the page */
+/* Two sections one above the other, without a card, in a column of their own in the middle of the page: as wide as
+   the longest line of their code (87 characters of 14 px mono, about 733 px), with room to spare */
 .band-stack {
+  gap: clamp(3rem, 2rem + 3vw, 4.5rem);
   grid-template-columns: minmax(0, 1fr);
+  margin-inline: auto;
+  max-width: 52rem;
+}
+
+.band-stack .pair-part {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
 }
 
 .pair-part .actions {
