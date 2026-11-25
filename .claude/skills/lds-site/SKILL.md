@@ -134,6 +134,15 @@ code (its file and line are noted while working, not written into the document) 
 image; every request shown was run, with the answer that came. A statement that the code does not bear out is
 corrected or removed, never softened. An earlier document, a comment in the code or a memory is a lead, not a source.
 
+**No version of LDS in the documents** (owner's decision, 2026-11-25: no version-number maintenance). A document says
+"the latest version" or nothing; the images are `descoped/lds` (the tag `latest`), `descoped/lds:distroless` and
+`descoped/lds:debug`, which every release publishes. A version that is an input (the release workflow's, a POM's) is
+written `X.Y.Z`. Versions of engines and libraries (PostgreSQL 18, Solr 10, JDK 27) stay. `docs/whats-new.md` is about
+releases and names them.
+
+**A refinement, not a rewrite.** The documentation is of good quality (owner, 2026-11-25). A revision makes the
+fewest changes that make a document true, complete for its reader and plain; what is true and clear is left as it is.
+
 **One home for each topic.** A topic is explained once, in the document of the reader it belongs to; every other
 document that needs it gives one sentence and a link to that place. Before a revision, make the map of topics: for
 each, the document that is its home and the others that repeat it. The user documents explain what LDS does and how
