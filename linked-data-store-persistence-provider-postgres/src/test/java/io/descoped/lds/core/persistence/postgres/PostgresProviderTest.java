@@ -474,6 +474,17 @@ class PostgresProviderTest {
         assertThat(fragments.transactionFactory.dataSource.getHikariPoolMXBean().getActiveConnections()).isZero();
     }
 
+    @Test
+    void aReadTransactionCommitsAsBeforeAfterAStatementFailed() throws SQLException {
+        PostgresTransaction tx = fragments.transactionFactory.createTransaction(true);
+        try (Statement statement = tx.connection.createStatement()) {
+            assertThatThrownBy(() -> statement.execute("SELECT 1 / 0")).isInstanceOf(SQLException.class);
+        }
+
+        assertThat(tx.commit().join()).isNotNull();
+        assertThat(fragments.transactionFactory.dataSource.getHikariPoolMXBean().getActiveConnections()).isZero();
+    }
+
     // ---- helpers
 
     private static ObjectNode city(String city) {

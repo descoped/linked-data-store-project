@@ -15,17 +15,20 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * One connection of the pool with a transaction open on it. Committing or cancelling ends the transaction and
  * gives the connection back; whatever is asked after that does nothing.
  * <p>
- * A transaction in which a statement failed cannot be committed: PostgreSQL rolls it back. A commit then rolls it
- * back and fails its future.
+ * A transaction in which a statement failed cannot be committed: PostgreSQL rolls it back. The commit of a write
+ * transaction then rolls it back and fails its future. A read transaction commits as before: it wrote nothing, and
+ * the failed read has given its own error.
  */
 final class PostgresTransaction implements Transaction {
 
     final Connection connection;
+    private final boolean readOnly;
     private final TransactionStatistics statistics = new TransactionStatistics();
     private final AtomicBoolean ended = new AtomicBoolean();
 
-    PostgresTransaction(Connection connection) {
+    PostgresTransaction(Connection connection, boolean readOnly) {
         this.connection = connection;
+        this.readOnly = readOnly;
     }
 
     @Override
@@ -43,7 +46,7 @@ final class PostgresTransaction implements Transaction {
             return CompletableFuture.completedFuture(statistics);
         }
         try (Connection ending = connection) {
-            if (commit && failed(ending)) {
+            if (commit && !readOnly && failed(ending)) {
                 // PostgreSQL answers COMMIT with a rollback, and the driver does not say so
                 ending.rollback();
                 return CompletableFuture.failedFuture(new PersistenceException(
