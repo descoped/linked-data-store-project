@@ -9,8 +9,6 @@ import io.descoped.lds.api.persistence.reactivex.RxJsonPersistenceBridge;
 import java.util.Map;
 import java.util.Set;
 
-import static java.util.Optional.ofNullable;
-
 @ProviderName("mem")
 public class MemoryInitializer implements PersistenceInitializer {
 
@@ -41,9 +39,8 @@ public class MemoryInitializer implements PersistenceInitializer {
 
     @Override
     public RxJsonPersistence initialize(String defaultNamespace, Map<String, String> configuration, Set<String> managedDomains) {
-        int fragmentCapacityBytes = fragmentCapacity(ofNullable(configuration.get(FRAGMENT_CAPACITY)).orElse("8192"));
-        boolean cancelTxOnClose = Boolean.parseBoolean(ofNullable(configuration.get("persistence.mem.transaction.cancel-on-close")).orElse("false"));
-        TransactionFactory transactionFactory = new MemoryTransactionFactory(cancelTxOnClose);
+        int fragmentCapacityBytes = fragmentCapacity(configuration.getOrDefault(FRAGMENT_CAPACITY, "8192"));
+        TransactionFactory transactionFactory = new MemoryTransactionFactory();
         persistence = new MemoryRxPersistence(transactionFactory, new MemoryDirectory());
         rxJsonPersistence = new RxJsonPersistenceBridge(persistence, fragmentCapacityBytes);
         return rxJsonPersistence;

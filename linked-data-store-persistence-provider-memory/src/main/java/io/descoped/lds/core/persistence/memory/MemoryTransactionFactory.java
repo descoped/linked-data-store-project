@@ -26,11 +26,6 @@ public class MemoryTransactionFactory implements TransactionFactory {
     });
     final ConcurrentMap<String, ConcurrentNavigableMap<byte[], byte[]>> indexByIndex = new ConcurrentSkipListMap<>();
     final ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
-    private final boolean cancelTxOnClose;
-
-    public MemoryTransactionFactory(boolean cancelTxOnClose) {
-        this.cancelTxOnClose = cancelTxOnClose;
-    }
 
     @Override
     public <T> CompletableFuture<T> runAsyncInIsolatedTransaction(Function<? super Transaction, ? extends T> retryable, boolean readOnly) {
@@ -44,7 +39,7 @@ public class MemoryTransactionFactory implements TransactionFactory {
     @Override
     public MemoryTransaction createTransaction(boolean readOnly) throws PersistenceException {
         try {
-            return new MemoryTransaction(executor, indexByIndex, readOnly ? readWriteLock.readLock() : readWriteLock.writeLock(), readOnly, cancelTxOnClose);
+            return new MemoryTransaction(executor, indexByIndex, readOnly ? readWriteLock.readLock() : readWriteLock.writeLock(), readOnly);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new RuntimeException(e);

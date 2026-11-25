@@ -21,7 +21,7 @@ class AsyncIterablePublisherSignalsTest {
      */
     @Test
     void nothingIsDeliveredBeforeOnSubscribeHasReturned() throws InterruptedException {
-        MemoryTransactionFactory factory = new MemoryTransactionFactory(false);
+        MemoryTransactionFactory factory = new MemoryTransactionFactory();
         MemoryTransaction tx = factory.createTransaction(false);
         try {
             for (int i = 0; i < 3; i++) {
@@ -146,7 +146,7 @@ class AsyncIterablePublisherSignalsTest {
     /* A store that is closed cannot read: the subscriber is told so, and subscribe returns. */
     @Test
     void aSubscriberOfAClosedStoreIsGivenTheError() throws InterruptedException {
-        MemoryTransactionFactory factory = new MemoryTransactionFactory(false);
+        MemoryTransactionFactory factory = new MemoryTransactionFactory();
         MemoryTransaction tx = factory.createTransaction(false);
         tx.set(new byte[]{1}, new byte[0], "i");
         AsyncIterablePublisher<KeyValue> publisher = new AsyncIterablePublisher<>(tx.getRange(

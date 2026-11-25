@@ -25,7 +25,7 @@ class KeySelectorTest {
 
     @BeforeEach
     void fill() {
-        factory = new MemoryTransactionFactory(false);
+        factory = new MemoryTransactionFactory();
         tx = factory.createTransaction(false);
         for (int key : new int[]{1, 3, 5}) {
             tx.set(new byte[]{(byte) key}, new byte[0], INDEX);

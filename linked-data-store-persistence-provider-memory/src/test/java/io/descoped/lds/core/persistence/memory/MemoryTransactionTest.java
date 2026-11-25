@@ -14,7 +14,7 @@ public class MemoryTransactionTest {
 
     @Test
     public void thatTransactionRollsBackOnCancel() {
-        MemoryTransactionFactory factory = new MemoryTransactionFactory(false);
+        MemoryTransactionFactory factory = new MemoryTransactionFactory();
         try (MemoryTransaction tx = factory.createTransaction(false)) {
             tx.set(new byte[]{1, 2, 2}, new byte[]{1, 2, 2}, "i1");
             tx.set(new byte[]{1, 2, 3}, new byte[]{1, 2, 3}, "i1");
@@ -76,7 +76,7 @@ public class MemoryTransactionTest {
 
     @Test
     public void thatACancelAfterACommitLeavesTheCommit() {
-        MemoryTransactionFactory factory = new MemoryTransactionFactory(false);
+        MemoryTransactionFactory factory = new MemoryTransactionFactory();
         MemoryTransaction tx = factory.createTransaction(false);
         tx.set(new byte[]{1}, new byte[]{1}, "i1");
         tx.commit().join();
@@ -95,7 +95,7 @@ public class MemoryTransactionTest {
      */
     @Test
     public void thatATransactionEndedOnAnotherThreadCanStillBeEndedOnItsOwn() throws Exception {
-        MemoryTransactionFactory factory = new MemoryTransactionFactory(false);
+        MemoryTransactionFactory factory = new MemoryTransactionFactory();
         MemoryTransaction tx = factory.createTransaction(false);
         tx.set(new byte[]{1}, new byte[]{1}, "i1");
 
@@ -118,7 +118,7 @@ public class MemoryTransactionTest {
 
     @Test
     public void thatAReadOnlyTransactionDoesNotWrite() {
-        MemoryTransactionFactory factory = new MemoryTransactionFactory(false);
+        MemoryTransactionFactory factory = new MemoryTransactionFactory();
         try (MemoryTransaction tx = factory.createTransaction(true)) {
             Assert.assertThrows(IllegalStateException.class, () -> tx.set(new byte[]{1}, new byte[]{1}, "i1"));
             Assert.assertThrows(IllegalStateException.class, () -> tx.clear(new byte[]{1}, "i1"));

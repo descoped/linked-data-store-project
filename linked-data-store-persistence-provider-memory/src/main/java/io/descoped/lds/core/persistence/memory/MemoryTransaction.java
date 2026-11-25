@@ -35,19 +35,17 @@ public class MemoryTransaction implements OrderedKeyValueTransaction {
     final ConcurrentMap<String, ConcurrentNavigableMap<byte[], byte[]>> mapByIndex;
     final Lock lock;
     final boolean readOnly;
-    final boolean cancelTxOnClose;
     final AtomicBoolean locked = new AtomicBoolean(true);
     final TransactionStatistics statistics = new TransactionStatistics();
     final List<TransactionLogElement> transactionLog = new CopyOnWriteArrayList<>();
     /* The thread that took the lock, which alone can let it go. */
     final Thread owner;
 
-    public MemoryTransaction(Executor executor, ConcurrentMap<String, ConcurrentNavigableMap<byte[], byte[]>> mapByIndex, Lock lock, boolean readOnly, boolean cancelTxOnClose) throws InterruptedException {
+    public MemoryTransaction(Executor executor, ConcurrentMap<String, ConcurrentNavigableMap<byte[], byte[]>> mapByIndex, Lock lock, boolean readOnly) throws InterruptedException {
         this.executor = executor;
         this.mapByIndex = mapByIndex;
         this.lock = lock;
         this.readOnly = readOnly;
-        this.cancelTxOnClose = cancelTxOnClose;
         lock.lockInterruptibly();
         this.owner = Thread.currentThread();
     }
@@ -133,23 +131,6 @@ public class MemoryTransaction implements OrderedKeyValueTransaction {
     private void checkWritable() {
         if (readOnly) {
             throw new IllegalStateException("A read-only transaction does not write.");
-        }
-    }
-
-    @Override
-    public void close() {
-        if (cancelTxOnClose) {
-            cancel();
-        } else {
-            boolean committed = false;
-            try {
-                commit().join();
-                committed = true;
-            } finally {
-                if (!committed) {
-                    cancel().join();
-                }
-            }
         }
     }
 
