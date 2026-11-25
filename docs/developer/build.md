@@ -547,7 +547,8 @@ jar with its sources jar, to Descoped's repository of SNAPSHOTs in AWS CodeArtif
 <https://maven.descoped.io/>. It runs when `build` has passed, and only on a push to `master`, with the version of the
 POMs (`3.0.1-SNAPSHOT`), or on a start by hand on a branch, with a version of the branch's own,
 `<version>-<branch>-SNAPSHOT`, so that it never replaces the SNAPSHOT of `master`; never on a pull request or a
-tag. It refuses a version that is not a SNAPSHOT. It gets short-lived credentials of AWS by OpenID Connect, for a
+tag. A version that is not a SNAPSHOT, which the commit a release is made from has, publishes nothing: the job says
+so in a notice and passes. It gets short-lived credentials of AWS by OpenID Connect, for a
 role whose name is the one input of the job, the organisation secret `CODEARTIFACT_SNAPSHOTS_ROLE_ARN`; the account
 and the address to publish to are looked up while it runs and are masked in the log, and are written nowhere in the
 repository. It deploys with `-DaltSnapshotDeploymentRepository`, which names the target on its command line and holds
