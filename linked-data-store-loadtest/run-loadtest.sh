@@ -32,8 +32,9 @@ echo Output-folder: ${OUTPUTFOLDER}
 echo Removing previous test-output
 rm -rf "${RESULTS_FOLDER:?}"
 
-start_test_containers
+# set first, so that containers that fail to start are stopped too, and their logs kept
 trap stop_test_containers EXIT
+start_test_containers
 check_health_of_lds
 prepopulate_data
 check_health_of_loadtest
