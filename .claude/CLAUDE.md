@@ -377,8 +377,10 @@ one document for each part of the code). `docs/README.md` is the index. Keep the
   for one thing. A new term goes into the glossary first, defined from the code. Present tense, no history.
 - **The documents stand alone.** They never cite this file; a rule of the project is stated in
   `docs/developer/architecture.md`, a command is given as the command.
-- **Figures are Mermaid** (` ```mermaid `, which GitHub draws in light and dark), and show what the code does,
-  as everything else does: a model as a class diagram (a filled diamond for an embedded type, an arrow for a
+- **Figures are Mermaid** (` ```mermaid `, which GitHub draws in light and dark), or an SVG file with its own light
+  and dark style where Mermaid cannot draw it (the topology, software architecture and deployment figures of
+  `docs/developer/architecture.md`, at the owner's request), and show what the code does, as everything else does:
+  never ASCII drawings. A model as a class diagram (a filled diamond for an embedded type, an arrow for a
   link), a timeline as a Gantt chart without the marker of today, a path as a flowchart. What is a table is a
   Markdown table. What a model can say and the timeline of versions and snapshots are drawn where they are
   explained; a change to them changes the figure.
