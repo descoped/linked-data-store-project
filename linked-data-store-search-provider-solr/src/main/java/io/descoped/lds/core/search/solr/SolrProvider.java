@@ -36,7 +36,7 @@ public class SolrProvider implements SearchIndexProvider {
      * The index of the core at {@code search.index.url}, which makes what it takes searchable within
      * {@code search.index.commit-within} milliseconds (1000 when it is not given).
      *
-     * @param configuration the values of the keys
+     * @param configuration the configuration of LDS, every key of it
      * @return the index
      */
     @Override
