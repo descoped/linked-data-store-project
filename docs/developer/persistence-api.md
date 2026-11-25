@@ -45,10 +45,13 @@ Who uses what:
 - `linked-data-store-core` calls `RxJsonPersistence` and builds the `Specification`. It refuses what goes past
   `Limits` before a provider sees it, and orders ids with `IdOrder` where it orders them itself.
 - The memory and PostgreSQL providers implement `RxPersistence` and return an `RxJsonPersistenceBridge`.
-- The Neo4j provider implements `RxJsonPersistence` itself. It still uses `FlattenedDocument` and
-  `FlattenedDocumentToJson` of this module, and `IdOrder.key` for the order of its ids.
-- `linked-data-store-search-provider-api` uses `JsonDocument` and `DocumentKey`. The Solr provider flattens a
-  document with `JsonToFlattenedDocument` and reads its leaves.
+- The Neo4j provider implements `RxJsonPersistence` itself. It builds the tree of a document it reads from
+  `FlattenedDocumentLeafNode` leaves (with their `FragmentType`), a `FlattenedDocument` and
+  `FlattenedDocumentToJson` of this module, and uses `JsonNavigationPath`, `LinkQuery`, `Range`, and `IdOrder.key`
+  for the order of its ids.
+- `linked-data-store-search-provider-api` uses `DocumentKey` (in a search hit), and so does the Solr provider; neither
+  flattens a document. Core takes the texts of a document for the search index from its `JsonDocument` tree, with
+  the specification (`IndexEntries`).
 - `EmptyPersistence` in `linked-data-store-core` (package `io.descoped.lds.graphql.schemas`) is an
   `RxJsonPersistence` that holds nothing. Only the test `GraphQLSchemaBuilderTest` uses it. It implements every
   method of the interface, so it changes when the interface does.
@@ -104,13 +107,20 @@ Who uses what:
 
 A provider stores a document as it is given and gives it back the same: also a field the model does not have, a
 value of another kind than the model says, a null, an array inside an array. The shared suite
-(`PersistenceIntegrationTest`) holds every provider to this and to the table above.
+(`PersistenceIntegrationTest`) holds every provider to this and to the table above. One kind of field name does not
+come back the same: a name that holds a `.` or ends in a place in brackets (see
+[From a tree to leaves](#from-a-tree-to-leaves)).
 
 What the application uses today: `readDocument`, `readDocuments`, `readDocumentVersions`,
 `readAllDocumentVersions` (the rebuild of the search index, `IndexRebuild`), `readTargetDocuments`,
 `readSourceDocuments`, `hasPrevious`, `hasNext`, `createOrOverwrite`, `markDocumentDeleted`, `createTransaction`
 and `close`. `findDocument`, `deleteDocument`, `deleteAllDocumentVersions` and `deleteAllEntities` are called by
 tests only.
+
+Not finished: `RxJsonPersistence` says of itself that it is a temporary interface. Its comments leave open how a
+failure of the store is reported: the Javadoc of ten of its methods (`readDocument`, `readDocuments`,
+`readDocumentVersions`, both `createOrOverwrite`, `deleteDocument`, `deleteAllDocumentVersions`,
+`markDocumentDeleted`, `hasPrevious`, `hasNext`) says that `onError(PersistenceException)` is not settled.
 
 ### Range
 
@@ -149,7 +159,9 @@ gives `p004`, `p005`; `Range.lastBefore(2, "p003")` gives `p002`, `p001`; `Range
 
 A read that gives several documents or versions gives them in the order of its range, forward or backward, and
 the fragments of each one together, by path and offset. The bridge cuts the documents from the stream as it comes
-and never sorts it. The storage order is id, then valid time of the version, then path.
+and never sorts it. The storage order is id, then valid time of the version, then path. The memory provider keys a
+version by its date and time negated, so it keeps the versions of an id newest first, and its `readAllVersions`
+gives them so.
 
 Every read must give the fragments of one text in the order of their offsets, also a read from the end: the
 pieces of a text are joined as they come.
@@ -166,6 +178,12 @@ leaf. The path of a leaf is built on the way down:
 - An element of an array adds its place in brackets to the last part: `$.tags[0]`, `$.grid[1][0]`.
 - An object with fields and an array with elements are not leaves. They exist through the paths of what is in
   them.
+- A name is not escaped. The way back (`FlattenedDocumentToJson`, below) splits a path at every `.` and reads a
+  `[n]` at the end of a part as a place, so a field whose name holds a `.` or ends in a place in brackets comes
+  back as other fields: `{"a.b": 1, "x[0]": 2}` is read back as `{"a": {"b": 1}, "x": [2]}`, through the bridge and
+  through the Neo4j provider, which builds its tree in the same way. A document with both `"a.b"` and
+  `"a": {"b": ...}` has two leaves on one path, and one of them is lost. Core does not refuse such a name: a `PUT`
+  of the first document is answered 201.
 
 | `FragmentType` | Leaf | Value as stored |
 |---|---|---|
@@ -312,6 +330,11 @@ documents:
 4. A deleted document is dropped, unless `includeDeleted` is true (it is true only for the versions of a document).
 5. `FlattenedDocumentToJson` builds the tree, and the result is a `JsonDocument`.
 
+Not finished: no provider makes a streaming-control fragment, so the `takeWhile` of step 1 never ends a stream.
+It uses `Fragment.isStreamingControl` only. Only the test `FragmentOrderTest` makes a streaming-control fragment
+(the second constructor of `Fragment`, which the first calls with `false`), and only it uses `isLimited`,
+`isNotLimited`, the codes `LIMITED_CODE` and `NOT_LIMITED_CODE` and `Fragment.samePathAs`.
+
 `groupByOrdered(upstream, groupKeyFunction)` assumes that the items of one group follow each other. It works like
 this:
 
@@ -341,6 +364,22 @@ subscriber is done.
 The items of a group must follow each other. When a key comes back after another key, the read does not end:
 with the keys 1, 1, 2, 1, 1 from a source that gives all its items at once, no answer came in 10 of 10 runs. The
 queue of a key is used again when the key comes back, and a group clears its queue when its `Flowable` ends.
+
+Not finished: `groupByOrdered` starts a new thread for every group, which in the bridge is every document of a
+list. It keeps an entry for every group in a map and does not remove it. A cancel can fail:
+
+- When a read is cancelled while a group still waits for its next item (a slow store, and a request that times
+  out or a client that goes away), the thread of the group is interrupted in `BlockingQueue.take`, or takes the
+  cancel mark and calls `onError` with `RuntimeException("cancelled")` after its reader has gone. RxJava reports
+  an `UndeliverableException` to its error handler. Seen in 20 of 20 runs of `groupByOrdered` over 5 items and then
+  a source that gives nothing more, read as the bridge reads it and cancelled by a `timeout` of 200 ms.
+- When the groups are read with `group.flowable().toList().toFlowable()` or with
+  `group.flowable().toMultimap(...).toFlowable()` and the reader stops early with `take(1)`, the cancel handler is
+  interrupted in `BlockingQueue.put`, and RxJava reports an `UndeliverableException` caused by
+  `InterruptedException`. This was seen in 50 of 50 runs with each of the two. It was not seen in 50 runs with the
+  chain as the bridge has it, where a `map` stands between `toMultimap` and `toFlowable`, and not with the bridge
+  and the memory provider (a list with `Range.first(1)`, `readDocument`, `hasNext`). A change of that chain in
+  `toDocuments` can bring the error in.
 
 ### A list
 
@@ -384,7 +423,8 @@ link exists, so a link may be a dangling reference.
 1. It reads the source document at `snapshot`.
 2. It visits the path in the document (`JsonDocument.traverseField`); `[]` in the path visits every element.
 3. A value counts as a link when it is a text that matches `/(?<entity>[^/]*)/(?<id>[^/]*)` as a whole and its
-   entity type is the target entity type asked for. Any other value is skipped.
+   entity type is the target entity type asked for. Any other value is skipped. Neither part holds a `/`, so a
+   text such as `/Person/a/b` is not a link here; core refuses an id with a `/` (`ResourceContext`).
 4. The ids are sorted in the order of code points (descending for a backward range), cut to the limit of the
    range, and each target is read with `readDocument` at `snapshot`. A target that is not there gives nothing. A
    link that is in the field twice gives its target twice.
@@ -413,6 +453,10 @@ store keeps a text in pieces. Seen with the memory provider: with a capacity of 
 link `/Person/kari` (12 bytes) and `readSourceDocuments` for `kari` gives none of them; with a capacity of 8192
 it gives both. `readTargetDocuments` gives `kari` with both capacities.
 
+Not finished: `readSourceDocuments` makes the bytes of the link text with `String.getBytes()`, the default charset
+of the JVM, where `findDocument` encodes with UTF-8. On JDK 27 the default is UTF-8, so the two differ only when
+the JVM is started with another `file.encoding`.
+
 ## Limits and the order of ids
 
 ### Limits
@@ -438,10 +482,10 @@ document and gives a text that names the first path that goes past `PATH_BYTES` 
 `The path of a value is at most 1024 bytes in UTF-8: $....` or `A value is in at most 32 arrays: $....`, with the
 path cut after 80 characters.
 
-A provider does not check the limits. Core refuses what goes past them before a provider sees it: an id over
-`ID_BYTES` and a document that `overLimit` names are answered 400, and a namespace or an entity type over its limit
-stops the start (`UndertowApplication`, `ResourceContext`, `ManagedResourceHandler`,
-`EmbeddedResourceHandler`). The shared suite keeps a document at every limit at once on every provider
+A provider does not check the limits. Core refuses what goes past them before a provider sees it: an id over `ID_BYTES`
+is answered 400 (`ResourceContext`), a document that `overLimit` names is answered 400 (`ManagedResourceHandler`, and
+`EmbeddedResourceHandler` for a write of a part of a document), and a namespace or an entity type over its limit stops
+the start (`UndertowApplication`). The shared suite keeps a document at every limit at once on every provider
 (`thatADocumentAtEveryLimitIsKept`, see [the shared suite](persistence-tck.md)).
 
 ### The order of ids
@@ -475,6 +519,11 @@ every fragment of the version (`Fragment.timestamp()`).
 - A version is valid from its own valid time until the valid time of the next version. Versions may be written in
   any order of time.
 - A write at the valid time of a version that is there replaces it.
+- The precision of a valid time is the provider's. The memory provider (`MemoryRxPersistence.toTuple`) and the
+  PostgreSQL provider (`PostgresPersistence.instantOf`) keep a version to the millisecond: a version comes back cut
+  to whole milliseconds, and two writes of one document within the same millisecond are one version, the later
+  replacing the earlier. The Neo4j provider keeps the time as it is given. Core does not cut a time a request
+  names; a write that names none gets the time of its turn, to the microsecond (`DocumentLocks.timeOfTurn`).
 
 How times are compared in this module:
 
@@ -499,7 +548,8 @@ memory provider stores the date and time of day as they are given, without chang
 (`MemoryRxPersistence.toTuple`); see [the memory provider](persistence-memory.md). Seen through the bridge with
 the memory provider: a version written with the time `2020-01-01T01:00+01:00` comes back with the key
 `2020-01-01T01:00Z[Etc/UTC]`, an hour later than it was written, and a read at `2020-01-01T00:30Z` does not find
-it. LDS itself gives a provider only times in `Etc/UTC`, so this is not seen through LDS.
+it. LDS itself gives a provider only times in UTC: in the zone `Etc/UTC`, or, in the readiness check, with the
+offset `Z`, whose date and time are the same. So this is not seen through LDS.
 
 ## Deletion markers
 
@@ -526,47 +576,8 @@ delete (`IndexRebuild`). Every other read gives a tombstone, when it gives one a
 checks `deleted()` after some of its other reads (`ManagedResourceHandler`, `ReferenceResourceHandler`); with the
 three providers that check is never true.
 
-From outside, with LDS in memory on port 19107, three versions and a delete in between:
-
-```sh
-curl -X PUT 'http://localhost:19107/ns/Company/acme?sync=true&timestamp=2020-01-01T00:00:00Z' \
-     -H 'Content-Type: application/json' -d '{"name": "Acme 2020"}'
-curl -X PUT 'http://localhost:19107/ns/Company/acme?sync=true&timestamp=2022-01-01T00:00:00Z' \
-     -H 'Content-Type: application/json' -d '{"name": "Acme 2022"}'
-curl -X PUT 'http://localhost:19107/ns/Company/acme?sync=true&timestamp=2021-01-01T00:00:00Z' \
-     -H 'Content-Type: application/json' -d '{"name": "Acme 2021"}'
-curl -X DELETE 'http://localhost:19107/ns/Company/acme?sync=true&timestamp=2021-06-01T00:00:00Z'
-curl 'http://localhost:19107/ns/Company/acme?timeline'
-```
-
-```json
-[
-  {
-    "version": "2020-01-01T00:00Z[Etc/UTC]",
-    "document": {"name": "Acme 2020"}
-  },
-  {
-    "version": "2021-01-01T00:00Z[Etc/UTC]",
-    "document": {"name": "Acme 2021"}
-  },
-  {
-    "version": "2021-06-01T00:00Z[Etc/UTC]",
-    "document": {}
-  },
-  {
-    "version": "2022-01-01T00:00Z[Etc/UTC]",
-    "document": {"name": "Acme 2022"}
-  }
-]
-```
-
-A read with `timestamp=2021-03-01T00:00:00Z` answers `{"name":"Acme 2021"}`, a read with
-`timestamp=2021-09-01T00:00:00Z` answers 404, and a read with `timestamp=2022-06-01T00:00:00Z` answers
-`{"name":"Acme 2022"}`.
-
-A `PUT` with `timestamp=2021-06-01T00:00:00Z` after that replaces the tombstone: the timeline has the new document
-at that time and no empty one. A `DELETE` for an id that has no version, with `timestamp=2020-01-01T00:00:00Z`,
-answers 204, and the timeline of that id is `[{"version":"2020-01-01T00:00Z[Etc/UTC]","document":{}}]`.
+What a user sees of a tombstone through REST, its timeline and the reads around it, is in
+[A delete in time](../user/concepts.md#a-delete-in-time).
 
 `PersistenceDeletePolicy` has three values: `FAIL_IF_INCOMING_LINKS`, `DELETE_INCOMING_LINKS` and
 `CASCADE_DELETE_ALL_INCOMING_LINKS_AND_NODES`. `markDocumentDeleted`, `deleteDocument` and
@@ -610,13 +621,14 @@ calls it. `RxPersistence.transactionFactory()` gives the factory; `RxJsonPersist
 `TransactionStatistics` is a map of counters by name (`add`, `map`). The providers return one from `commit` and
 `cancel`. No code of LDS adds a counter or reads one.
 
-Not finished: the invariant of the repository is that a transaction commits only when asked and rolls back
-otherwise. `Transaction.close()` commits. A block that ends with an exception therefore commits what it wrote
-before the exception. `PostgresTransaction` and `Neo4jTransaction` do not override `close()`, and
-`MemoryTransaction.close()` commits in the same way. Seen with the memory provider: a document written in a
-`try`-with-resources block that then throws is read afterwards; a document written in a transaction that is
-ended with `cancel()` is not. The writes of the application do not end with `close()` (`WriteTransaction`); its
-reads, and the tests, do.
+Not finished: the invariant of the repository is that a transaction commits only when asked and rolls back otherwise.
+`Transaction.close()` commits. A block that ends with an exception therefore commits what it wrote before the exception.
+`PostgresTransaction` and `Neo4jTransaction` do not override `close()`, and `MemoryTransaction.close()` commits in the
+same way. `MemoryInitializer` reads the key `persistence.mem.transaction.cancel-on-close`, with which `close()` would
+cancel, but does not name it in `configurationKeys()`, so the key never reaches it and `close()` always commits. Seen
+with the memory provider: a document written in a `try`-with-resources block that then throws is read afterwards; a
+document written in a transaction that is ended with `cancel()` is not. The writes of the application do not end with
+`close()` (`WriteTransaction`); its reads, and the tests, do.
 
 ## How a provider is found
 
@@ -654,12 +666,12 @@ in the `module-info.java` of the provider and the file
    the names of the entity types (`Specification.getManagedDomains()`).
 7. When `initialize` throws a `RuntimeException`, it waits a random time from half a second to a second and a
    half (`Jitter.around(1000)`), never past the end of the wait, and tries again, until
-   `persistence.initialization.max-wait-seconds` have passed. Then the exception stops the start. The random wait
-   keeps instances that start together from trying at the same moments. Only step 7 is tried again: a fault of
-   the steps before it stops the start at once.
+   `persistence.initialization.max-wait-seconds` have passed (see
+   [Trying again at start](core-application.md#trying-again-at-start)). Then the exception stops the start. Only
+   step 7 is tried again: a fault of the steps before it stops the start at once.
 
 A provider gets only the keys it names in `configurationKeys()`. A key it reads but does not name is never in the
-map.
+map (the memory provider has one, see [Transactions and their factory](#transactions-and-their-factory)).
 
 Of the three providers, none reads `defaultNamespace` (the namespace comes with every call), and only Neo4j reads
 `managedDomains`.
@@ -759,8 +771,12 @@ Not finished: `JsonNavigationPath` does not refuse every malformed path. `from("
 
 ## Rules to keep
 
+The rules of the project hold here as everywhere, among them the order of ids, one set of limits, no spliced
+identifiers, versions as UTC instants, transactions that commit only when asked and JPMS: see
+[the invariants](architecture.md#the-invariants). These are particular to this module:
+
 - **Streaming.**
-  LDS streams. A read gives a `Flowable`, a reactive stream whose source is asked for more as the reader asks
+  A read gives a `Flowable`, a reactive stream whose source is asked for more as the reader asks
   (backpressure). Do not replace a stream by a call that returns a complete list, and do not add a blocking call
   to an interface. `groupByOrdered` and `toDocuments` are the mechanism that gives documents one at a time; keep
   it when changing the bridge.
@@ -778,31 +794,6 @@ Not finished: `JsonNavigationPath` does not refuse every malformed path. `from("
   `groupByOrdered` may not end (see [toDocuments and
   RxGroupByTools.groupByOrdered](#todocuments-and-rxgroupbytoolsgroupbyordered)). The bridge never sorts; do not
   add a sort. Paths are ordered by `PathComparator`, which keeps array elements in the order of their places.
-
-- **The order of ids is the order of code points** (`IdOrder`), in every provider and in core. Never order ids
-  with `String.compareTo`.
-
-- **One set of limits** (`Limits`), the same for every provider. A limit is raised only when every provider keeps
-  the new one, and the shared suite keeps a document at every limit.
-
-- **No spliced identifiers.**
-  Namespace, entity type, id, path and value come to a provider as arguments. A provider gives them to its engine
-  as parameters and does not write them into a statement. The Neo4j provider writes the name of an entity type as
-  a quoted label; see [the Neo4j provider](persistence-neo4j.md).
-
-- **Time.**
-  Versions are stored and compared as UTC instants.
-
-- **Transactions.** A transaction commits only when asked and rolls back otherwise (see [Transactions and their
-  factory](#transactions-and-their-factory) for what is not so yet).
-
-- **JPMS.**
-  The module is a named module. It `requires transitive` what its interfaces expose. A provider registers its
-  initializer with `provides` and in `META-INF/services`.
-
-- **Clean break.**
-  Nothing of LDS 3 was released before 3.0.0, so 3.0.0 has nothing to stay compatible with: no deprecated aliases,
-  no shims, no code for older data.
 
 - **JSON.**
   Jackson 3, as a tree. No classes are bound.
@@ -824,7 +815,12 @@ The module reads no configuration. Two values reach it from outside:
 - The keys a provider needs are the ones it names in `PersistenceInitializer.configurationKeys()`.
 
 The keys that select and start a provider are read by `PersistenceConfigurator` in `linked-data-store-core`:
-`persistence.provider`, `persistence.initialization.max-wait-seconds` and `namespace.default`.
+
+| Key | Default of core | Default of the server |
+|---|---|---|
+| `persistence.provider` | blank, so the start stops (step 1 of [How a provider is found](#how-a-provider-is-found)) | `mem` |
+| `persistence.initialization.max-wait-seconds` | `0`, one attempt | `60` |
+| `namespace.default` | `ns` | `ns` (core's) |
 
 ## Tests
 
@@ -849,34 +845,14 @@ The tests are in `src/test/java` of the module, in the packages of the classes t
 New and revised tests are JUnit 6 with AssertJ; the others are TestNG 7. Both run in one build on the JUnit
 Platform, on the class path.
 
-`Range` and `RxGroupByTools` have no test of their own. Links, find, versions, tombstones and the delete
-methods of the bridge are tested through the shared suite, `PersistenceIntegrationTest` in
-`linked-data-store-persistence-provider-tck`, which the memory and PostgreSQL providers run with the bridge in
-front of their stores. A change of the bridge is therefore checked by building those two providers as well.
+`Range` and `RxGroupByTools` have no test of their own. Besides `RxJsonPersistenceBridgeLinkTest`, the links, find,
+versions, tombstones and the delete methods of the bridge are tested through the shared suite,
+`PersistenceIntegrationTest` in `linked-data-store-persistence-provider-tck`, which the memory and PostgreSQL providers
+run with the bridge in front of their stores. A change of the bridge is therefore checked by building those two
+providers as well.
 
-The tests run in the Maven build (`./mvnw`, Surefire). To build one module and what it needs, Maven is given the
-module with `-pl linked-data-store-persistence-provider-api` and `-am`.
+The tests run in the Maven build (`./mvnw`, Surefire). This module and what it needs:
 
-## Not finished
-
-What is said above under `Not finished:`, and these:
-
-Not finished: `RxJsonPersistence` says of itself that it is a temporary interface. Its comments leave open how a
-failure of the store is reported: on almost every method its Javadoc says that `onError(PersistenceException)` is
-not settled.
-
-Not finished: no provider makes a streaming-control fragment. The second constructor of `Fragment`,
-`isStreamingControl`, `isLimited`, `isNotLimited` and the codes `LIMITED_CODE` and `NOT_LIMITED_CODE` are used
-only by the `takeWhile` at the start of `toDocuments`. `Fragment.samePathAs` is not called.
-
-Not finished: `groupByOrdered` starts a new thread for every group, which in the bridge is every document of a
-list. It keeps an entry for every group in a map and does not remove it. A cancel can fail: when the groups are
-read with `group.flowable().toList().toFlowable()` or with `group.flowable().toMultimap(...).toFlowable()` and
-the reader stops early with `take(1)`, the cancel handler is interrupted in `BlockingQueue.put`, and RxJava
-reports an `UndeliverableException` caused by `InterruptedException` to its error handler. This was seen in 50
-of 50 runs with each of the two. It was not seen in 50 runs with the chain as the bridge has it, where a `map`
-stands between `toMultimap` and `toFlowable`, and not with the bridge and the memory provider (a list with
-`Range.first(1)`, `readDocument`, `hasNext`). A change of that chain in `toDocuments` can bring the error in.
-
-Not finished: `readSourceDocuments` makes the bytes of the link text with `String.getBytes()`, the charset of the
-JVM, where `findDocument` encodes with UTF-8.
+```sh
+./mvnw verify -pl linked-data-store-persistence-provider-api -am
+```

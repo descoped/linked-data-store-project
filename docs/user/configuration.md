@@ -11,10 +11,10 @@ This document tells how Linked Data Store (LDS) is configured and lists every ke
 means, its default and an example. It also shows which keys go together to choose where LDS keeps its data, and
 what happens when LDS starts with a value that is wrong. It is for people who run LDS.
 
-[Getting started](getting-started.md) shows how to start LDS from its image or build it from the repository. The
-commands in this document are
-for the directory `linked-data-store-server` of the built repository, and LDS listens on port 19306 in them.
-Without configuration the port is 9090.
+[Getting started](getting-started.md) shows how to start LDS from its image or build it from the repository. Most
+commands in this document start LDS with `java` in the directory `linked-data-store-server` of the built
+repository, and LDS listens on port 8080 in them. Without configuration the port is 9090. The image takes the same
+keys; [In the image](#in-the-image) shows how.
 
 ## How a key is set
 
@@ -55,7 +55,11 @@ file is read as UTF-8.
   In a variable and in a system property a backslash is written once.
 - Spaces at the end of a line belong to the value. With a space after `persistence.provider=mem`, LDS does not
   start and prints `No persistence providers found for providerId: mem` with the space at its end. A number
-  and a truth value are read without the spaces around them.
+  and a truth value are read without the spaces around them, except in five keys that are read as they are
+  written: with a space after it, a number in `postgres.driver.port` or `persistence.fragment.capacity` stops the
+  start when the wait of the documents is over, one in `txlog.config.postgres.driver.port` stops it at once when
+  search is on, and `true` in `neo4j.cypher.show` or `sagalog.config.postgres.driver.tcp-keep-alive` is read as
+  `false`.
 - LDS does not tell about a key it does not know in a file. A key that is spelled wrong in a file changes nothing and
   gives no message. A variable that is spelled wrong stops the start; see [A variable or a system property sets only a
   key that a file has](#a-variable-or-a-system-property-sets-only-a-key-that-a-file-has).
@@ -63,7 +67,7 @@ file is read as UTF-8.
 With this file:
 
 ```properties
-http.port=19306
+http.port=8080
 namespace.default=data
 ```
 
@@ -73,10 +77,10 @@ and LDS started with no variable:
 java -cp "target/*:target/lib/*" io.descoped.lds.server.Server
 ```
 
-LDS listens on port 19306 and its [namespace](../glossary.md#namespace) is `data`:
+LDS listens on port 8080 and its [namespace](../glossary.md#namespace) is `data`:
 
 ```sh
-curl -s 'http://localhost:19306/data?schema'
+curl -s 'http://localhost:8080/data?schema'
 ```
 
 ```json
@@ -95,11 +99,11 @@ or a digit. The key may also keep its own case: `LDS_http_port` sets `http.port`
 | `sagalog.config.connection-pool.max-size` | `LDS_SAGALOG_CONFIG_CONNECTION_POOL_MAX_SIZE` |
 
 ```sh
-LDS_HTTP_PORT=19306 java -cp "target/*:target/lib/*" io.descoped.lds.server.Server
+LDS_HTTP_PORT=8080 java -cp "target/*:target/lib/*" io.descoped.lds.server.Server
 ```
 
 ```
-... Listening on 0.0.0.0:19306
+... Listening on 0.0.0.0:8080
 ... Server started in 364ms..
 ```
 
@@ -108,7 +112,7 @@ A variable wins over the files. With the file of the section before and the vari
 
 ```sh
 LDS_NAMESPACE_DEFAULT=test java -cp "target/*:target/lib/*" io.descoped.lds.server.Server
-curl -s 'http://localhost:19306/test?schema'
+curl -s 'http://localhost:8080/test?schema'
 ```
 
 ```json
@@ -123,16 +127,35 @@ A variable that is set and empty sets the key to an empty value. `LDS_GRAPHQL_SC
 A system property has the name of the key, with no prefix. It wins over a variable and over the files.
 
 ```sh
-java -Dhttp.port=19306 -cp "target/*:target/lib/*" io.descoped.lds.server.Server
+java -Dhttp.port=8080 -cp "target/*:target/lib/*" io.descoped.lds.server.Server
 ```
 
 ```
-... Listening on 0.0.0.0:19306
+... Listening on 0.0.0.0:8080
 ```
 
 Where the command that starts the JVM cannot be changed, as in the image, a system property is given in the
-variable `JAVA_TOOL_OPTIONS`: `JAVA_TOOL_OPTIONS=-Dhttp.port=19306`. The JVM then prints
-`Picked up JAVA_TOOL_OPTIONS: -Dhttp.port=19306` as its first line.
+variable `JAVA_TOOL_OPTIONS`: `JAVA_TOOL_OPTIONS=-Dhttp.port=8080`. The JVM then prints
+`Picked up JAVA_TOOL_OPTIONS: -Dhttp.port=8080` as its first line.
+
+### In the image
+
+In the image LDS runs in the directory `/lds` as the user `lds` (uid 1000), and listens on port 9090. A variable
+is given with `-e`. A `conf/application.properties` is mounted as `/lds/conf/application.properties`, and that
+user must be able to read it. With a folder `conf` that holds an `application.properties` with the line
+`namespace.default=data`:
+
+```sh
+docker run -d --rm --name lds -p 127.0.0.1:8080:9090 -v "$PWD/conf:/lds/conf:ro" descoped/lds
+curl -s 'http://localhost:8080/data?schema'
+```
+
+```json
+["/data/Company?schema", "/data/Person?schema"]
+```
+
+Keep `http.port` at 9090 in the image, or publish the port it is given instead. [Operations](operations.md#the-image)
+tells more about the image.
 
 ### A variable or a system property sets only a key that a file has
 
@@ -171,7 +194,7 @@ names its address and its password once:
 
 ```properties
 http.host=127.0.0.1
-http.port=19306
+http.port=8080
 
 db.host=localhost
 db.port=5432
@@ -195,24 +218,22 @@ txlog.config.postgres.driver.port=${db.port}
 txlog.config.postgres.driver.password=${db.password}
 ```
 
-`db.host`, `db.port` and `db.password` are now keys of a file, so variables can set them. Here PostgreSQL is on
-port 19306 of the same machine, at the IPv6 address `::1`. LDS listens at `127.0.0.1`, which is another
-address, so the two have the same port number without being in each other's way:
+`db.host`, `db.port` and `db.password` are now keys of a file, so variables can set them. Here the password is
+given from outside:
 
 ```sh
-LDS_DB_HOST='[::1]' LDS_DB_PORT=19306 LDS_DB_PASSWORD=lds \
-  java -cp "target/*:target/lib/*" io.descoped.lds.server.Server
+LDS_DB_PASSWORD=lds java -cp "target/*:target/lib/*" io.descoped.lds.server.Server
 ```
 
 ```
 ... Using persistence provider: postgres
 ... Using saga-log-pool provider-class: no.cantara.sagalog.postgres.PostgresSagaLogInitializer
 ... Using transaction-log provider: postgres
-... Listening on 127.0.0.1:19306
+... Listening on 127.0.0.1:8080
 ... Server started in 1575ms..
 ```
 
-Three more rules:
+Four more rules:
 
 - `${key:default}` gives a value to use when no source has the key. The default does not make the key a key
   of a file: with `http.prefix=${my.prefix:/}` in the file and nothing else, the variable `LDS_MY_PREFIX=/lds`
@@ -220,6 +241,9 @@ Three more rules:
 - A reference to a key that no source has, without a default, stops LDS at start. So do two keys that refer to
   each other. See [A value that is wrong](#a-value-that-is-wrong).
 - `$${` is a literal `${`.
+- A reference is read in the value of a variable and of a system property too. A password with `${` in it is
+  written with `$${` there as well. Otherwise LDS takes it for a reference: it does not start, or it puts the value
+  of another key in the password.
 
 ### The form of a value
 
@@ -246,9 +270,7 @@ Each choice is independent of the others. The log of a start says what LDS runs 
 with `Using`.
 
 The sections below show the keys that go together for each choice, as a `conf/application.properties`. Every
-key can be given as a variable instead. The examples that name PostgreSQL were run with PostgreSQL 18 on the
-same machine. It did not listen on port 5432 of `localhost` there, so its address was given from outside in
-each run, with the variables of the `host` and `port` keys of the example.
+key can be given as a variable instead.
 
 No password has a default. The passwords in the examples (`lds`, `lds-development`) are those of the compose
 file of the repository, which is for development.
@@ -308,8 +330,9 @@ for that:
 ```
 
 The keys are `persistence.provider`, `neo4j.driver.url`, `neo4j.driver.username` and `neo4j.driver.password`.
-At start LDS makes a constraint and an index in Neo4j for each [entity type](../glossary.md#entity-type) of the
-[model](../glossary.md#model) when they are missing, so the user needs the right to make them. LDS is tested with
+At start LDS makes a uniqueness constraint and two indexes in Neo4j for each
+[entity type](../glossary.md#entity-type) of the [model](../glossary.md#model) when they are missing, so the user
+needs the right to make them. The log names each index that LDS finds and does not use. LDS is tested with
 Neo4j 2026.10, community edition, and with addresses that start with `bolt://`.
 
 ### The saga log in PostgreSQL
@@ -339,9 +362,12 @@ sagalog.config.connection-pool.max-size=50
 - Every LDS that shares the saga log has the same `sagalog.config.cluster.owner` and
   `sagalog.config.cluster.name`, and its own `sagalog.config.cluster.instance-id`.
   [Operations](operations.md#several-lds-on-one-saga-log) tells why.
-- `sagalog.config.connection-pool.max-size` must be at least `saga.number-of-logs` and 11 more: each open saga
-  log holds one connection, the completing of the writes of another LDS opens up to 10 of its saga logs at once,
-  and the pool needs one for its own questions. LDS checks it at start, before it connects. With
+- `sagalog.config.cluster.owner` is at most 63 bytes, and `sagalog.config.cluster.name` and
+  `sagalog.config.cluster.instance-id` are at most 44 bytes together: the tables of the saga log are named with
+  both, the longest as `SAGALOG_<name>_<instance-id>_dead-saga`, and a name in PostgreSQL is at most 63 bytes. A
+  longer value stops the start.
+- `sagalog.config.connection-pool.max-size` must be at least `saga.number-of-logs` and 11 more;
+  [Operations](operations.md#connections-and-the-pool) tells why. LDS checks it at start, before it connects. With
   `LDS_SAGALOG_CONFIG_CONNECTION_POOL_MAX_SIZE=30` and 30 saga logs, LDS ended at once with exit code 1 and
   `java.lang.IllegalStateException: The saga log has 30 connections in its pool
   (sagalog.config.connection-pool.max-size) for 30 saga logs (saga.number-of-logs): each open saga log holds a
@@ -380,29 +406,10 @@ txlog.config.postgres.driver.database=txlog
 The database (`txlog` here) must be there before LDS starts. LDS makes its tables in it when they are missing.
 
 The value `memory` keeps the transaction log in memory until LDS stops, and needs no other key. With a
-transaction log, LDS can tell the [`sourceId`](../glossary.md#source-and-source-id) of the last write (see
-[the REST API](rest-api.md)):
-
-```sh
-LDS_TXLOG_RAWDATA_PROVIDER=memory LDS_HTTP_PORT=19306 \
-  java -cp "target/*:target/lib/*" io.descoped.lds.server.Server
-curl -s -X PUT 'http://localhost:19306/ns/Company/acme?sync=true&source=billing&sourceId=b-17' \
-     -H 'Content-Type: application/json' -d '{"name": "Acme"}'
-curl -s 'http://localhost:19306/source/default'
-```
-
-```json
-{"saga-execution-id": "01a1f9e0-e0f7-75ca-9fad-619a8920b3ad"}
-
-{"lastSourceId": "b-17"}
-```
-
-The write names the source `billing` and is found under the source `default`: as it comes, LDS keeps one
-transaction log for every source. `txlog.split.sources=true` gives each source its own; see
-[The transaction log](#the-transaction-log-1).
-
-With `discard`, the same write is answered in the same way, and `/source/default` answers
-`{"lastSourceId":null}`.
+transaction log, `GET /source/{source}` tells the [`sourceId`](../glossary.md#source-and-source-id) of the last
+write of a source; with `discard` it is answered `409`.
+[The REST API](rest-api.md#sources-and-the-transaction-log) tells what it answers with each setting, and
+[The transaction log](#the-transaction-log-1) has the keys that give each source a transaction log of its own.
 
 ### Search with Solr
 
@@ -431,10 +438,8 @@ query `Search`, and `/health/ready` says that search is away
 ... Creating root "Query" search field and search types
 ```
 
-A write does not wait for Solr. It adds an update to the index queue, and LDS sends the queue to Solr. The queue is
-kept where the transaction log is: with `txlog.rawdata.provider=postgres` in a table of that database,
-`lds_index_queue`, which LDS makes when it is missing, so no update is lost when LDS stops; with `discard` or
-`memory` in memory, as the warning above says.
+A write does not wait for Solr: it adds an update to the index queue, which is kept where the transaction log is;
+[Operations](operations.md#the-search-index) tells where, and what is lost when the queue is in memory.
 
 Search finds a document by every text in it. A text in an object with the fields `languageCode` and `languageText`
 is searched in the language of the code. [The GraphQL API](graphql-api.md) has the query `Search`, and
@@ -451,58 +456,23 @@ nothing is set. An empty default is written "empty".
 | Key | Default | Meaning | Example |
 |---|---|---|---|
 | `http.host` | `0.0.0.0` | The address LDS listens on. `0.0.0.0` is every address of the machine. | `127.0.0.1` |
-| `http.port` | `9090` | The port LDS listens on. | `19306` |
+| `http.port` | `9090` | The port LDS listens on. | `8080` |
 | `http.prefix` | `/` | A path in front of every address of LDS, also `/ping`, `/health/alive`, `/health/ready`, `/graphql` and `/graphiql`. An address outside the prefix is answered `404`. | `/lds` |
 | `http.request.dump` | `false` | `true` writes every request and its answer to the log: the address, the method, the query parameters, the status and every header as it was sent, an `Authorization` header too. For finding faults, not for daily use. | `true` |
 | `http.cors.allow.origin` | `.*` | Which web pages may call LDS from a browser (CORS): regular expressions, separated by commas. A request whose `Origin` header matches one of them as a whole gets the CORS headers in its answer. `.*` is every origin. An empty value allows no origin. In a properties file each backslash is written twice. | `https://app\.example,https://.*\.example\.org` |
-| `http.cors.allow.header` | `Content-Type,Authorization` | The request headers a browser may ask for before a call, separated by commas. LDS also gives the list in `Access-Control-Allow-Headers` and `Access-Control-Expose-Headers`. | `Content-Type,X-Request-Id` |
-| `http.cors.allow.methods` | `POST,GET,PUT,DELETE,HEAD` | The methods a browser may ask for before a call, separated by commas. | `GET,PUT` |
+| `http.cors.allow.header` | `Content-Type,Authorization` | The request headers a browser may ask for before a call, separated by commas. A name matches without regard to case. LDS also gives the list in `Access-Control-Allow-Headers`, and in `Access-Control-Expose-Headers` with `LDS-Searchable` added. | `Content-Type,X-Request-Id` |
+| `http.cors.allow.methods` | `POST,GET,PUT,DELETE,HEAD` | The methods a browser may ask for before a call, separated by commas. A method matches only as written: `get` does not allow `GET`. | `GET,PUT` |
 | `http.cors.allow.credentials` | `false` | `true` adds `Access-Control-Allow-Credentials: true` to the answers. | `true` |
 | `http.cors.allow.max-age` | `900` | The seconds a browser may keep the answer to its question before a call (`Access-Control-Max-Age`). | `60` |
 
-With `http.prefix=/lds`:
+[The REST API](rest-api.md#a-prefix-and-another-namespace) shows LDS under a prefix.
 
-```sh
-curl -s -o /dev/null -w '%{http_code}\n' 'http://localhost:19306/ping'
-curl -s -o /dev/null -w '%{http_code}\n' 'http://localhost:19306/lds/ping'
-curl -s 'http://localhost:19306/lds/ns?schema'
-```
+Not finished: two addresses do not follow a prefix other than `/`: the addresses in the answer to `?schema`, and
+`/source/{source}`, which with a transaction log that is kept answers `{"lastSourceId":null}` whatever was
+written, and `500` with `txlog.split.sources=true`.
 
-```
-404
-200
-["/ns/Company?schema", "/ns/Person?schema"]
-```
-
-Not finished: with a prefix other than `/`, the addresses in the answer to `?schema` are without the prefix, as
-above. The address `/source/{source}` does not work under a prefix: it answers `{"lastSourceId":null}`
-whatever was written, and `500` with `txlog.split.sources=true`.
-
-With a prefix, whatever asks LDS whether it is up asks under the prefix: `/lds/ping` and `/lds/health/ready`
-answered `200`, and `/ping` and `/health/ready` `404`.
-
-With the example values of the five CORS keys above, a browser's question before a `PUT` from
-`https://app.example` is answered:
-
-```sh
-curl -s -i -X OPTIONS 'http://localhost:19306/ns/Company/acme' \
-     -H 'Origin: https://app.example' \
-     -H 'Access-Control-Request-Method: PUT' -H 'Access-Control-Request-Headers: Content-Type'
-```
-
-```http
-HTTP/1.1 204 No Content
-Access-Control-Allow-Origin: https://app.example
-Vary: Origin
-Access-Control-Allow-Headers: X-Request-Id,Content-Type
-Access-Control-Allow-Credentials: true
-Access-Control-Max-Age: 60
-Access-Control-Allow-Methods: PUT,GET
-Date: Fri, 20 Nov 2026 16:54:12 GMT
-```
-
-A request from an origin that is not allowed is still answered, without the CORS headers; the browser then
-keeps the answer from the page. [The REST API](rest-api.md) has the rules of CORS in full.
+[The REST API](rest-api.md#cors) shows what LDS answers a browser with the five CORS keys, and that a request from
+an origin that is not allowed is still answered and carried out, without the CORS headers.
 
 ### The model and the namespace
 
@@ -515,30 +485,8 @@ keeps the answer from the page. [The REST API](rest-api.md) has the rules of COR
 The default model is the example of the repository, with the entity types `Person` and `Company`.
 [The model](model.md) tells how to write one.
 
-A model in JSON Schema files, in the folder `models/jsonschema` with the files `Company.json` and
-`Person.json`:
-
-```sh
-LDS_GRAPHQL_SCHEMA= LDS_SPECIFICATION_SCHEMA=models/jsonschema LDS_HTTP_PORT=19306 \
-  java -cp "target/*:target/lib/*" io.descoped.lds.server.Server
-curl -s 'http://localhost:19306/ns?schema'
-```
-
-```
-... Creating specification using json-schema: models/jsonschema
-... Managed domains: /Company /Person
-```
-
-```json
-["/ns/Company?schema", "/ns/Person?schema"]
-```
-
-With such a model LDS has no GraphQL API: a request to `/graphql` is answered `400` with
-`Unsupported namespace: "graphql"`.
-
-As it comes, the folder `schemas` has no `.json` file. So with `LDS_GRAPHQL_SCHEMA=` and nothing else, the model
-has no entity type, and LDS does not start: `java.lang.IllegalStateException: The model schemas has no entity
-type`. A model needs at least one entity type.
+A model of JSON Schema files is given with `LDS_GRAPHQL_SCHEMA=` and `LDS_SPECIFICATION_SCHEMA` naming the folder;
+[The model](model.md#json-schema-files) shows it, and what LDS does when the folder has no `.json` file.
 
 ### GraphQL
 
@@ -553,7 +501,7 @@ The key that adds search to GraphQL, `graphql.search.enabled`, is under [Search]
 | Key | Default | Meaning | Example |
 |---|---|---|---|
 | `persistence.provider` | `mem` | The [persistence provider](../glossary.md#persistence-provider), which keeps the documents: `mem` (in memory), `postgres` or `neo4j`. | `postgres` |
-| `persistence.initialization.max-wait-seconds` | `60` | How long LDS keeps trying to start the persistence provider. After a try that fails, LDS waits one second and tries again, until this many seconds have passed since the first try. `0` is one try. See [An engine that is away](#an-engine-that-is-away). | `120` |
+| `persistence.initialization.max-wait-seconds` | `60` | How long LDS keeps trying to start the persistence provider. After a try that fails, LDS waits about a second, from half a second to one and a half at random, and tries again, until this many seconds have passed since the first try. `0` is one try. See [An engine that is away](#an-engine-that-is-away). | `120` |
 | `persistence.fragment.capacity` | `8192` | Provider `mem` only: the size in bytes of the pieces a long text is stored in. The text is read back whole. Leave it as it is. | `8192` |
 
 Provider `postgres`:
@@ -561,7 +509,7 @@ Provider `postgres`:
 | Key | Default | Meaning | Example |
 |---|---|---|---|
 | `postgres.driver.host` | `localhost` | The host of PostgreSQL. An IPv6 address is written `::1` or `[::1]`. | `[::1]` |
-| `postgres.driver.port` | `5432` | The port of PostgreSQL. | `19306` |
+| `postgres.driver.port` | `5432` | The port of PostgreSQL. | `5433` |
 | `postgres.driver.user` | `lds` | The user LDS connects as. | `lds` |
 | `postgres.driver.password` | empty | The password of the user. It has no default and must be given. | `lds` |
 | `postgres.driver.database` | `lds` | The database. It must be there; LDS makes its table in it. | `lds` |
@@ -583,12 +531,12 @@ completes writes that were cut off. The defaults suit a first set-up.
 | Key | Default | Meaning | Example |
 |---|---|---|---|
 | `saga.number-of-logs` | `30` | The number of saga logs of this LDS. A write holds one saga log from its start to its end, so this is also the most writes LDS carries out at one time. A write that gets no saga log within 10 seconds is answered `500`. | `10` |
-| `saga.threadpool.core` | `50` | The threads LDS keeps for the sagas. It must be larger than `saga.threadpool.queue.capacity`. When it is not, LDS starts and writes a warning to the log. | `20` |
+| `saga.threadpool.core` | `50` | The threads LDS keeps for the sagas. Keep it larger than `saga.threadpool.queue.capacity`; when it is not, LDS starts and writes a warning to the log. | `20` |
 | `saga.threadpool.max` | `100` | The most threads for the sagas. Not smaller than `saga.threadpool.core`. | `40` |
 | `saga.threadpool.keepalive.seconds` | `60` | How long a thread beyond `saga.threadpool.core` stays when it has no work. | `30` |
 | `saga.threadpool.queue.capacity` | `10` | The places in the queue in front of the threads. At least 1. | `5` |
-| `saga.recovery.enabled` | `true` | Whether LDS completes by itself the writes that were cut off: its own when it starts, and those of every LDS that shares the saga log, at intervals. [Operations](operations.md) tells more. | `false` |
-| `saga.recovery.interval.seconds.min` | `30` | The shortest wait between two rounds of such completing. Each wait is a random number of seconds between this key and the next. From 1 to 86400. | `10` |
+| `saga.recovery.enabled` | `true` | Whether LDS completes by itself the writes that were cut off: its own when it starts, and those of every LDS that shares the saga log, at intervals. With `false` a write that was cut off is still completed when a later write takes the saga log that holds it. [Operations](operations.md) tells more. | `false` |
+| `saga.recovery.interval.seconds.min` | `30` | The shortest wait between two rounds of such completing. Each wait is a random number of seconds between this key and the next. From 1 to 86400. This key and the next are read only when `saga.recovery.enabled` is `true`. | `10` |
 | `saga.recovery.interval.seconds.max` | `60` | The longest wait. From 1 to 86400, and not smaller than the key before. | `20` |
 | `saga.commands.enabled` | `false` | For the tests of LDS itself: `true` lets a request make its own write fail. Leave it `false`. | `false` |
 
@@ -609,12 +557,12 @@ The warning, with `LDS_SAGA_THREADPOOL_QUEUE_CAPACITY=60`. It is one line of the
 |---|---|---|---|
 | `sagalog.provider` | `no.cantara.sagalog.memory.MemorySagaLogInitializer` | Where the saga log is kept. The default keeps it in memory: a write that is cut off when LDS stops is lost. The other value keeps it in PostgreSQL. | `no.cantara.sagalog.postgres.PostgresSagaLogInitializer` |
 | `sagalog.provider.initialization.max-wait-seconds` | `30` | How long LDS keeps trying to start the saga log. | `60` |
-| `sagalog.provider.initialization.retry-interval-seconds` | `2` | The wait between two tries. | `5` |
+| `sagalog.provider.initialization.retry-interval-seconds` | `2` | The wait between two tries: at random, from half of this to one and a half times it. | `5` |
 | `sagalog.config.cluster.owner` | `lds` | In PostgreSQL: the name of the schema the saga log makes its tables in. Letters, digits, `_` and `-`. | `development` |
 | `sagalog.config.cluster.name` | `lds-test` | The name of the cluster. Every LDS with the same owner and name shares the saga log and completes the writes of the others that were cut off. In PostgreSQL: letters, digits and `-`. | `lds` |
 | `sagalog.config.cluster.instance-id` | `01` | The name of this LDS in the cluster. Each LDS of a cluster needs its own. In PostgreSQL: letters, digits and `-`. | `02` |
 | `sagalog.config.postgres.driver.host` | `localhost` | The saga log in PostgreSQL: the host. | `postgres` |
-| `sagalog.config.postgres.driver.port` | `5432` | The port. | `19306` |
+| `sagalog.config.postgres.driver.port` | `5432` | The port. | `5433` |
 | `sagalog.config.postgres.driver.user` | `lds` | The user. | `lds` |
 | `sagalog.config.postgres.driver.password` | empty | The password. It has no default and must be given. | `lds` |
 | `sagalog.config.postgres.driver.database` | `sagalog` | The database. It must be there. | `sagalog` |
@@ -626,12 +574,12 @@ The warning, with `LDS_SAGA_THREADPOOL_QUEUE_CAPACITY=60`. It is one line of the
 |---|---|---|---|
 | `txlog.rawdata.provider` | `discard` | Where the transaction log is kept. `discard`: none is kept. `memory`: in memory, until LDS stops. `postgres`: in PostgreSQL. | `postgres` |
 | `txlog.rawdata.provider.initialization.max-wait-seconds` | `30` | How long LDS keeps trying to start the transaction log. | `60` |
-| `txlog.rawdata.provider.initialization.retry-interval-seconds` | `2` | The wait between two tries. | `5` |
+| `txlog.rawdata.provider.initialization.retry-interval-seconds` | `2` | The wait between two tries: at random, from half of this to one and a half times it. | `5` |
 | `txlog.split.sources` | `false` | A write can name where it comes from, with the query parameter `source`. `false`: one transaction log for every write, that of the default source. `true`: one for each source. | `true` |
-| `txlog.default-source` | `default` | The source of a write that names none. An empty value is read as `default`. | `main` |
-| `txlog.rawdata.topic-prefix` | `txlog-` | A transaction log is stored under a name, its topic: this prefix and then the source. With the defaults the topic is `txlog-default`. | `lds-` |
+| `txlog.default-source` | `default` | The source of a write that names none. An empty value, or one of spaces only, is read as `default`. | `main` |
+| `txlog.rawdata.topic-prefix` | `txlog-` | A transaction log is stored under a name, its topic: this prefix and then the source. With the defaults the topic is `txlog-default`. Spaces around the prefix are taken away. | `lds-` |
 | `txlog.config.postgres.driver.host` | `localhost` | The transaction log in PostgreSQL: the host. | `postgres` |
-| `txlog.config.postgres.driver.port` | `5432` | The port. | `19306` |
+| `txlog.config.postgres.driver.port` | `5432` | The port. | `5433` |
 | `txlog.config.postgres.driver.user` | `lds` | The user. | `lds` |
 | `txlog.config.postgres.driver.password` | empty | The password. It has no default and must be given. | `lds` |
 | `txlog.config.postgres.driver.database` | `txlog` | The database. It must be there. | `txlog` |
@@ -657,7 +605,7 @@ starts and then answers every write `500`. That holds with `txlog.split.sources=
 | `search.index.provider` | `solr` | The [search index provider](../glossary.md#search-index-provider). `solr` is the only one. Read only when search is on. | `solr` |
 | `search.index.url` | `http://localhost:8983/solr/lds-index` | The address of the Solr core, with the name of the core at its end. LDS does not check it at start. | `http://solr:8983/solr/lds-index` |
 | `search.index.commit-within` | `1000` | Within how many milliseconds Solr makes a version it is sent searchable. At least 1. | `500` |
-| `search.index.rebuild` | `false` | `true` rebuilds the search index from the stored documents at start. Meant for one start of one LDS; [Operations](operations.md#rebuild-the-search-index) tells what it does. | `true` |
+| `search.index.rebuild` | `false` | `true` rebuilds the search index from the stored documents at start. Meant for one start of one LDS; [Operations](operations.md#rebuild-the-search-index) tells what it does. Read only when search is on. | `true` |
 
 Not finished: search needs a model that is a GraphQL schema, because `Search` is a GraphQL query. With a model
 of JSON Schema files, search can be turned on and nothing can search.
@@ -674,7 +622,7 @@ has](#a-variable-or-a-system-property-sets-only-a-key-that-a-file-has)).
 | `sagalog.config.postgres.driver.sslmode` | `prefer` | The `sslmode` of the connection to PostgreSQL. With `require` and a PostgreSQL without TLS, LDS does not start: `Failed to initialize pool: The server does not support SSL.` |
 | `sagalog.config.postgres.driver.sslrootcert` | none | The file with the root certificate for that. |
 | `sagalog.config.postgres.driver.socket-timeout` | `0` | The milliseconds a read from PostgreSQL may take, counted up to whole seconds. `0` is no limit. |
-| `sagalog.config.postgres.driver.tcp-keep-alive` | `false` | Whether the connection uses TCP keep-alive. |
+| `sagalog.config.postgres.driver.tcp-keep-alive` | `false` | Whether the connection uses TCP keep-alive: `true` turns it on, and any other value is read as `false`. |
 | `sagalog.config.postgres.statement-timeout` | `0` | The `statement_timeout` of PostgreSQL for the connections of the saga log, in milliseconds. `0` sets none. |
 | `sagalog.config.postgres.lock-timeout` | `0` | The `lock_timeout` of PostgreSQL for the connections of the saga log, in milliseconds. `0` sets none. |
 | `sagalog.config.postgres.driver.property.` and a name | none | A property of the PostgreSQL driver with that name, such as `sagalog.config.postgres.driver.property.ApplicationName=lds-saga`. A name the driver does not know stops the start: `Unknown PostgreSQL driver property in postgres.driver.property.nosuch: Unsupported property name: nosuch`. |
@@ -685,32 +633,25 @@ has](#a-variable-or-a-system-property-sets-only-a-key-that-a-file-has)).
 A wrong value of one of these keys is tried again like an engine that is away, and stops the start when the
 wait is over (see [A value that is wrong](#a-value-that-is-wrong)).
 
-These were set and seen to work in a running LDS: `txlog.config.postgres.driver.max-pool-size`,
-`sagalog.config.connection-pool.connection-timeout`, `sagalog.config.postgres.driver.sslmode` and
-`sagalog.config.postgres.driver.property.ApplicationName`. LDS refused a value that is not a number above 0 for
-the two `prefetch` keys, and started with a value for the two timeouts of PostgreSQL, the socket timeout and
-TCP keep-alive; what those values then do was not looked at. `sagalog.config.postgres.driver.sslrootcert` was
-not tried.
-
 ### What has no key
 
 - The level of the log. It is `INFO`. [Operations](operations.md) tells how LDS is given another
   configuration of the log.
-- Encryption (TLS) and users for the HTTP API. LDS listens with plain HTTP and asks no caller who it is.
+- Encryption (TLS) and users for the HTTP API; see [Operations](operations.md#what-lds-does-not-have).
 - The documents in PostgreSQL: the number of connections (10) and any option of the connection, such as TLS.
 - The documents in Neo4j: the name of the database, the number of connections and the timeouts.
 - A user and a password for Solr.
 
-With everything in one PostgreSQL, one LDS opens 70 connections with the defaults: 10 for the documents, 50
-for the saga log and 10 for the transaction log. With search on, the index queue in the database of the
-transaction log has 4 more.
+[Operations](operations.md#connections-to-postgresql) counts the connections one LDS opens to PostgreSQL.
 
 ## When LDS does not start
 
 LDS has started when the log says `Server started`. When the start fails, the JVM prints the cause on standard error as
-`Exception in thread "main"` with a stack trace. It is not a line of the log. When LDS had made part of itself before
-the fault, the log says `LDS could not be made; what was made is stopped` at the level `ERROR` first, and the
-connections it had opened are closed. The process then ends with exit code 1.
+`Exception in thread "main"` with a stack trace. It is not a line of the log. When the fault comes while LDS makes its
+parts, the log says `LDS could not be made; what was made is stopped` at the level `ERROR` first. That line does not
+come for a fault found before (a variable for no key, a reference that leads nowhere, a file that is not UTF-8, or
+an `http.port` that is not a number), nor when the HTTP server cannot start (a host that is not known, a port that
+is taken). Either way the connections LDS had opened are closed. The process then ends with exit code 1.
 
 ### A value that is wrong
 
@@ -728,17 +669,20 @@ connections it had opened are closed. The process then ends with exit code 1.
 | `saga.threadpool.core` larger than `saga.threadpool.max` | `java.lang.IllegalArgumentException: maximumPoolSize must be greater than or equal to corePoolSize` |
 | `saga.threadpool.queue.capacity=0` | `java.lang.IllegalArgumentException`, with no message |
 | `saga.recovery.interval.seconds.min` larger than `saga.recovery.interval.seconds.max` | `java.lang.IllegalArgumentException: illegal configuration: intervalMaxSec < intervalMinSec` |
-| One of these two above 86400 | `java.lang.IllegalArgumentException: illegal configuration: intervalMaxSec > 86400` |
+| `saga.recovery.interval.seconds.min` above 86400 | `java.lang.IllegalArgumentException: illegal configuration: intervalMinSec > 86400` |
+| `saga.recovery.interval.seconds.max` above 86400 | `java.lang.IllegalArgumentException: illegal configuration: intervalMaxSec > 86400` |
+| One of these two below 1 | `java.lang.IllegalArgumentException: illegal configuration: intervalMinSec < 1`, or `intervalMaxSec < 1` |
 | `http.cors.allow.origin` is not a regular expression (`[`) | `java.util.regex.PatternSyntaxException: Unclosed character class near index 0` |
 | `sagalog.config.connection-pool.max-size` smaller than `saga.number-of-logs` and 11 more | `java.lang.IllegalStateException: The saga log has 30 connections in its pool (sagalog.config.connection-pool.max-size) for 30 saga logs (saga.number-of-logs): ... Give the pool at least 41 connections, or use fewer saga logs.` |
 | `search.index.commit-within` below 1, with search on | `java.lang.IllegalArgumentException: search.index.commit-within must be at least 1 ms: 0` |
+| `search.index.commit-within` that is not a number (`abc`), with search on | `java.lang.IllegalArgumentException: search.index.commit-within must be a number of milliseconds: abc` |
 | A file of `specification.schema` is not there | `java.lang.IllegalArgumentException: Unable to find resource: models/jsonschema/Missing.json` |
 | The GraphQL schema has no type with `@domain` | `java.lang.IllegalStateException: The model models/library.graphql has no entity type: a GraphQL schema needs a type with @domain`, at once |
 | `specification.schema` names no `.json` file | `java.lang.IllegalStateException: The model schemas has no entity type`, at once |
 | Both `graphql.schema` and `specification.schema` are empty | `java.lang.IllegalStateException: No model is given: set graphql.schema or specification.schema`, at once |
 | An unknown `persistence.provider` (`nope`) | `java.lang.IllegalStateException: No persistence providers found for providerId: nope` |
 | An unknown `sagalog.provider` | `java.util.NoSuchElementException: No value present`. The message does not name the key. |
-| An unknown `txlog.rawdata.provider` (`nope`) | `io.descoped.service.provider.api.ProviderException: No provider named 'nope'; available: [discard, memory, postgres]`, after 30 seconds |
+| An unknown `txlog.rawdata.provider` (`nope`) | `io.descoped.service.provider.api.ProviderException: No provider named 'nope'; available: [discard, memory, postgres]`, after 30 seconds. With search on: `java.lang.IllegalStateException: No index queue provider for the transaction log provider nope: the queue is kept where the transaction log is`, at once |
 | An unknown `search.index.provider` (`nope`), with search on | `java.lang.IllegalStateException: No search index provider found for providerId: nope` |
 | The transaction log in PostgreSQL without a password | `java.lang.IllegalArgumentException: Missing configuration 'postgres.driver.password'`, after 30 seconds |
 | The saga log in PostgreSQL with a `sagalog.config.cluster.name` that has other characters (`my_cluster`) | `java.lang.IllegalArgumentException: namespace (cluster.name) must match [A-Za-z0-9-]+: 'my_cluster'`, after 30 seconds |
@@ -774,7 +718,7 @@ A wrong password and a database that is not there are tried again in the same wa
 ends with:
 
 - PostgreSQL does not answer: `com.zaxxer.hikari.pool.HikariPool$PoolInitializationException: Failed to
-  initialize pool: Connection to 127.0.0.1:19306 refused. Check that the hostname and port are correct and that
+  initialize pool: Connection to 127.0.0.1:5432 refused. Check that the hostname and port are correct and that
   the postmaster is accepting TCP/IP connections.`
 - no password: `Failed to initialize pool: The server requested SCRAM-based authentication, but the password is
   an empty string.`
@@ -783,7 +727,7 @@ ends with:
 - a name of the PostgreSQL host that is not known, such as a service of a compose file that is not started:
   `Failed to initialize pool: The connection attempt failed.`
 - Neo4j does not answer: `org.neo4j.driver.exceptions.ServiceUnavailableException: Unable to connect to
-  127.0.0.1:19306, ensure the database is running and that there is a working network connection to it.`
+  127.0.0.1:7687, ensure the database is running and that there is a working network connection to it.`
 - a wrong Neo4j password: `org.neo4j.driver.exceptions.AuthenticationException: The client is unauthorized due to
   authentication failure.`, and after several tries `org.neo4j.driver.exceptions.SecurityException: The client has
   provided incorrect authentication details too many times in a row.`

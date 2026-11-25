@@ -52,13 +52,13 @@ LDS reads the model once, when it starts. To change the model, stop LDS and star
 
 The examples use a small model of a library, with the entity types `Book`, `Author` and `Publisher`. It is shown in
 both forms below: as a GraphQL schema, here the file `/models/library/schema.graphql`, and as JSON Schema files,
-here in the folder `/models/library-json`. Every request was run against LDS 3.0.1 in memory, with the model
-shown. An answer is shown as its status line and its body; the headers are left out. LDS sends a body
+here in the folder `/models/library-json`. Every request was run against the latest version of LDS in memory, with
+the model shown. An answer is shown as its status line and its body; the headers are left out. LDS sends a body
 on one line; here it is shown formatted, with the fields in the order LDS sent them.
 
-The addresses have the port 9090 and the namespace `ns`, as LDS comes. `sync=true` in a write makes LDS answer when the
-document is written (a [synchronous write](../glossary.md#synchronous-write)), and the answer of a write is the id of
-its [saga](../glossary.md#saga). [The REST API](rest-api.md) tells both.
+The addresses have the port 9090 and the namespace `ns`, as LDS comes. LDS answers a write when the document is
+written (a [synchronous write](../glossary.md#synchronous-write)); `sync=true` in the examples says so, and changes
+nothing. The answer of a write is the id of its [saga](../glossary.md#saga). [The REST API](rest-api.md) tells both.
 
 ## Give LDS a model
 
@@ -74,6 +74,11 @@ Two keys of the configuration name the model. Each can be set with an environmen
   also when it is set.
 - When `graphql.schema` is empty, the JSON Schema files of `specification.schema` are the model.
 - A path is absolute, or relative to the directory LDS is started in.
+- When both are empty, LDS ends at once with
+  `java.lang.IllegalStateException: No model is given: set graphql.schema or specification.schema`.
+- With a GraphQL schema, the key `graphql.enabled` (`LDS_GRAPHQL_ENABLED`, `true` as LDS comes) switches the GraphQL
+  API on or off. With `false` the schema is still the model, and a request to `/graphql` is answered `400` with
+  `Unsupported namespace: "graphql"`.
 
 As it comes, LDS reads an example model, the file `linked-data-store-server/schemas/schema.graphql` of the
 repository. [Getting started](getting-started.md) uses it.
@@ -81,11 +86,11 @@ repository. [Getting started](getting-started.md) uses it.
 ### A GraphQL schema
 
 Start LDS as [Getting started](getting-started.md) tells, with the path of your file in
-`LDS_GRAPHQL_SCHEMA`:
+`LDS_GRAPHQL_SCHEMA`. With the image, mount the folder of the file in the container:
 
 ```sh
-cd linked-data-store-server
-LDS_GRAPHQL_SCHEMA=/models/library/schema.graphql java -cp "target/*:target/lib/*" io.descoped.lds.server.Server
+docker run --rm -p 127.0.0.1:9090:9090 -v /models/library:/models/library:ro \
+  -e LDS_GRAPHQL_SCHEMA=/models/library/schema.graphql descoped/lds
 ```
 
 The log names the entity types LDS has read, and the file. In its log and in its messages LDS calls an entity type a
@@ -101,9 +106,8 @@ The log names the entity types LDS has read, and the file. In its log and in its
 Set `graphql.schema` to empty and name the folder with the files:
 
 ```sh
-cd linked-data-store-server
-LDS_GRAPHQL_SCHEMA= LDS_SPECIFICATION_SCHEMA=/models/library-json \
-  java -cp "target/*:target/lib/*" io.descoped.lds.server.Server
+docker run --rm -p 127.0.0.1:9090:9090 -v /models/library-json:/models/library-json:ro \
+  -e LDS_GRAPHQL_SCHEMA= -e LDS_SPECIFICATION_SCHEMA=/models/library-json descoped/lds
 ```
 
 ```
@@ -124,8 +128,9 @@ start with a space, and LDS ends at start with `Unable to find resource:` and th
 
 In the image LDS is started in the directory `/lds`, so it reads its model from `/lds/schemas`. Mount a folder of
 your own there. A GraphQL schema in that folder must have the name `schema.graphql`, or `LDS_GRAPHQL_SCHEMA` must
-name it. The compose file of the repository mounts the folder `linked-data-store-server/schemas` there.
-[Operations](operations.md) tells more about the image.
+name it. JSON Schema files in that folder are the model with `-e LDS_GRAPHQL_SCHEMA=`, since `specification.schema`
+is `schemas` as LDS comes. The compose file of the repository mounts the folder `linked-data-store-server/schemas`
+there. [Operations](operations.md) tells more about the image.
 
 ### See the model LDS has read
 
@@ -364,9 +369,9 @@ classDiagram
     Publisher ..> "0..*" Book : books (reverse link)
 ```
 
-A filled diamond is an embedded type: its values are embedded objects, part of the document they are in (composition).
-An arrow is a link: the document holds the text `/Entity/id`, and what it points at is a document of its own
-(association). A dotted arrow back is the [reverse link](../glossary.md#reverse-link), which only the GraphQL API has.
+A filled diamond is an embedded type: its values are embedded objects, part of the document they are in.
+An arrow is a link: the document holds the text `/Entity/id`, and what it points at is a document of its own.
+A dotted arrow back is the [reverse link](../glossary.md#reverse-link), which only the GraphQL API has.
 
 These three documents fit the model: a publisher, an author and a book.
 
@@ -405,8 +410,8 @@ HTTP/1.1 201 Created
 {"saga-execution-id": "01a1f9d7-22e3-7aac-9590-538bf9593e80"}
 ```
 
-The book is written although there is no document `/ns/Author/not-written-yet`: LDS does not check that the
-document a link points at is there.
+The book is written although there is no document `/ns/Author/not-written-yet`
+([What is not checked](#what-is-not-checked)).
 
 ### What the file must have
 
@@ -432,11 +437,17 @@ in the example. A scalar is a kind of single value. Beside these four LDS knows 
 
 A type with `@domain` is an entity type. LDS keeps documents of it, and the name of the entity type is the name of the
 type, as it is written: `type Book @domain` gives documents the addresses `/ns/Book/` and an id. A model must have at
-least one entity type. The name of an entity type is at most 128 bytes in UTF-8; LDS does not start with a longer
-one, and says `The name of an entity type is at most 128 bytes in UTF-8: ` and the name.
+least one entity type. The name of an entity type is at most 128 bytes in UTF-8, with both forms of model; LDS does
+not start with a longer one, and says `The name of an entity type is at most 128 bytes in UTF-8: ` and the name, cut
+after 80 characters and `...`.
 
 A type without `@domain` is an embedded type. Write an embedded object as a field whose type is an embedded type, or a
 list of one: `chapters: [Chapter]`.
+
+Not finished: LDS takes the address of an embedded type for an entity type, as when an entity type is mistyped as one
+of the embedded types. With the library model above, `PUT /ns/Chapter/1` is answered `500` with no body,
+`GET /ns/Chapter/1` `404`, and `GET /ns/Chapter?schema` `500`. The same holds for a definition in `$defs` that is not
+an entity type, with JSON Schema files.
 
 `@domain` has one argument, `searchable`. With `@domain(searchable: false)` the documents of the entity type are not
 put in the search index, so [search](graphql-api.md#search) does not find them. The entity type is in the model as
@@ -473,10 +484,8 @@ A value that is out of range for its scalar is refused: `"pages": 2147483648` is
 `[$.pages: number found, integer expected]`. So a value is written only when GraphQL can give it back.
 
 A field without `!` may be left out of a document. A field whose value is `null` is written as if it were left
-out, at any depth: a book written with `"inPrint": null` is read back without `inPrint`, and a field with `!` that
-is `null` is refused as missing, `[$: required property 'title' not found]`. A `null` as an item of an array is
-checked as the item: in `"keywords": ["a", null]` it is refused with `[$.keywords[1]: null found, string
-expected]`.
+out, and a field with `!` that is `null` is refused as missing:
+[What LDS checks when a document is written](#what-lds-checks-when-a-document-is-written) tells how.
 
 A document may have fields that the model does not have. LDS stores them and gives them back.
 
@@ -514,7 +523,8 @@ A field with `@link` holds a link. The type of the field says which entity types
 | a union, a type that names several entity types: `rights: RightsHolder @link` | a link to a document of any entity type of the union: `"/Author/ada"` or `"/Publisher/north"` |
 
 A link is a slash, the name of the entity type, a slash and the id. It does not have the namespace. LDS checks that the
-value has this form and that the entity type is one the field may link to. It does not check that the document is there.
+value has this form, that the entity type is one the field may link to, and that the id is one LDS takes. It does not
+check that the document is there.
 
 `@link` has two arguments. Both are for [the GraphQL API](graphql-api.md) and change nothing in what a
 document must look like.
@@ -566,8 +576,10 @@ HTTP/1.1 200 OK
 ```
 
 Without `reverseName` the name is `reverse`, the name of the entity type and the name of the field, each with a capital
-first letter: `authors` of `Book` gives `reverseBookAuthors` on `Author`. A link to a union gives the field to every
-entity type of the union: `rights` gives `reverseBookRights` on `Author` and on `Publisher`.
+first letter: `authors` of `Book` gives `reverseBookAuthors` on `Author`. For a link in an embedded object the names
+of the fields on the way to it come between: a link `editor: Author @link` in `Chapter` gives
+`reverseBookChaptersEditor` on `Author`. A link to a union gives the field to every entity type of the union:
+`rights` gives `reverseBookRights` on `Author` and on `Publisher`.
 
 Not finished: LDS does not check a `reverseName` against the fields of the entity type it is added to. With
 `reverseName: "name"` on the link to `Publisher`, the field `name` of a publisher is the reverse link in GraphQL, and
@@ -583,21 +595,21 @@ A text in quotes above a type or a field is its description. It is in the schema
 JSON Schema of `?schema`. A comment, a line that starts with `#`, right above a type or a field is taken as its
 description too.
 
-Not finished: in `?schema` a field that holds one link has the description of the entity type it links to, not
-its own. In the answer for `Book` above, `publisher` has `"description":"A publisher"`. A field that holds a list of
-links has its own description.
+Not finished: in `?schema` a field that holds one link to one entity type has the description of that entity type,
+not its own, and none when the entity type has none. In the answer for `Book` above, `publisher` has
+`"description":"A publisher"`. A field that holds a list of links, or one link to a union, has its own description.
 
 ### Shapes that do not work as written
 
 Not finished: LDS does not read every shape of a GraphQL schema as it is written. The table lists the shapes
-that were tried, and what LDS does with them today. In it, "the first" means the first in the order of the names
-of the fields, not in the order of the file.
+that were tried, and what LDS does with them today. In it, "the first" means the first in the alphabetical order of
+the names of the fields, not in the order of the file.
 
 | In the model | What LDS does today |
 |---|---|
 | A single field of an embedded type: `cover: Cover` | The value is not checked. The part can be read as a whole at `/ns/Book/winter/cover`. A field of it cannot be addressed: `GET /ns/Book/winter/cover/colour` is answered `400` with `Not a valid path element: "colour"`. |
 | Two fields of one type with the same list type: `a: [String]` and `b: [String]` | Only the first is a list. `b` must be a single text: `"b":["x"]` is refused with `$.b: array found, string expected`. With two lists of one embedded type, the second is not checked at all. Lists with `@link` are not touched by this. |
-| Two fields of one type with the same enum: `earlier: State` and `state: State!` | Only the first is checked. `state` takes any value. |
+| Two fields of one type with the same enum: `earlier: State` and `state: State!` | Only the first is checked. `state` takes any value, and must still be in the document, by its `!`. |
 | A list of an enum: `states: [State]` | When no field of that enum comes before it, it must be one name of the enum, and an array is refused. When one does, any array is accepted. |
 | A list of lists: `[[String]]` | Read as `[String]`. |
 | A field whose type is an entity, without `@link`: `owner: Author` | Read as a link: an object there is refused with `$.owner: object found, string expected`. Write `@link` on every field whose type is an entity or a union of entities, unless the values of the entity are to be held in the document (the next row). |
@@ -632,8 +644,9 @@ says `LDS could not be made; what was made is stopped`, and the reason follows i
 | A field marked with `@reverseLink` (see [Reverse links](#reverse-links)) | `java.lang.IllegalArgumentException: json-path must start with '$' in its first element` |
 
 LDS makes types with these names itself for the GraphQL API: for an entity type `Book` they are `BookConnection`
-and `BookEdge`, and one type `PageInfo`. When search is on, it also makes the types `TypeFilters` and `SearchResult`.
-Do not use these names in a model.
+and `BookEdge`, and one type `PageInfo`. When search is on and at least one entity type is searched, it also makes the
+types `TypeFilters`, `SearchResult`, `SearchResultConnection` and `SearchResultEdge`, and the query `Search`, which
+takes the place of the query of the documents of an entity type named `Search`. Do not use these names in a model.
 
 ## A model as JSON Schema files
 
@@ -644,7 +657,8 @@ With JSON Schema files as the model LDS has no GraphQL API: a request to `/graph
 
 - There is one file for each entity type. The name of the entity type is the name of the file without `.json`:
   `Book.json` is the entity type `Book`.
-- A folder in `specification.schema` gives every file in it whose name ends in `.json`. Other files are skipped.
+- A folder in `specification.schema` gives every file in it whose name ends in `.json`, in any letter case
+  (`.JSON` too). Other files are skipped.
   Folders inside it are not read.
 - A file can be named itself: `LDS_SPECIFICATION_SCHEMA=/models/Author.json,/models/Publisher.json`, with no
   space after the comma. Its name must end in `.json`.
@@ -810,8 +824,8 @@ What to know about the form:
   `anyOf` and `additionalProperties`.
 - A single part written with `$ref` is checked, and so are the links in it. This differs from a GraphQL schema.
 - A field whose value is `null` is written as if it were left out, whatever the schema says of it: the book above
-  is read back without `publisher`, and `"rights": null` is accepted though `rights` is a text. A `null` as an item
-  of an array is checked as the item.
+  is read back without `publisher`, and `"rights": null` is accepted though `rights` is a text
+  ([What LDS checks when a document is written](#what-lds-checks-when-a-document-is-written)).
 - Without `"additionalProperties": false` a document may have fields that the schema does not name.
 - `default` gives a document nothing: a document written without the field is read back without it.
 - `displayName` may be written wherever a keyword can be; LDS gives it out in `?schema` and does nothing else
@@ -852,7 +866,7 @@ LDS ends at start, with the reason in its log in a line that starts with `Except
 | The file | Message |
 |---|---|
 | `$schema` names another draft | `java.lang.IllegalArgumentException: The JSON Schema of Old says it is "http://json-schema.org/draft-04/schema#". LDS reads JSON Schema 2020-12: https://json-schema.org/draft/2020-12/schema` |
-| `definitions` at the root, and no `$schema` | `java.lang.IllegalArgumentException: The JSON Schema of Old has "definitions", which is the keyword of an earlier draft. In JSON Schema 2020-12 it is "$defs".` |
+| `definitions` at the root | `java.lang.IllegalArgumentException: The JSON Schema of Old has "definitions", which is the keyword of an earlier draft. In JSON Schema 2020-12 it is "$defs".` |
 | A `$ref` in a definition to a definition that is not there | `java.lang.IllegalStateException: Referenced definition does not exist: #/$defs/Missing` |
 | A `$ref` in a definition to another file | `java.lang.IllegalStateException: $ref present but unable to resolve: other.json` |
 | The `$ref` at the root points at a definition that is not there | `com.networknt.schema.InvalidSchemaRefException: Reference /$defs/Missing cannot be resolved` |
@@ -872,7 +886,7 @@ Not finished: LDS does not check at start that a file can be used. With each of 
 |---|---|
 | No `$defs`: a schema with `type` and `properties` at its root | Every request to the entity type is answered `400` with `Not a managed resource name: "T"`. |
 | The definition has another name than the file: `Person.json` with the definition `Human` | The same for `Person`. A write to `/ns/Human/1` is answered `500` with no body. |
-| `$defs`, and no `$ref` at the root | The entity type works, and its documents are not checked: `{}` is written although a field is required. |
+| `$defs`, and no `$ref` at the root | The entity type works, and the JSON Schema of its documents is not checked: `{}` is written although a field is required. Its links are still checked: a link field that holds `"nolink"` is refused with `Not a valid link`. |
 | Two files that each have a definition of the same name in `$defs`, with different content | A document is checked by the definition of its own file. Its links are checked by the definition of the file that LDS read first, and the order in which LDS reads the files of a folder is not fixed. Give such definitions the same content in every file. |
 | A file named itself whose name does not end in `.json`: `Firm.schema` | LDS cuts the last five characters of the name. The entity type is `Firm.s`. |
 
@@ -883,13 +897,23 @@ written, and when a part of it is written: the whole document is then checked wi
 the document when a part of it is removed, and not when a link is added or removed at an address of its own. [The REST
 API](rest-api.md) has the requests, and tells what a removed part can leave behind.
 
-There are two checks, in this order:
+First LDS takes out every field whose value is `null`, at any depth, whatever the model says of it. A `null` is
+thus written as if the field were left out: a book written with `"inPrint": null` is read back without `inPrint`, and
+a field that must be there and is `null` is refused as missing, `[$: required property 'title' not found]`. A `null`
+as an item of an array is not taken out, and is checked as the item: in `"keywords": ["a", null]` it is refused with
+`[$.keywords[1]: null found, string expected]`.
+
+Then LDS tests the document against the limits that hold for every document: the path of a value is at most 1024
+bytes in UTF-8, and a value is in at most 32 arrays. A document past one is refused with `400` and a text that does
+not start with `Schema validation error:`; [the REST API](rest-api.md#write-a-document) tells it.
+
+Then come the two checks against the model, in this order:
 
 1. The JSON Schema of the entity type: the kinds of value, the fields a document must have, formats, and with JSON
    Schema files everything else the schema says. LDS gives every fault it finds.
 2. The links, only when the first check found nothing. LDS gives the first link that is wrong.
 
-A document that fails a check is refused. Nothing is written. The answer has the status `400`, the content type
+A document that fails one of the two is refused. Nothing is written. The answer has the status `400`, the content type
 `text/plain`, and a body that starts with `Schema validation error:`.
 
 A body that cannot be read as JSON is not checked against the model and gets another answer.
@@ -958,7 +982,8 @@ A date-time must be a date-time of RFC 3339: the date, `T`, the time with second
 
 ### Faults in links
 
-The message names the field after `Navigation:`, with dots between a part and its field, and then the value.
+The message names the field after `Navigation:`, with dots between a part and its field, and then the value; a
+fault in the id leaves the value out.
 
 | What is wrong | In the document | Body of the answer |
 |---|---|---|
@@ -966,6 +991,7 @@ The message names the field after `Navigation:`, with dots between a part and it
 | The link is to an entity the field may not link to | `"publisher":"/Author/ada"` | `Schema validation error: Illegal linked-domain: "Author". Navigation: publisher: "/Author/ada"` |
 | The same in a list of links | `"authors":["/Author/ada","/Publisher/north"]` | `Schema validation error: Illegal linked-domain: "Publisher". Navigation: authors: "/Publisher/north"` |
 | The same in a part of a document (JSON Schema files) | `"cover":{"colour":"green","designer":"/Publisher/north"}` | `Schema validation error: Illegal linked-domain: "Publisher". Navigation: cover.designer: "/Publisher/north"` |
+| The id is not one LDS takes: over 1024 bytes in UTF-8, with a control character, or with half of a character | `"publisher":"/Publisher/a\u0001b"` | `Schema validation error: A link names an id that is not valid: An id cannot hold a control character. Navigation: publisher` |
 
 An empty text, a text with the namespace in it (`/ns/Author/ada`) and a text with more parts (`/Author/a/b`) do
 not have the form of a link and are refused in the same way.
@@ -979,8 +1005,9 @@ that address must be one the field may link to. `PUT /ns/Book/nine/publisher/Aut
 
 ### What is not checked
 
-- LDS does not check that the document a link points at is there. A link may point at a document that is written later;
-  until then it is a dangling reference.
+- LDS does not check that the document a link points at is there. LDS is a
+  [time machine](../glossary.md#time-machine): a link may point at a document that is written later; until then it
+  is a dangling reference. [Concepts](concepts.md) tells why.
 - LDS checks one document at a time. It does not compare a document with other documents.
 - LDS checks a document only when it is written. Documents that are stored are not checked again when LDS starts
   with another model.
@@ -992,8 +1019,7 @@ single part are not checked either, as nothing in a single part is.
 
 ## What a model cannot say
 
-- **That the document a link points at is there.** LDS is a [time machine](../glossary.md#time-machine): a link may
-  point at a document that does not exist yet. [Concepts](concepts.md) tells why.
+- **That the document a link points at is there** ([What is not checked](#what-is-not-checked)).
 - **Anything about ids, versions and namespaces.** The model describes the content of a document. One LDS serves
   one namespace, and every entity type of the model is in it.
 - **A rule that spans documents**, such as a value that only one document may have.
@@ -1002,7 +1028,7 @@ single part are not checked either, as nothing in a single part is.
 
 A GraphQL schema as the model cannot say, in addition:
 
-- what an id must look like: an `ID` field is not checked;
+- what a field of the type `ID` must hold: it is not checked;
 - a limit for a value, such as a shortest text or a smallest number;
 - that a document must not have other fields than those of the model;
 - what a single embedded object must look like: only a list of embedded objects is checked.
@@ -1020,7 +1046,8 @@ search index every version of every document, and reads the model to know what i
   by the stems of its words: `nb`, `nn` and `no` (Norwegian), `sv`, `en`, `de` and `fr`, in any case and with or
   without a region, such as `nb-NO`. The code itself is not searched. Every other text is searched word for word.
 - A link is not text: neither is a field with `@link`. Nor is a value of a field whose scalar is `DateTime`, `Date`
-  or `Time`, a number, `true` or `false`.
+  or `Time`, a number, `true` or `false`. This does not hold in a single embedded object (`cover: Cover`): the model
+  says nothing of its fields, so a link and a date-time in it are searched as text.
 - An entity type marked `@domain(searchable: false)` has no entries in the search index: search does not find its
   documents.
 

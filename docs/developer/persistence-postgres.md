@@ -29,7 +29,7 @@ key of every row.
 
 ## The examples in this document
 
-The outputs shown here were taken from LDS 3.0.1, the image `descoped/lds:3.0.1` with the example model
+The outputs shown here were taken from the latest version of LDS, the image `descoped/lds` with the example model
 (`linked-data-store-server/schemas/schema.graphql`), and this provider. PostgreSQL was the image
 `postgres:18-alpine`, in a container of its own on the same Docker network, with a database `lds` and a user `lds`
 with the password `lds`. It was started with `log_statement=all`, so its log (`docker logs pg`) shows every
@@ -40,11 +40,11 @@ docker network create lds-pg
 docker run -d --name pg --network lds-pg -e POSTGRES_USER=lds -e POSTGRES_PASSWORD=lds -e POSTGRES_DB=lds \
   postgres:18-alpine -c log_statement=all
 docker run -d --name lds --network lds-pg -p 127.0.0.1:19107:9090 -e LDS_PERSISTENCE_PROVIDER=postgres \
-  -e LDS_POSTGRES_DRIVER_HOST=pg -e LDS_POSTGRES_DRIVER_PASSWORD=lds descoped/lds:3.0.1
+  -e LDS_POSTGRES_DRIVER_HOST=pg -e LDS_POSTGRES_DRIVER_PASSWORD=lds descoped/lds
 ```
 
-The first attempt to start the provider came before PostgreSQL took connections, and the second, two seconds
-later, succeeded (`docker logs lds`):
+The first attempt to start the provider came before PostgreSQL took connections, and the second succeeded
+(`docker logs lds`):
 
 ```
 ... PersistenceConfigurator - Using persistence provider: postgres
@@ -59,7 +59,10 @@ later, succeeded (`docker logs lds`):
 ... io.descoped.lds.server.Server - Server started in 2300ms..
 ```
 
-No test in the repository runs LDS as a whole on this provider (see [Not finished](#not-finished)).
+No test of the build runs LDS as a whole on this provider (see [Not finished](#not-finished)). Two things outside
+the build do: [the load test](loadtest.md), run by hand (`ldspostgres.sh`, and `ldspostgres-logs.sh`, which keeps
+the saga log and the transaction log in PostgreSQL as well), and the stack of the Claude Code plugin,
+`plugins/lds/skills/start/assets/compose-postgres.yaml`.
 
 ## Layout
 
@@ -75,7 +78,7 @@ public, because the service loader creates it.
 | `ResultSetPublisher` | A Reactive Streams `Publisher` over a JDBC `ResultSet`. It moves the cursor one row for each row that is requested. |
 | `PostgresTransactionFactory` | Owns the connection pool. Opens a transaction on a connection of the pool. |
 | `PostgresTransaction` | One connection with a transaction open on it. Commit or cancel ends it and gives the connection back. |
-| `JavaUtilLoggerBridge` | Sends what the JDBC driver logs with `java.util.logging` to SLF4J. It resets the configuration of `java.util.logging` once and sets the level of the root logger (`INFO`, given by `PostgresDbInitializer`). |
+| `JavaUtilLoggerBridge` | Sends what the JDBC driver logs with `java.util.logging` to SLF4J. Once in a JVM it resets the configuration of `java.util.logging` for the whole JVM (`LogManager.reset`), not only of the driver, and puts the bridge on the root logger. It then sets the level of the root logger (`INFO`, given by `PostgresDbInitializer`). |
 | `init-db.sql` | The statements that create the table and its index. It is a resource next to `PostgresDbInitializer`. |
 
 `module-info.java` requires the persistence API, `java.sql`, `com.zaxxer.hikari`, `org.postgresql.jdbc`,
@@ -238,8 +241,10 @@ If step 3 fails, the pool is closed and the exception goes to the caller. The ar
 3. `CREATE INDEX IF NOT EXISTS fragment_value_idx ...`.
 
 The file runs at every start. It creates what is missing and changes nothing that exists. The provider has no
-other statement that changes the table definition. The database and its user must exist before LDS starts, and
-LDS creates the table as that user.
+other statement that changes the table definition. A table `fragment` that exists is not compared with the file:
+one of another shape is kept as it is. The start fails only when the index cannot be made on it (a column it names
+is missing); otherwise LDS starts, and the statements of the provider meet the table as it is. The database and its
+user must exist before LDS starts, and LDS creates the table as that user.
 
 `PostgresProviderTest.instancesThatStartTogetherOnAnEmptyDatabaseAllStart` starts four instances at once on a new
 database, five times. `PostgresProviderTest.startingLeavesNoConnectionInUse` checks that the connection of step 3
@@ -249,7 +254,8 @@ The caller of `initialize` is `PersistenceConfigurator` in core. When `initializ
 of about a second (half a second to a second and a half) and tries again, until
 `persistence.initialization.max-wait-seconds` have passed. With nothing listening at the address
 (`LDS_POSTGRES_DRIVER_HOST=127.0.0.1`, inside the container of LDS) and the 60 seconds of the server defaults, LDS
-made 27 attempts, about one every two seconds, and then ended with exit code 1 and this text:
+made about 30 attempts, about one every two seconds (the number differs from run to run), and then ended with exit
+code 1 and this text:
 
 ```
 ... ERROR io.descoped.lds.core.UndertowApplication - LDS could not be made; what was made is stopped
@@ -263,9 +269,9 @@ When PostgreSQL and LDS were started together, the second attempt succeeded and 
 
 `PersistenceConfigurator` catches every `RuntimeException` and does not look at what failed. A wrong password, a
 database that does not exist and a port that is not a number are tried again in the same way until the wait is
-over. With a wait of 3 seconds, a wrong password gave three attempts and the port `notanumber` gave five, and
-LDS then ended with the exception of the last attempt (`password authentication failed for user "lds"`,
-`NumberFormatException: For input string: "notanumber"`).
+over. With a wait of 3 seconds, a wrong password and the port `notanumber` each gave a few attempts (three to
+five, as the waits fell), and LDS then ended with the exception of the last attempt
+(`password authentication failed for user "lds"`, `NumberFormatException: For input string: "notanumber"`).
 
 ## Writing
 
@@ -342,6 +348,11 @@ with only an upper bound is read from the end, also without a limit.
 | `readAllVersions` | Every row of the entity type in the namespace, in the order of the primary key: by id, oldest version first, path, positions. Tombstones included. |
 | `find` | The rows of every document whose version valid at the snapshot holds the given value at the given path. Same order, bounds and limit as `readAll`. |
 | `hasNext`, `hasPrevious` | `readAll` with the range `Range.firstAfter(1, id)` or `Range.lastBefore(1, id)`; the answer is whether a row came. Nothing calls these two: the bridge has its own, and no test calls them. |
+
+Through LDS, `readVersions` and the `find` of a value search are given the range without its limit
+(`Range.unlimited`), and the bridge applies the limit itself, after it has left out what it does not give (see
+[Versions](#versions) and [Links and `find`](#links-and-find)). The limit is on the statement only for `readAll` (a
+list, and the bridge's `hasNext` and `hasPrevious`) and for the `find` of the documents that link to one.
 
 `read` is one statement with a subquery for the version. This is the statement of a `GET /ns/Person/ola`, from
 the log of PostgreSQL (wrapped here):
@@ -452,7 +463,8 @@ driver has run the same text several times on a connection, it keeps the stateme
 the log shows a name (`execute S_9/C_16: SELECT ...`).
 
 `PostgresProviderTest.aReadLeavesNoCursorOpenOnTheServer` counts the cursors of the connection in `pg_cursors`:
-none after a read to the end, none after a stream that is cancelled after its first row, none after `hasNext`.
+none after a read to the end, none after a stream that is cancelled after its first row, none after the bridge's
+`hasNext`.
 
 ### Versions
 
@@ -524,8 +536,10 @@ The bridge follows them with the reads above:
 
 `find` takes the path without array positions (`$.friends[]`) and the value as it is stored. It compares the
 path and the bytes, not the column `type`: a text `17` and a number `17` at the same path are the same bytes.
-Its inner query compares the hash and then the value, so the index can be used and a hash that two values share
-does no harm:
+The value search of the bridge (`findDocument`) takes a text only, and leaves out a document whose value at the
+path is not that text, so such a match does not reach its caller. The documents that link to one
+(`readSourceDocuments`) are given as `find` returns them. The inner query of `find` compares the hash and then the
+value, so the index can be used and a hash that two values share does no harm:
 
 ```
 ... FROM (SELECT DISTINCT m.id, m.version FROM fragment m WHERE m.namespace = $1 AND m.entity = $2 AND
@@ -563,8 +577,11 @@ The provider does not commit by itself, with one exception: the creation of the 
 
 The provider has no thread and no scheduler. A statement runs on the thread that subscribes to the stream or
 requests from it, and that thread waits for PostgreSQL. Core calls the provider on threads of its own for that
-(the threads of the store, `StoreReads`, and the threads of the sagas), and a `GET` of one document in a
-`try (Transaction tx = ...)` block on the thread of the request.
+(the threads of the store, `StoreReads`; the threads of the sagas; the threads of the worker of the index queue
+and of the index rebuild), and in a `try (Transaction tx = ...)` block on the thread that handles the request:
+every REST `GET` (one document, a list, a timeline, an embedded part, a link) and every GraphQL field that reads the
+store. After a search, the fields of a GraphQL query read the store on a thread of queries (`StoreReads.queries`)
+instead.
 
 When all 10 connections are in use, the next `createTransaction` waits for one, for 30 seconds at most (the
 default of HikariCP), and then throws `PersistenceException`. With the table locked for 40 seconds
@@ -593,7 +610,8 @@ error, and the first write was not in the table afterwards. `Transaction.close` 
 throw either (see [Not finished](#not-finished)). Core does not commit after a write that failed: it cancels
 (`WriteTransaction`).
 
-`PostgresPersistence.close` closes the factory, and the factory closes the pool.
+`PostgresPersistence.close` closes the factory, and the factory closes the pool. Core does that when LDS stops:
+the store is the first subsystem the application makes (`Store`), so it is the last one stopped.
 
 ## Configuration
 
@@ -615,7 +633,9 @@ variable.
 `PersistenceConfigurator`: for how long it tries `initialize` again.
 
 Nothing else can be configured: not the size of the pool, not the fetch size, not the size of a write batch, not
-the name of the table. There is no key for TLS or for other options of the JDBC driver.
+the name of the table. There is no key for TLS or for other options of the JDBC driver. The driver therefore
+uses its default, `sslmode=prefer`: the connection uses TLS when PostgreSQL offers it, without checking the
+certificate of the server, and is plain otherwise.
 
 ## Rules to keep
 
@@ -652,16 +672,19 @@ from the comments of the code.
 - **JPMS.** The provider is registered with `provides` in `module-info.java` and in `META-INF/services`. Keep both.
 - **Lint and Javadoc.** The module has no override in its POM, so `-Xlint:all -Werror` and doclint `all` of the
   root POM apply to it.
-- **3.0.0 is a clean break.** No code that migrates an older table.
+- **A clean break.** No code that migrates an older table.
 - **PostgreSQL stays at 18**, see below.
 
 ## PostgreSQL is held at 18
 
 A rule of the project is that every engine is at its latest stable version, with one exception: PostgreSQL stays
-at 18 by the owner's decision, and the owner says when it is raised. It is written in three places:
+at 18 by the owner's decision, and the owner says when it is raised. It is written in these places:
 
 - `Postgres18` in this module: the image `postgres:18-alpine` of the tests.
-- `linked-data-store-server/compose.yaml` and `SagaLogPostgresTest` in core: the same image.
+- The same image in the tests `SagaLogPostgresTest` in core and `PostgresIndexQueueTest` in
+  `linked-data-store-index-queue-postgres`, in `linked-data-store-server/compose.yaml`, in the compose file of the
+  load test, and in the plugin's `compose-postgres.yaml` and `compose-stack.yaml`
+  (`plugins/lds/skills/start/assets/`).
 - `.github/renovate.json`: the rule for the Docker image `postgres` allows only versions that match
   `/^18([.-]|$)/`.
 
@@ -677,7 +700,7 @@ module.
 | `PostgresIntegrationTest` | TestNG | The [shared suite](../glossary.md#shared-suite): it extends `PersistenceIntegrationTest` and gives it the provider. 38 tests, in the namespace `lds-provider-postgres-integration-test`. See [the shared suite](persistence-tck.md). |
 | `ResultSetPublisherIntegrationTest` | TestNG | The Reactive Streams TCK (`PublisherVerification`) for `ResultSetPublisher`, over `SELECT * FROM GENERATE_SERIES(1, n)` with at most 1000 rows. It says that a call of `request` inside `onNext` goes at most one level deep (`boundedDepthOfOnNextAndRequestRecursion`). |
 | `ResultSetPublisherSignalsTest` | JUnit | That nothing follows the error of a request for zero rows. It needs no database: the result set is a proxy. |
-| `PostgresProviderTest` | JUnit | What the provider must do beyond the suite. 20 tests, each with an entity type of its own. |
+| `PostgresProviderTest` | JUnit | What the provider must do beyond the suite. 20 tests. Each test that writes uses an entity type of its own, but for the two of long texts, which share `Text` with ids of their own. |
 
 `PostgresProviderTest` covers:
 
@@ -714,7 +737,7 @@ services file is missing. The reason is in the Javadoc of the class and in [the 
 The module has no `logback.xml`. The one of the shared suite's jar is on its test class path.
 
 The command for one module and what it needs is `./mvnw verify -pl <module> -am`. For this module it is the one
-below. It was not run for this document.
+below.
 
 ```sh
 ./mvnw verify -pl linked-data-store-persistence-provider-postgres -am
@@ -725,7 +748,8 @@ below. It was not run for this document.
 Not finished: a transaction that is closed commits. `Transaction.close` in the API commits, and
 `PostgresTransaction` does not override it. A rule of the project is that a transaction commits only when asked
 and rolls back otherwise, and [the invariants](architecture.md#the-invariants) name this as not true yet. Core
-closes its read transactions with try-with-resources, so a read ends with `COMMIT`. Its writes commit only when
+closes its read transactions with try-with-resources, or with `Transaction::close` in an Rx `using` (`StoreReads`,
+the worker of the index queue, the index rebuild), so a read ends with `COMMIT`. Its writes commit only when
 they completed (`WriteTransaction`).
 
 Not finished: a commit does not tell that PostgreSQL rolled the transaction back. After a statement of the
@@ -744,8 +768,9 @@ batch before its inserts, and adds one delete for each `DocumentKey`. So the row
 deleted before the second document inserts the same rows. Core writes one document in each transaction, so LDS
 does not do this.
 
-Not finished: no test runs LDS as a whole on this provider. The tests of core use the memory provider, and
-`ServerStackIT` uses Neo4j for the documents. What this document shows of LDS on PostgreSQL was run by hand.
+Not finished: no test of the build runs LDS as a whole on this provider. The tests of core use the memory
+provider, and `ServerStackIT` uses Neo4j for the documents. The load test runs LDS on it, but only by hand. What
+this document shows of LDS on PostgreSQL was run by hand.
 
 Not finished: the pool size (10), the time a caller waits for a connection, and options of the JDBC driver such
 as TLS cannot be configured.

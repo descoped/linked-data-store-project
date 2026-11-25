@@ -58,9 +58,10 @@ GraphQL schema as its model (see [How a provider is found](#how-a-provider-is-fo
 
 The interface module depends on `linked-data-store-persistence-provider-api` (a hit is a `DocumentKey`) and on
 RxJava 3, and `requires transitive` both. Its POM and its `module-info.java` also name Jackson 3
-(`tools.jackson.core`, `tools.jackson.databind`), which no class of the module uses. The Solr module depends on the
-interface module, on `solr-solrj`, on Jackson 3 (it writes the schema it puts in) and on SLF4J. The queue module
-depends on the interface module, HikariCP, the PostgreSQL JDBC driver and SLF4J.
+(`tools.jackson.core`, `tools.jackson.databind`), which no class of the module uses. The POM of the Solr module names
+the interface module, the persistence interface, `solr-solrj` and SLF4J. Its `module-info.java` also requires Jackson 3
+(it writes the schema it puts in) and RxJava 3, which reach it only through the POMs of the two interface modules. The
+queue module depends on the interface module, HikariCP, the PostgreSQL JDBC driver and SLF4J.
 
 Core depends on the interface module only. The server module (`linked-data-store-server`) brings the Solr provider
 and the PostgreSQL queue. These classes of core use the interface; they belong to core and are named here to show
@@ -107,7 +108,7 @@ Every method but `close` returns a type of RxJava 3, and nothing is done until i
 | Method | What it promises |
 |---|---|
 | `Completable put(List<IndexEntry> entries)` | Adds the entries in one request. An entry the index has already (the same document and version, sent again by a retry or a rebuild) is replaced by the one given, which holds the same. Complete when the index has taken every entry; an error when it refuses them or cannot be reached. |
-| `Completable removeOlderThan(String namespace, Duration age)` | Removes the entries of the namespace that the index took longer ago than the age, by the index's own clock, and in every namespace the entries in the form of the search before 3.0.0. The clean-up after a rebuild. A negative age is an `IllegalArgumentException`. |
+| `Completable removeOlderThan(String namespace, Duration age)` | Removes the entries of the namespace that the index took longer ago than the age, by the index's own clock, and in every namespace the entries in a form the index no longer writes. The clean-up after a rebuild. With a negative age the `Completable` fails with an `IllegalArgumentException`. |
 | `Completable refresh()` | Makes every entry the index has taken searchable now, instead of within the time it takes otherwise. |
 | `Completable health()` | Complete when the index answers; an error when it cannot be reached or says it is not ready. |
 | `Single<SearchPage> search(SearchQuery query)` | The page of hits the query asks for, and the number of hits in all. |
@@ -148,7 +149,8 @@ An `Entry` is an update with its place in the queue (`sequence`) and the number 
 
 `IndexQueueProvider` makes a durable queue. Its `providerId()` is the name of the transaction log provider whose
 store it shares (`postgres`), and `indexQueue(configuration)` makes the queue and creates what it is kept in when
-that is missing.
+that is missing. Its `configurationKeys()` names the keys it reads (for `postgres`, those of
+`txlog.config.postgres.driver.*`); nothing in core calls it.
 
 ## How a provider is found
 
@@ -240,18 +242,25 @@ The version of the update is the [valid time](../glossary.md#valid-time) of the 
 
 ### The worker
 
-`IndexQueueWorker` runs on one thread of its own, `lds-index-queue-<n>`. It works in rounds:
+`IndexQueueWorker` starts each round on one thread of its own, `lds-index-queue-<n>`, and reads storage there. The
+removal or the put-off after the index has answered runs on the thread that completes the index's answer; the next
+round is scheduled on the worker's thread again. It works in rounds:
 
 1. It takes at most 100 updates (`BATCH`) for a lease of two minutes (`LEASE`).
 2. It reads each written version from storage as of its version, one after another, in one read transaction that
    is opened and closed on its own thread: the memory store holds a lock of the thread that opened a transaction.
    `IndexEntries` makes the entry. A deletion is an entry of its own. An update of an entity type that is not
-   searched, or of a version storage does not have, gives no entry.
+   searched gives no entry, and nor does one whose document has no version in storage up to the update's version.
+   Storage is read as of the version, so when it lacks that exact version, the newest one before it is sent under
+   the update's version.
 3. It sends the entries of the batch in one `put`, and removes the updates when the index has taken them.
-4. When the index does not take the batch, each of its updates is sent alone, so that one update the index refuses
-   does not hold back the others. An update that is not taken alone is put off: one second, twice as long after
-   each attempt, a minute at most (`delay`). The log says so at WARN, and from the tenth attempt at ERROR. An update
-   is never dropped: it is sent again, a minute apart, for as long as LDS runs.
+4. When the index does not take a batch of several updates, the log warns `The search index did not take a batch
+   of <n> updates; each is tried alone: <error>`, and each is sent alone, so that one update the index refuses
+   does not hold back the others. An update that is not taken alone, or a batch of one that is not taken, is put
+   off: one second, twice as long after each attempt, a minute at most (`delay`). The log says so at WARN, and
+   from the tenth attempt at ERROR: `The search index did not take the update of <namespace>/<entity>/<id> at
+   <version> (attempt <n>); tried again in PT1S: <error>`. An update is never dropped: it is sent again, a minute
+   apart, for as long as LDS runs.
 5. A round that took updates is followed by the next at once; one that took none by the next after 200 ms
    (`INDEX_QUEUE_POLL`). A round that fails is logged, and the next follows after 200 ms.
 
@@ -302,7 +311,8 @@ With search, `/health/ready` has two more checks, asked side by side with the ot
 | `search` | `SearchIndex.health()` | DEGRADED: search is not needed for a write. |
 | `indexQueue` | `IndexQueue.lag()`; the answer has `durable`, `updates` and, when there are updates, `oldest` | DOWN: a write needs the queue. DEGRADED when the oldest update has waited over a minute (`INDEX_LAG_DEGRADED`), the longest the worker puts an update off. |
 
-The stack of the compose file of the server, with every part up:
+The stack of the compose file of the server, started with `SERVER_PORT=19090` and `SOLR_PORT=18983` (the compose
+file publishes LDS on 9090 and Solr on 8983 otherwise), with every part up:
 
 ```sh
 curl -s http://localhost:19090/health/ready
@@ -339,15 +349,19 @@ search, and then:
 2. it asks the index to make what it has taken searchable (`SearchIndex.refresh`);
 3. it is answered as any write is, with the header `LDS-Searchable: true`.
 
-The wait is at most 10 seconds. When that is not enough, or the index fails, the write is answered with
-`LDS-Searchable: false`, and its update reaches the index as every update does. No thread waits: the answer is
+The wait is at most 10 seconds. When that is not enough, or the index fails to make it searchable, the write is
+answered with `LDS-Searchable: false`, and its update reaches the index as every update does. While the index cannot
+be reached, the worker puts the update off and the queue keeps it, so such a write waits the whole 10 seconds and the
+log warns `A write of /<namespace>/<entity>/<id> that asked to be searchable is answered before it is (<error>)`.
+No thread waits: the answer is
 sent from the completion of the wait. At most half as many writes as there are request threads wait at once
 (`REQUEST_THREADS / 2`; the request threads are eight for each processor, 16 at least). A write past that is
 answered when it is done, with `LDS-Searchable: false`. The CORS handler exposes the header, so a browser can read
 it. Without search, `searchable=true` makes the write wait for its saga and nothing more, and the answer has no
 such header.
 
-These were run against LDS in memory with search in Solr, the namespace `f-docs`, on port 19106:
+These were run against an LDS in memory on port 19106, with search in Solr and `f-docs` as its namespace
+(`namespace.default`):
 
 ```sh
 curl -s -i -X PUT 'http://localhost:19106/f-docs/Company/f-acme?timestamp=2020-01-01T00:00:00Z&searchable=true' \
@@ -380,7 +394,8 @@ The headers `Connection`, `Content-Length` and `Date` are left out.
 ## The rebuild
 
 `IndexRebuild` rebuilds the index from storage when LDS starts with `search.index.rebuild=true`. It reads every
-version of every document of every entity type of the namespace with `readAllDocumentVersions` (the persistence
+version of every document of every entity type of the namespace of LDS (`namespace.default`) with
+`readAllDocumentVersions` (the persistence
 interface, held by the [shared suite](../glossary.md#shared-suite)), and adds an update for each to the queue: a
 version that marks a document as deleted as a `DELETE`, the versions before it as `CREATE_OR_OVERWRITE`. The worker
 sends them as it sends every update. The index is never cleared, so search answers during a rebuild: each version is
@@ -396,11 +411,13 @@ not sent again is what storage no longer holds, or what an earlier model searche
 the rebuild started and one minute more (`MARGIN`), because the start is measured in LDS and the index reads its own
 clock later. The margin is on the side of keeping: an old entry left is found by no search unless it is a version
 storage no longer holds, and the next rebuild removes it; an entry removed by mistake is lost without a word. The
-same request removes every entry in the form of the search before 3.0.0. A queue that is never empty puts the
+same request removes, in every namespace, every entry in a form the index no longer writes. A queue that is never
+empty puts the
 clean-up off, and the log says so every five minutes with the lag of the queue. A rebuild that is stopped leaves
 the old entries.
 
-The log of a rebuild, from LDS in memory whose store was emptied by a restart:
+The log of a rebuild, from LDS in memory whose store was emptied by a restart, each line shortened to its level,
+class and message, and a long message wrapped here:
 
 ```
 INFO  IndexRebuild - Rebuilding the search index from storage: [Company, Person] in the namespace f-docs
@@ -452,13 +469,13 @@ of Solr. The fields of an entry:
 | `lds_version_n` | `lds_long` | the nanoseconds of the version within its second, so every instant a store keeps is kept exactly |
 | `lds_deleted` | `lds_boolean` | whether the document is deleted at the version |
 | `lds_indexed` | `lds_date` (`DatePointField`), default `NOW` | when Solr took the entry, set by Solr |
-| `lds_text`, `lds_text_no`, `lds_text_sv`, `lds_text_en`, `lds_text_de`, `lds_text_fr` | `lds_text_<language>` | the texts of each language, as they are written |
-| the same with `_folded` | `lds_text_<language>_folded` | the same texts, with the letters folded |
+| `lds_text`, `lds_text_no`, `lds_text_sv`, `lds_text_en`, `lds_text_de`, `lds_text_fr` | `lds_text_none`, `lds_text_norwegian`, `lds_text_swedish`, `lds_text_english`, `lds_text_german`, `lds_text_french` | the texts of each language, as they are written |
+| the same with `_folded` | the same with `_folded` | the same texts, with the letters folded |
 
 The text fields are indexed, not stored, and take many values. Every text type has the standard tokenizer and
 lower case, no stop words (so a phrase is kept whole), and depends on no file of the configuration of the core.
-French takes the article off first (`ElisionFilterFactory`: `l'école`). Then the stemmer of the language, the light
-ones that Solr's own `text_<language>` types use:
+French takes the article off first (`ElisionFilterFactory`: `l'école`). Then the stemmer of the language, the one
+Solr's own `text_<language>` type uses: a light stemmer, and Porter's for English:
 
 | Language | Stemming |
 |---|---|
@@ -500,7 +517,7 @@ once, the one that writes last wins. So LDS changes it once, last, with every pr
 the same in every LDS of this schema, and reads it back. `SolrSearchIndexTest.theSchemaIsPutInWhenTheCoreDoesNotHaveIt`
 has six indexes put the schema in at the same time.
 
-The overlay of the core of the compose file, after LDS put the schema in:
+The overlay of the core of the compose file, with Solr on `SOLR_PORT=18983`, after LDS put the schema in:
 
 ```sh
 curl -s 'http://localhost:18983/solr/lds-index/config/overlay?wt=json'
@@ -523,7 +540,8 @@ curl -s 'http://localhost:18983/solr/lds-index/config/overlay?wt=json'
 
 `put` makes one Solr document of each entry. Each text is put in one Unicode form (NFC) and goes into the text
 field of its language and into its folded field. These are the entries Solr held for the namespace `f-docs` after
-the writes above and a second version of `f-acme`, read with
+the writes above, the documents `f-bryggeri`, `f-ola` and `f-kari` written in 2020, and a second version of `f-acme`
+in 2022, read with
 `/select?q=lds_namespace:f-docs&fl=id,lds_id,lds_version_s,lds_version_n,lds_deleted,lds_indexed`:
 
 | `lds_id` | `lds_version_s` | `lds_version_n` | `lds_deleted` | `lds_indexed` |
@@ -551,8 +569,8 @@ loaded and can search. Solr's ping of a core is deprecated in Solr 10.1, and its
 the core.
 
 `removeOlderThan` sends one update with two deletes by query and `commitWithin`: the entries of the namespace with
-`lds_indexed` before `NOW-<age>MILLIS` (by Solr's clock), and every entry without `lds_indexed`, which only the
-search before 3.0.0 wrote. The namespace is a parameter of the request (`$ldsNamespace`).
+`lds_indexed` before `NOW-<age>MILLIS` (by Solr's clock), and, in every namespace, every entry without
+`lds_indexed`, a form this schema never writes. The namespace is a parameter of the request (`$ldsNamespace`).
 
 ### Searching
 
@@ -597,7 +615,9 @@ instant of `lds_version_s` and `lds_version_n` in the zone UTC. The hits are in 
 entity types are those of the union `SearchResult`, so that entries the index has of a type no longer searched are
 left out. It reads the version of each hit from storage as of that version, 16 at a time, and gives them in the
 order of the hits. A hit that storage does not have is left out, and the log warns: `The search index has
-<namespace>/<entity>/<id> at <version>, and storage does not: rebuild the index (search.index.rebuild)`.
+<namespace>/<entity>/<id> at <version>, and storage does not: rebuild the index (search.index.rebuild)`. When the
+index cannot be reached, `Search` is `null` and the answer has a GraphQL error of the field (`DataFetchingException`),
+for example `Exception while fetching data (/Search) : Connection refused (connect failed)`.
 
 These were run against the LDS above. `f-acme` had "Makes anvils and rockets" from 2020 and "Makes anvils" from
 2022, `f-kari` (`name` "Kari Rocket", `born` 1990-05-17) was deleted in 2023:
@@ -608,7 +628,7 @@ These were run against the LDS above. `f-acme` had "Makes anvils and rockets" fr
 | `rocket` | now | none: the newest version of `f-acme` does not have the word, and `f-kari` is deleted |
 | `rocket`, `history: true` | now | `f-kari` and the 2020 version of `f-acme` |
 | `rocket`, `filter: [Company]` | 2021-01-01 | `f-acme` |
-| `fjord brygge` | now | `f-bryggeri`: "fjorden" and "bryggeri" by their Norwegian stems |
+| `fjord brygge` | now | `f-bryggeri`: "fjorden" and "brygger" by their Norwegian stems |
 | `ol` | now | `f-bryggeri`: "øl" with its letter folded |
 | `"anvils and rockets"` | 2021-01-01 | `f-acme` |
 | `anvil -rocket` | 2021-01-01 | none |
@@ -665,11 +685,11 @@ curl -s 'http://localhost:19106/graphql?snapshot=2021-01-01T00:00:00Z' -H 'Conte
 | Key | Default in core | Default in the server | Meaning |
 |---|---|---|---|
 | `graphql.search.enabled` | `false` | `false` | `true` makes the index and its queue at start, adds the index step to the sagas and the field `Search` to the GraphQL schema. |
-| `search.index.provider` | empty | `solr` | The name of the provider (`getProviderId()`). Read only when search is enabled. The comment above the key in `application-defaults.properties` says it is a class name; that is wrong. |
+| `search.index.provider` | empty | `solr` | The name of the provider (`getProviderId()`). Read only when search is enabled. |
 | `search.index.url` | not there | `http://localhost:8983/solr/lds-index` | Read by the Solr provider: the address of the core. |
-| `search.index.commit-within` | `1000` | `1000` | Read by the Solr provider: within how many milliseconds Solr makes what it took searchable. At least 1; a value that is no number stops the start. |
+| `search.index.commit-within` | `1000` | `1000` | Read by the Solr provider: within how many milliseconds Solr makes what it took searchable. A value below 1, or one that is no number, stops the start (`search.index.commit-within must be at least 1 ms`, `... must be a number of milliseconds`). |
 | `search.index.rebuild` | `false` | `false` | `true` rebuilds the index from storage at start. Every start of every LDS with it rebuilds. |
-| `txlog.rawdata.provider` | not there | `discard` | Decides where the index queue is kept: in memory for `discard` and `memory`, else by the queue provider of that name (`postgres`, in the database of `txlog.config.postgres.driver.*`). |
+| `txlog.rawdata.provider` | `discard` | `discard` | Decides where the index queue is kept: in memory for `discard` and `memory`, else by the queue provider of that name (`postgres`, in the database of `txlog.config.postgres.driver.*`). |
 
 The defaults of core are in `application-defaults.properties` in `linked-data-store-core`, those of the server in
 `application-server-defaults.properties` in `linked-data-store-server`. An environment variable sets only a key that
@@ -730,7 +750,8 @@ test that waits for it searches every 100 ms for at most 30 seconds (`awaitHits`
 - the schema: put in when the core does not have it, by six indexes at once, and a field the schema does not have
   is refused; put in again when the core has the mark but makes fields again;
 - the connection: a write after Solr has closed the idle connection reaches the index; an update Solr refuses, or
-  that cannot reach Solr, fails for its caller and is tried again; the index is healthy when its core answers.
+  that cannot reach Solr, fails for its caller and is tried again; the index is healthy when its core answers;
+- the provider: it is found by its name, and names its keys.
 
 The PostgreSQL queue has `PostgresIndexQueueTest` (JUnit), on a real PostgreSQL 18: the provider is found under the
 name of the transaction log provider; an update is held until it is removed, and comes back with the zone of its
@@ -745,13 +766,14 @@ Tests in core:
 | Test | What it checks |
 |---|---|
 | `IndexEntriesTest` | Each text in the language of its code and the rest in none; a link, a date and a time are not text; a type not searched has no entry; a code in any case and with a region. |
-| `IndexQueueWorkerTest` | A written document is sent as storage holds it at its version, and the update removed; a delete is sent as a delete; an update whose document storage does not have is removed unsent; a round sends at most a hundred in one batch; while the index is down the updates stay, are put off and then sent; an update the index refuses does not hold back the others; the wait doubles from a second to a minute. |
+| `IndexQueueWorkerTest` | A written document is sent as storage holds it at its version, and the update removed; the read of a round leaves the store free for the next write; a delete is sent as a delete; an update whose document storage does not have is removed unsent; a round sends at most a hundred in one batch; while the index is down the updates stay, are put off and then sent; an update the index refuses does not hold back the others; the wait doubles from a second to a minute. |
 | `IndexQueueWorkerLifecycleTest` | The worker sends nothing before it is started; a stop lets the round that sends finish; after a stop nothing is sent and its thread has ended; a queue that fails does not stop it. |
 | `MemoryIndexQueueTest` | Order, lease, put off, lag. |
-| `IndexRebuildTest` | Every version of every entity type is added, the deleted ones included; storage is read only as fast as the queue takes; a stop ends the rebuild and the store takes writes again; the worker sends what the rebuild adds and the index is never cleared; the entries not sent again are removed when the queue is empty, and not before. |
-| `SearchWaitTest` | A write waits until the queue holds no update of its document, then is made searchable; the answer says whether a search finds it; the longest wait; another write of the document does not wait for its search; a write past the most that may wait is answered at once. |
+| `IndexRebuildTest` | Every version of every entity type is added, the deleted ones included; an empty store adds nothing; storage is read only as fast as the queue takes; a stop, or a queue that fails, ends the rebuild and the store takes writes again; a rebuild is started once, and not after a stop; the worker sends what the rebuild adds and the index is never cleared; the entries not sent again are removed when the queue is empty, and not before. |
+| `SearchWaitTest` | A write waits until the queue holds no update of its document, then is made searchable; the answer says whether a search finds it; the longest wait; a write is answered when the index cannot make it searchable; another write of the document does not wait for its search; a write past the most that may wait is answered at once; at least one write may wait. |
 | `SimpleSearchIndexTest` | No words find nothing; a letter with its accent as a mark of its own; a negative age is refused. |
-| `QueryConnectionFetcherTest` (JUnit) | The places of the index a range asks for, the cursors of a page. |
+| `QueryConnectionFetcherTest` (JUnit) | The places of the index a range asks for, the cursors of a page; a hit is read at the version that matched. |
+| `QueryConnectionCursorTest` (TestNG) | A cursor is read back as the place it was made from. |
 | `SearchIndexConfiguratorTest` (TestNG) | A provider is loaded by its name, none when search is off, and a name no provider has fails. |
 | `QueryVisitorsTest`, `GraphQLSchemaGoldenTest` | The `Search` field and its types, and the whole schema built with an index. |
 | `ReadinessTest`, `ReadinessHandlerTest` | The checks `search` and `indexQueue`. |
@@ -776,7 +798,8 @@ the index, but LDS has no `Search` field and so nothing reads the index.
 Not finished: a search looks at every version of the namespace up to the moment, before the collapse to the newest
 of each document, so its cost grows with the history. That cost has not been measured.
 
-Not finished: `SearchIndexProvider.configurationKeys()` is not called by anything for search.
+Not finished: nothing in core calls `SearchIndexProvider.configurationKeys()` or
+`IndexQueueProvider.configurationKeys()`.
 
 Not finished: `TestSearchIndex` and `SimpleSearchIndex` are in the main code of core, not in its tests.
 
@@ -784,4 +807,5 @@ Not finished: the comment above `search.index.provider` in `application-defaults
 value is the class name of a provider. The value is the name `getProviderId()` answers.
 
 Not finished: the interface module names Jackson 3, which no class of it uses, and has test dependencies (TestNG,
-AssertJ, JSONassert) that no test uses.
+AssertJ, JSONassert) that no test uses. The Solr module, which uses Jackson 3, gets it only through the POMs of the
+interface module and the persistence interface.

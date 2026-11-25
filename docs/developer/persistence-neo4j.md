@@ -84,17 +84,20 @@ The model tells the writer one thing: which fields are links, and to which entit
 `/Entity/id` in such a field, where `Entity` is one of the entity types the field may link to. The whole text must
 be of that form, and neither the entity nor the id holds a slash (the pattern `LINK` of `Neo4jDocumentWriter`).
 It is written as a `REF` relationship and not as a node. The document node it points at is created with the link
-when it is not there, so a link may point at a document that is not written yet (a dangling reference).
+when it is not there, so a link may point at a document that is not written yet (a dangling reference, see
+[link](../glossary.md#link)).
 
 Any other value in a link field is a node of the type it has: a text that is not `/Entity/id`, a text that names
 an entity type the field may not link to, `/Entity/` without an id, `Entity/id` without the first slash, a number, a
 null. A text `/Entity/id` in a field that the model does not call a link is a node of type `string`.
 
-A request to LDS does not bring such a value to the provider. Core validates a document before the write, and
-with the example model it answers 400 to each of these values in a link field but null (`Schema validation error:
-Not a valid link. ...`, `Illegal linked-domain: ...`, `... integer found, string expected`). A field whose value
-is null is written as absent: the document is stored without the field. This was run with the provider `mem`;
-the validation is in `ManagedResourceHandler` of core, before the saga, and does not ask the provider.
+A request to LDS does not bring such a value to the provider. Core validates a document before the saga and does
+not ask the provider: `LinkedDocumentValidator` checks it with the JSON Schema of the entity type, then checks its
+links (called by `ManagedResourceHandler`, and by `EmbeddedResourceHandler` for a write of a part of a document).
+With the example model it answers 400 to each of these values in a link field (`Schema validation error: Not a
+valid link. ...`, `Illegal linked-domain: ...`, `... integer found, string expected`), and to a null item in an
+array of links (`... $.friends[1]: null found, string expected`). Only a field whose value is null is let through:
+core removes it before the validation (`NullFields`), and the document is stored without the field.
 
 When a document is read, a `REF` gives the text `/` + the label of the target node + `/` + its `id`.
 
@@ -165,29 +168,41 @@ the list: 0 is the root of the version, 1 the first node of the list. `links` ha
 document may link to, here `Company` and `Person`, in that order. The write statement makes this graph of the
 parameters (the properties of most value nodes are left out here):
 
-```
-(:Person {namespace: 'ns', id: 'ola', idOrder: 'ola'})
-  -[:VERSION {from, to}]-> (:Person_E {type: 'map', path: '$'})
-     -[:EMBED {path: 'name'}]-> (:Person_E {type: 'string', path: '$.name', value: 'Ola',
-                                           hashOrValue: 'Ola', namespace: 'ns'})
-     -[:EMBED {path: 'born'}]-> (:Person_E {type: 'string', path: '$.born', ...})
-     -[:EMBED {path: 'address'}]-> (:Person_E {type: 'map', path: '$.address'})
-        -[:EMBED {path: 'street'}]-> (:Person_E {type: 'string', path: '$.address.street', ...})
-        -[:EMBED {path: 'city'}]-> (:Person_E {type: 'string', path: '$.address.city', ...})
-     -[:EMBED {path: 'friends'}]-> (:Person_E {type: 'array', path: '$.friends'})
-        -[:REF {path: '[]', index: 0}]-> (:Person {namespace: 'ns', id: 'kari', idOrder: 'kari'})
-        -[:EMBED {path: '[]', index: 1}]-> (:Person_E {type: 'string', path: '$.friends[]', ...})
-     -[:EMBED {path: 'shoe'}]-> (:Person_E {type: 'number', path: '$.shoe', value: 43, ...})
-     -[:EMBED {path: 'vegetarian'}]-> (:Person_E {type: 'boolean', path: '$.vegetarian', value: false, ...})
-     -[:EMBED {path: 'nickname'}]-> (:Person_E {type: 'null', path: '$.nickname'})
-     -[:EMBED {path: 'motto'}]-> (:Person_E {type: 'string', path: '$.motto', value: 'A text of ...',
-                                            hashOrValue: 'cdf914ba...', namespace: 'ns'})
-     -[:REF {path: 'employer'}]-> (:Company {namespace: 'ns', id: 'acme', idOrder: 'acme'})
+```mermaid
+flowchart LR
+  ola["(:Person)<br/>namespace: ns<br/>id: ola, idOrder: ola"]
+  root["(:Person_E)<br/>type: map, path: $"]
+  name["(:Person_E)<br/>type: string, path: $.name<br/>value: Ola, hashOrValue: Ola<br/>namespace: ns"]
+  born["(:Person_E)<br/>type: string, path: $.born"]
+  address["(:Person_E)<br/>type: map, path: $.address"]
+  street["(:Person_E)<br/>type: string<br/>path: $.address.street"]
+  city["(:Person_E)<br/>type: string<br/>path: $.address.city"]
+  friends["(:Person_E)<br/>type: array, path: $.friends"]
+  kari["(:Person)<br/>namespace: ns<br/>id: kari, idOrder: kari"]
+  item["(:Person_E)<br/>type: string<br/>path: $.friends[]"]
+  shoe["(:Person_E)<br/>type: number, path: $.shoe<br/>value: 43"]
+  vegetarian["(:Person_E)<br/>type: boolean<br/>path: $.vegetarian<br/>value: false"]
+  nickname["(:Person_E)<br/>type: null, path: $.nickname"]
+  motto["(:Person_E)<br/>type: string, path: $.motto<br/>value: A text…<br/>hashOrValue: cdf9…<br/>namespace: ns"]
+  acme["(:Company)<br/>namespace: ns<br/>id: acme, idOrder: acme"]
+  ola -- "VERSION from, to" --> root
+  root -- "EMBED path: name" --> name
+  root -- "EMBED path: born" --> born
+  root -- "EMBED path: address" --> address
+  address -- "EMBED path: street" --> street
+  address -- "EMBED path: city" --> city
+  root -- "EMBED path: friends" --> friends
+  friends -- "REF path: [], index: 0" --> kari
+  friends -- "EMBED path: [], index: 1" --> item
+  root -- "EMBED path: shoe" --> shoe
+  root -- "EMBED path: vegetarian" --> vegetarian
+  root -- "EMBED path: nickname" --> nickname
+  root -- "EMBED path: motto" --> motto
+  root -- "REF path: employer" --> acme
 ```
 
-`idOrder` is the id itself for an id of characters below U+D800, as here. A character from U+E000 is written as
-two characters of U+E000 to U+EFFF, so that Neo4j, which compares texts by UTF-16, orders the ids by their code
-points, as every provider does (see
+`idOrder` is `IdOrder.key` of the id, which is the id itself when every character of it is below U+D800, as here;
+Neo4j compares texts by UTF-16, and the key gives the order of code points (see
 [the persistence interface](persistence-api.md#the-order-of-ids)).
 
 ## Constraints and indexes
@@ -201,8 +216,10 @@ points, as every provider does (see
 - an index on `namespace`, `path` and `hashOrValue` of the label `<entity>_E`. `findDocument` looks a value up
   in it.
 
-For the example model these are the statements of the first start, from the log of LDS 3.0.1. The constraint of
-an entity type comes before its indexes. The order of the entity types is not fixed: they come as a set.
+For the example model these are the statements of the first start, from the log of LDS. The entity types come in
+the order in which core gives them (`Specification.getManagedDomains`), which for the example model is `Company`,
+then `Person`, as the start logs it (`Managed domains: /Company /Person`). The constraint of an entity type comes
+before its indexes.
 
 ```cypher
 CREATE CONSTRAINT IF NOT EXISTS FOR (n:`Company`) REQUIRE (n.`namespace`, n.`id`) IS UNIQUE
@@ -213,10 +230,11 @@ CREATE INDEX IF NOT EXISTS FOR (n:`Person`) ON (n.`namespace`, n.`idOrder`)
 CREATE INDEX IF NOT EXISTS FOR (n:`Person_E`) ON (n.`namespace`, n.`path`, n.`hashOrValue`)
 ```
 
-A key of each of these holds about 8,150 bytes in Neo4j 2026: the namespace and the id, the namespace and
-`idOrder` (at most twice the bytes of the id), the namespace, the path and the value. That is more than the
-limits of every provider take (`Limits` of the API module, see
-[the persistence interface](persistence-api.md#limits)), which PostgreSQL sets. The provider does not check them;
+A key of each of these is bounded by the limits of every provider (`Limits` of the API module, see
+[the persistence interface](persistence-api.md#limits)), which PostgreSQL sets: the namespace and the id, the
+namespace and `idOrder` (at most twice the bytes of the id), the namespace, the path and `hashOrValue` (a number, a
+boolean, a text of at most 40 characters, or the hash of a longer text). The shared suite keeps a document at every
+limit on Neo4j, as on every provider (`thatADocumentAtEveryLimitIsKept`). The provider does not check the limits;
 core does, before a write.
 
 The constructor reads what the database has (`SHOW INDEXES YIELD name, labelsOrTypes, properties,
@@ -404,11 +422,23 @@ orders them, capital letters before small ones. The items of an array keep their
 | `readAllDocumentVersions` | Matches every version of every document node of the label in the namespace, ordered by `r.idOrder` and then `v.from`. A tombstone is given as a document whose tree is null (`deleted()` is true). One statement; a record is taken from the driver when a document is asked for. |
 | `readTargetDocuments` | Goes from the source document and its version at the time, down `EMBED` to the node whose `path` is the path of the link without its last part, along the `REF` whose `path` is the last part, to the target document node. The bounds of the range are on the `idOrder` of the target. Each target is taken once. Then it matches the version of the target that is valid at the time and is not a tombstone. The order and the limit come after that, so a limit counts the targets that are written. |
 | `readSourceDocuments` | The same path from the other end: from the target document node, back along `REF` and `EMBED` to the root and the document node of the source, with the version of the source that is valid at the time. Each source is taken once. The range is on the `idOrder` of the source. The versions of the target are not looked at: a document is a source also when the target is not written, or is marked as deleted at the time. |
-| `findDocument` | Matches a value node of `<entity>_E` by `namespace`, `path` and `hashOrValue` (the index), goes up `EMBED` to the root and the document node, and takes the version that is valid at the time. A value of more than 40 characters is looked up by its hash. A document is taken once, also when an array holds the value twice. The range is on `r.idOrder`. |
+| `findDocument` | Matches a value node of `<entity>_E` by `namespace`, `path` and `hashOrValue` (the index), goes up `EMBED` to the root and the document node, and takes the version that is valid at the time. A text longer than 40 (by `String.length`) is looked up by its hash. A document is taken once, also when an array holds the value twice. The range is on `r.idOrder`. |
 | `hasPrevious`, `hasNext` | `readDocuments` with `Range.lastBefore(1, id)` or `Range.firstAfter(1, id)`: true when a document comes back. |
 
 "Valid at the time" is `v.from <= $snapshot AND $snapshot < v.to`. "Not a tombstone" is
 `m.deleted IS NULL`.
+
+Core calls these reads:
+
+- REST: `readDocument` for one document, `readDocuments` with `Range.unbounded()` for a list, and
+  `readDocumentVersions` with `Range.unbounded()` for the versions of a document.
+- GraphQL: `readDocument` for one document, for the target of a link and for each version a search finds,
+  `readDocuments` with `hasPrevious` and `hasNext` for a list, `readTargetDocuments` for the links of a document
+  and `readSourceDocuments` for its reverse links. When the query asks for the page info of links or reverse
+  links, the same read runs again with `Range.lastBefore(1, ...)` and `Range.firstAfter(1, ...)`.
+- The index queue worker: `readDocument` of each written document at its version.
+- The index rebuild (`search.index.rebuild`): `readAllDocumentVersions` of every entity type.
+- Readiness: `readDocuments` with `Range.first(1)` (see [Transactions](#transactions)).
 
 A range becomes conditions and an order (`idConditions`, `orderAndLimit`). `after` and `before` are both
 exclusive, and are given as their keys (`IdOrder.key`) and compared with `idOrder`. The order is ascending by
@@ -418,7 +448,7 @@ descending order; the provider does not turn them around. A range with `first` o
 and the limit are parameters.
 
 This is `readDocuments` for `Person` with `Range.firstAfter(3, "kari")`, with the parameters written into it as
-`Neo4jTransaction.interactive` writes them: the statement that LDS 3.0.1 logged, with `neo4j.cypher.show` set to
+`Neo4jTransaction.interactive` writes them: the statement that LDS logged, with `neo4j.cypher.show` set to
 `true`, for the GraphQL query `{ Person(first: 3, after: "kari") { edges { node { name } } } }` with
 `snapshot=2026-11-20T12:00:00Z`. Long lines are broken here, also in the next statement.
 
@@ -496,9 +526,10 @@ fails, and so does `close` (`Neo4jTransactionTest.aCommitThatFailsFailsItsFuture
 
 `Neo4jTransaction` has no lock. `Neo4jPersistence` casts the `Transaction` it is given to `Neo4jTransaction`.
 
-The readiness check of core (`/health/ready`) reads one document of an entity type in a read-only transaction
-and closes it, within 2 seconds. With this provider that is a session of the driver and a transaction in it for
-every check. `/health/alive` does not touch the store.
+The readiness check of core (`/health/ready`) reads one document of the first entity type by name
+(`readDocuments` with `Range.first(1)`) in a read-only transaction and closes it, within 2 seconds. With this
+provider that is a session of the driver and a transaction in it for every check. `/health/alive` does not touch
+the store.
 
 With `neo4j.cypher.show` set to `true`, `Neo4jTransaction` logs every statement before it runs it, at `INFO`,
 with the parameters written into the statement (`interactive`). The statements of the start
@@ -525,12 +556,10 @@ Odd `entity`) DETACH DELETE (r
 it's a \ field
 ```
 
-Neo4j can take a label as a parameter (`(r:$($entity))`). The provider does not do that, for two reasons that
-the Javadoc of `Cypher` gives:
+Neo4j can take a label as a parameter (`(r:$($entity))`). The provider does not do that, for two reasons:
 
-- Neo4j then plans without the label. Measured on Neo4j 2026.10, a page of three from a list of 50,000
-  documents read all 50,000 and sorted them. With the label in the statement, the same page is a seek in the
-  index of `namespace` and `id`, which is already in order.
+- Neo4j then plans without the label, and a list cannot use the index of the label on `namespace` and
+  `idOrder`, which is in the order a list is given in (`ORDER BY r.idOrder`).
 - A constraint or an index cannot be created with a label as a parameter.
 
 `Neo4jIndexManagement` writes the names of properties and the names of the constraints and indexes it reports
@@ -554,8 +583,10 @@ each key.
 A new key is added to `configurationKeys` and to `application-server-defaults.properties`.
 
 Two keys of core decide about the provider: `persistence.provider` (`neo4j`) and
-`persistence.initialization.max-wait-seconds`. Core calls `initialize` again, after a random wait of about a
-second (half a second to a second and a half), until that many seconds have passed since the first call.
+`persistence.initialization.max-wait-seconds`, which is 0 in `application-defaults.properties` of core and 60 in
+the defaults of the server. Core calls `initialize` again, after a random wait of about a second (half a second to
+a second and a half, and never longer than the time that is left), until that many seconds have passed since the
+first call. With 0, core calls `initialize` once.
 
 When Neo4j cannot be reached, one call of `initialize` takes from about half a minute to about a minute, because
 the driver tries its transaction again by itself. It waits about 1, 2, 4, 8 and 16 seconds between its tries,
@@ -564,13 +595,13 @@ each a little more or less. It gives up when 30 seconds have passed, which is th
 seconds more and tries one last time. Each failed try is in the log at `WARN` with its stack trace, about 100
 lines.
 
-This was run with the image of LDS 3.0.1, with nothing listening at the address it was given (port 7687 inside
-the container of LDS):
+This was run with the image `descoped/lds`, with nothing listening at the address it was given (port 7687
+inside the container of LDS):
 
 ```sh
-docker run --name lds -e LDS_PERSISTENCE_PROVIDER=neo4j -e LDS_NEO4J_DRIVER_URL=bolt://127.0.0.1:7687 \
+docker run --rm --name lds -e LDS_PERSISTENCE_PROVIDER=neo4j -e LDS_NEO4J_DRIVER_URL=bolt://127.0.0.1:7687 \
   -e LDS_NEO4J_DRIVER_PASSWORD=lds-development -e LDS_PERSISTENCE_INITIALIZATION_MAX_WAIT_SECONDS=0 \
-  descoped/lds:3.0.1
+  descoped/lds
 ```
 
 The lines of the log are shortened, and the last one is broken:
@@ -632,9 +663,10 @@ comments of the code.
 - **JPMS.** The provider is registered with `provides` in `module-info.java` and in `META-INF/services`.
 - **Lint and Javadoc.** The module has no override of the rule of the root POM: it compiles with
   `-Xlint:all -Werror` and its Javadoc passes doclint `all`.
-- **The latest stable version** of Neo4j and of the driver. The image is named in `Neo4j2026` of the tests and in
-  `compose.yaml` of the server. 3.0.0 is a clean break: the provider reads and writes one layout of the graph,
-  the one of this document, and has no migration code.
+- **The latest stable version** of Neo4j and of the driver. The image is named in `Neo4j2026` of the tests, in
+  `compose.yaml` of the server and of the load test, in the README of the load test, and in the plugin
+  (`skills/start/assets/compose-stack.yaml`, `skills/operate/references/backup.md`); a new version changes each.
+  The provider reads and writes one layout of the graph, the one of this document, and has no migration code.
 
 ## Tests
 
@@ -646,7 +678,7 @@ namespaces, entity types or ids of its own.
 | Class | Runs on | What it holds |
 |---|---|---|
 | `Neo4jPersistenceIntegrationTest` | Neo4j, TestNG | The shared suite, `PersistenceIntegrationTest` of `linked-data-store-persistence-provider-tck`. The class only starts the provider and closes it. |
-| `Neo4jProviderTest` | Neo4j, JUnit | What the suite does not cover: a document, a version, a link and each delete stay in their own namespace; a link at the top of a document; the limit of linked documents; a document that is linked twice; nulls; names of any characters; the range of `findDocument`; a list of 1000 documents; documents on demand; a version written again; a document written at the time it was marked as deleted; a version in another zone; a cancelled transaction; ending a transaction twice; instances that start together; a plain index in place of the constraint. |
+| `Neo4jProviderTest` | Neo4j, JUnit | What the suite does not cover: a document, a version, a link and each delete stay in their own namespace; a link at the top of a document; the limit of linked documents; a document that is linked twice; nulls; names of any characters; the range of `findDocument`; a short text that is the hash of a long one; a list of 1000 documents; documents on demand; a version written again; a document written at the time it was marked as deleted; a version in another zone; a cancelled transaction; ending a transaction twice; instances that start together; a plain index in place of the constraint. |
 | `Neo4jRoundTripTest` | Neo4j, JUnit | Documents of different shapes written and read back: the JSON files in `src/test/resources`. |
 | `Neo4jTransactionTest` | Neo4j, JUnit | The session is closed at commit and at cancel; a statement is run when its stream is subscribed to; a statement that fails fails its stream and nothing else; a commit that fails; the statement as it is logged. |
 | `Neo4jDocumentWriterTest` | No Neo4j, JUnit | The parameters of a document and the text of the statement: order and parents of the nodes, links and what is not a link, long texts, large numbers, a document that is no object, the statement made once. |
@@ -669,8 +701,9 @@ With the name of this module they are the two below. Their output is not shown h
 
 Not finished: no delete uses its `PersistenceDeletePolicy`. Core passes `FAIL_IF_INCOMING_LINKS` to
 `markDocumentDeleted`, and a document that others link to is marked as deleted all the same. The shared suite
-expects that: `thatDeleteAllWithIncomingRefWorks` passes `FAIL_IF_INCOMING_LINKS` to `deleteAllDocumentVersions`,
-then deletes an entity type whose documents another document still links to, and asserts that they are gone.
+does not hold a provider to the policy: `thatDeleteAllWithIncomingRefWorks` passes `FAIL_IF_INCOMING_LINKS` to
+`deleteAllDocumentVersions` only for a document that nothing links to, and removes the documents that are linked
+to with `deleteAllEntities`, which takes no policy.
 
 Not finished: `Transaction.close` commits. The rule is that a transaction commits only when asked.
 `Neo4jTransaction` inherits `close` from the persistence interface, so a `try` block that is left by an exception
@@ -701,15 +734,13 @@ Not finished: a document with a field named `[]` is written and then cannot be r
 `EMBED` relationship of that field the `path` `[]` and no `index`, as `Neo4jDocumentWriter.record` shows, and
 `Neo4jPersistence.computePath` takes every `EMBED` with the `path` `[]` for an item of an array and reads its
 `index`: `toDocument` fails with `Uncoercible: Cannot coerce NULL to Java Number`. A list that holds such a
-document fails in the same way. This was found by running `record` and `toDocument` without Neo4j; it was not
-tried on a Neo4j. Core accepts such a field in a document of the example model (answer 201, run with the provider
-`mem`).
+document fails in the same way. Core accepts such a field in a document of the example model (answer 201).
 
 Not finished: the name of a field is not told from a path when a document is read. `computePath` joins the
 names with dots, so a field named `a.b` is read back as an object `a` with a field `b`, and a field named
-`x[3]` as an array `x` with one item. Run without Neo4j, a document written as `{"a.b":1,"x[3]":2}` is read as
+`x[3]` as an array `x` with one item: a document written as `{"a.b":1,"x[3]":2}` is read as
 `{"a":{"b":1},"x":[2]}`. Core accepts such fields in a document of the example model, and the provider `mem`
-reads them back in the same way (run through LDS).
+reads them back in the same way.
 
 Other things to know:
 

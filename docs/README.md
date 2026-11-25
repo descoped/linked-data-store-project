@@ -15,9 +15,10 @@ Linked Data Store (LDS) is a server that gives REST and GraphQL access to versio
 instant asked for.
 
 This documentation is in two parts, for two kinds of reader, and a [glossary](glossary.md) of the terms both use.
-Every document is written from the code as it is, and every request shown in it was run. LDS 3.0.1 is released as
-images on Docker Hub (`descoped/lds`) and is built from the repository, where its releases are tagged. What is
-unfinished is said where a reader meets it, in a paragraph that starts with "Not finished:".
+Every document is written from the code as it is, and every request shown in it was run. The documents describe the
+latest release, which is published as images on Docker Hub (`descoped/lds`) and is built from the repository, where
+its releases are tagged. What is unfinished is said where a reader meets it, in a paragraph that starts with
+"Not finished:".
 
 ## For those who use LDS
 

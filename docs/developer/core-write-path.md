@@ -64,8 +64,9 @@ All of it is in `linked-data-store-core`.
 `uses no.cantara.sagalog.SagaLogInitializer` and `uses io.descoped.lds.api.search.IndexQueueProvider`. Core has
 `sagalog-postgres`, `sagalog-file` and `rawdata-client-provider-postgres` in test scope only.
 `linked-data-store-server` adds `sagalog-postgres`, `rawdata-client-provider-postgres` and the index queue in
-PostgreSQL (`linked-data-store-index-queue-postgres`) at run time, so those are the providers a server can be
-configured with.
+PostgreSQL (`linked-data-store-index-queue-postgres`) at run time. Next to these a server has the saga log in memory
+(in `sagalog-api`, the default), the transaction logs `discard` (the default) and `memory` (in `rawdata-client-api`)
+and the index queue in memory (in core).
 
 ## The two sagas
 
@@ -122,7 +123,7 @@ method, the schema, the `DocumentKey` of the version (namespace, entity type, id
 |---|---|
 | `txid` | The transaction id, from `SagaExecutionCoordinator.generateTxId`: a UUIDv7 (`RawdataIds.next`) that is greater than every id the coordinator of this server gave before. It is also the execution id of the saga and the id of the entry in the transaction log. |
 | `method` | `PUT` or `DELETE`. `DELETE` only for the delete of a whole document. A write of a part or of a link, and the removal of one, is `PUT` with the whole document. |
-| `schema` | The model the write was checked against. Always the text `TODO`; `SagaRecoveryTriggerTest` gives it `testng-schema-v1.0`, the name of a model version. Nothing reads it. |
+| `schema` | The model the write was checked against. Always the text `TODO`. Nothing reads it. |
 | `namespace`, `entity`, `id` | The address of the document: its [document key](../glossary.md#document-key). |
 | `version` | The [valid time](../glossary.md#valid-time) of the version, formatted with `DateTimeFormatter.ISO_ZONED_DATE_TIME` in the zone `Etc/UTC`, for example `2020-01-01T00:00:00Z[Etc/UTC]`. It is the `timestamp` of the request, or the time the write got the lock of its document (`DataController`). |
 | `source`, `sourceId` | The query parameters of the same names. Left out when the request has none. |
@@ -134,11 +135,16 @@ the time of the recovery.
 
 ## From a request to an answer
 
-A write holds no thread while it waits: for its body, for the lock of its document, for its saga, or for search.
+A write holds no thread while it waits for its body, for the lock of its document, for the completion of its saga, or
+for search. It waits on the worker thread of its request in three places: a write of a part or of a link reads the
+document that is there, and the handoff waits for a saga log and for a permit (see
+[Unfinished and known to be wrong](#unfinished-and-known-to-be-wrong)).
 
 ```mermaid
 flowchart TB
-    req["PUT, POST or DELETE"] --> lock{"the lock of the document<br/>within 30 s?"}
+    req["a write: any method<br/>but GET, HEAD, OPTIONS"] --> path{"timestamp and path valid?"}
+    path -- no --> early400["400, no lock"]
+    path -- yes --> lock{"the lock of the document<br/>within 30 s?"}
     lock -- no --> busy["503"]
     lock -- yes --> body["the body, read as it comes"] --> valid{"valid?"}
     valid -- no --> bad["400, 404 or 415, no saga"]
@@ -151,25 +157,33 @@ flowchart TB
     search -- yes --> wait["the lock let go; wait until the index queue<br/>has no update of it, at most 10 s"]
     saga -. "completed" .-> free["the lock let go"]
     style busy fill:#fee2e2,stroke:#dc2626,color:#0f172a
+    style early400 fill:#fee2e2,stroke:#dc2626,color:#0f172a
     style bad fill:#fee2e2,stroke:#dc2626,color:#0f172a
     linkStyle default stroke:#64748b,stroke-width:2px
 ```
 
 ### The lock of a document
 
-`DataController` asks for the lock of the document of every write (`PUT`, `POST`, `DELETE`) before the handler reads
-anything, with the namespace, the entity type and the id of the path (`DocumentLocks.acquire`). The lock is held
+`DataController` asks for the lock of the document of every request but `GET`, `HEAD` and `OPTIONS` (a `PATCH` too,
+which the handler then answers `400`) before the handler reads anything, with the namespace, the entity type and the
+id of the path (`DocumentLocks.acquire`). A `timestamp` (or `t`) that is not ISO-8601, or a path that does not fit
+the model (`ResourceException`), is answered `400` before the lock is asked for. The lock is held
 from before the handler reads the document (a part or a link is merged into what is there) until the saga of the
 write has completed, also when the request does not wait for its saga. So two writes of parts of one document do not
 lose each other's change. A write that is answered before its saga starts (refused, or failed) lets the lock go when
 it is answered.
 
 - A write that waits for the lock is a future, completed by the write before it when that one lets the lock go, in
-  the order the writes asked. When it has the lock, the request goes on on a worker thread of Undertow.
+  the order the writes asked. When it has the lock, the request goes on on a worker thread of Undertow, if its
+  connection is still open; otherwise it lets the lock go. When the worker pool refuses it (LDS is stopping), it lets
+  the lock go and is answered `503`.
 - A write waits at most 30 seconds. Then it is answered `503` with the text
   `The document is being written by another request. Try again.`, and the log says which document waited.
-- A write without a `timestamp` gets its version when it has the lock: the time then, so it comes after the version
-  of the write before it.
+- A saga that never completes (a step that hangs) keeps the lock of its document, and of the other documents of its
+  stripe, until LDS is restarted. Every write of them is answered `503` after 30 seconds.
+- A write without a `timestamp` gets its version when it has the lock: the time then, to the microsecond, so it comes
+  after the version of the write before it. When the clock has not moved on since that write, or has gone back, the
+  version is a microsecond after it; a clock more than a second behind is logged as a warning.
 - The locks are striped: a document is hashed to one of 1024 locks, so two documents that share one are written one
   after the other.
 - The lock is in this process only. Several LDS that write the same documents do not see each other's locks.
@@ -183,8 +197,8 @@ in order, on the thread of the request:
 1. **A saga log.** `acquireCleanSagaLog` asks the saga log pool for a log (`tryAcquire`) and waits at most 10 seconds.
    With none it throws `Timeout. No available saga-logs, please check configuration.` A log that holds entries is
    given to recovery (see [Recovery of an unfinished saga](#recovery-of-an-unfinished-saga)), and the coordinator asks
-   for another. A log that comes back a second time with entries ends the attempt: `Unable to acquire clean
-   saga-log.`
+   for another, with a new wait of at most 10 seconds, so the handoff can wait longer than 10 seconds in all. A log
+   that comes back a second time with entries ends the attempt: `Unable to acquire clean saga-log.`
 2. **The log is marked** as used by this execution in `executionIdBySagaLogId`. A log that is marked already fails
    the write.
 3. **A permit.** `startSagaExecutionWithThrottling` takes a permit of a semaphore, and waits for one without a time
@@ -216,7 +230,9 @@ permit are released also when the truncate fails, and when the saga could not be
 `AsyncAnswer.afterSaga` keeps the request open (`dispatch` with `SameThreadExecutor`) and the handler returns. When
 the future of `handoff` completes, and the wait for search when the request asked for it, the answer is sent from the
 thread that completed it. A saga that failed, or an answer that could not be made, is logged
-(`A write of /ns/... failed`) and answered `500` with no body; the lock is let go.
+(`A write of /ns/... failed`) and answered `500` with no body; the lock is let go. When `handoff` itself throws (no
+saga log, a log that is marked already), the exception reaches Undertow, which answers `500`; that is not logged by
+`AsyncAnswer`.
 
 | `sync` | The answer is sent when |
 |---|---|
@@ -235,7 +251,7 @@ answers, run with the memory provider:
 | `DELETE` of a document (`ManagedResourceHandler.deleteManaged`) | `204` without a body when it waits, `202` and `{"saga-execution-id":"<txid>"}` when `sync=false`. The handler does not read the document first: a delete of a document that was never written is answered `204` as well. |
 | `PUT`, `POST`, `DELETE` of a part of a document (`EmbeddedResourceHandler`) | `200` and `{"saga-execution-id":"<txid>"}`. `404` without a saga when the document is not there. |
 | `PUT`, `POST` of a link (`ReferenceResourceHandler.putReferenceTo`) | `200` and `{"saga-execution-id":"<txid>"}`. `200` without a body and without a saga when the document has the link already. `404` without a saga when the document is not there. |
-| `DELETE` of a link (`ReferenceResourceHandler.deleteReferenceTo`) | `200` without a body when it waits, `200` and `{"saga-execution-id":"<txid>"}` when `sync=false`. `200` without a body and without a saga when there is no such link. |
+| `DELETE` of a link (`ReferenceResourceHandler.deleteReferenceTo`) | `200` without a body when it waits, `200` and `{"saga-execution-id":"<txid>"}` when `sync=false`. `200` without a body and without a saga when there is no such link, and when the document is not there (not `404`, as for the `PUT` of a link). |
 
 ### A searchable write
 
@@ -257,7 +273,7 @@ when its saga has completed, with `LDS-Searchable: false`. Without search a writ
 saga and has no header. Run with search on Solr:
 
 ```sh
-curl -s -i -X PUT 'http://localhost:19104/ns/Company/acme?searchable=true' \
+curl -s -i -X PUT 'http://localhost:9090/ns/Company/acme?searchable=true' \
      -H 'Content-Type: application/json' \
      -d '{
        "name": "Acme",
@@ -271,7 +287,7 @@ LDS-Searchable: true
 Content-Type: application/json
 Content-Length: 60
 
-{"saga-execution-id": "01a20fe2-3125-7b82-9f39-fd5bd7e1c5ed"}
+{"saga-execution-id":"01a20fe2-3125-7b82-9f39-fd5bd7e1c5ed"}
 ```
 
 A search for `bridge` right after it found `Acme`. [Search](search.md) has the index queue, its worker and the index.
@@ -283,7 +299,7 @@ body. This was run with `saga.commands.enabled=true` and one saga log (the comma
 [Tests](#tests)):
 
 ```sh
-curl -s -i -X PUT 'http://localhost:19104/ns/Person/f1?sync=true&saga=failBefore%20persistence' \
+curl -s -i -X PUT 'http://localhost:9090/ns/Person/f1?sync=true&saga=failBefore%20persistence' \
      -H 'Content-Type: application/json' -d '{"name": "F1"}'
 ```
 
@@ -302,10 +318,10 @@ The saga log of a failed saga is not truncated. It is released with its entries,
 recovery. So after a `500` the write can still be done later:
 
 ```sh
-curl -s -o /dev/null -w '%{http_code}\n' 'http://localhost:19104/ns/Person/f1'
-curl -s -X PUT 'http://localhost:19104/ns/Person/n1?sync=true' \
+curl -s -o /dev/null -w '%{http_code}\n' 'http://localhost:9090/ns/Person/f1'
+curl -s -X PUT 'http://localhost:9090/ns/Person/n1?sync=true' \
      -H 'Content-Type: application/json' -d '{"name": "N1"}'
-curl -s 'http://localhost:19104/ns/Person/f1'
+curl -s 'http://localhost:9090/ns/Person/f1'
 ```
 
 ```
@@ -389,9 +405,11 @@ does with them:
   `initialize` with every key that starts with `sagalog.config.`, without that prefix. The initializer is looked for
   once. A class name that no initializer has ends LDS at once, with `java.util.NoSuchElementException: No value
   present` and exit code 1.
-- Before `initialize`, a provider whose pool has connections (`connection-pool.max-size`, or the provider's default)
-  is checked to have one for each saga log, one for each of the 10 recovery threads and one for its own queries
-  (`checkSagaLogPool`). Too few end the start.
+- Before `initialize`, the pool of connections (`sagalog.config.connection-pool.max-size`, or the provider's default
+  for `connection-pool.max-size`) is checked to have one for each saga log, one for each of the 10 recovery threads
+  and one for its own queries (`checkSagaLogPool`). Too few end the start. The check does not ask which provider it
+  is: the defaults of the server set the key to `50`, so the saga log in memory, which has no pool, is refused as
+  well with more than 39 saga logs (`Give the pool at least 51 connections, or use fewer saga logs.`).
 - A failure of `initialize` is tried again, with a wait of `sagalog.provider.initialization.retry-interval-seconds`
   give or take half, until `sagalog.provider.initialization.max-wait-seconds` have passed, whatever the failure is.
   With the defaults of the server that is 30 seconds, every 2 seconds.
@@ -410,7 +428,7 @@ failed. Recovery runs such a saga again from its entries (forward recovery). The
 |---|---|---|
 | The next write that is handed the log | The one log | `recursiveAcquireCleanSagaLog`, always, also with `saga.recovery.enabled=false`. The recovery runs on the recovery thread pool (`asyncAttemptForwardRecoveryOrElseMoveToDeadLetter`), and the write goes on to ask for another log. The pool hands out its free logs in turn, and a released log is the last in the line, so with more than one log this is not the write that follows the failure. |
 | When LDS starts | The logs of this instance | The lifecycle `Sagas` calls `completeLocalIncompleteSagas`, only when `saga.recovery.enabled` is `true`. |
-| Again and again | The logs of the cluster, without `dead-saga` | `SagaRecoveryTrigger`, only when `saga.recovery.enabled` is `true`. It is started when the recovery at start is done, and calls `completeClusterWideIncompleteSagas`. After each pass it waits a random number of seconds from `saga.recovery.interval.seconds.min` to `saga.recovery.interval.seconds.max`. Both must be from 1 to 86400, and the max not less than the min. |
+| Again and again | The logs of the cluster, without `dead-saga` | `SagaRecoveryTrigger`, only when `saga.recovery.enabled` is `true`. It is started when the recovery at start is done, and calls `completeClusterWideIncompleteSagas`. Before its first pass and after each pass it waits a random number of seconds from `saga.recovery.interval.seconds.min` to `saga.recovery.interval.seconds.max`. Both must be from 1 to 86400, and the max not less than the min. |
 
 What recovery of one log does (`doCompleteSagaLog`, `startSagaForwardRecovery`):
 
@@ -452,7 +470,8 @@ stand for is not done.
 A test makes a step fail with the query parameter `saga` on a write. It has an effect only when
 `saga.commands.enabled` is `true`; the default is `false`, and `handoff` then gives the saga no commands.
 
-The value is `<command> <step>`, separated by white space (`%20` or `+` in an address). The parameter can be given
+The value is `<command> <step>`, separated by one white-space character (`%20` or `+` in an address); with two, the
+step is empty and the command does nothing. The parameter can be given
 more than once, and every one is read. A value of one word is left out. `SagaCommands.getSagaAdminParameterCommands`
 reads it.
 
@@ -526,6 +545,9 @@ Exception in thread "main" io.descoped.service.provider.api.ProviderException: N
 available: [discard, memory, postgres]
 ```
 
+With search on, the index queue is made before the transaction log, so such a name fails the start at once, with
+`No index queue provider for the transaction log provider ...`, and is not tried again.
+
 A message published again with the same id, position and content is taken as nothing new, and another message
 under an id that is stored is refused with `RawdataDuplicateIdException`, by the `memory` and the `postgres`
 provider. So the `txlog` step can be run again by recovery: `TxLogStepTest` holds it, and
@@ -557,12 +579,12 @@ answered `null` without a look in the log (`TxlogRawdataPool.getLastMessage`). R
 split sources:
 
 ```sh
-curl -s -X PUT 'http://localhost:19104/ns/Person/s1?source=A&sourceId=a1' \
+curl -s -X PUT 'http://localhost:9090/ns/Person/s1?source=A&sourceId=a1' \
      -H 'Content-Type: application/json' -d '{"name": "S1"}'
-curl -s -X PUT 'http://localhost:19104/ns/Person/s1/address?source=A&sourceId=a2' \
+curl -s -X PUT 'http://localhost:9090/ns/Person/s1/address?source=A&sourceId=a2' \
      -H 'Content-Type: application/json' -d '{"city": "Oslo"}'
-curl -s 'http://localhost:19104/source/A'
-curl -s 'http://localhost:19104/source/nobody'
+curl -s 'http://localhost:9090/source/A'
+curl -s 'http://localhost:9090/source/nobody'
 ```
 
 ```json
@@ -580,6 +602,10 @@ Run in the same way: a write with `source=A` and no `sourceId` after these made 
 source is all that follows: `GET /source/` is answered `{"lastSourceId":null}`, `GET /source` is answered `400` with
 `Unsupported namespace: "source"`, and `GET /source/a/b` is answered `500` with split sources, because `a/b` is not a
 name of a topic.
+
+Not finished: `SourceHandler` takes the source from the whole path of the request, `http.prefix` included, by cutting
+off as many characters as `/source/` has. With `http.prefix=/lds`, `GET /lds/source/A` reads the source `rce/A`: it
+is answered `{"lastSourceId":null}`, or `500` with split sources (`Invalid topic name ... 'txlog-rce/A'`).
 
 The name of a topic is checked by the rawdata library, not by LDS: 1 to 100 characters, letters, digits, `_`, `.` and
 `-`, starting with a letter or a digit. With split sources a `source` that breaks the rule fails in the `txlog` step.
@@ -612,7 +638,8 @@ thread pool. Two writes of different documents that run at the same time can be 
 their ids.
 
 Not finished: LDS writes the transaction log and does not read it back, but for the last message of a topic in
-`SourceHandler`. There is no replay of a transaction log into a store; `txEntryToSagaInput` is called by tests only.
+`SourceHandler` and in the readiness check (`/health/ready`, the topic of the default source). There is no replay of
+a transaction log into a store; `txEntryToSagaInput` is called by tests only.
 
 ## Stopping
 
@@ -621,7 +648,7 @@ order of the one they were made in. [The application](core-application.md#stop) 
 path it is:
 
 1. The HTTP server: new requests are answered `503`, and the requests being handled are waited for, at most 10
-   seconds (`STOP_TIMEOUT`). A write that waits for its saga is such a request.
+   seconds (`STOP_TIMEOUT`). A write that waits for its saga is such a request. Then the readiness checks stop.
 2. The sagas (`Sagas`): the recovery trigger and the recovery thread pool stop, the running sagas are waited for, at
    most 10 seconds (`awaitRunningSagas`), and the watchdog stops.
 3. The saga thread pool: a step that still runs is waited for, at most 10 seconds, and then interrupted. A saga that
@@ -631,11 +658,14 @@ path it is:
 5. The saga log pool is shut down. After that it gives out no log.
 6. The threads the store is read on, then the store.
 
-A part that fails to stop is logged and the rest is stopped all the same. `ApplicationStopTest` holds the order. A
-start that fails part of the way stops what was made in the same way, logs `LDS could not be made; what was made is
-stopped`, and the process ends with exit code 1. Run with `saga.recovery.interval.seconds.min=90` (more than the
-max), LDS logged that line and `java.lang.IllegalArgumentException: illegal configuration: intervalMaxSec <
-intervalMinSec`, and ended with exit code 1.
+A part that fails to stop is logged and the rest is stopped all the same. `ApplicationStopTest` holds the order. When
+a part cannot be made, what was made before it is stopped in the same way, LDS logs `LDS could not be made; what was
+made is stopped`, and the process ends with exit code 1. Run with `saga.recovery.interval.seconds.min=90` (more than
+the max), LDS logged that line and `java.lang.IllegalArgumentException: illegal configuration: intervalMaxSec <
+intervalMinSec`, and ended with exit code 1. When a part that was made cannot start, every part is stopped and the
+start fails with `<part> could not start`, without that line. Run with `http.host=192.0.2.1`, an address the
+container does not have, LDS ended with exit code 1 and `Linked Data Store could not start`, caused by
+`HTTP server could not start` and `java.net.BindException: Cannot assign requested address`.
 
 ## Configuration
 
@@ -646,7 +676,7 @@ it differs.
 | Key | Default | Meaning |
 |---|---|---|
 | `saga.number-of-logs` | `50`, server `30` | The number of saga logs of this instance. |
-| `saga.threadpool.core` | `100`, server `50` | The threads the saga thread pool keeps. Must be greater than the queue capacity. |
+| `saga.threadpool.core` | `100`, server `50` | The threads the saga thread pool keeps. Should be greater than the queue capacity: LDS logs a warning otherwise (see [The watchdog](#the-watchdog)). |
 | `saga.threadpool.max` | `200`, server `100` | The most threads of the saga thread pool. |
 | `saga.threadpool.keepalive.seconds` | `60` | How long a thread beyond `core` stays without work. |
 | `saga.threadpool.queue.capacity` | `20`, server `10` | The places in the queue of the saga thread pool. |
@@ -660,7 +690,7 @@ it differs.
 | `sagalog.config.cluster.name` | `lds-test` | See [the saga engine](saga.md#the-cluster-owner-name-and-instance-id). |
 | `sagalog.config.cluster.instance-id` | `01` | See [the saga engine](saga.md#the-cluster-owner-name-and-instance-id). |
 | `sagalog.config.postgres.driver.host`, `.port`, `.user`, `.password`, `.database` | server: `localhost`, `5432`, `lds`, empty, `sagalog` | The database of the PostgreSQL saga log. |
-| `sagalog.config.connection-pool.max-size` | server: `50` | The connections of the PostgreSQL saga log: at least `saga.number-of-logs` + 11. |
+| `sagalog.config.connection-pool.max-size` | server: `50` | The connections of the PostgreSQL saga log: at least `saga.number-of-logs` + 11. Checked at start whatever the provider is (see [The saga log](#the-saga-log)). |
 | `graphql.search.enabled` | `false` | With a search index, the sagas have the step `index-queue`. |
 | `txlog.rawdata.provider` | `discard` | The provider of the transaction log, and where the index queue is kept. |
 | `txlog.rawdata.provider.initialization.max-wait-seconds` | `0`, server `30` | How long the transaction log is tried at start. |
@@ -677,12 +707,13 @@ sets only a key that a properties file has, so a key that neither defaults file 
 `sagalog` and `txlog` that `postgres-init.sql` makes, with the cluster owner `development`, the cluster name `lds`
 and the instance id `01`.
 
-Keys that the two PostgreSQL providers read and no defaults file has, read in their source and not run here:
+Keys that the two PostgreSQL providers read and no defaults file has:
 
 - The saga log (`PostgresSagaLogInitializer`): `postgres.driver.sslmode`, `postgres.driver.sslrootcert`,
   `postgres.driver.socket-timeout`, `postgres.driver.tcp-keep-alive`, `postgres.driver.property.<name>`,
   `postgres.statement-timeout`, `postgres.lock-timeout` and `connection-pool.connection-timeout`, each after
-  `sagalog.config.`. The three timeouts are none unless they are set.
+  `sagalog.config.`. The socket, statement and lock timeouts are none unless they are set; the connection timeout
+  is 30000 milliseconds.
 - The transaction log: `postgres.driver.max-pool-size` (10), after `txlog.config.`.
 
 ## Rules to keep
@@ -691,8 +722,9 @@ Keys that the two PostgreSQL providers read and no defaults file has, read in th
   ended. An adapter must give the same result the second time.
 - **The steps are synchronous, on the saga thread pool.** A step may wait for its store there (`WriteTransaction`,
   `blockingAwait`), and nowhere else: never on an I/O thread, a request thread or an Rx scheduler.
-- **A write holds no thread while it waits.** Its body, its lock, its saga and its wait for search are futures, and
-  it is answered from their completion (`AsyncAnswer`). No `join`, `blockingGet` or `sleep` is added to a handler.
+- **A write holds no thread while it waits for its body, its lock, its saga or search.** These are futures, and it is
+  answered from their completion (`AsyncAnswer`). No `join`, `blockingGet` or `sleep` is added to a handler; the
+  waits that are there are under [Unfinished and known to be wrong](#unfinished-and-known-to-be-wrong).
 - **The lock of a document is held until the saga has completed, and let go on every path.** A write that is answered
   before its saga starts lets it go when it is answered.
 - **The names in the saga log stay.** The name of a saga, the ids of its steps and the fields of the saga input are
@@ -712,8 +744,8 @@ Keys that the two PostgreSQL providers read and no defaults file has, read in th
   parameter and checked by the rawdata library; the names of the saga log are checked by `sagalog-postgres`.
 - **Stop in order.** A new part of the write path is a lifecycle, made before the sagas that use it, so it stops after
   them.
-- **No backward-compatibility code.** Nothing of LDS 3 was released before 3.0.0, so LDS carries no alias and no
-  migration for an earlier saga input or earlier configuration keys.
+- **No backward-compatibility code.** LDS carries no alias and no migration for an earlier saga input or earlier
+  configuration keys.
 - **Lint and Javadoc.** The `pom.xml` of core switches some lint categories and the doclint check for missing Javadoc
   off, for the code of core that is not revised. New and revised code meets `-Xlint:all -Werror` and doclint `all`.
 
@@ -753,7 +785,7 @@ port, with `application-defaults.properties` and `application_test.properties` (
 `@ConfigurationOverride` on the test method. `ApplicationStopTest` and `SagaLogPostgresTest` start their own servers.
 
 One test class is run with `./mvnw test -pl linked-data-store-core -Dtest=<Class>`. The build needs JDK 27 and
-Docker. No test was run for this document.
+Docker.
 
 A change that switches tests on is run about ten times before it is pushed:
 
@@ -765,10 +797,10 @@ To try the write path by hand, start LDS with the commands on. The examples of t
 run against it:
 
 ```sh
-docker run -d --rm --name lds -p 127.0.0.1:19104:9090 \
+docker run -d --rm --name lds -p 127.0.0.1:9090:9090 \
   -e LDS_SAGA_COMMANDS_ENABLED=true -e LDS_TXLOG_RAWDATA_PROVIDER=memory \
   -e LDS_TXLOG_SPLIT_SOURCES=true -e LDS_SAGA_NUMBER_OF_LOGS=1 -e LDS_SAGA_RECOVERY_ENABLED=false \
-  descoped/lds:3.0.1
+  descoped/lds
 ```
 
 ## Unfinished and known to be wrong
@@ -776,14 +808,13 @@ docker run -d --rm --name lds -p 127.0.0.1:19104:9090 \
 Not finished: the field `schema` of the saga input, and so of every entry of the transaction log, is always the text
 `TODO`.
 
-Not finished: nothing reads the `dead-saga` log, and nothing reads the transaction log back but `SourceHandler` (see
-above).
-
 Not finished: a failed saga is answered `500` with an empty body. The client cannot tell a write that will be done by
 recovery from one that will not, or from a delete that was done before the failure.
 
-Not finished: taking a saga log and a permit waits on the request thread: up to 10 seconds for a log, and without a
-time limit for a permit (see [The handoff](#the-handoff)).
+Not finished: a write waits on the worker thread of its request in three places. Taking a saga log waits up to 10
+seconds for each log it asks for, and taking a permit waits without a time limit (see [The handoff](#the-handoff)).
+A write of a part of a document or of a link reads the document that is there with `blockingGet` before it builds its
+saga input; the `DELETE` of a link, which has no body, as soon as it has the lock.
 
 Not finished: a `source` is not checked before the saga starts. With split sources a source that is not a valid
 topic name becomes a saga that cannot complete and ends in the `dead-saga` log.
@@ -794,9 +825,6 @@ password. With the defaults of the server that is 30 seconds before LDS ends.
 
 Not finished: recovery at start and by the timer does not move a saga that cannot complete to the `dead-saga` log. It
 is tried again on every pass until a write is handed its log.
-
-Not finished: `PersistenceCreateOrOverwriteSagaAdapter` throws `AbortSagaException` for a failure, and
-`PersistenceDeleteSagaAdapter` throws the failure as it is. With no compensating actions the outcome is the same.
 
 Not finished: two LDS cannot share a topic of the transaction log in PostgreSQL. The provider lets one process write a
 topic: a publish fails with `RawdataWriterConflictException` when another process has published to the topic since

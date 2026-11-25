@@ -15,14 +15,15 @@ developers and maintainers who change that code. What a user of the API needs is
 
 ## What this part is for
 
-A REST request names a [document](../glossary.md#document), a part of a document, or a
+A REST request names a [document](../glossary.md#document), a part of a document (an
+[embedded object](../glossary.md#embedded-object) or a value, by its [path](../glossary.md#path)), or a
 [link](../glossary.md#link) from a document. This part finds out which of the three it is, reads what is stored,
 and for a write builds the whole new document, checks it and hands it to a [saga](../glossary.md#saga). It does
 not store anything itself. Storing is done by the saga ([the write path](core-write-path.md)).
 
 The packages are `io.descoped.lds.core.controller`, `io.descoped.lds.core.domain` and
 `io.descoped.lds.core.validation`. The module does not export them (`module-info.java` exports
-`io.descoped.lds.core` and `io.descoped.lds.test.server` only).
+`io.descoped.lds.core`, `io.descoped.lds.core.lifecycle` and `io.descoped.lds.test.server` only).
 
 ## Layout
 
@@ -47,8 +48,10 @@ The packages are `io.descoped.lds.core.controller`, `io.descoped.lds.core.domain
 | `LinkedDocumentValidator` (`validation`) | Says whether a document may be written: the JSON Schema of the entity type, then the links. It throws `LinkedDocumentValidationException`. |
 | `Limits`, `IdOrder` (the persistence API, `io.descoped.lds.api.persistence`) | The limits of ids, names and paths in bytes of UTF-8, and the order of ids. |
 
-A new `DataController`, a new handler and a new `ResourceContext` are made for every request. They hold no state
-between requests; the locks are held by `NamespaceController`.
+A new `DataController`, a new handler and a new `ResourceContext` are made for every request; a write without a
+`timestamp` makes a second `ResourceContext` when it has the lock of its document (see
+[The time of the request](#the-time-of-the-request)). They hold no state between requests; the locks are held by
+`NamespaceController`.
 
 ## From a request to a resource
 
@@ -61,16 +64,22 @@ answered as a namespace that is not served. `NamespaceController` looks at the p
 
 - A path of one character or less is answered 404 with no body.
 - The path is exactly the namespace and the first value of `schema` is blank (`/<namespace>?schema`): the list
-  of the addresses of the schemas is answered there.
-- The path is exactly the namespace and one value of `schema` is `embed`: the schemas themselves are answered
-  there. Both are answered for every method, and not for `/<namespace>/?schema`.
+  of the addresses of the schemas is answered there, sorted by entity type:
+  `["/ns/Company?schema","/ns/Person?schema"]`.
+- The path is exactly the namespace and one value of `schema` is `embed`: the JSON Schemas of every entity type
+  are answered there, in one JSON array sorted by the name of the entity type. Both are
+  `application/json; charset=utf-8`, are answered for every method, and are not answered for `/<namespace>/?schema`.
 - A path that is the namespace, or starts with it and a `/`, goes to a new `DataController`.
 - A path that starts with `/source/` goes to `SourceHandler` (the [transaction log](../glossary.md#transaction-log),
   not this part).
 - Anything else is answered 400 with `Unsupported namespace: "<first segment>"`.
 
-`CORSHandler` is in front of all of this ([the application](core-application.md)). An OPTIONS request with
-the headers `Origin` and `Access-Control-Request-Method` is answered 204 by it and does not reach this part.
+`CORSHandler` is in front of all of this ([the application](core-application.md)). An OPTIONS request that is a
+preflight its policy allows is answered 204 by it and does not reach this part: an `Origin` that
+`http.cors.allow.origin` matches, an `Access-Control-Request-Method` in `http.cors.allow.methods` (by default
+`POST,GET,PUT,DELETE,HEAD`), and no requested header outside `http.cors.allow.header`. Any other OPTIONS request
+goes on to the handler, which answers it 400 (see [The handlers](#the-handlers)): a preflight for `PATCH` got
+`Unsupported managed resource method: OPTIONS`.
 
 The namespace is the value of `namespace.default`. REST serves this one namespace. `ResourceContext` takes the
 namespace from the path and gives it to the store with every read and write.
@@ -82,14 +91,16 @@ its body and for its saga (see [A write](#a-write)).
 
 `NamespaceController` reads the path with `exchange.getRelativePath()`, so a value of `http.prefix` is not part
 of the path that is checked. `DataController` gives `ResourceContext` the same path as it was sent, not decoded
-(`DataController.rawRelativePath`), so that each segment is decoded once. It is taken from the request URI,
-which Undertow keeps as it was sent. As Undertow 2.4 parses a request (`RequestParser`, `URLUtils.decode`) with
-the options LDS leaves at their defaults, the relative path is the URI decoded, with an encoded `/` or `\` (`%2F`,
-`%5C`) left encoded and the path parameters (from `;` to the next `/`) left out. So each segment of the relative
-path is one segment of the URI, and the relative path is the last segments of the URI, each without its path
-parameters. A request line in absolute form (`GET http://host/path`, as a proxy sends it) has its scheme and host
-left out. A byte outside ASCII, and a `%` that two hexadecimal digits do not follow, are refused by Undertow with
-400 and no body before a handler runs.
+(`DataController.rawRelativePath`), so that each segment is decoded once. It takes the last segments of the
+request URI, which Undertow keeps as it was sent. With the options of Undertow 2.4 that LDS leaves at their defaults
+(`RequestParser`, `URLUtils.decode`):
+
+- Each segment of the relative path is one segment of the URI: an encoded `/` or `\` (`%2F`, `%5C`) is left
+  encoded, and does not split a segment.
+- The path parameters (from `;` to the next `/`) are left out of each segment.
+- A request line in absolute form (`GET http://host/path`, as a proxy sends it) has its scheme and host left out.
+- A byte outside ASCII, and a `%` that two hexadecimal digits do not follow, are refused by Undertow with 400 and no
+  body before a handler runs.
 
 ### The time of the request
 
@@ -97,11 +108,12 @@ left out. A byte outside ASCII, and a `%` that two hexadecimal digits do not fol
 
 1. The parameter `timestamp`. When the request has no `timestamp`, the parameter `t`. The names are in lower
    case. When the parameter is given more than once, the last value is used.
-2. No parameter: the time is now, in UTC. For a write it is read again when the write has the lock of its
-   document, so the version of a write comes after the version of the write before it.
+2. No parameter: the time is now, in UTC. For a write it is taken again when the write has the lock of its
+   document, from `DocumentLocks.timeOfTurn`, and a second `ResourceContext` is made with it (see below).
 3. The value is read with `RequestTime.parse`: `ZonedDateTime.parse`, which needs a date, the hour and the minute,
    and an offset or `Z` (`2018-12-06T11:05:31.000+01:00`). Seconds may be left out. A zone in brackets after the
-   offset is accepted. When that fails, the value is decoded as a URL once and read again.
+   offset is accepted. When that fails, the value is decoded as a URL once and read again. A `+` in the offset is
+   sent as `%2B`: a `+` that is not encoded arrives as a space, and the value is refused.
 4. When both fail the answer is 400 with a fixed text (see [Where an error answer comes
    from](#where-an-error-answer-comes-from)). A parameter with no value (`?timestamp=`, `?timestamp`) fails too.
 5. The time is moved to UTC (`Etc/UTC`).
@@ -112,12 +124,22 @@ document as it is at that time. A write makes the [version](../glossary.md#versi
 the moment it got the lock of its document, and a write with a `timestamp` in the past or the future makes a
 version there.
 
+`DocumentLocks.timeOfTurn` gives the time of a write without `timestamp`: now, cut to the microsecond, or a
+microsecond after the turn before it when the clock has not moved on since or has gone back. The turns of every
+document of the process share this one clock, so the version of a write comes after the version of the write before
+it. When the clock is more than a second behind the last turn, a WARN says so once, and an INFO when it has caught
+up. The memory and the PostgreSQL providers keep a version to the millisecond
+([memory](persistence-memory.md#not-finished), [PostgreSQL](persistence-postgres.md#versions)), so with them two
+writes without `timestamp` to one document within one millisecond make one version: the later replaces the earlier.
+
 ### The path
 
 `ResourceContext.createResourceContext(specification, path, timestamp)` splits the path at `/` with
 `String.split`, which drops empty segments at the end, so a `/` at the end of a path is ignored. Every segment
 is decoded once (`urlDecode`): each `%XX` is a byte of UTF-8, and every other character stands for itself, a `+`
-too. Bytes that are not UTF-8 are refused (`Not UTF-8 in the path: "<segment>"`). The path is
+too. Bytes that are not UTF-8 are refused (`Not UTF-8 in the path: "<segment>"`). `urlDecode` also has a text for a
+`%` that two hexadecimal digits do not follow (`Not a valid escape in the path: "<segment>". Write a '%' as %25`),
+which only a direct call meets: over HTTP, Undertow refuses such a path first. The path is
 `/{namespace}/{Entity}/{id}/{field}/.../{Entity}/{id}`:
 
 1. Fewer than two segments: `ResourceException`.
@@ -131,8 +153,9 @@ too. Bytes that are not UTF-8 are refused (`Not UTF-8 in the path: "<segment>"`)
    - nothing after it: the path ends at the field, which is an embedded resource whose value is the link or links;
    - one segment after it: refused, an id is missing;
    - two segments after it: the entity type and the id of the target. The entity type must be one the field may
-     link to (`getRefTypes`), and the id is checked as the id of a document is. The last `ResourceElement` gets the
-     id `/Entity/id`;
+     link to (`getRefTypes`), and the id is checked with `whatIsWrongWithId` only: an id of only spaces, refused
+     for a document, passes here (`/ns/Person/ola/friends/Person/%20` names the link `/Person/ `). The last
+     `ResourceElement` gets the id `/Entity/id`;
    - more than two: refused, a path does not go through a link.
 
 The result is a chain of `ResourceElement`. `getResourceType` reads the kind from it:
@@ -163,10 +186,10 @@ through REST:
 | holds a control character | `An id cannot hold a control character` |
 | holds half of a character (an unpaired surrogate) | `An id cannot hold half of a character (an unpaired surrogate)` |
 
-The limits are one set for every persistence provider, in bytes of UTF-8 (`Limits` in the persistence API), set by
-the store with the least room: one entry of the primary key of PostgreSQL holds the namespace, the entity type, the
-id, the version and the path of a value in at most 2,704 bytes. Core refuses what goes past them before a store
-sees it: an id as above, and in a document that is written (`Limits.overLimit`, after the null fields are removed):
+The [limits](../glossary.md#limits) are one set for every persistence provider, in bytes of UTF-8 (`Limits` in the
+persistence API); why they are what they are is in [the persistence API](persistence-api.md#limits). Core refuses
+what goes past them before a store sees it: an id as above, and in a document that is written (`Limits.overLimit`,
+after the null fields are removed):
 
 | What | The text of the 400 |
 |---|---|
@@ -176,8 +199,8 @@ sees it: an id as above, and in a document that is written (`Limits.overLimit`, 
 The namespace (64 bytes) and the names of the entity types (128 bytes) are checked at start
 ([the model](core-model.md#the-limits-of-names)).
 
-An id is ordered by its Unicode code points, the order of its bytes in UTF-8, in every provider and in core
-(`IdOrder.CODE_POINTS`); `String.compareTo` is not used for ids.
+REST orders no ids itself: a list of documents comes in the order the store gives, the
+[order of ids](../glossary.md#order-of-ids).
 
 Run against LDS in memory with the example model, on port 19106 (`$long` is 1025 letters `a`):
 
@@ -201,7 +224,13 @@ id `a+b`.
 
 Each handler looks at the method. GET, PUT, POST and DELETE are answered. PUT and POST run the same code. Any
 other method, HEAD and OPTIONS included, is answered 400 with `Unsupported managed resource method: <METHOD>`
-(or `embedded`, or `reference`). An OPTIONS request that is a CORS preflight does not get this far (see above).
+(or `embedded`, or `reference`). An OPTIONS request that `CORSHandler` answers as a preflight does not get this far
+(see above).
+
+A handler does not read the `Accept` header. A document, a list, a timeline, a part and a saga id are answered as
+JSON, and an error as `text/plain` (see [Where an error answer comes from](#where-an-error-answer-comes-from)). A
+reference GET, a reference PUT of a link that is there already, and a DELETE of a document or of a link that waited
+for its saga are answered with no body.
 
 The examples below were run against LDS in memory with the example model
 (`linked-data-store-server/schemas/schema.graphql`), on port 19106. The headers `Connection`, `Content-Length` and
@@ -268,7 +297,7 @@ answered 404 when there is no document.
 | Method | What happens | Answer |
 |---|---|---|
 | GET | `ResourceContext.subTree` walks the document along the chain. | 200. An object or an array as it is. A simple value inside an array: `["Ola"]`. A part the document does not have: `[null]`. |
-| PUT or POST | The body is the new value of the part. `mergeJson` sets it in the document; `navigateAndCreateJson` makes the objects on the way that the document does not have. The null fields are removed, the limits checked, and the whole document is validated, then written with the saga `Create or update managed resource`. | 200 `{"saga-execution-id":"..."}`; 400 when the document is not valid; 404 |
+| PUT or POST | The body is the new value of the part. `mergeJson` sets it in the document; `navigateAndCreateJson` makes the objects on the way that the document does not have. The null fields are removed, the limits checked, and the whole document is validated, then written with the saga `Create or update managed resource`. | 200 `{"saga-execution-id":"..."}`; 400 or 415 when the body cannot be read (`BodyException`, as for the managed PUT); 400 when the document goes past the limits or is not valid; 404 |
 | DELETE | The field is removed from the document and the document is written. It is not validated. | 200 `{"saga-execution-id":"..."}`; 404 |
 
 The body `null` removes the part, as a field that is `null` in a document is not there:
@@ -364,18 +393,10 @@ Every write ends the same way, in all three handlers. How the saga runs and when
 
 ### One write at a time to a document
 
-`DataController` takes the lock of the document of every write (every method but GET, HEAD and OPTIONS) before the
-handler reads anything, with the namespace, the entity type and the id of the path (`DocumentLocks.acquire`). The
-lock is held until the saga of the write has completed, also when the request does not wait for its saga
-(`DocumentLocks.holdUntil`), so a part or a link merged into a document is not lost to another write of the same
-document. A write that is answered before its saga starts (refused, or failed) lets the lock go when it is answered.
-
-A write that waits for the lock holds no thread: it is a future that the write before it completes, in the order
-the writes asked, and the write goes on on a worker thread when it has the lock. It waits at most 30 seconds, and
-is then answered 503 with `The document is being written by another request. Try again.` The locks are 1024
-stripes; two documents that share one are written one after the other. They are in this process only: several LDS
-that write the same documents do not see each other's locks
-([the write path](core-write-path.md#the-lock-of-a-document)).
+`DataController` takes the [lock of the document](../glossary.md#document-lock) of every write (every method but
+GET, HEAD and OPTIONS) before the handler reads anything, and the write keeps it until its saga has completed; how a
+write waits for it without a thread, for at most 30 seconds before a 503, is in
+[the write path](core-write-path.md#the-lock-of-a-document).
 
 ### The body
 
@@ -434,79 +455,37 @@ $ curl -s 'http://localhost:19106/ns/Person/p4'
 1. The handler has the whole document as a Jackson tree. For a managed PUT it is the body. For the others it is
    the stored document with the change made in it.
 2. `SyncParameter.waits` reads the query: the write waits for its saga unless a value of `sync` is `false` (in any
-   case), and always when it asks to be searchable (`searchable=true`). It is read the same way in all three
-   handlers.
+   case), and always when it asks to be searchable (`searchable=true`, a
+   [searchable write](../glossary.md#searchable-write)). It is read the same way in all three handlers.
 3. The saga is taken from `SagaRepository` by name: `SAGA_CREATE_OR_UPDATE_MANAGED_RESOURCE`, or
    `SAGA_DELETE_MANAGED_RESOURCE` for the DELETE of a whole document.
-4. A `SagaInput` is made: a new transaction id (`SagaExecutionCoordinator.generateTxId`, a UUIDv7), the method
-   (`PUT` or `DELETE`), the namespace, the entity type, the id, the time as the version (its valid time),
-   `source` and `sourceId` from the query when given, and the document. A DELETE has no document.
-5. `SagaExecutionCoordinator.handoff(sync, ...)` starts the saga, keeps the lock of the document until the saga has
-   completed, and gives a future: the completion of the saga when the write waits, the hand-off when it does not.
-6. `AsyncAnswer.afterSaga` keeps the request open and returns; the answer is sent from the thread that completes the
-   future, after the wait for search when the write asked for it
-   ([search](search.md#a-write-that-asks-to-be-searchable)).
-   `saga-execution-id` in the answer is the transaction id.
+4. A `SagaInput` is made with a new transaction id, the method, the document key with the time as its valid time,
+   the [source and source id](../glossary.md#source-and-source-id) from the query when given, and the document (none
+   for a DELETE): [the saga input](core-write-path.md#the-saga-input).
+5. `SagaExecutionCoordinator.handoff(sync, ...)` starts the saga and keeps the lock of the document until the saga
+   has completed ([the handoff](core-write-path.md#the-handoff)).
+6. `AsyncAnswer.afterSaga` answers the write when the future of `handoff` completes, after the wait for search when
+   the write asked for it; `saga-execution-id` in the answer is the transaction id
+   ([the answer](core-write-path.md#the-answer)).
 
-A write that waits is a [synchronous write](../glossary.md#synchronous-write): the answer comes when the
-transaction log, the store and, with search, the index queue have been written, and a read that follows it sees the
-write. With `sync=false` the answer comes when the saga is in its [saga log](../glossary.md#saga-log), and a read
-that follows at once may not see the write yet. A saga that fails after that is not seen by the client; it is
-logged by `SagasObserver`.
+A write that waits is a [synchronous write](../glossary.md#synchronous-write), and one with `sync=false` is answered
+when its saga is in its [saga log](../glossary.md#saga-log) ([the answer](core-write-path.md#the-answer)).
 
-When the saga fails while the write waits, `AsyncAnswer` logs `A write of <path> failed` and answers 500 with no
-body. The 500 does not say how far the saga came ([the write path](core-write-path.md#a-saga-that-fails)).
+A saga that fails while the write waits is answered 500 with no body
+([a saga that fails](core-write-path.md#a-saga-that-fails)).
 
 The query parameter `saga` is given to `SagaCommands.getSagaAdminParameterCommands`. It makes a step of the saga
-fail, and is used only when `saga.commands.enabled` is true ([the write path](core-write-path.md)).
+fail, and is used only when `saga.commands.enabled` is true ([the saga commands](core-write-path.md#the-saga-commands)).
 
 A write with the same id and the same valid time as a version that exists replaces that version. That is what makes a
 repeated PUT with a `timestamp` safe.
 
 ## Validation
 
-`LinkedDocumentValidator.validate(entity, document)` is called by the managed PUT and the embedded PUT, on the
-whole document, after the null fields are removed and the limits are checked. It throws
-`LinkedDocumentValidationException`, and the handler answers 400 with `Schema validation error: ` and the message.
-
-It checks two things, in this order:
-
-1. **The JSON Schema of the entity type** (`JsonSchema.validate`, on `com.networknt:json-schema-validator`). `format` is
-   checked, so a text in a `date-time` field must be a date-time of RFC 3339. Everything that is wrong is
-   collected. The message is the list as Java prints it: `[$.name: integer found, string expected]`.
-2. **The links.** The specification of the entity type is walked (`SpecificationTraversal`). For every link
-   field the value is looked up in the document. A field that is missing is not checked, and neither is a null in
-   an array of links, nor a field whose parent in the document is missing or is not an object. A value that is not
-   a text is checked as its JSON text. A value must be a `/`, an entity type, a `/` and an id, with no other `/` in
-   it (`linkPattern`), or the message is `Not a valid link. Navigation: <path>: "<value>"`. The entity type in it
-   must be one the field may link to, or the message is
-   `Illegal linked-domain: "<entity>". Navigation: <path>: "<value>"`. The id must pass `whatIsWrongWithId`, or the
-   message is `A link names an id that is not valid: <what>. Navigation: <path>`. The first link that is wrong ends
-   the check.
-
-The validator does not look for the document a link points at. That is on purpose: LDS keeps versions with a
-valid time in the past and the future, and a link may point at a document that is written later.
-
-```sh
-curl -i -X PUT 'http://localhost:19106/ns/Person/per' \
-     -H 'Content-Type: application/json' \
-     -d '{
-       "name": "Per",
-       "employer": "/Person/ola"
-     }'
-```
-
-```
-HTTP/1.1 400 Bad Request
-Content-Type: text/plain
-
-Schema validation error: Illegal linked-domain: "Person". Navigation: employer: "/Person/ola"
-```
-
-The schema the validator uses, and the specification it walks, are built at start from the model
-([the model](core-model.md)).
-
-Answers are JSON. The handlers do not read the `Accept` header.
+The managed PUT and the embedded PUT call `LinkedDocumentValidator.validate(entity, document)` on the whole
+document, after the null fields are removed and the limits are checked, and answer 400 with
+`Schema validation error: ` and the message; what it checks, in which order, is in
+[the model](core-model.md#validation-of-a-document).
 
 ## Where an error answer comes from
 
@@ -516,7 +495,7 @@ Answers are JSON. The handlers do not read the `Accept` header.
 | 400 | `The 'timestamp' query-parameter must follow the ISO-8601 standard. Example of a valid formatted timestamp is '2018-12-06T11:05:31.000+01:00'` | `DataController` |
 | 400 | `Not a valid resource. The resource path must contain at least namespace, name, and id of managed resource` | `ResourceContext`, fewer than two segments |
 | 400 | `Not a managed resource name: "<name>"` | `ResourceContext` |
-| 400 | `Managed resource id cannot be empty.` | `ResourceContext`, an id that is empty or only spaces |
+| 400 | `Managed resource id cannot be empty.` | `ResourceContext`, the id of a document that is empty or only spaces |
 | 400 | the texts of [Ids and limits](#ids-and-limits), and `Not UTF-8 in the path: "<segment>"` | `ResourceContext`; the limits of a document from the managed and the embedded PUT |
 | 400 | `Not a valid path element: "<name>"` | `ResourceContext` |
 | 400 | `Reference resource path-element: "<field>" must be part of pattern ending like: "/<field>/<managed-domain>/<id>"` | `ResourceContext` |
@@ -531,20 +510,20 @@ Answers are JSON. The handlers do not read the `Accept` header.
 | 404 | none | no document, no version, no link; a path of one character or less (`NamespaceController`) |
 | 415 | `Unsupported Content-Type: <type>. Send the body as JSON, with Content-Type: application/json` | `BodyParser` |
 | 500 | none | a saga that fails while the write waits (`AsyncAnswer`); an exception that no handler catches |
+| 500 | `Error: <message>` | `ManagedResourceHandler`, a PUT whose body cannot be received |
 | 503 | `The document is being written by another request. Try again.` | `DataController`, the lock of the document not had within 30 seconds |
+| 503 | none | `DataController`, a write that had waited for the lock when LDS is stopping and takes no more work; every request but a CORS preflight once the stop has begun (`UndertowApplication`, its `GracefulShutdownHandler`) |
 
 The answers with a text are `text/plain`. The managed handler sets `Content-Type: application/json; charset=utf-8`
 before it reads, so its 404 has that header and no body.
 
 ## Rules to keep
 
-- **Time is UTC.** `DataController` moves the time of the request to UTC before anything uses it. Versions are
-  stored and compared as UTC instants (see [the invariants](architecture.md#the-invariants)).
+- **Time is UTC.** `DataController` moves the time of the request to UTC before anything uses it.
 - **Names come from the model.** The entity type, every field of the path and the entity type of a link are
   looked up in the `Specification`. Keep it so: no name from a request reaches a store without that check.
 - **One set of limits, in bytes of UTF-8.** Ids, paths and arrays are checked against `Limits` before a store sees
-  them, and an id the same way in a path and in a link. A limit is raised only when every provider keeps the new one.
-- **Ids are ordered by code points** (`IdOrder`), never by `String.compareTo`.
+  them, and an id the same way in a path and in a link.
 - **A handler does not write to the store.** It reads with `persistence.createTransaction(true)` in a
   try-with-resources block, and writes through a saga. A write that skips the saga skips the transaction log and
   the search index.
@@ -566,8 +545,9 @@ before it reads, so its 404 has that header and no body.
   `ResourceIdTest`.
 - **The answer of the validator keeps its form**: the place in the document as LDS writes a path, then the message
   of the validator (`$.tags[1]: integer found, string expected`).
-- **Lint.** Core overrides `-Xlint:all` and doclint in its `pom.xml` with the categories its older code is not
-  clean of. The override is removed, not widened (see [the invariants](architecture.md#the-invariants)).
+
+The rules of every part of LDS (UTC instants, one set of limits, the order of ids, lint) are
+[the invariants](architecture.md#the-invariants).
 
 ## Configuration
 
@@ -582,7 +562,15 @@ The handlers read no configuration themselves. These keys decide what they are g
 | `graphql.search.enabled` | `false` | With search, `searchable=true` waits for search ([search](search.md)). |
 
 `ManagedResourceHandler` and `EmbeddedResourceHandler` log the method, the path and the body of a PUT at
-TRACE, and a validation error at DEBUG. `ManagedResourceHandler` logs an empty body at ERROR.
+TRACE, and a validation error at DEBUG. `ManagedResourceHandler` logs an empty body at ERROR. The other logs of a
+write:
+
+- WARN `A write of /ns/Person/ola waited PT30S for the lock of the document and was answered 503`
+  (`DataController`).
+- ERROR `A write of <path> failed`, with its cause, when the saga or the answer fails (`AsyncAnswer`).
+- WARN with the exception when a body cannot be received (each of the three handlers).
+- WARN once when the clock is more than a second behind the time of the last write, and INFO when it has caught up
+  (`DocumentLocks`).
 
 ## Tests
 
@@ -595,7 +583,7 @@ The tests are in `linked-data-store-core/src/test/java/io/descoped/lds/core`.
 | `domain/resource/ResourceIdTest` | An id decoded once (`+`, `%25`, `%2B`, UTF-8), and the ids that are refused, with their texts: a bad escape, a `/`, a control character, half of a character, more than 1024 bytes; the same for the id of a link. |
 | `domain/managed/ManagedResourceHandlerTest` | PUT and GET, DELETE (204, and 400 without an id), 404, `?schema`, the answer to a document that is not valid, a body that is not JSON (400) and another content type (415), ids with `+`, `%` and path parameters over HTTP and the ids that are refused, `?timeline`. |
 | `domain/managed/ManagedTimeBasedVersioningTest` | Three versions read at five times; a `timestamp` that cannot be read is 400. |
-| `domain/embedded/EmbeddedResourceHandlerTest` | GET of an array and of a missing part (`[null]`), PUT and DELETE of an object and an array, also two levels down, an empty body and one that is not JSON (400, nothing written). |
+| `domain/embedded/EmbeddedResourceHandlerTest` | GET of an array and of a missing part (`[null]`), PUT and DELETE of an object and an array, also two levels down, an empty body and one that is not JSON (400, nothing written), a part that takes the document over the limits (400, nothing written), a part written before it is answered when `sync` is not given, with a null field in it left out, and a part written as `null` removed. |
 | `domain/reference/ReferenceResourceHandlerTest` | GET, PUT and DELETE of single links and links in arrays, PUT on a missing and on a deleted document (404), DELETE sent twice, a link to an entity type the field may not link to (400). |
 | `domain/reference/ReferenceJsonHelperTest` | Adding, changing and removing a link in a document, without a server. |
 | `domain/BodyParserTest` | JSON; an empty body, a body that is not JSON (400, with the texts) and another content type (415); that a MessagePack body is refused. |
@@ -614,11 +602,12 @@ that send requests take a server from `TestServerListener`: LDS in the JVM on a 
 namespace `data` (`src/test/resources/application_test.properties`). The model of that server is the GraphQL schema
 `src/test/resources/gqlschema/schema.graphql`, which has the entity types `contact` and `provisionagreement` among
 others. The file also sets `specification.schema` to the JSON Schema files `spec/schemas/contact.json` and
-`spec/schemas/provisionagreement.json`, but `UndertowApplication.initializeUndertowApplication` does not read that key
-while `graphql.schema` is set. `ResourceGraphqlContextTest` reads the two JSON Schema files itself. `TestClient.put`
-sends the header `Origin: localhost` and no `Content-Type` header, so those tests use the default of the handlers;
-`TestClient.putAs` sends the content type it is given. A new test class that takes its server from
-`TestServerListener` is TestNG and asserts with AssertJ; a test added to an existing class follows that class.
+`spec/schemas/provisionagreement.json`, but `UndertowApplication.initialize` (which `initializeUndertowApplication`
+calls) does not read that key while `graphql.schema` is set. `ResourceGraphqlContextTest` reads the two JSON Schema
+files itself. `TestClient.put` sends the header `Origin: localhost` and no `Content-Type` header, so those tests use
+the default of the handlers; `TestClient.putAs` sends the content type it is given. A new test class that takes its
+server from `TestServerListener` is TestNG and asserts with AssertJ; a test added to an existing class follows that
+class.
 
 Core is built and tested with the modules it needs by `./mvnw verify -pl linked-data-store-core -am`, and one
 test class is run with `./mvnw test -pl linked-data-store-core -Dtest=<Class>`. The build needs JDK 27 and
@@ -658,10 +647,8 @@ field was not there, and makes the objects on the way that the document does not
 files of the tests as the model, `DELETE /ns/provisionagreement/d1/address/street` on a document without
 `address` wrote a version with `"address":{}`, which that schema does not allow.
 
-Not finished: the validator checks links only in objects it reaches through fields. A link field inside an
-object that is an element of an array is not checked (`SpecificationTraversal` walks `properties`, not `items`).
-With a model where `Company.offices` is a list of a type that has the link `manager`, a document with
-`"offices":[{"city":"Oslo","manager":"not a link"}]` was written.
+Not finished: the validator does not check a link field inside an object that is an element of an array
+([the model](core-model.md#not-finished-and-known-to-be-wrong)).
 
 Not finished: the read of all documents of an entity type and the read of the versions are not paged, and the
 read of the versions takes no range of time. Both ask the store for everything (`Range.unbounded()`) and build
@@ -674,8 +661,10 @@ decided.
 Not finished: `SagaInput` has a field `schema`, and every handler gives it the text `"TODO"`.
 
 Not finished: the error callback of the read of the body in the embedded and the reference handler sends a text
-and sets no status. `ResourceContext.subTree` throws `IllegalStateException` when the parent of the last step
-is a simple value.
+and sets no status.
+
+Not finished: `ResourceContext.subTree` throws `IllegalStateException` when the parent of the last step is a simple
+value, and an embedded GET is then answered 500 with no body, as an exception that no handler catches is.
 
 Not finished: a method that is not answered gets 400, not 405, and HEAD is one of them.
 

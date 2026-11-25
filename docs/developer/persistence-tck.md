@@ -7,10 +7,9 @@ section: Persistence
 
 # The shared suite for persistence providers
 
-This document covers the module `linked-data-store-persistence-provider-tck`: the tests that every persistence
-provider must pass, the [shared suite](../glossary.md#shared-suite) or technology compatibility kit (TCK) of the
-persistence interface, written here as the contract a provider meets. It is for developers who change the suite,
-change a provider, or add a provider.
+This document covers the module `linked-data-store-persistence-provider-tck`, the
+[shared suite](../glossary.md#shared-suite): the tests that every persistence provider must pass, written here as the
+contract a provider meets. It is for developers who change the suite, change a provider, or add a provider.
 
 ## What the suite is for
 
@@ -47,7 +46,7 @@ The suite needs three things. It makes one of them itself.
 
 | What | Where it comes from |
 |---|---|
-| The namespace | The subclass gives it to the constructor: `super("lds-provider-memory-integration-test")`. The suite uses this one namespace in every call but those of `thatADocumentAtEveryLimitIsKept`, which writes in a namespace of 64 letters drawn at random. The three subclasses also give it to the initializer as the default namespace. No initializer uses that argument. |
+| The namespace | The subclass gives it to the constructor: `super("lds-provider-memory-integration-test")`. The suite uses this one namespace in every call but those of `thatADocumentAtEveryLimitIsKept`, which writes in a namespace of 64 letters drawn from a fixed seed. The three subclasses also give it to the initializer as the default namespace. No initializer uses that argument. |
 | The specification | The suite builds it in its constructor with `buildSpecification()`. A subclass does not give one, and none of the three subclasses overrides the method. An override runs before the constructor of the subclass has run. |
 | The persistence | The field `protected RxJsonPersistence persistence`. The subclass sets it in a method with `@BeforeClass` of TestNG, and closes it in a method with `@AfterClass`. |
 
@@ -59,7 +58,7 @@ The specification of the suite has four [entity types](../glossary.md#entity-typ
 - `Address`: the texts `city`, `state`, `country`.
 - `FunkyLongAddress`: the same three texts.
 - `LONGEST_ENTITY`: an entity type whose name is as long as LDS takes, 128 bytes (`E` and 127 small letters drawn
-  at random), with the text `name`.
+  from a fixed seed, so the same on every run), with the text `name`.
 
 Five tests build a specification of their own with the entity type `People` (an array of texts, an array of
 objects, or both), and one test writes a document of the entity type `Stranger`, which no specification has.
@@ -99,9 +98,10 @@ Three things follow from the table:
 - In the suite the bridge of the memory provider cuts a text into fragments of 1024 bytes (the default is 8192),
   so the long text of `thatBigValueWorks` is stored as many fragments. The bridge of the PostgreSQL provider
   does not cut a text: `PostgresDbInitializer` gives it `Integer.MAX_VALUE` as the size.
-- A helper starts one container on first use, and every test class of its module uses that one. Testcontainers
-  stops it when the JVM ends. So the suite shares its PostgreSQL or Neo4j with the other tests of the module,
-  and is kept apart from them by its namespace.
+- A helper starts one container on first use, and every test class of its module that needs the engine uses that
+  one (`ResultSetPublisherSignalsTest` and `Neo4jDocumentWriterTest` need none). Testcontainers stops it when the
+  JVM ends. So the suite shares its PostgreSQL or Neo4j with the other tests of the module, and is kept apart from
+  them by its namespace.
 
 All three subclasses give the initializer the entity types `Person`, `Address` and `FunkyLongAddress`. The Neo4j
 provider creates its constraints and indexes for these. The memory and PostgreSQL providers do not use the set.
@@ -126,7 +126,7 @@ A test goes through these steps:
    entity type, id, [valid time](../glossary.md#valid-time) of the version) and a Jackson tree.
 6. The test reads through the interface and compares. Each call returns a type of RxJava 3 (`Completable`,
    `Maybe`, `Single`, or `Flowable`, a [reactive stream](../glossary.md#reactive-stream)), and the test waits for
-   it with `blockingAwait`, `blockingGet` or `blockingIterable`.
+   it with `blockingAwait`, `blockingGet`, `blockingIterable` or `blockingForEach`.
 7. The transaction is closed at the end of the `try`. What that does depends on the provider (see the table
    above).
 
@@ -134,7 +134,7 @@ The suite never calls `commit` or `cancel`. On PostgreSQL and Neo4j what a test 
 `Transaction.close` commits. That also holds for a test that fails: the `try` closes the transaction, and what
 the test wrote before it failed stays in the store.
 
-The suite compares in four ways. Know which one a test uses before you change what a provider gives back:
+The suite compares in five ways. Know which one a test uses before you change what a provider gives back:
 
 - `JSONAssert.assertEquals(..., true)`: the same fields and values, and arrays in the same order. The order of
   the fields of an object is not compared.
@@ -145,9 +145,11 @@ The suite compares in four ways. Know which one a test uses before you change wh
   `thatComplexArrayValuesAreIntact`): here the order of the fields of an object counts. The objects of the test
   have the fields `first` and `last`, written in that order.
 - `assertEquals` of TestNG, which takes the actual value first and the expected value second.
+- `assertThat` of AssertJ, in most of the newer tests: `containsExactly` on a list of ids or versions, where the
+  order counts, and `isEqualTo` or `isNull` on one value.
 
-The memory provider does not give the fields of an object back in the order they were written. This document
-was written to it:
+No provider gives the fields of an object back in the order they were written. Every read builds the document from
+its values sorted by path: a path of fewer parts first, then by name. This document was written:
 
 ```json
 {
@@ -158,7 +160,7 @@ was written to it:
 }
 ```
 
-It was read back as:
+Each provider reads it back as:
 
 ```json
 {
@@ -185,8 +187,10 @@ versions.
   `thatBigValueWorks`.
 - A document at every limit of `Limits` at once is kept, read, listed and deleted: a namespace of 64 bytes, an
   entity type of 128 bytes, an id of 1024 bytes (256 letters of four bytes each in UTF-8), and a value whose path
-  is 1024 bytes long and goes through 32 arrays (names of letters of three bytes each). The letters are drawn at
-  random, so that a store cannot compress them to fit: `thatADocumentAtEveryLimitIsKept`.
+  is 1024 bytes long and goes through 32 arrays (names of letters of three bytes each). The letters are drawn by a
+  `Random` with a fixed seed, so that a store cannot compress them to fit and they are the same on every run:
+  `thatADocumentAtEveryLimitIsKept`. On PostgreSQL and Neo4j the document is therefore written in the same
+  namespace on every run, and only the delete at the end of the test removes it.
 - Several documents of several entity types can be written in one call, as a `Flowable`:
   `thatBatchCreationWorks`.
 - A document with links is read back with the links as the texts they were written as: `thatRefWorks`.
@@ -245,8 +249,7 @@ of the document.
 
 `readDocuments` gives the documents of an entity type as they are at a time, one for each id. A `Range` limits it
 by id. `readDocumentVersions` takes a `Range` of valid times in the same way. `testReadDocuments` checks this
-with twelve documents, `person00` to `person11`, and `testReadDocumentVersions` with twelve versions of one
-document:
+with twelve documents, `person00` to `person11`:
 
 | Range | Answer for the ids `person00` to `person11` |
 |---|---|
@@ -259,6 +262,10 @@ document:
 | `lastBefore(3, "person10")` | `person09`, `person08`, `person07` |
 | `lastBetween(2, "person06", "person10")` | `person09`, `person08` |
 | `lastBetween(4, "person06", "person10")` | `person09`, `person08`, `person07` |
+
+`testReadDocumentVersions` asks the same nine ranges of twelve versions of one document, on the first of
+each month of 2000, with months as the bounds: `firstAfter(3, March)` gives April, May and June,
+`firstBetween(2, June, October)` gives July and August, `last(3)` gives December, November and October, and so on.
 
 So both bounds of a range are exclusive, a `first` range is read in ascending order, and a `last` range is read
 from the end in descending order.
@@ -274,14 +281,18 @@ from the end in descending order.
   `thatAPageInEitherDirectionHoldsWholeDocumentsAndNoDeletedOne`.
 
 - `between(after, before)` on versions gives only the versions whose valid time is inside the bounds. The version
-  that is valid at the lower bound, but written before it, is not given: `thatReadVersionsInRangeWorks`.
+  that is valid at the lower bound, but written before it, is not given: `thatReadVersionsInRangeWorks`. Below the
+  documents the store gives that version first (`RxPersistence.readVersions`, checked by
+  `PostgresProviderTest.theVersionsOfADocumentAreReadInOrderOfTime`), and `RxJsonPersistenceBridge` leaves it out.
 - `readDocuments` as of a time gives each document in the version that is valid at that time: `thatFindAllWorks`.
 - `hasPrevious` and `hasNext` say whether the entity type has a document with an id before or after the given id:
   `testHasNextAndHasPrevious`.
 - `readAllDocumentVersions` gives every version of every document of the entity type, also the versions of a
-  deleted document and the tombstone itself (a document whose `deleted()` is true), by id in the order of code
-  points with the versions of one id together, and nothing of another entity type. The first document is given
-  without the rest being read first: `thatEveryVersionOfEveryDocumentIsReadTheDeletedOnesIncluded`.
+  deleted document and the tombstone itself, by id in the order of code points with the versions of one id
+  together, and nothing of another entity type: `thatEveryVersionOfEveryDocumentIsReadTheDeletedOnesIncluded`.
+  Here a tombstone is a document whose `deleted()` is true and whose tree is null, not the `{}` of
+  `readDocumentVersions`, so `jackson()` gives null. The test also takes the first document alone and checks its
+  id; it does not check that the rest is not read first.
 
 ### Links
 
@@ -342,8 +353,9 @@ write to say, not for the store. The specification tells a provider one thing: w
 
 ## What the suite does not cover
 
-The suite uses one namespace, one transaction for each test, times in UTC, and small amounts of data. What is
-outside that is tested by each provider in its own module:
+The suite does not check that namespaces are kept apart, and uses one transaction for each test, times in UTC, and
+small amounts of data. What is outside that is tested by each provider in its own module. The table names the
+tests that cover each point most directly; the test classes of a provider hold more:
 
 | Not in the suite | Memory | PostgreSQL | Neo4j |
 |---|---|---|---|
@@ -351,10 +363,10 @@ outside that is tested by each provider in its own module:
 | Commit and cancel of a transaction | `MemoryTransactionTest` | `PostgresProviderTest`: `aCancelledTransactionWritesNothing`, `endingATransactionAgainDoesNothing`, `aCommitThatFailsFailsItsFuture` | `Neo4jProviderTest`: `aCancelledTransactionWritesNothing`, `endingATransactionAgainDoesNothing`; `Neo4jTransactionTest` |
 | That the store is read only when a reader asks for more (backpressure) | `AsyncIterablePublisherTest` (the Reactive Streams TCK), `AsyncIterablePublisherSignalsTest` | `ResultSetPublisherIntegrationTest` (the Reactive Streams TCK), `ResultSetPublisherSignalsTest` | `Neo4jProviderTest`: `aDocumentIsTakenFromTheStoreWhenItIsAskedFor` |
 | A version written with a time in another zone | No test. | `PostgresProviderTest`: `aVersionIsTheInstantWhateverZoneItWasWrittenWith` | `Neo4jProviderTest`: `aVersionIsTheInstantWhateverZoneItWasWrittenWith` |
-| A range with bounds on `findDocument`, or on the documents a link leads to; a document that is linked to twice | No test. | `PostgresProviderTest`: `findReturnsEveryMatchAndHonoursTheRange` | `Neo4jProviderTest`: `findHonoursTheRange`, `theLimitOfLinkedDocumentsCountsThoseThatAreWritten`, `aDocumentThatIsLinkedTwiceIsReadOnce` |
+| A range with both bounds (`between`) on `findDocument`, or any range on the documents a link leads to; a document that is linked to twice | No test. | `PostgresProviderTest`: `findReturnsEveryMatchAndHonoursTheRange` | `Neo4jProviderTest`: `findHonoursTheRange`, `theLimitOfLinkedDocumentsCountsThoseThatAreWritten`, `aDocumentThatIsLinkedTwiceIsReadOnce` |
 | Large documents and long lists | No test. | `PostgresProviderTest`: `aDocumentOfAnySizeIsRead`, `aListOfAnySizeIsRead`, `aLongTextIsStoredAndFound` | `Neo4jProviderTest`: `aListOfAnySizeIsRead` |
 | The start of the provider | No test. | `PostgresProviderTest`: `instancesThatStartTogetherOnAnEmptyDatabaseAllStart` | `Neo4jProviderTest`: `instancesThatStartTogetherAllStart`, `aPlainIndexDoesNotStandInForTheConstraint` |
-| What is particular to the store of the provider | `KeySelectorTest`, `SubspaceTest`, `MemoryDirectoryTest` | `PostgresProviderTest`: `theLimitOfAListCountsDocumentsAndABackwardRangeIsReadFromTheEnd`, `theVersionsOfADocumentAreReadInOrderOfTime` | `Neo4jRoundTripTest`, `Neo4jDocumentWriterTest` |
+| What is particular to the store of the provider | `KeySelectorTest`, `SubspaceTest`, `MemoryDirectoryTest`, `MemoryDeleteTest` | `PostgresProviderTest`: `theLimitOfAListCountsDocumentsAndABackwardRangeIsReadFromTheEnd`, `theVersionsOfADocumentAreReadInOrderOfTime` | `Neo4jRoundTripTest`, `Neo4jDocumentWriterTest` |
 
 The suite also leaves these out, and they are not in the table because the suite says nothing for or against
 them:
@@ -363,15 +375,17 @@ them:
   checks what a policy does. No provider decides anything by the argument.
 - **Errors.** No test checks how a call fails.
 - **`deleteAllEntities` for an entity type that the specification does not have.** The suite calls it for
-  `Person`, `Address` and `FunkyLongAddress` only. Run against the memory provider with the entity type
-  `Stranger`, the call fails with a `NullPointerException`. It comes from
-  `RxJsonPersistenceBridge.deleteAllEntities`, which looks the entity type up in the specification.
+  `Person`, `Address` and `FunkyLongAddress` only. With the entity type `Stranger`, the call fails with a
+  `NullPointerException` on the memory and PostgreSQL providers. It comes from
+  `RxJsonPersistenceBridge.deleteAllEntities`, which looks the entity type up in the specification. The Neo4j
+  provider deletes such an entity type without looking at the specification.
 - **A text that looks like a link in a field that is not a link.** The memory and PostgreSQL providers follow it
   when asked for that path, the Neo4j provider does not, and LDS does not ask for either. So the suite must not.
   Run against the memory provider, the text is followed in both directions, also in a document of an entity type
   that the specification does not have.
 - **A time finer than a millisecond.** Every version in the suite is at a whole millisecond.
-- **`findDocument` after a version is deleted with `deleteDocument`.**
+- **`findDocument` after a version is deleted with `deleteDocument`.** On the memory provider such a delete leaves
+  what the version put in the index of values (`MemoryDeleteTest`).
 
 The suite checks four calls that the rest of LDS does not make: `deleteDocument`, `deleteAllDocumentVersions`,
 `deleteAllEntities` and `findDocument`. Core deletes with `markDocumentDeleted` (`PersistenceDeleteSagaAdapter`),
@@ -428,13 +442,14 @@ module: javadoc warns when a module on the class path links to a named one.
 
 ## How the module is built
 
-The `pom.xml` of the module differs from the rule of the root POM in three places:
+The `pom.xml` of the module differs from the rule of the root POM in two places, the lint and doclint, and sets
+two keys of SonarCloud of its own:
 
 | Setting | Value and reason |
 |---|---|
 | `compilerArgs` | `-Xlint:all,-this-escape` and `-Werror`. The constructor of the suite calls `buildSpecification()`, which a subclass can override. Every other warning fails the build. |
 | `doclint` | `all,-missing`. Javadoc that is there is checked; missing Javadoc is not an error. |
-| `sonar.sources`, `sonar.tests` | `pom.xml` and `src/main/java`. SonarCloud analyses the classes as tests. |
+| `sonar.sources`, `sonar.tests` | `sonar.sources` is `pom.xml` and `sonar.tests` is `src/main/java`. SonarCloud analyses the classes as tests. |
 
 The module is in the BOM (`linked-data-store-bom`).
 
@@ -456,14 +471,8 @@ Surefire reports the suite under the name of the subclass, for example `MemoryPe
 
 ## Not finished
 
-Not finished: the module is not revised for 3.0. It has the lint and doclint overrides above and no
+Not finished: the module is not revised yet. It has the lint and doclint overrides above and no
 `module-info.java`.
-
-Not finished: `thatReadVersionsInRangeWorks` has a comment that asks whether the expected number of versions is
-one or two. It is not settled whether a range of versions should give the version that is valid at its lower
-bound. The suite expects that it does not. Below the documents it is the other way:
-`PostgresProviderTest.theVersionsOfADocumentAreReadInOrderOfTime` expects that version from
-`RxPersistence.readVersions`, and `RxJsonPersistenceBridge` then leaves it out.
 
 Not finished: the tests are not independent of each other. Several use the same ids (`john`, `jane`, `newyork`,
 `People/1`), and two expect that no other `Person` is valid at their time (see [Rules to keep](#rules-to-keep)).

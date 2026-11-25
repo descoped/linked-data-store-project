@@ -33,7 +33,7 @@ entity type, namespace, version and link.
 
 ## The examples of this document
 
-The examples were run on LDS 3.0.1 as it comes: in memory, with the example model.
+The examples were run on LDS as it comes: in memory, with the example model.
 [Getting started](getting-started.md) tells how to start it. In the examples LDS answers at
 `http://localhost:9090`.
 
@@ -361,7 +361,7 @@ LDS serves a schema that it makes from the model. This is what becomes of each t
 | a field with `@link` that holds one link | The same field with the same type. It gives the document the link points at. |
 | a field with `@link` that holds a list of links | The field keeps its name and becomes `field(after: String, before: String, first: Int, last: Int): TargetConnection`, a list that is read in pages. |
 | a list of links with `@link(pagination: false)` | The same field with the same type: a plain list, without arguments. |
-| every field with `@link` | One more field, on the entity type the link points at, for the [reverse link](../glossary.md#reverse-link): the documents that link to this one. Its name is the `reverseName` of the `@link`. Without a `reverseName` it is `reverse`, the name of the entity type and the name of the field, each with a capital first letter: `Person.friends` gives `reversePersonFriends`. Its type is the connection of the entity type that has the link. |
+| every field with `@link` | One more field, on the entity type the link points at, for the [reverse link](../glossary.md#reverse-link): the documents that link to this one. Its name is the `reverseName` of the `@link`, or one that LDS makes, such as `reversePersonFriends` for `Person.friends`; [Reverse links](model.md#reverse-links) tells how. Its type is the connection of the entity type that has the link. |
 | the type `Query` of the model | Not served. The model must have a `Query` type, and LDS puts its own fields in its place. |
 | a description of a type or a field | The description of the same type or field. |
 
@@ -428,13 +428,14 @@ type PageInfo {
 ```
 
 `CompanyConnection` and `CompanyEdge` are like `PersonConnection` and `PersonEdge`. A connection field can be
-`null` in the schema, also when the field of the model has `!`.
+`null` in the schema, also when the field of the model has `!`. The schema also declares the directives `@domain`,
+`@link` and `@reverseLink`, and every other directive the model declares; introspection and the page for trying
+queries show them.
 
-Not finished: LDS does not keep the names it makes free. Do not give a type of the model a name that ends in
-`Connection` or `Edge`, or the name `PageInfo`, or, with search on, `SearchResult` or `TypeFilters`. With most
-of these names LDS does not start; [The model](model.md) has the cases. One case shows in the GraphQL API
-only: with an entity type `PageInfo` that no list of links points at, LDS starts, and the field `pageInfo` of
-every list has that entity type as its type. A query for `pageInfo { hasNextPage }` is then refused.
+Not finished: LDS does not keep the names it makes free; [Schemas that LDS refuses at
+start](model.md#schemas-that-lds-refuses-at-start) has the names not to give a type of the model. One case shows in
+the GraphQL API only: with an entity type `PageInfo` that no list of links points at, LDS starts, and the field
+`pageInfo` of every list has that entity type as its type. A query for `pageInfo { hasNextPage }` is then refused.
 
 ### See the schema of your own model
 
@@ -621,10 +622,9 @@ A connection is a list that can be read in pages. A connection of the entity typ
 `PageInfo` has no `startCursor` and no `endCursor`; take the cursors from the edges. A connection has no count
 of its documents.
 
-The edges come in the order of the ids: the order of the code points of their letters, which is the order of their
-bytes in UTF-8. A capital letter comes before a small one (`Zed` before `eve`), and `åse` comes after `per`, after
-every id of ASCII letters. The order is the same with every store. There is no argument to sort the documents
-another way, and none to choose documents by the value of a field.
+The edges come in the order of the ids, the same with every store, as [Read all documents of an
+entity](rest-api.md#read-all-documents-of-an-entity) tells: `åse` comes after `per`. There is no argument to sort
+the documents another way, and none to choose documents by the value of a field.
 
 ### Pages
 
@@ -824,8 +824,8 @@ A field that holds a list of links is a connection, with edges, cursors and the 
 ```
 
 The edges come in the order of the ids, not in the order of the links in the document. A document that does not
-have the field gives no edges. With the memory provider, a link that is in the list twice gives two edges for
-the same document.
+have the field gives no edges. With the documents in memory or in PostgreSQL, a link that is in the list twice gives
+two edges for the same document; with Neo4j it gives one.
 
 Not finished: the pages of a list of links do not work with the documents in memory or in PostgreSQL. `after` and
 `before` are not used as cursors: `friends(first: 1, after: "anne")` gives `anne` again, and `before` alone gives
@@ -897,18 +897,17 @@ A reverse link is a connection. Reading it forwards with `first` and `after` wor
 `employees(first: 1, after: "kari")` gives `per`. Reading it backwards has the fault that a list of documents
 has; see [Pages](#pages).
 
-Not finished: with the memory provider a reverse link has two faults. Both come from a write or a delete at the
-exact valid time of a version that is there, which replaces that version.
+Not finished: with the documents in memory a reverse link has two faults. Both come from a write or a delete at the
+exact valid time of a version that is there, which replaces that version. A new version or a delete at a later time
+does not have them.
 
 - A link that was replaced in that way is still followed backward. A person was written with the `employer`
   `/Company/c1` and written again, with the same `timestamp`, with the `employer` `/Company/c2`. The person was
-  then among the `employees` of both companies. A new version at a later time does not have this fault.
-- A query for a reverse link can stop the store of LDS. Nine persons were written with the same `employer`, and
-  each was deleted with the `timestamp` of its version. The query for the `employees` of that company then got no
-  answer, and neither did any read or write of a document after it: none was answered in 10 seconds.
-  `/health/ready` answered that the store is down, and `/ping` and `/health/alive` were still answered `200`. LDS
-  stopped when it was told to, after it had waited 10 seconds for the requests it was handling, and had to be
-  started again.
+  then among the `employees` of both companies.
+- A query for a reverse link can stop the store of LDS. When documents that link to a document are deleted, each
+  with the `timestamp` of its version, a query for the reverse link of that document can get no answer, and then
+  no read or write of a document is answered either. `/health/ready` answers that the store is down, while `/ping`
+  and `/health/alive` still answer `200`. LDS must then be stopped and started again.
 
 ### A link to a document that is not there
 
@@ -975,6 +974,10 @@ parent type 'Garage'
 
 The link is resolved at the time of the query. When the company is written later, the same query gives it from
 the valid time of its first version.
+
+Not finished: with the documents in memory or in PostgreSQL, a link to a document that is not there still takes a
+place in a page of a list of links. `friends(last: 1)` of `nils` gives no edge, and `first: 2` can give one edge
+when the list has more.
 
 ### A list of links without pages, and a link to a union
 
@@ -1079,7 +1082,7 @@ put Owner/eva 2020-01-01T00:00:00Z '
 
 A list of links with `@link(pagination: false)` is a plain list of documents, in the order of the links in the
 document. It takes no arguments. A link to a document that is not there at the time of the query is left out:
-`/Car/zz` gives nothing.
+`/Car/zz` gives nothing. A document that does not have the field gives `null`, not an empty list.
 
 ```graphql
 {
@@ -1225,7 +1228,8 @@ such a list without arguments.
 
 Not finished: a link in an embedded object (a field with `@link` in an embedded type) works only in part. A link to one
 document is read as described above. A list of links gives `null` and an error. The field LDS adds for the reverse link
-of such a link never gives a document.
+of such a link never gives a document. Its name holds the field of the embedded object too: a link `car` in the
+field `home` of `Owner` gives `reverseOwnerHomeCar`.
 
 ## Read at a time
 
@@ -1301,19 +1305,15 @@ curl 'http://localhost:9090/graphql' -H 'Content-Type: application/json' \
 In 2021 Ola worked at Acme. Now the employees of Acme are `kari` and `per`, as in [Follow links](#follow-links).
 
 - When both are given, the parameter `snapshot` is used.
-- The value is a date and a time with `Z` or an offset: `2021-06-01T00:00:00Z`, `2021-06-01T02:00:00+02:00`.
-  A date alone, or a date and a time without `Z` or an offset, is not a time for LDS.
+- The value is read as the REST API reads its `timestamp`: a date and a time with `Z` or an offset, a `+` in an
+  address written `%2B`; [The time of a request](rest-api.md#the-time-of-a-request-timestamp) has every form. The
+  GraphQL API reads `snapshot` only, not `timestamp`.
 - A version is read from its valid time on. The second version of `ola` is valid from `2022-01-01T00:00:00Z`:
   `snapshot=2022-01-01T00:00:00Z` gives it, and `snapshot=2021-12-31T23:59:59Z` gives the first version.
 - The time can be in the future. A version whose valid time has not come is not read now. It is read with a
   `snapshot` at or after its valid time.
-- In an address a `+` is written `%2B`: `snapshot=2021-06-01T02:00:00%2B02:00`. A `+` as it is
-  becomes a space, and the value is then not a time.
-- A time with an offset is the same instant as in `Z`: `2022-01-01T01:30:00+01:00` is `2022-01-01T00:30:00Z`.
 - At a time before the first version of a document, and at a time after the document is deleted, `XById` is `null`,
   and the document is not in a list and not among the documents of a link.
-- The REST API calls the same thing `timestamp`, and reads it by the same rules. The GraphQL API reads `snapshot`
-  only.
 
 A `snapshot` or a `__snapshot` that is not a time is refused: the query is not run, and the answer has an error
 and no `data`. `snapshot=yesterday` gives:
@@ -1329,6 +1329,9 @@ and no `data`. `snapshot=yesterday` gives:
   ]
 }
 ```
+
+More than one `snapshot` parameter is refused in the same way, with `more than one snapshot value in query`, and a
+`__snapshot` that is neither a text nor `null` with `the variable __snapshot must be a string`.
 
 ## Scalars and how values come out
 
@@ -1405,9 +1408,10 @@ Not finished: an object or a list in an `ID` field comes out as a text LDS makes
 comes out as `"{a=1}"`.
 
 Not finished: the fields of an embedded object that a field holds alone, such as `home: Place`, are not checked when
-the document is written; those of a list of embedded objects are. Such a value that is not of the type of its field
-is `null` in the answer, and the answer has an error. The text `"many"` in `home.rooms`, an `Int`, gives this one,
-and the number `1.5` gives the same with `'Double'` at its end:
+the document is written; those of a list of embedded objects are. See [Shapes that do not work as
+written](model.md#shapes-that-do-not-work-as-written).
+Such a value that is not of the type of its field is `null` in the answer, and the answer has an error. The text
+`"many"` in `home.rooms`, an `Int`, gives this one, and the number `1.5` gives the same with `'Double'` at its end:
 
 ```
 Can't serialize value (/OwnerById/home/rooms) : Expected a value that can be converted to type 'Int' but it was a
@@ -1482,8 +1486,9 @@ enum TypeFilters {
 
 The search examples were run on LDS in memory with the example model and search on, and with Solr 10 as the compose
 stack starts it. A search finds a write within about a second. The documents of the examples are written with
-`searchable=true` in the place of `sync=true`: LDS then answers the write when a search finds it.
-[The REST API](rest-api.md) tells more.
+`searchable=true` in the place of `sync=true`: LDS then answers the write when a search finds it, or after 10
+seconds at most, with the header `LDS-Searchable: true` or `false`; [When search finds a write:
+searchable](rest-api.md#when-search-finds-a-write-searchable) tells more.
 
 ```sh
 put() {
@@ -1742,8 +1747,8 @@ the words. A node of the result is the version that has the words, read as it wa
 ### The pages of a search
 
 - The cursor of an edge is the place of the edge in the result, not an id. `cWM6MA` is the first place,
-  `cWM6MQ` the second. Take the cursors from the edges. A cursor of another list, such as an id, is refused:
-  `expecting a valid cursor value, got acme`.
+  `cWM6MQ` the second. Take the cursors from the edges of a search. A cursor of another list, such as an id, is not a
+  place, and is mostly refused with an error: `acme` gives `expecting a valid cursor value, got acme`.
 - Without `first` and `last` a search gives at most 10 documents.
 - `first` and `last` give at most 100 documents. A larger number gives 100, and `hasNextPage` or
   `hasPreviousPage` tells that there are more.
@@ -1781,6 +1786,7 @@ what is wrong, and no `data`:
 | A JSON body that is not an object, such as an array: several queries in one request are not possible | `The body is not a JSON object with the field "query"` |
 | `variables` that is not an object, in a body or in a GET | `The variables are not a JSON object` |
 | A `variables` parameter of a GET that is not JSON | `The parameter "variables" cannot be read as JSON at line 1, column 2: ...` |
+| An empty `variables` parameter of a GET | `The parameter "variables" is empty` |
 | More than one `query`, `variables` or `operationName` parameter in a GET | `more than one "query" parameter` |
 
 ```sh
@@ -1799,7 +1805,8 @@ curl -s 'http://localhost:9090/graphql' -H 'Content-Type: application/json' \
 ```
 
 More than one `snapshot` parameter, or a `__snapshot` variable that is neither a text nor `null`, is answered
-`200 OK` with an error, as a `snapshot` that is not a time is; see [Read at a time](#read-at-a-time).
+`200 OK` with an error, as a `snapshot` that is not a time is; see [Read at a time](#read-at-a-time) for the
+messages.
 
 A `query` that is an empty text is no such request: it is answered `200 OK` with an `InvalidSyntax` error.
 
@@ -1870,7 +1877,8 @@ A query over one of these limits is not run. It is answered `200 OK` with the er
 - A query that is far deeper than the limit, 300 fields deep when it was tried, is refused with another
   message: `More than 500 deep 'grammar' rules have been entered. To prevent Denial Of Service attacks, parsing
   has been cancelled.`
-- LDS sets no limit on `first`.
+- `first` and `last` have no upper limit in a list (see [Pages](#pages)), and at most 100 in a search (see
+  [The pages of a search](#the-pages-of-a-search)).
 
 Everything else of GraphQL works as usual: aliases, fragments, variables with default values, `@skip` and
 `@include`, `__typename` and introspection.

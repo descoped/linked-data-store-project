@@ -19,8 +19,9 @@ shows this at work; [Concepts](concepts.md) explains the ideas.
 
 ## What is needed
 
-- Docker, to run the image of LDS from Docker Hub. That is all the quickest way needs.
-- To build LDS yourself: a copy of the LDS repository and JDK 27, and `docker compose` for the whole stack.
+- Docker, to run the image of LDS from Docker Hub. That is all the quickest way needs. The whole stack also needs
+  `docker compose`.
+- To build LDS yourself: a copy of the LDS repository and JDK 27.
 - `curl`, or another program that sends HTTP requests. The examples use `curl`.
 
 ## Start LDS
@@ -28,12 +29,21 @@ shows this at work; [Concepts](concepts.md) explains the ideas.
 The quickest way is the image on Docker Hub:
 
 ```sh
-docker run --rm -p 127.0.0.1:9090:9090 descoped/lds:3.0.1
+docker run --rm -p 127.0.0.1:9090:9090 descoped/lds
 ```
 
-As it comes, that is with no configuration of your own, LDS keeps everything in memory, has an example
+As it comes, that is with no configuration of your own, LDS keeps the documents in memory, has an example
 [model](../glossary.md#model) and answers on port 9090. [Operations](operations.md#the-image) tells the three
 variants of the image apart.
+
+The whole stack, LDS with Neo4j, PostgreSQL and Solr, also starts from the image on Docker Hub, with one line:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/descoped/linked-data-store-project/master/stack.sh | sh
+```
+
+It returns when the stack answers. The same line ending in `| sh -s down` stops the stack and removes its
+documents. [The whole stack with compose](#the-whole-stack-with-compose) tells how the stack differs from LDS alone.
 
 ## Build LDS
 
@@ -62,7 +72,8 @@ docker compose -f linked-data-store-server/compose.yaml up --build
 
 This starts LDS together with three other programs: Neo4j, which keeps the documents; PostgreSQL, which keeps the two
 logs LDS writes for every write (the [saga log](../glossary.md#saga-log) and the [transaction
-log](../glossary.md#transaction-log)); and Solr, which is the search index. It is for development only: the passwords
+log](../glossary.md#transaction-log)) and the updates that search has yet to take (the [index
+queue](../glossary.md#index-queue)); and Solr, which is the search index. It is for development only: the passwords
 are written in the file.
 
 Two things differ from the other ways:
@@ -117,13 +128,15 @@ HTTP/1.1 200 OK
 asks Solr and the index queue of search. `/ping` answers `200` as soon as LDS answers at all.
 [Operations](operations.md#the-health-addresses) tells what each answer means.
 
-If another program uses port 9090, LDS on the JDK ends with an error that says `Address already in use`.
-Give LDS another port with the environment variable `LDS_HTTP_PORT`: write `LDS_HTTP_PORT=9190` in front of
-`java`. For the stack, write `SERVER_PORT=9190` in front of `docker compose`; no variable of the compose file
-starts with `LDS_`, the prefix of the variables LDS reads itself. Then use that port in every address below.
+If another program uses port 9090, give LDS another port of your machine. With `docker run`, change the first
+9090: `-p 127.0.0.1:9190:9090` makes LDS answer on port 9190. On the JDK, LDS ends with an error that says
+`Address already in use`. Give LDS another port with the environment variable `LDS_HTTP_PORT`: write
+`LDS_HTTP_PORT=9190` in front of `java`. A variable that starts with `LDS_` and names no setting, a misspelled one,
+stops the start with an error that names it. For the stack, write `SERVER_PORT=9190` in front of `docker compose`,
+or in front of `sh` in the one line. Then use that port in every address below.
 [Configuration](configuration.md) has every setting.
 
-The answers in this guide come from LDS 3.0.1 in memory. Each answer is shown as its status line
+The answers in this guide come from the latest version of LDS in memory. Each answer is shown as its status line
 and its body; the headers are left out. LDS sends a body on one line; here it is shown
 formatted, with the fields in the order LDS sent them.
 
@@ -194,9 +207,9 @@ classDiagram
     Company ..> "0..*" Person : employees (reverse link)
 ```
 
-A filled diamond is an embedded type: its values are embedded objects, part of the document they are in (composition).
-An arrow is a link: the document holds the text `/Entity/id`, and what it points at is a document of its own
-(association). A dotted arrow back is the [reverse link](../glossary.md#reverse-link), which only the GraphQL API has.
+A filled diamond is an embedded type: its values are embedded objects, part of the document they are in.
+An arrow is a link: the document holds the text `/Entity/id`, and what it points at is a document of its own.
+A dotted arrow back is the [reverse link](../glossary.md#reverse-link), which only the GraphQL API has.
 
 Ask LDS which entity types it has:
 
@@ -242,9 +255,10 @@ HTTP/1.1 201 Created
 ```
 
 LDS carries out every write as a *[saga](../glossary.md#saga)*, and the answer gives the id of that saga. The id is new
-for every write. With `sync=true` LDS answers when the write is done, its saga completed, so a read that follows sees
-the document: a [synchronous write](../glossary.md#synchronous-write) gives read-your-writes. [Concepts](concepts.md)
-tells what a write goes through.
+for every write. LDS answers when the write is done, its saga completed, so a read that follows sees the document: a
+[synchronous write](../glossary.md#synchronous-write) gives read-your-writes. That is what a write does unless it
+says `sync=false`; the `sync=true` of the examples only says so. [Concepts](concepts.md) tells what a write goes
+through.
 
 Now a person with the id `ola`:
 
@@ -282,9 +296,8 @@ Schema validation error: [$.name: integer found, string expected]
 A field that the model does not have is not refused: LDS writes it with the document.
 [The model](model.md) tells what LDS checks.
 
-Not finished: with a model that is a GraphQL schema, as the example model is, LDS does not check the inside of a
-single embedded object, such as `address`. The example model says that an address must have a `city`, and a person
-whose address has no `city` is written all the same. A list of embedded objects is checked.
+Not finished: with a GraphQL model, as the example model is, LDS does not check the inside of a single embedded
+object such as `address`; [The model](model.md#shapes-that-do-not-work-as-written) tells more.
 
 A body that is not JSON is refused before it is checked, with the place of the fault:
 
@@ -297,12 +310,13 @@ curl -i -X PUT 'http://localhost:9090/ns/Person/kari?sync=true' \
 ```
 HTTP/1.1 400 Bad Request
 
-The body cannot be read at line 1, column 13: Unexpected end-of-input: expected close marker for Object. Send the body as JSON, with Content-Type: application/json
+The body cannot be read at line 1, column 16: Unexpected end-of-input: expected close marker for Object. Send the body as JSON, with Content-Type: application/json
 ```
 
 Without the header `Content-Type: application/json`, `curl -d` names another content type, and LDS answers
 `415 Unsupported Media Type` with `Unsupported Content-Type: application/x-www-form-urlencoded. Send the body as
-JSON, with Content-Type: application/json`.
+JSON, with Content-Type: application/json`. [The REST API](rest-api.md#bodies-and-content-types) tells which bodies
+LDS reads.
 
 ## Read the documents
 
@@ -342,8 +356,8 @@ HTTP/1.1 200 OK
 
 LDS is a [time machine](../glossary.md#time-machine). A write does not replace the document: it makes a new *version* of
 it, and the versions that are there are kept. A version has a *[valid time](../glossary.md#valid-time)*, the instant
-from which it holds. The writes above gave no valid time, so the valid time of their versions is the time LDS received
-the request.
+from which it holds. The writes above gave no valid time, so the valid time of their versions is the time LDS took
+each write.
 
 The query parameter `timestamp` gives the valid time. It can be in the past, the present or the future. Say that Ola
 lived in Bergen from 2020. Write that as a version that is valid from 1 January 2020:
@@ -408,7 +422,7 @@ HTTP/1.1 404 Not Found
 LDS answers the same for an id that was never written.
 
 `?timeline` gives the [timeline](../glossary.md#timeline) of the document: every version with its valid time, the oldest
-first. The valid time of the second version is the time of your own write:
+first. The newest version is the one you wrote first, valid from the time LDS took that write:
 
 ```sh
 curl -i 'http://localhost:9090/ns/Person/ola?timeline'
@@ -516,7 +530,8 @@ HTTP/1.1 200 OK
 ```
 
 LDS does not check that the document a link points at exists. A link can point at a document that is written later;
-until then it is a dangling reference. Per works for a company that LDS does not have:
+until then it is a dangling reference ([Concepts](concepts.md#link) tells more). Per works for a company that LDS
+does not have:
 
 ```sh
 curl -i -X PUT 'http://localhost:9090/ns/Person/per?sync=true' \
@@ -753,7 +768,7 @@ scripts from `unpkg.com`, so the browser needs access to the internet.
 Started on the JDK, LDS stops when you press Ctrl-C in its terminal, or when you `kill` its process. It first
 completes the requests and the writes it is working on. The last line of its log then ends with `Leaving.. Bye!`.
 
-As it comes, LDS keeps everything in memory, so the documents of this guide are gone when it has stopped.
+As it comes, LDS keeps the documents in memory, so the documents of this guide are gone when it has stopped.
 [Operations](operations.md) tells how to stop the container and the stack.
 
 ## Where to go next

@@ -1,6 +1,6 @@
 ---
 title: "What's new"
-description: "What each release of LDS gives those who use it, in a few words: what you can do now, and what was fixed."
+description: "What each release gives you: what you can do now, and what was fixed."
 order: 1
 ---
 
@@ -16,25 +16,37 @@ Search that finds what you wrote, writes that never lose a change, and an LDS th
 
 ### Search
 
+- **Turned on** with `graphql.search.enabled=true` and a Solr core, and asked through GraphQL, so for a model
+  written as a GraphQL schema. It is off unless you turn it on.
 - **Every text is searched**, also in embedded objects, in lists and in fields the model does not have. Before, only
-  fields named `languageText` were.
+  fields named `languageText` were. Links, dates and times are not texts, and an entity type marked
+  `@domain(searchable: false)` is not searched.
 - **By language.** Write a text as `{"languageCode": "nb", "languageText": "..."}` and *luftskip* finds
   *luftskipene*: words match by their stem in Norwegian bokmål and nynorsk, Swedish, English, German and French.
 - **Without the special letters.** *boker* finds *bøker*, *Aase* finds *Åse*; the word as written ranks first.
 - **At a moment.** A search with a `snapshot` sees each document as it was then; `history: true` gives every version
   that matched.
-- **Within a second**, and `?searchable=true` on a write answers only when a search finds it (`LDS-Searchable: true`).
-- **No update is lost** when Solr is slow or away: it waits in a queue until Solr takes it.
-- **Rebuild** the index from storage with `search.index.rebuild=true`, while search keeps answering.
+- **Within a second.** `?searchable=true` on a write waits, at most 10 seconds, until a search finds it, and the answer
+  says whether it does: `LDS-Searchable: true` or `false`. It waits for the write also with `sync=false`. When many
+  writes already wait for search, it is answered when it is written, with `false`.
+- **No update is lost** when Solr is slow or away: it waits in a queue until Solr takes it. The queue is kept with the
+  transaction log in PostgreSQL. With no transaction log (the default) or one in memory, the queue is in memory, and
+  what Solr has not taken when LDS stops is found again only by a rebuild.
+- **Rebuild** the index from storage with `search.index.rebuild=true`, while search keeps answering. It runs at every
+  start while it is set, for the default namespace, and then removes what it did not send again.
 
 [The GraphQL API](user/graphql-api.md#search) tells how to search.
 
 ### Writes
 
-- **Writes to one document take turns**, so a part and a link written at the same moment are both kept.
-- **A write is never put in the past**, also when the clock of the machine is set back.
-- **Parts and links are answered when they are written**, as whole documents are.
-- **A failed write leaves nothing behind.** A field written as `null` is kept as absent.
+- **Writes to one document take turns**, so a part and a link written at the same moment are both kept. They take
+  turns within one LDS: several LDS that write the same document do not wait for each other.
+- **A write that waits more than 30 seconds for its turn** is answered 503: `The document is being written by another
+  request. Try again.`
+- **A write that names no time is never put before the write before it**, also when the clock of the machine is set
+  back.
+- **Parts and links are answered when they are written**, as whole documents are, unless `sync=false`.
+- **A failed write leaves nothing in the store.** A field written as `null` is kept as absent.
 - **Clear refusals:** a body that is not JSON gets 400 with the line and column; the wrong content type 415; an id
   or a path over its limit 400 that says which.
 
@@ -42,7 +54,10 @@ Search that finds what you wrote, writes that never lose a change, and an LDS th
 
 - **A missing document is `null` in GraphQL**, not an error, and the rest of the answer is kept.
 - **New `Long`** for 64-bit numbers; `Int`, `Float`, `Date` and `Time` are checked when written.
-- **The same order of ids in every store**, and lists that stream from the store.
+- **The same order of ids in every store.**
+- **GraphQL refuses what it cannot read:** a request it cannot read is answered 400 (415 for the wrong content type)
+  with a JSON error that says why, and a `snapshot` that is not a time is answered as an error instead of being read
+  as now.
 
 ### Running it
 
@@ -50,14 +65,22 @@ Search that finds what you wrote, writes that never lose a change, and an LDS th
   `DOWN`. `/health/alive` answers while the process runs.
 - **A stop in order:** requests being handled finish, new ones get 503, and nothing is left running.
 - **A misspelled `LDS_...` variable stops the start** and names it, instead of being passed over.
+- **A saga log in PostgreSQL with too few connections stops the start** and says why: its pool
+  (`sagalog.config.connection-pool.max-size`) needs at least `saga.number-of-logs` + 11.
 
 ### Moving up from 3.0.0
 
-- **Solr:** start once with `search.index.rebuild=true`, so search finds what 3.0.0 indexed.
-- **Neo4j:** a document written by 3.0.0 is left out of GraphQL pages until it is written again. Reads by id and
-  REST lists find it.
-- **Clients:** `XById` can now be `null`; a field written as `null` is read back absent.
+- **Solr:** start once with `search.index.rebuild=true`, so search finds the documents written under 3.0.0.
+- **Neo4j:** a document written by 3.0.0 is left out of GraphQL pages that follow a cursor (`after` or `before`), and
+  is out of the order of ids in other lists, until it is written again. Reads by id find it.
+- **Clients:** `XById` can now be `null`; a field written as `null` is read back absent; a part or a link written
+  without `sync` is answered when it is written, not at once.
 - **Health checks:** the images declare none. Ask `/health/ready`, as the compose file does.
+
+### Not finished in 3.0.1
+
+- LDS answers for one namespace, and lists over REST are not paged.
+- A failed write is answered 500 without saying whether it will be finished later.
 
 ## 3.0.0
 
@@ -67,7 +90,8 @@ once, and LDS keeps every version of every document and gives it back as it was 
 ### Keep every version
 
 - **Every write adds a version**, valid from its own time: the time you give, in the past, the present or the
-  future, or else now. Nothing is overwritten.
+  future, or else now. A write at the time of a version that is there replaces that version; nothing else is
+  overwritten.
 - **Read any moment.** Add `?timestamp=` to a read and get the document as it was then, or 404 before it existed.
 - **Follow links in time.** A link is followed to the version of the other document that was valid at the same
   moment, so a whole namespace can be read as one snapshot.
@@ -80,7 +104,7 @@ once, and LDS keeps every version of every document and gives it back as it was 
 ### Describe your data once
 
 - **A model** as a GraphQL schema, or as JSON Schema 2020-12 files, read when LDS starts.
-- **A REST API and a GraphQL API** made from it, with nothing to code.
+- **A REST API**, and a **GraphQL API** when the model is a GraphQL schema, made from it with nothing to code.
 - **Every document is checked** against the model before it is written, and a refusal says what is wrong and where:
   `$.tags[1]: integer found, string expected`.
 - **Links** are fields that name the entity types they may point at; GraphQL follows them both ways.
@@ -94,7 +118,8 @@ once, and LDS keeps every version of every document and gives it back as it was 
   list every document of an entity type.
 - **Parts of a document** by their path, such as `/ns/Person/ola/address`, read and written on their own.
 - **Links** added and removed one at a time: `PUT /ns/Person/ola/employer/Company/acme`.
-- **Answered when written** with `sync=true`, or at once, with the id of the write to follow it.
+- **Answered when written:** a whole document unless `sync=false`, a part or a link with `sync=true`; otherwise at
+  once.
 - **Safe to send again:** a write sent twice with the same time gives the same version.
 - **A prefix and CORS** for running behind a proxy and for calls from a browser.
 
@@ -112,10 +137,10 @@ once, and LDS keeps every version of every document and gives it back as it was 
 
 ### Writes you can trust
 
-- **Every write is logged before it is done**, in the transaction log, and is then written to the store and the
-  search index.
-- **A write that was cut off is finished**: by the next write, after a restart, or by another LDS on the same saga
-  log.
+- **Every write is logged before it is done**, in the transaction log when one is kept (in PostgreSQL), and is then
+  written to the store and the search index.
+- **A write that was cut off is finished**: by the next write, and, with the saga log in PostgreSQL, after a restart
+  or by another LDS on the same saga log.
 
 [Running LDS](user/operations.md#writes-that-fail-crashes-and-recovery) tells what happens when a write fails.
 
@@ -131,8 +156,8 @@ The same requests and the same answers whichever you pick.
 ### Run it anywhere
 
 - **Images on Docker Hub**, `descoped/lds`, for Intel and ARM, signed: start LDS with one `docker run`.
-- **Three variants:** the regular image with a small shell, `-distroless` with nothing but Java for production, and
-  `-debug` with the JDK's tools for diagnostics.
+- **Three variants:** the regular image `descoped/lds` with a small shell, `descoped/lds:distroless` with nothing but
+  Java for production, and `descoped/lds:debug` with the JDK's tools for diagnostics.
 - **Configured by environment variables**, `LDS_...`, one setting each.
 - **A compose file** that starts LDS with Neo4j, PostgreSQL and Solr, for development.
 
