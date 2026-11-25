@@ -324,6 +324,13 @@ a {
   margin-top: var(--space-6);
 }
 
+/* Code on the landing page wraps where its column is too narrow, instead of scrolling: what is copied is the line as
+   it is written */
+.landing .code-block pre {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 /* The code of a row, one block under the other */
 .row-side .code-block {
   margin: 0 0 var(--space-4);

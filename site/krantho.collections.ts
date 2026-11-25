@@ -43,6 +43,7 @@ const landing = defineCollection({
     'Query any moment with GraphQL',
     'Choose where your documents are stored',
     'Run it on your machine',
+    'Write once, read any moment',
     'Or ask Claude to do it',
     'Where LDS fits',
     'Where LDS does not fit',

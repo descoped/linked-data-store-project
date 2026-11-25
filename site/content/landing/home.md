@@ -87,25 +87,37 @@ enough.
 Start LDS with Docker. The first command runs it in memory with an example model, so there is nothing to set up. The
 second starts the whole stack instead, with Neo4j for the documents, PostgreSQL for the saga log and the change log,
 and Solr for search. Your data is kept until the same line ending in `sh -s down` stops it and removes it.
-
-Then write a company that is valid from 1 January 2020 and read it back as of 1 June 2021. The write answers with the
-id of its saga, and the read gives the version that was valid on that date.
 [Getting started](/docs/user/getting-started/) goes further.
 
 ```sh
 docker run --rm -p 127.0.0.1:9090:9090 descoped/lds:3.0.1
 ```
 
-```console
-$ curl -fsSL https://raw.githubusercontent.com/descoped/linked-data-store-project/master/stack.sh | sh
+```sh
+curl -fsSL https://raw.githubusercontent.com/descoped/linked-data-store-project/master/stack.sh | sh
 ```
 
-```console
-$ curl -X PUT \
-    'http://localhost:9090/ns/Company/fjord?timestamp=2020-01-01T00:00:00Z' \
-    -H 'Content-Type: application/json' -d '{"name": "Fjord Fish"}'
-{"saga-execution-id": "01a211ec-0dfd-7c3c-9f3f-6cda8a834902"}
-$ curl 'http://localhost:9090/ns/Company/fjord?timestamp=2021-06-01T00:00:00Z'
+## Write once, read any moment
+
+Write a company that is valid from 1 January 2020, then read it back as of 1 June 2021. The write answers with the id
+of its saga, and the read gives the version that was valid on that date. Without a timestamp, the same address gives
+the version that is valid now.
+
+```sh
+curl -X PUT \
+  'http://localhost:9090/ns/Company/fjord?timestamp=2020-01-01T00:00:00Z' \
+  -H 'Content-Type: application/json' -d '{"name": "Fjord Fish"}'
+```
+
+```json
+{"saga-execution-id": "01a2122c-5cba-7ec9-8e6e-945bb7b8c700"}
+```
+
+```sh
+curl 'http://localhost:9090/ns/Company/fjord?timestamp=2021-06-01T00:00:00Z'
+```
+
+```json
 {"name": "Fjord Fish"}
 ```
 
