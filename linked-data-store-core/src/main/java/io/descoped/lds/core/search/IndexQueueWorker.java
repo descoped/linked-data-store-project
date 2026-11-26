@@ -268,16 +268,16 @@ public final class IndexQueueWorker {
 
     /**
      * Whether the document storage gave, read as of the version of the update, is that version and not one before
-     * it. Compared to the millisecond, the finest time every store keeps (PostgreSQL and the memory store keep
-     * milliseconds, the update has the microseconds of the write).
+     * it. Compared to the microsecond, the finest time every store keeps and the time of a write (PostgreSQL and the
+     * memory store keep microseconds, Neo4j the whole instant).
      *
      * @param document the document storage gave
      * @param update   the update it was read for
      * @return false when storage does not have the version of the update
      */
     static boolean holdsTheVersion(JsonDocument document, IndexUpdate update) {
-        Instant stored = document.key().timestamp().toInstant().truncatedTo(ChronoUnit.MILLIS);
-        Instant written = update.version().toInstant().truncatedTo(ChronoUnit.MILLIS);
+        Instant stored = document.key().timestamp().toInstant().truncatedTo(ChronoUnit.MICROS);
+        Instant written = update.version().toInstant().truncatedTo(ChronoUnit.MICROS);
         if (stored.isBefore(written)) {
             LOG.warn("Storage does not have the version {} of {}/{}/{}, only versions before it: it is not sent to the "
                     + "search index", update.version(), update.namespace(), update.entity(), update.id());

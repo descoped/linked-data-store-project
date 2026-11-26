@@ -257,7 +257,7 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
         // A link is the text /Entity/id at the path of the link in the source document.
         String link = String.format("/%s/%s", query.entity(), query.id());
         Flowable<JsonDocument> sources = find(tx, snapshot, query.namespace(), query.otherEntity(),
-                query.relationPath(), link, range);
+                query.relationPath(), link, Range.unlimited(range));
         return limit(sources, d -> d.key().id(), range, IdOrder.CODE_POINTS);
     }
 

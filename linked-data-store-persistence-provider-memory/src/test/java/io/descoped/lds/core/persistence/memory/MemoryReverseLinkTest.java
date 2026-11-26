@@ -83,6 +83,17 @@ class MemoryReverseLinkTest {
         assertThat(sources(id)).containsExactly("long");
     }
 
+    @Test
+    void aGarageThatOnlyBeginsAsTheLinkTakesNoPlaceInAPage() {
+        persistence = store(16);
+        String id = "a-car-whose-id-is-longer-than-the-fragment-capacity";
+        // first in the order of ids, and a match of the first piece only
+        write("Garage", "a-begins-the-same", T, garage("/Car/" + id + "-and-more"));
+        write("Garage", "long", T, garage("/Car/" + id));
+
+        assertThat(sources(id, Range.first(1))).containsExactly("long");
+    }
+
     private static RxJsonPersistence store(int capacity) {
         return new MemoryInitializer().initialize(NS,
                 Map.of("persistence.fragment.capacity", String.valueOf(capacity)), Set.of("Garage", "Car"));
@@ -103,9 +114,14 @@ class MemoryReverseLinkTest {
 
     /* The ids of the garages that link to the car, read within ten seconds. */
     private List<String> sources(String carId) {
+        return sources(carId, Range.unbounded());
+    }
+
+    /* The ids of the garages that link to the car in the range, read within ten seconds. */
+    private List<String> sources(String carId, Range<String> range) {
         try (Transaction tx = persistence.createTransaction(true)) {
             TestSubscriber<String> read = persistence.readSourceDocuments(tx, T,
-                            new LinkQuery(NS, "Car", carId, CAR, "Garage"), Range.unbounded())
+                            new LinkQuery(NS, "Car", carId, CAR, "Garage"), range)
                     .map(document -> document.key().id())
                     .test();
             boolean ended = read.await(10, TimeUnit.SECONDS);

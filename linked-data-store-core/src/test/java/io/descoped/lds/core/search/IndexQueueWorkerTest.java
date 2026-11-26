@@ -192,7 +192,7 @@ class IndexQueueWorkerTest {
      * version, and is sent.
      */
     @Test
-    void aVersionStorageKeepsToTheMillisecondIsTheVersionOfItsUpdate() {
+    void aVersionStorageKeepsToTheMicrosecondIsTheVersionOfItsUpdate() {
         ZonedDateTime written = ZonedDateTime.parse("2026-01-01T00:00:00.123456Z");
         store("kari", written, "Kari");
         queue.add(new IndexUpdate("ns", "Person", "kari", written, IndexUpdate.Operation.CREATE_OR_OVERWRITE))
@@ -201,6 +201,17 @@ class IndexQueueWorkerTest {
         worker.round().blockingGet();
 
         assertThat(index.writtenNames).containsExactly("Kari");
+    }
+
+    @Test
+    void aVersionAMicrosecondBeforeTheUpdateIsNotSentAsTheUpdate() {
+        store("kari", ZonedDateTime.parse("2026-01-01T00:00:00.123455Z"), "Kari");
+        queue.add(new IndexUpdate("ns", "Person", "kari", ZonedDateTime.parse("2026-01-01T00:00:00.123456Z"),
+                IndexUpdate.Operation.CREATE_OR_OVERWRITE)).blockingAwait();
+
+        worker.round().blockingGet();
+
+        assertThat(index.writtenNames).isEmpty();
     }
 
     @Test

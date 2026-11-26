@@ -99,8 +99,9 @@ public class MemoryTransaction implements OrderedKeyValueTransaction {
      */
     private CompletableFuture<TransactionStatistics> end(boolean undo) {
         if (Thread.currentThread() != owner) {
-            return CompletableFuture.failedFuture(new IllegalStateException(
-                    "A transaction is ended on the thread that began it, which holds the lock of the store"));
+            return CompletableFuture.failedFuture(new IllegalStateException("A transaction is ended on the thread "
+                    + "that began it, which holds the lock of the store: it was begun on " + owner.getName()
+                    + " and is still open; " + Thread.currentThread().getName() + " cannot end it"));
         }
         if (!locked.get()) {
             return CompletableFuture.completedFuture(statistics);
