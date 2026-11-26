@@ -1,5 +1,6 @@
 package io.descoped.lds.api.persistence.json;
 
+import io.descoped.lds.api.json.FieldName;
 import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.flattened.FlattenedDocument;
 import io.descoped.lds.api.persistence.flattened.FlattenedDocumentLeafNode;
@@ -90,7 +91,8 @@ public class JsonToFlattenedDocument {
             return;
         }
         for (Map.Entry<String, JsonNode> field : object.properties()) {
-            parentPath.addLast(field.getKey());
+            // a name is a step of the path with the syntax of a path escaped, so that it is read back as it is
+            parentPath.addLast(FieldName.escape(field.getKey()));
             populateMapFromJson(parentPath, leafNodesByPath, field.getValue());
             parentPath.removeLast();
         }

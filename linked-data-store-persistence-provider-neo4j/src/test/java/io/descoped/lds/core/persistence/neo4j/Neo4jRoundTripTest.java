@@ -100,6 +100,9 @@ class Neo4jRoundTripTest {
                             stringNode("value")
                     ))))
             )),
+            objectNode(SpecificationElementType.MANAGED, "LinkNamedLikeItems", Set.of(
+                    refNode("[]", Set.of("Target"))
+            )),
             objectNode(SpecificationElementType.MANAGED, "Target", Set.of(
                     stringNode("name")
             ))
@@ -190,6 +193,28 @@ class Neo4jRoundTripTest {
     @Test
     void objectsInArraysInArrays() throws IOException {
         assertThat(writeAndRead("MissingAndNull", "missing-and-null.json")).isEqualTo(load("missing-and-null.json"));
+    }
+
+    /**
+     * A field may be named as the items of an array are: it is a field, and is read back as one.
+     */
+    @Test
+    void aFieldNamedLikeTheItemsOfAnArray() {
+        JsonNode written = mapper.readTree("""
+                {"one": "A", "[]": 1, "the": [{"[]": "x"}, [true]], "here": {"[]": [2, null]}}""");
+
+        assertThat(writeAndRead("SimpleMap", "field-named-items", written)).isEqualTo(written);
+    }
+
+    /**
+     * A link in a field named as the items of an array.
+     */
+    @Test
+    void aLinkInAFieldNamedLikeTheItemsOfAnArray() {
+        JsonNode written = mapper.readTree("""
+                {"[]": "/Target/t1", "name": "B"}""");
+
+        assertThat(writeAndRead("LinkNamedLikeItems", "link-named-items", written)).isEqualTo(written);
     }
 
     private static JsonNode load(String resource) throws IOException {

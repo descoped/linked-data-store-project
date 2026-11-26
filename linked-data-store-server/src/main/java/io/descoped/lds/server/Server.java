@@ -10,6 +10,8 @@ import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 /**
  * The LDS server: reads the configuration, starts the application and keeps it running until the process is
@@ -32,8 +34,6 @@ public class Server {
      * A variable that starts with {@code LDS_} and sets no key stops the start.
      */
     public static void main() {
-        long now = System.currentTimeMillis();
-
         // Each name is looked for on the class path and then as a file under the working directory, and the
         // file wins. A later name wins over an earlier one; the environment and the system properties come last.
         DynamicConfiguration.Builder builder = DynamicConfiguration.builder();
@@ -50,16 +50,42 @@ public class Server {
                 .systemProperties()
                 .build();
 
+        run(configuration, Runtime.getRuntime()::addShutdownHook);
+    }
+
+    /**
+     * Makes and starts LDS on this thread, and keeps it running until it is asked to end, then stops it in order.
+     * The shutdown hook is given before LDS is made: when the process is asked to end, also while LDS waits for an
+     * engine at start, the hook interrupts this thread, which ends the wait, stops what was made, and returns; the
+     * hook waits for that.
+     *
+     * @param configuration the configuration
+     * @param shutdownHooks takes the shutdown hook, which asks LDS to end
+     */
+    static void run(DynamicConfiguration configuration, Consumer<Thread> shutdownHooks) {
+        long now = System.currentTimeMillis();
+        Thread running = Thread.currentThread();
+        AtomicBoolean asked = new AtomicBoolean();
+        shutdownHooks.accept(new Thread(() -> {
+            LOG.warn("ShutdownHook triggered..");
+            asked.set(true); // before the interrupt, which may be lost in a part that does not keep it
+            running.interrupt();
+            try {
+                running.join();
+            } catch (InterruptedException _) {
+                Thread.currentThread().interrupt();
+            }
+        }, "lds-shutdown"));
+
         // the process: RxJava's shared schedulers, which belong to it, then LDS, which uses them
         Lifecycles process = new Lifecycles();
         process.add(Lifecycle.of("RxJava schedulers", _ -> Schedulers.shutdown()));
         try {
             UndertowApplication application = UndertowApplication.initializeUndertowApplication(configuration);
             process.add(application);
-            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-                LOG.warn("ShutdownHook triggered..");
-                process.stop(UndertowApplication.STOP_TIMEOUT);
-            }));
+            if (asked.get()) {
+                return; // asked to end while it was made
+            }
 
             process.start(UndertowApplication.STOP_TIMEOUT);
 
@@ -69,13 +95,27 @@ public class Server {
             application.enableSagaExecutionAutomaticDeadlockDetectionAndResolution();
 
             // wait for termination signal
-            try {
+            while (!asked.get()) {
                 Thread.currentThread().join();
-            } catch (InterruptedException _) {
-                Thread.currentThread().interrupt();
             }
+        } catch (InterruptedException _) {
+            Thread.currentThread().interrupt(); // asked to end: kept for the caller, put aside for the stop below
+        } catch (RuntimeException e) {
+            if (!asked.get()) {
+                throw e;
+            }
+            LOG.info("LDS was asked to end while it started: {}", String.valueOf(e));
         } finally {
-            process.stop(UndertowApplication.STOP_TIMEOUT);
+            // the interrupt asked for the stop: the stop waits for what runs, as it is told, and the thread is
+            // interrupted again when it is done
+            boolean interrupted = Thread.interrupted();
+            try {
+                process.stop(UndertowApplication.STOP_TIMEOUT);
+            } finally {
+                if (interrupted) {
+                    Thread.currentThread().interrupt();
+                }
+            }
         }
     }
 }

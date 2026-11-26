@@ -80,6 +80,16 @@ class LimitsTest {
         assertThat(Limits.overLimit(JsonTools.toJsonNode("\"a text\""))).isNull();
     }
 
+    @Test
+    void anEscapeInANameIsCountedAsThePathIsStored() {
+        // $ and . and 511 dots, each with its escape: 1 + 1 + 1022 bytes
+        assertThat(Limits.overLimit(object(".".repeat(511), "v"))).isNull();
+        assertThat(Limits.overLimit(object(".".repeat(512), "v"))).startsWith("The path of a value is at most 1024 bytes in UTF-8: $.\\.\\.");
+        // [, ] and \ with their escapes are 6 bytes: 1 + 1 + 170 * 6 + 2
+        assertThat(Limits.overLimit(object("[]\\".repeat(170) + "ab", "v"))).isNull();
+        assertThat(Limits.overLimit(object("[]\\".repeat(171), "v"))).isNotNull();
+    }
+
     private static ObjectNode object(String field, Object value) {
         ObjectNode node = JsonTools.mapper.createObjectNode();
         if (value instanceof JsonNode json) {

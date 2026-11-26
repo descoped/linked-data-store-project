@@ -66,9 +66,9 @@ public class EmbeddedResourceHandlerTest {
     @Test
     public void thatPutEmbeddedObjectResourceUpdatesSubDocument() throws JSONException {
         createTestResource("provisionagreement", "e3", "{\"id\":\"e3\",\"name\":\"pa-test-name\",\"contacts\":[\"/contact/c1\",\"/contact/c2\"],\"address\":{\"street\":\"Der julenissen bor\",\"country\":\"Nordpolen\"}}");
-        client.put("/data/provisionagreement/e3/address?sync=true", "{\"street\":\"Akersveien 26\",\"country\":\"Norway\"}").expect200Ok();
+        client.put("/data/provisionagreement/e3/address?sync=true", "{\"street\":\"Akersveien 26\",\"city\":\"Oslo\",\"country\":\"Norway\"}").expect200Ok();
         String response = client.get("/data/provisionagreement/e3").expect200Ok().body();
-        JSONAssert.assertEquals("{\"id\":\"e3\",\"name\":\"pa-test-name\",\"contacts\":[\"/contact/c1\",\"/contact/c2\"],\"address\":{\"street\":\"Akersveien 26\",\"country\":\"Norway\"}}", response, true);
+        JSONAssert.assertEquals("{\"id\":\"e3\",\"name\":\"pa-test-name\",\"contacts\":[\"/contact/c1\",\"/contact/c2\"],\"address\":{\"street\":\"Akersveien 26\",\"city\":\"Oslo\",\"country\":\"Norway\"}}", response, true);
     }
 
     @Test
@@ -86,8 +86,8 @@ public class EmbeddedResourceHandlerTest {
     public void thatAPartIsWrittenBeforeItIsAnsweredWhenSyncIsNotGivenAndANullFieldInItIsLeftOut() throws JSONException {
         createTestResource("provisionagreement", "e-wait", "{\"id\":\"e-wait\",\"name\":\"pa-test-name\",\"contacts\":[]}");
         for (int n = 0; n < 20; n++) {
-            client.put("/data/provisionagreement/e-wait/address", "{\"street\":\"Storgata " + n + "\",\"country\":null}").expect200Ok();
-            JSONAssert.assertEquals("{\"id\":\"e-wait\",\"name\":\"pa-test-name\",\"contacts\":[],\"address\":{\"street\":\"Storgata " + n + "\"}}",
+            client.put("/data/provisionagreement/e-wait/address", "{\"street\":\"Storgata " + n + "\",\"city\":\"Oslo\",\"country\":null}").expect200Ok();
+            JSONAssert.assertEquals("{\"id\":\"e-wait\",\"name\":\"pa-test-name\",\"contacts\":[],\"address\":{\"street\":\"Storgata " + n + "\",\"city\":\"Oslo\"}}",
                     client.get("/data/provisionagreement/e-wait").expect200Ok().body(), true);
         }
     }
@@ -122,6 +122,14 @@ public class EmbeddedResourceHandlerTest {
         client.delete("/data/provisionagreement/e6/contacts?sync=true").expect200Ok();
         String response = client.get("/data/provisionagreement/e6").expect200Ok().body();
         JSONAssert.assertEquals("{\"id\":\"e6\",\"name\":\"pa-test-name\"}", response, true);
+    }
+
+    @Test
+    public void thatDeleteOfAPartUnderAnObjectTheDocumentDoesNotHaveAddsNothing() throws JSONException {
+        String document = "{\"id\":\"e-missing\",\"name\":\"pa-test-name\",\"contacts\":[\"/contact/c1\"]}";
+        createTestResource("provisionagreement", "e-missing", document);
+        client.delete("/data/provisionagreement/e-missing/support/technicalSupport?sync=true").expect200Ok();
+        JSONAssert.assertEquals(document, client.get("/data/provisionagreement/e-missing").expect200Ok().body(), true);
     }
 
     @Test

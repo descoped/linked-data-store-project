@@ -79,11 +79,10 @@ public class GraphqlHttpHandler implements HttpHandler {
     private static Optional<String> extractParam(Map<String, Deque<String>> parameters, String name) {
         Deque<String> parameter = parameters.get(name);
         if (parameter != null && !parameter.isEmpty()) {
-            String first = parameter.removeFirst();
-            if (!parameter.isEmpty()) {
+            if (parameter.size() > 1) {
                 throw new BadRequest(String.format("more than one \"%s\" parameter", name));
             }
-            return Optional.of(first);
+            return Optional.of(parameter.getFirst());
         }
         return Optional.empty();
     }
@@ -189,9 +188,8 @@ public class GraphqlHttpHandler implements HttpHandler {
         HttpString method = exchange.getRequestMethod();
         if (method.equals(OPTIONS)) {
             HeaderMap headers = exchange.getResponseHeaders();
-            headers.add(ALLOW, GET.toString());
-            headers.add(ALLOW, POST_STRING);
             headers.add(ALLOW, GET_STRING);
+            headers.add(ALLOW, POST_STRING);
             headers.add(ALLOW, OPTIONS_STRING);
             return;
         }

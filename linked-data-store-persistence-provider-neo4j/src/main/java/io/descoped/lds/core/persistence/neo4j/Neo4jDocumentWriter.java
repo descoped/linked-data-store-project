@@ -1,5 +1,6 @@
 package io.descoped.lds.core.persistence.neo4j;
 
+import io.descoped.lds.api.json.FieldName;
 import io.descoped.lds.api.persistence.DocumentKey;
 import io.descoped.lds.api.persistence.IdOrder;
 import io.descoped.lds.api.persistence.json.JsonDocument;
@@ -245,12 +246,17 @@ final class Neo4jDocumentWriter {
         }
     }
 
+    /*
+     * Adds the fields of an object. A node is joined to its parent by the name as it is, and its path, which a search
+     * for a value looks up, is written as every provider writes a path (FieldName): an escape before each character
+     * of the name that is the syntax of a path.
+     */
     private static void addFields(Rows rows, JsonNode object, SpecificationElement element, int place, String path) {
         Map<String, SpecificationElement> properties = element == null ? null : element.getProperties();
         for (Map.Entry<String, JsonNode> field : object.properties()) {
             String name = field.getKey();
             SpecificationElement fieldElement = properties == null ? null : properties.get(name);
-            add(rows, field.getValue(), fieldElement, place, name, null, path + "." + name);
+            add(rows, field.getValue(), fieldElement, place, name, null, path + "." + FieldName.escape(name));
         }
     }
 

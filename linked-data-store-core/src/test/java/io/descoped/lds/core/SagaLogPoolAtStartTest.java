@@ -60,4 +60,16 @@ class SagaLogPoolAtStartTest {
                 initializer("no.cantara.sagalog.memory.MemorySagaLogInitializer"), Map.of(), 1000))
                 .doesNotThrowAnyException();
     }
+
+    /**
+     * The server's defaults give the size of the pool for every provider, so that the saga log in PostgreSQL can be
+     * given it from outside; a provider that has no pool does not name the key, and is not checked by it.
+     */
+    @Test
+    void aSagaLogWithoutAPoolIsNotCheckedWhenThePoolSizeIsGiven() {
+        assertThatCode(() -> UndertowApplication.checkSagaLogPool(
+                initializer("no.cantara.sagalog.memory.MemorySagaLogInitializer"),
+                Map.of("connection-pool.max-size", "50"), 40))
+                .doesNotThrowAnyException();
+    }
 }

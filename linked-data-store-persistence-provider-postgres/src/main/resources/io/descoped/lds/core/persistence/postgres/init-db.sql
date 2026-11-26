@@ -4,13 +4,13 @@
 SELECT pg_advisory_xact_lock(7308327816128787041);
 
 -- One row is one leaf value of one version of one document, in a namespace. The array positions of the value are
--- taken out of the path: $.tags[1] is path $.tags[] and indices {1}.
+-- taken out of the path: $.tags[1] is path $.tags[] and indices {1}. A version is kept to the microsecond.
 CREATE TABLE IF NOT EXISTS fragment
 (
   namespace varchar COLLATE "POSIX"     NOT NULL,
   entity    varchar COLLATE "POSIX"     NOT NULL,
   id        varchar COLLATE "POSIX"     NOT NULL,
-  version   timestamp(3) with time zone NOT NULL,
+  version   timestamp(6) with time zone NOT NULL,
   path      varchar COLLATE "POSIX"     NOT NULL,
   indices   integer[]                   NOT NULL,
   type      smallint                    NOT NULL,

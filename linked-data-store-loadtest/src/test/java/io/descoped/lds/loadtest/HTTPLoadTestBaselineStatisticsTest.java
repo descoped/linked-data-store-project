@@ -9,7 +9,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -121,13 +123,48 @@ class HTTPLoadTestBaselineStatisticsTest {
     }
 
     @Test
+    void theFilesOfARunAreOpenedByTheNameOfItsCsvFile() throws IOException {
+        // A name with capitals is not found as lowercase on a file system that tells them apart (Linux); in a
+        // locale whose lowercase of I is a dotless i, not even on one that does not (macOS).
+        Locale locale = Locale.getDefault();
+        Locale.setDefault(Locale.forLanguageTag("tr"));
+        try {
+            run("Initial", 4, 10, request("Read", 10, true));
+
+            HTTPLoadTestBaselineStatistics.main(new String[]{results.toString(), plots.toString(), "p"});
+        } finally {
+            Locale.setDefault(locale);
+        }
+
+        assertThat(data().get("r-N")).containsExactly(Map.entry("4", "1"));
+    }
+
+    @Test
     void nothingIsWrittenWithoutTheThreeArgumentsOrWithAFolderThatIsNone() throws IOException {
-        HTTPLoadTestBaselineStatistics.main(new String[]{results.toString(), plots.toString()});
-        HTTPLoadTestBaselineStatistics.main(new String[]{results.resolve("missing").toString(), plots.toString(), "p"});
-        HTTPLoadTestBaselineStatistics.main(new String[]{results.toString(), plots.resolve("missing").toString(), "p"});
+        assertThat(HTTPLoadTestBaselineStatistics.run(new String[]{results.toString(), plots.toString()})).isEqualTo(2);
+        assertThat(HTTPLoadTestBaselineStatistics.run(
+                new String[]{results.resolve("missing").toString(), plots.toString(), "p"})).isEqualTo(2);
+        assertThat(HTTPLoadTestBaselineStatistics.run(
+                new String[]{results.toString(), plots.resolve("missing").toString(), "p"})).isEqualTo(2);
 
         try (var files = Files.list(plots)) {
             assertThat(files).isEmpty();
         }
+    }
+
+    @Test
+    void theProgramEndsWithAStatusThatIsNotZeroWhenItsArgumentsAreWrong() throws IOException, InterruptedException {
+        // the script that runs it (functions.sh) stops on that status, before gnuplot is asked for a file not made
+        Process program = new ProcessBuilder(
+                Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+                "-cp", System.getProperty("java.class.path"),
+                HTTPLoadTestBaselineStatistics.class.getName(), results.toString(), plots.toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(program.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+
+        assertThat(program.waitFor(1, TimeUnit.MINUTES)).isTrue();
+        assertThat(program.exitValue()).as(output).isEqualTo(2);
+        assertThat(output).contains("Must provide the following three arguments: INFOLDER OUTFOLDER OUTBASENAME");
     }
 }

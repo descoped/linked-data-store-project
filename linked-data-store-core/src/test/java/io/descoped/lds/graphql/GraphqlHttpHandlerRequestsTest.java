@@ -21,6 +21,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 
 import static graphql.schema.idl.RuntimeWiring.newRuntimeWiring;
@@ -139,12 +140,33 @@ class GraphqlHttpHandlerRequestsTest {
     }
 
     @Test
-    void optionsNamesTheMethodsTheEndpointTakesWithGetTwice() throws Exception {
+    void optionsNamesEachMethodTheEndpointTakesOnce() throws Exception {
         HttpResponse<String> response = send(HttpRequest.newBuilder(URI.create(address))
                 .method("OPTIONS", HttpRequest.BodyPublishers.noBody()));
 
         assertThat(response.statusCode()).isEqualTo(200);
-        assertThat(response.headers().allValues("Allow")).containsExactly("GET", "POST", "GET", "OPTIONS");
+        assertThat(response.headers().allValues("Allow")).containsExactly("GET", "POST", "OPTIONS");
+    }
+
+    /**
+     * The parameters of a GET are read, not taken out of the request: what runs the query sees them as they came.
+     */
+    @Test
+    void theQueryParametersAreLeftInTheRequest() throws Exception {
+        server.stop();
+        serve(GraphQL.newGraphQL(new SchemaGenerator().makeExecutableSchema(
+                new SchemaParser().parse("type Query { parameters: String }"),
+                newRuntimeWiring().type("Query", builder -> builder.dataFetcher("parameters", environment -> {
+                    GraphQLContext context = environment.getGraphQlContext().get(GraphQLContext.class);
+                    return new TreeMap<>(context.getExchange().getQueryParameters()).toString();
+                })).build())).build());
+        String query = URLEncoder.encode("query Q { parameters }", StandardCharsets.UTF_8);
+
+        HttpResponse<String> response = send(HttpRequest.newBuilder(
+                URI.create(address + "/?query=" + query + "&operationName=Q&variables=%7B%7D")));
+
+        assertThat(JsonTools.toJsonNode(response.body()).at("/data/parameters").stringValue())
+                .isEqualTo("{operationName=[Q], query=[query Q { parameters }], variables=[{}]}");
     }
 
     @Test

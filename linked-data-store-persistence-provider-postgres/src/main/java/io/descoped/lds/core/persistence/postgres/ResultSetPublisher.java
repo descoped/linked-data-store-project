@@ -28,9 +28,11 @@ final class ResultSetPublisher implements Publisher<ResultSet> {
 
     @Override
     public void subscribe(Subscriber<? super ResultSet> subscriber) {
-        subscriber.onSubscribe(new ResultSetSubscription(subscriber));
+        ResultSetSubscription subscription = new ResultSetSubscription(subscriber);
+        subscriber.onSubscribe(subscription);
         if (resultSet == null) {
-            subscriber.onError(new NullPointerException("resultSet"));
+            // a request inside onSubscribe may have signalled the error already
+            subscription.fail(new NullPointerException("resultSet"));
         }
     }
 
@@ -69,13 +71,19 @@ final class ResultSetPublisher implements Publisher<ResultSet> {
                 } while (!requested.compareAndSet(r, newRequestedValue));
                 publish();
             } catch (Throwable t) {
-                // the error is the last signal: the subscription is cancelled first, so a later request delivers nothing
-                cancelled.set(true);
-                Subscriber<? super ResultSet> target = this.subscriber.getAndSet(null);
-                if (target == null) {
-                    // asynchronously cancelled
-                    return;
-                }
+                fail(t);
+            }
+        }
+
+        /**
+         * Signals the error, unless a last signal was sent or the subscription was cancelled. The error is the last
+         * signal: the subscription is cancelled first, so a later request delivers nothing and no second error
+         * follows.
+         */
+        private void fail(Throwable t) {
+            cancelled.set(true);
+            Subscriber<? super ResultSet> target = this.subscriber.getAndSet(null);
+            if (target != null) {
                 target.onError(t);
             }
         }
@@ -119,12 +127,11 @@ final class ResultSetPublisher implements Publisher<ResultSet> {
             try {
                 next = resultSet.next();
             } catch (Throwable t) {
-                if (!cancelled.get()) {
-                    target.onError(t);
-                }
+                fail(t);
                 return false;
             }
             if (!next) {
+                cancel(); // the last signal: nothing follows it, not even the error of a later request
                 target.onComplete();
                 return false;
             }

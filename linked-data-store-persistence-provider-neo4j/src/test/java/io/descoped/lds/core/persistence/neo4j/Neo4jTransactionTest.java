@@ -10,6 +10,8 @@ import org.neo4j.driver.Record;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.exceptions.ClientException;
 
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -115,6 +117,31 @@ class Neo4jTransactionTest {
 
         assertThat(Neo4jTransaction.interactive("MATCH (r {id: $id}) WHERE $idAfter < r.id RETURN r LIMIT $limit", parameters))
                 .isEqualTo("MATCH (r {id: 'oslo'}) WHERE 'bergen' < r.id RETURN r LIMIT 3");
+    }
+
+    /**
+     * The statement for the log, run by hand, gives what the statement gives with its parameters: a text that holds
+     * the name of a later parameter, a quote or a backslash, a boolean, a time, and lists and maps of them.
+     */
+    @Test
+    void theStatementForTheLogGivesWhatTheStatementGives() {
+        Map<String, Object> parameters = new LinkedHashMap<>();
+        parameters.put("value", "it's $limit, $idAfter and \\ \"mine\"\non two lines");
+        parameters.put("vegetarian", true);
+        parameters.put("idAfter", "bergen");
+        parameters.put("limit", 3);
+        parameters.put("version", ZonedDateTime.of(2020, 1, 2, 3, 4, 5, 123_456_789, ZoneId.of("Etc/UTC")));
+        parameters.put("nodes", List.of(Map.of("name", "[]", "index", 0, "value", false, "path", "$.a'b")));
+        String query = "RETURN $value AS value, $vegetarian AS vegetarian, $idAfter AS idAfter, $limit AS theLimit, "
+                + "$version AS version, $nodes AS nodes";
+
+        try (Session session = driver.session()) {
+            Map<String, Object> withParameters = session.run(query, parameters).single().asMap();
+            Map<String, Object> byHand = session.run(Neo4jTransaction.interactive(query, parameters)).single().asMap();
+
+            assertThat(byHand).isEqualTo(withParameters);
+            assertThat(byHand).containsEntry("value", parameters.get("value")).containsEntry("vegetarian", true);
+        }
     }
 
     @Test

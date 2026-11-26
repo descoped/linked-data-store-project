@@ -178,6 +178,29 @@ class FlattenedDocumentToJsonTest {
     }
 
     @Test
+    void aCharacterAfterTheEscapeIsPartOfTheName() {
+        assertThat(FlattenedDocumentToJson.steps("$.a\\.b")).containsExactly("a.b");
+        assertThat(FlattenedDocumentToJson.steps("$.a\\.b.c")).containsExactly("a.b", "c");
+        assertThat(FlattenedDocumentToJson.steps("$.x\\[3\\]")).containsExactly("x[3]");
+        assertThat(FlattenedDocumentToJson.steps("$.x\\[3\\][4]")).containsExactly("x[3]", 4);
+        assertThat(FlattenedDocumentToJson.steps("$.\\[\\][0].\\[1\\]")).containsExactly("[]", 0, "[1]");
+        assertThat(FlattenedDocumentToJson.steps("$.a\\\\.b")).containsExactly("a\\", "b");
+        assertThat(FlattenedDocumentToJson.steps("$.a\\\\[2]")).containsExactly("a\\", 2);
+        // an escape at the end is itself
+        assertThat(FlattenedDocumentToJson.steps("$.a\\")).containsExactly("a\\");
+    }
+
+    @Test
+    void aDocumentWhoseNamesHoldTheSyntaxOfAPathIsBuiltAsItWasGiven() {
+        JsonNode document = json("{'a.b':1,'a':{'b':2},'x[3]':[{'[]':'y'}],'\\\\':{'.':null},'$':[[]]}");
+        FlattenedDocument flattened = new JsonToFlattenedDocument("ns", "E", "1", KEY.timestamp(), document, 256).toDocument();
+
+        assertThat(flattened.leafNodesByPath().keySet()).containsExactlyInAnyOrder(
+                "$.a\\.b", "$.a.b", "$.x\\[3\\][0].\\[\\]", "$.\\\\.\\.", "$.$[0]");
+        assertThat(new FlattenedDocumentToJson(flattened).toJsonNode()).isEqualTo(document);
+    }
+
+    @Test
     void aPartWithVeryManyPlacesOrAVeryLongNameDoesNotOverflowTheStack() {
         assertThat(FlattenedDocumentToJson.steps("$.a" + "[1]".repeat(100_000))).hasSize(100_001).startsWith("a", 1);
         assertThat(FlattenedDocumentToJson.steps("$." + "x".repeat(100_000) + "[2]")).containsExactly("x".repeat(100_000), 2);

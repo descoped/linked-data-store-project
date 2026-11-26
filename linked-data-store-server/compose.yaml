@@ -114,8 +114,10 @@ services:
       - "127.0.0.1:${SOLR_PORT:-8983}:8983"
     volumes:
       - solr:/var/solr
+    # Healthy when the core answers a query of no rows, as LDS asks it: Solr's ping (/admin/ping) is deprecated in
+    # Solr 10.1, and its health check (/admin/info/health) is of the node, not the core.
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8983/solr/lds-index/admin/ping"]
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8983/solr/lds-index/select?q=*:*&rows=0"]
       start_period: 60s
       start_interval: 2s
       interval: 10s

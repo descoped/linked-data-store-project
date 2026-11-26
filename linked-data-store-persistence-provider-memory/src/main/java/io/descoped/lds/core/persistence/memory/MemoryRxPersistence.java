@@ -18,13 +18,11 @@ import io.reactivex.rxjava3.core.Single;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static io.descoped.lds.core.persistence.memory.OrderedKeyValueTransaction.ROW_LIMIT_UNLIMITED;
-import static java.util.Optional.ofNullable;
 
 /**
  * Fragments in a store of ordered keys, the keys packed as tuples. The store is a sorted map in memory
@@ -37,11 +35,6 @@ public class MemoryRxPersistence implements RxPersistence {
 
     public static final String PRIMARY_INDEX = "Primary";
     public static final String PATH_VALUE_INDEX = "PathValueIndex";
-
-    private static final ZonedDateTime BEGINNING_OF_TIME = ZonedDateTime.of(1, 1, 1, 0, 0, 0, 0, ZONE_ID_UTC);
-    private static final ZonedDateTime END_OF_TIME = ZonedDateTime.of(9999, 1, 1, 0, 0, 0, 0, ZONE_ID_UTC);
-
-    public static final KeyValue EMPTY = new KeyValue(new byte[0], new byte[0]);
 
     final TransactionFactory transactionFactory;
     final MemoryDirectory directory;
@@ -186,28 +179,17 @@ public class MemoryRxPersistence implements RxPersistence {
      */
     @Override
     public Flowable<Fragment> readVersions(Transaction tx, String namespace, String entity, String id, io.descoped.lds.api.persistence.reactivex.Range<ZonedDateTime> range) {
-        Tuple snapshotFrom = toTuple(ofNullable(range.getAfter()).orElse(BEGINNING_OF_TIME));
-        Tuple snapshotTo = toTuple(ofNullable(range.getBefore()).orElse(END_OF_TIME));
         final OrderedKeyValueTransaction transaction = (OrderedKeyValueTransaction) tx;
         return Single.defer(() -> getPrimary(namespace, entity))
-                .flatMapPublisher(primary -> findAnyOneMatchingFragmentInPrimary(transaction, primary, id, snapshotFrom)
-                        .filter(kv -> primary.contains(kv.key()))
-                        .switchIfEmpty(Single.just(EMPTY))
-                        .flatMapPublisher(aMatchingKeyValue -> {
-                            Tuple lowerBound;
-                            if (aMatchingKeyValue == EMPTY || !primary.contains(aMatchingKeyValue.key())) {
-                                // no versions older or equals to snapshotFrom exists, use snapshotFrom as lower bound
-                                lowerBound = snapshotFrom;
-                            } else {
-                                Tuple key = primary.unpack(aMatchingKeyValue.key());
-                                lowerBound = tickBackward(key.getNestedTuple(1));
-                            }
-
+                .flatMapPublisher(primary -> endOfVersions(transaction, primary, id, range.getAfter())
+                        .flatMapPublisher(end -> {
                             /*
-                             * Get all fragments of all matching versions.
+                             * Get all fragments of all matching versions: from the newest before before, or the
+                             * newest of all, to the end.
                              */
-                            KeySelector begin = KeySelector.firstGreaterOrEqual(primary.pack(Tuple.of(id, tickBackward(snapshotTo))));
-                            KeySelector end = KeySelector.firstGreaterOrEqual(primary.pack(Tuple.of(id, lowerBound)));
+                            KeySelector begin = KeySelector.firstGreaterOrEqual(range.getBefore() == null
+                                    ? primary.range(Tuple.of(id)).begin()
+                                    : primary.pack(Tuple.of(id, tickBackward(toTuple(range.getBefore())))));
                             if (range.isBackward()) {
                                 return Flowable.fromPublisher(new AsyncIterablePublisher<>(
                                                 transaction.getRange(begin, end, PRIMARY_INDEX, ROW_LIMIT_UNLIMITED)))
@@ -222,6 +204,21 @@ public class MemoryRxPersistence implements RxPersistence {
                                             .map(kv -> toFragment(primary, kv, namespace, entity)));
                         })
                 );
+    }
+
+    /*
+     * The end of a range of versions: the key after the version valid at after, so that version is in the range,
+     * or at after when there is none. Without after, the end of the versions of the document.
+     */
+    private static Single<KeySelector> endOfVersions(OrderedKeyValueTransaction transaction, Subspace primary, String id, ZonedDateTime after) {
+        if (after == null) {
+            return Single.just(KeySelector.firstGreaterOrEqual(primary.range(Tuple.of(id)).end()));
+        }
+        Tuple snapshotFrom = toTuple(after);
+        return findAnyOneMatchingFragmentInPrimary(transaction, primary, id, snapshotFrom)
+                .map(kv -> tickBackward(primary.unpack(kv.key()).getNestedTuple(1)))
+                .defaultIfEmpty(snapshotFrom)
+                .map(lowerBound -> KeySelector.firstGreaterOrEqual(primary.pack(Tuple.of(id, lowerBound))));
     }
 
     /*
@@ -358,11 +355,8 @@ public class MemoryRxPersistence implements RxPersistence {
                 return Flowable.empty(); // false-positive index-match on older version
             }
             if (FragmentType.DELETED.equals(fragmentType)) {
-                // Version was overwritten in primary by a delete-marker, remove index fragment asynchronously in separate transaction.
-                transactionFactory().runAsyncInIsolatedTransaction(otherTx -> {
-                    ((OrderedKeyValueTransaction) otherTx).clear(aMatchingFragmentKv.key(), PATH_VALUE_INDEX);
-                    return null;
-                }, false);
+                // The version was replaced in primary by a delete marker: the entry is left out, as any false match
+                // is. A read does not write, so the entry stays.
                 return Flowable.empty();
             }
 
@@ -435,15 +429,15 @@ public class MemoryRxPersistence implements RxPersistence {
 
     private Completable doDelete(OrderedKeyValueTransaction transaction, String namespace, String
             entity, String resourceId, Tuple resourceVersion) {
-        return Single.defer(() -> getPrimary(namespace, entity).doOnSuccess(primary -> {
+        return Completable.defer(() -> getPrimary(namespace, entity).flatMapCompletable(primary -> {
             /*
-             * Get all fragments of given versioned resource.
+             * The index entry of each fragment of the version, then the version.
              */
             Range range = primary.range(Tuple.of(resourceId, resourceVersion));
-            Flowable.fromPublisher(new AsyncIterablePublisher<>(transaction.getRange(range, PRIMARY_INDEX, ROW_LIMIT_UNLIMITED)))
-                    .flatMapCompletable(kv -> deleteFragmentFromPathValueIndex(transaction, namespace, entity, primary, kv));
-            transaction.clearRange(range, PRIMARY_INDEX);
-        })).ignoreElement();
+            return Flowable.fromPublisher(new AsyncIterablePublisher<>(transaction.getRange(range, PRIMARY_INDEX, ROW_LIMIT_UNLIMITED)))
+                    .flatMapCompletable(kv -> deleteFragmentFromPathValueIndex(transaction, namespace, entity, primary, kv))
+                    .doOnComplete(() -> transaction.clearRange(range, PRIMARY_INDEX));
+        }));
     }
 
     private Completable deleteFragmentFromPathValueIndex(OrderedKeyValueTransaction transaction, String namespace, String entity, Subspace primary, KeyValue kv) {
@@ -489,21 +483,19 @@ public class MemoryRxPersistence implements RxPersistence {
     }
 
     @Override
-    public Completable deleteAllEntities(Transaction transaction, String namespace, String entity, Iterable<String> paths) {
-        return doDeleteAllEntities((OrderedKeyValueTransaction) transaction, namespace, entity, paths);
+    public Completable deleteAllEntities(Transaction transaction, String namespace, String entity) {
+        return doDeleteAllEntities((OrderedKeyValueTransaction) transaction, namespace, entity);
     }
 
-    private Completable doDeleteAllEntities(OrderedKeyValueTransaction transaction, String namespace, String entity, Iterable<String> paths) {
-        return Completable.merge(List.of(
-                Completable.defer(() -> getPrimary(namespace, entity).flatMapCompletable(primary -> {
-                    transaction.clearRange(primary.range(), PRIMARY_INDEX);
-                    return Completable.complete();
-                })),
-                Flowable.fromIterable(paths).flatMapCompletable(path -> getIndex(namespace, entity, path).flatMapCompletable(index -> {
-                    transaction.clearRange(index.range(), PATH_VALUE_INDEX);
-                    return Completable.complete();
-                }))
-        ));
+    /*
+     * The index entry of each fragment of the entity, then the entity, as deleteAllVersions does for one document: the
+     * index is cleared at every path the documents hold a value, whatever the specification says.
+     */
+    private Completable doDeleteAllEntities(OrderedKeyValueTransaction transaction, String namespace, String entity) {
+        return Completable.defer(() -> getPrimary(namespace, entity)
+                .flatMapCompletable(primary -> Flowable.fromPublisher(new AsyncIterablePublisher<>(transaction.getRange(primary.range(), PRIMARY_INDEX, ROW_LIMIT_UNLIMITED)))
+                        .flatMapCompletable(kv -> deleteFragmentFromPathValueIndex(transaction, namespace, entity, primary, kv))
+                        .doOnComplete(() -> transaction.clearRange(primary.range(), PRIMARY_INDEX))));
     }
 
     @Override
@@ -538,6 +530,10 @@ public class MemoryRxPersistence implements RxPersistence {
         transactionFactory.close();
     }
 
+    /*
+     * A version as a tuple of its fields, each negated so that the newest sorts first, to the microsecond: the time
+     * LDS gives a write.
+     */
     public static Tuple toTuple(ZonedDateTime timestamp) {
         return Tuple.of(
                 -timestamp.getYear(),
@@ -546,7 +542,7 @@ public class MemoryRxPersistence implements RxPersistence {
                 -timestamp.getHour(),
                 -timestamp.getMinute(),
                 -timestamp.getSecond(),
-                -TimeUnit.NANOSECONDS.toMillis(timestamp.getNano())
+                -TimeUnit.NANOSECONDS.toMicros(timestamp.getNano())
         );
     }
 
@@ -558,7 +554,7 @@ public class MemoryRxPersistence implements RxPersistence {
                 (int) -timestampTuple.getLong(3),
                 (int) -timestampTuple.getLong(4),
                 (int) -timestampTuple.getLong(5),
-                (int) -TimeUnit.MILLISECONDS.toNanos(timestampTuple.getLong(6)),
+                (int) -TimeUnit.MICROSECONDS.toNanos(timestampTuple.getLong(6)),
                 ZONE_ID_UTC
         );
     }

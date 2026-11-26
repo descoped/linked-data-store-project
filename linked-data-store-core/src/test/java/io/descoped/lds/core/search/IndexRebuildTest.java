@@ -30,7 +30,9 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -119,7 +121,7 @@ class IndexRebuildTest {
     @AfterEach
     void stop() {
         if (rebuild != null) {
-            rebuild.stop();
+            rebuild.stop(Duration.ofSeconds(5));
         }
     }
 
@@ -223,10 +225,59 @@ class IndexRebuildTest {
         rebuild.start();
         await().atMost(Duration.ofSeconds(5)).until(() -> read.get() > 0);
 
-        rebuild.stop();
+        rebuild.stop(Duration.ofSeconds(5));
 
         assertThat(rebuild.isDone()).isTrue();
         write("Person", "after", FEB);
+    }
+
+    /**
+     * A store that holds the thread of the rebuild, and does not let go when it is interrupted, holds the stop up for
+     * the time it is told and a second for the thread, not until the store lets go.
+     */
+    @Test
+    void aStoreThatHoldsTheThreadHoldsTheStopNoLongerThanItIsTold() throws InterruptedException {
+        CountDownLatch opening = new CountDownLatch(1);
+        CountDownLatch hold = new CountDownLatch(1);
+        RxJsonPersistence holding = (RxJsonPersistence) Proxy.newProxyInstance(
+                RxJsonPersistence.class.getClassLoader(), new Class<?>[]{RxJsonPersistence.class},
+                (proxy, method, arguments) -> {
+                    if (method.getName().equals("createTransaction")) {
+                        opening.countDown();
+                        awaitUninterruptibly(hold);
+                    }
+                    try {
+                        return method.invoke(persistence, arguments);
+                    } catch (InvocationTargetException e) {
+                        throw e.getCause();
+                    }
+                });
+        rebuild = new IndexRebuild(holding, queue, new SimpleSearchIndex(), "ns", List.of("Person"));
+        rebuild.start();
+        assertThat(opening.await(5, TimeUnit.SECONDS)).isTrue();
+        try {
+            CompletableFuture<Void> stop = CompletableFuture.runAsync(() -> rebuild.stop(Duration.ofMillis(200)));
+
+            assertThat(stop).succeedsWithin(Duration.ofSeconds(3));
+        } finally {
+            hold.countDown();
+        }
+    }
+
+    /* Waits for the latch, and keeps waiting when interrupted: a thread that does not let go. */
+    private static void awaitUninterruptibly(CountDownLatch latch) {
+        boolean interrupted = false;
+        while (true) {
+            try {
+                latch.await();
+                break;
+            } catch (InterruptedException e) {
+                interrupted = true;
+            }
+        }
+        if (interrupted) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     @Test
@@ -244,7 +295,7 @@ class IndexRebuildTest {
     @Test
     void aRebuildIsStartedOnceAndNotAfterAStop() {
         IndexRebuild stopped = rebuild();
-        stopped.stop();
+        stopped.stop(Duration.ofSeconds(5));
         stopped.start();
         assertThat(stopped.isDone()).isFalse();
         assertThat(queue.added).isEmpty();

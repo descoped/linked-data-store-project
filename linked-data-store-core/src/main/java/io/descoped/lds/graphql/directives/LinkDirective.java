@@ -117,11 +117,16 @@ public class LinkDirective {
         }
     }
 
+    /**
+     * Whether the link is paged: the value the directive gives, or the default of the argument, true.
+     *
+     * @return whether the link is paged
+     */
     public Boolean getPagination() {
         GraphQLArgument pagination = getArgument(PAGINATION_NAME);
-        if (SchemaElements.value(pagination) == null) {
-            return (Boolean) SchemaElements.defaultValue(pagination);
+        if (pagination == null || SchemaElements.value(pagination) == null) {
+            return (Boolean) SchemaElements.defaultValue(PAGINATION_ARGUMENT);
         }
-        return (Boolean) SchemaElements.defaultValue(pagination);
+        return (Boolean) SchemaElements.value(pagination);
     }
 }

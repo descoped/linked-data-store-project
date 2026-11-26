@@ -14,8 +14,6 @@ import io.descoped.lds.api.persistence.json.JsonToFlattenedDocument;
 import io.descoped.lds.api.persistence.streaming.Fragment;
 import io.descoped.lds.api.persistence.streaming.FragmentType;
 import io.descoped.lds.api.specification.Specification;
-import io.descoped.lds.api.specification.SpecificationElement;
-import io.descoped.lds.api.specification.SpecificationTraversal;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Flowable;
 import io.reactivex.rxjava3.core.Maybe;
@@ -33,8 +31,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
-import static java.util.Optional.ofNullable;
 
 /**
  *
@@ -75,8 +71,9 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
                 fragments = fragments.takeWhile(fragment ->
                         order.compare(keyExtractor.apply(fragment), range.getAfter()) > 0);
             }
-            if (range.hasLast()) {
-                fragments = fragments.take(range.getLast());
+            // first with before and no after is read backward too, and keeps its limit as the stores do
+            if (range.isLimited()) {
+                fragments = fragments.take(range.getLimit());
             }
         } else {
             if (range.hasAfter()) {
@@ -97,20 +94,22 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
     /**
      * Convert a flowable of {@link Fragment}s to a flowable of {@link JsonDocument}.
      * <p>
-     * The received fragments must be ordered by id <strong>before</strong> it is ordered by path..
+     * The received fragments must be ordered by id <strong>before</strong> it is ordered by path. A version that marks
+     * a document as deleted is left out, or, when it is included, a deleted document: one with no content.
      */
     static Flowable<JsonDocument> toDocuments(Flowable<Fragment> fragmentFlowable, int fragmentSize, boolean includeDeleted) {
-        return toFlattenedDocuments(fragmentFlowable, fragmentSize).filter(flattenedDocument -> {
-            // Filter out the deleted documents.
-            return includeDeleted || !flattenedDocument.deleted();
+        return toFlattenedDocuments(fragmentFlowable, fragmentSize)
+                .filter(flattenedDocument -> includeDeleted || !flattenedDocument.deleted())
+                .map(RxJsonPersistenceBridge::toDocument);
+    }
 
-        }).map(flattenedDocument -> {
-            // Convert to JsonDocument.
-            return new JsonDocument(
-                    flattenedDocument.key(),
-                    new FlattenedDocumentToJson(flattenedDocument).toJsonNode()
-            );
-        });
+    /*
+     * The document of a version, or a deleted document (no content) for a version that marks it as deleted.
+     */
+    private static JsonDocument toDocument(FlattenedDocument flattenedDocument) {
+        return flattenedDocument.deleted()
+                ? new JsonDocument(flattenedDocument.key(), (JsonNode) null)
+                : new JsonDocument(flattenedDocument.key(), new FlattenedDocumentToJson(flattenedDocument).toJsonNode());
     }
 
     /*
@@ -166,23 +165,31 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
     @Override
     public Flowable<JsonDocument> readAllDocumentVersions(Transaction tx, String ns, String entityName) {
         return toFlattenedDocuments(persistence.readAllVersions(tx, ns, entityName), fragmentSize)
-                .map(flattenedDocument -> flattenedDocument.deleted()
-                        ? new JsonDocument(flattenedDocument.key(), (JsonNode) null)
-                        : new JsonDocument(flattenedDocument.key(), new FlattenedDocumentToJson(flattenedDocument).toJsonNode()));
+                .map(RxJsonPersistenceBridge::toDocument);
     }
 
     @Override
     public Flowable<JsonDocument> findDocument(Transaction tx, ZonedDateTime snapshot, String namespace,
                                                String entityName, JsonNavigationPath navigationPath, String value, Range<String> range) {
+        // Without the limit: a false match the store gives is left out before the limit, so it takes no place in
+        // the page. The store gives the documents in the order of the range.
+        return limit(find(tx, snapshot, namespace, entityName, navigationPath, value, Range.unlimited(range)),
+                d -> d.key().id(), range, IdOrder.CODE_POINTS);
+    }
+
+    /*
+     * The documents that hold the text at the path. The store is asked with the first piece of the text, as it is
+     * stored, and can give a false match: a value of another type, a text that only begins the same, or a version
+     * that was written again at the same time with another value. Those are left out here.
+     */
+    private Flowable<JsonDocument> find(Transaction tx, ZonedDateTime snapshot, String namespace, String entityName,
+                                        JsonNavigationPath navigationPath, String value, Range<String> range) {
         // Only a text value is supported.
         Map<Integer, byte[]> valueByOffset = FlattenedDocumentLeafNode.valueByOffset(FragmentType.STRING, fragmentSize, value);
         byte[] bytesValue = valueByOffset.get(0);
-        // Without the limit: a false match the store gives is left out before the limit, so it takes no place in
-        // the page. The store gives the documents in the order of the range.
         Flowable<Fragment> fragments = persistence.find(tx, snapshot, namespace, entityName, navigationPath.serialize(), bytesValue,
-                Range.unlimited(range));
-        Flowable<JsonDocument> matches = toDocuments(fragments, fragmentSize, false).filter(document -> {
-            // A store can give a false match: a value of another type, or a text that only begins the same.
+                range);
+        return toDocuments(fragments, fragmentSize, false).filter(document -> {
             AtomicBoolean match = new AtomicBoolean(false);
             document.traverseField(navigationPath, (node, _) -> {
                 if (node.isString() && node.stringValue().equals(value)) {
@@ -191,12 +198,30 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
             });
             return match.get();
         });
-        return limit(matches, d -> d.key().id(), range, IdOrder.CODE_POINTS);
     }
 
+    /*
+     * The ids the links of the source document name, in the order of the range, each once, inside its bounds. Each is
+     * read in turn, and the limit counts the documents that are there at the snapshot: a link to a document that is
+     * not written (yet), or is deleted, takes no place in the page. Neo4j reads them the same way.
+     */
     @Override
     public Flowable<JsonDocument> readTargetDocuments(Transaction tx, ZonedDateTime snapshot, LinkQuery query,
                                                       Range<String> range) {
+        Range<String> page = range == null ? Range.unbounded() : range;
+        String ns = query.namespace();
+        String targetEntityName = query.otherEntity();
+        Flowable<JsonDocument> targets = limit(linkedIds(tx, snapshot, query, page), Function.identity(),
+                Range.unlimited(page), IdOrder.CODE_POINTS)
+                .concatMapMaybe(targetId -> readDocument(tx, snapshot, ns, targetEntityName, targetId));
+        return page.isLimited() ? targets.take(page.getLimit()) : targets;
+    }
+
+    /*
+     * The ids of the documents of the target entity that the links at the path of the source document name, sorted in
+     * the order of the range, each once.
+     */
+    private Flowable<String> linkedIds(Transaction tx, ZonedDateTime snapshot, LinkQuery query, Range<String> range) {
         String ns = query.namespace();
         JsonNavigationPath jsonNavigationPath = query.relationPath();
         String targetEntityName = query.otherEntity();
@@ -221,19 +246,19 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
                     });
                     return links;
                 })
-                .sorted((o1, o2) -> range.isBackward() ? IdOrder.compare(o2, o1) : IdOrder.compare(o1, o2))
-                .take(ofNullable(range).map(Range::getLimit).orElse(Integer.MAX_VALUE))
-                .concatMapMaybe(targetId -> readDocument(tx, snapshot, ns, targetEntityName, targetId));
+                // the links of one document, which is read whole
+                .sorted(range.isBackward() ? IdOrder.CODE_POINTS.reversed() : IdOrder.CODE_POINTS)
+                .distinctUntilChanged();
     }
 
     @Override
     public Flowable<JsonDocument> readSourceDocuments(Transaction tx, ZonedDateTime snapshot, LinkQuery query,
                                                       Range<String> range) {
-        // Uses find to implement back links.
-        byte[] idValue = String.format("/%s/%s", query.entity(), query.id()).getBytes();
-        Flowable<Fragment> fragments = persistence.find(tx, snapshot, query.namespace(), query.otherEntity(),
-                query.relationPath().serialize(), idValue, range);
-        return doReadDocuments(fragments, range, fragmentSize);
+        // A link is the text /Entity/id at the path of the link in the source document.
+        String link = String.format("/%s/%s", query.entity(), query.id());
+        Flowable<JsonDocument> sources = find(tx, snapshot, query.namespace(), query.otherEntity(),
+                query.relationPath(), link, Range.unlimited(range));
+        return limit(sources, d -> d.key().id(), range, IdOrder.CODE_POINTS);
     }
 
     @Override
@@ -262,10 +287,8 @@ public class RxJsonPersistenceBridge implements RxJsonPersistence {
     @Override
     public Completable deleteAllEntities(Transaction tx, String namespace, String entity, Specification
             specification) {
-        List<String> paths = new ArrayList<>();
-        SpecificationElement entityElement = JsonNavigationPath.from("$").toSpecificationElement(specification, entity);
-        SpecificationTraversal.depthFirstPreOrderFullTraversal(entityElement, (_, element) -> paths.add(JsonNavigationPath.from(element).serialize()));
-        return persistence.deleteAllEntities(tx, namespace, entity, paths);
+        // The store deletes what it holds of the entity: the specification does not say what that is.
+        return persistence.deleteAllEntities(tx, namespace, entity);
     }
 
     @Override

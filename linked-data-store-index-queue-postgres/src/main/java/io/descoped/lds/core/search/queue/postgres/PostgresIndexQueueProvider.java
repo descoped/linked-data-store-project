@@ -15,9 +15,12 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 /**
  * The index queue {@code postgres}, in the database of the transaction log ({@code txlog.config.postgres.driver.*}).
+ * The queue is made before the transaction log, so it waits for that database as the transaction log does, for
+ * {@code txlog.rawdata.provider.initialization.max-wait-seconds}.
  */
 public final class PostgresIndexQueueProvider implements IndexQueueProvider {
 
@@ -28,6 +31,7 @@ public final class PostgresIndexQueueProvider implements IndexQueueProvider {
     static final String USER = "txlog.config.postgres.driver.user";
     static final String PASSWORD = "txlog.config.postgres.driver.password";
     static final String DATABASE = "txlog.config.postgres.driver.database";
+    static final String MAX_WAIT_SECONDS = "txlog.rawdata.provider.initialization.max-wait-seconds";
 
     /**
      * Called by the service loader.
@@ -45,15 +49,17 @@ public final class PostgresIndexQueueProvider implements IndexQueueProvider {
     }
 
     /**
-     * {@return the keys of the database of the transaction log}
+     * {@return the keys of the database of the transaction log, and how long the transaction log waits for it}
      */
     @Override
     public Set<String> configurationKeys() {
-        return Set.of(HOST, PORT, USER, PASSWORD, DATABASE);
+        return Set.of(HOST, PORT, USER, PASSWORD, DATABASE, MAX_WAIT_SECONDS);
     }
 
     /**
-     * Connects to the database of the transaction log and creates the table of the queue when it is missing.
+     * Connects to the database of the transaction log and creates the table of the queue when it is missing. A
+     * database that cannot be reached is tried again, about once a second, for as long as the transaction log waits
+     * for it ({@code txlog.rawdata.provider.initialization.max-wait-seconds}, none when it is not given).
      *
      * @param configuration the configuration of LDS
      * @return the queue, to be closed when it is no longer used
@@ -83,7 +89,22 @@ public final class PostgresIndexQueueProvider implements IndexQueueProvider {
         config.setDataSource(database);
         config.setAutoCommit(false);
         config.setMaximumPoolSize(POOL_SIZE);
+        // HikariCP takes the first connection before it gives the pool, and tries again for this long; 1 ms is one
+        // attempt (0 would give a pool that has never reached the database)
+        config.setInitializationFailTimeout(Math.max(1, TimeUnit.SECONDS.toMillis(maxWaitSeconds(configuration))));
         return new HikariDataSource(config);
+    }
+
+    private static long maxWaitSeconds(Map<String, String> configuration) {
+        String value = configuration.get(MAX_WAIT_SECONDS);
+        if (value == null || value.isBlank()) {
+            return 0;
+        }
+        try {
+            return Long.parseLong(value.strip());
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(MAX_WAIT_SECONDS + " must be a number of seconds: " + value, e);
+        }
     }
 
     /*

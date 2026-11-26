@@ -11,11 +11,17 @@ import io.descoped.lds.api.persistence.reactivex.Range;
 import io.descoped.lds.graphql.GraphQLContext;
 
 import java.time.ZonedDateTime;
+import java.util.List;
 import java.util.Map;
 
 import static java.lang.String.format;
 
 public abstract class ConnectionFetcher<T> implements DataFetcher<Connection<T>> {
+
+    /*
+     * The key of a document, in the map GraphQL reads the document from; an embedded object has none.
+     */
+    static final String DOCUMENT_KEY = "__graphql_internal_document_key";
 
     private static final String AFTER_ARG_NAME = "after";
     private static final String BEFORE_ARG_NAME = "before";
@@ -53,9 +59,24 @@ public abstract class ConnectionFetcher<T> implements DataFetcher<Connection<T>>
 
     protected static Edge<Map<String, Object>> toEdge(JsonDocument document) {
         Map<String, Object> map = document.toMap();
-        map.put("__graphql_internal_document_key", document.key());
+        map.put(DOCUMENT_KEY, document.key());
         return new DefaultEdge<>(map, new DefaultConnectionCursor(document.key().id())
         );
+    }
+
+    /*
+     * The edge of the smallest id of a page that is not empty. A backward page lists its documents from the largest
+     * id down, so that is its last edge.
+     */
+    static <E> Edge<E> lowest(List<Edge<E>> edges, ConnectionParameters parameters) {
+        return parameters.getRange().isBackward() ? edges.getLast() : edges.getFirst();
+    }
+
+    /*
+     * The edge of the largest id of a page that is not empty: the first edge of a backward page.
+     */
+    static <E> Edge<E> highest(List<Edge<E>> edges, ConnectionParameters parameters) {
+        return parameters.getRange().isBackward() ? edges.getFirst() : edges.getLast();
     }
 
     @Override

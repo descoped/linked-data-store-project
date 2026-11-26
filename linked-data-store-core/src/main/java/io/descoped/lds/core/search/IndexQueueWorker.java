@@ -8,6 +8,7 @@ import io.descoped.lds.api.search.IndexEntry;
 import io.descoped.lds.api.search.IndexQueue;
 import io.descoped.lds.api.search.IndexUpdate;
 import io.descoped.lds.api.search.SearchIndex;
+import io.descoped.lds.core.lifecycle.Pools;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Flowable;
 import io.reactivex.rxjava3.core.Maybe;
@@ -20,6 +21,8 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.event.Level;
 
 import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -40,7 +43,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  * <p>
  * Storage holds the version of every update: the saga of a write adds it to the queue only after its storage step,
  * and never undoes that step, and a rebuild adds what it read from storage. Storage is read as of the version, so
- * the index is told what storage holds; a document storage does not have at all is not sent.
+ * the index is told what storage holds; a version storage does not have (a store restored from before it) is not
+ * sent, and neither is a document storage does not have at all.
  * <p>
  * An update the index keeps refusing is tried again for as long as LDS runs, a minute apart: an update is never
  * dropped (decided by the owner, D1 and D2). From its tenth attempt each refusal is logged as an error, and the
@@ -106,7 +110,7 @@ public final class IndexQueueWorker {
 
     /**
      * Stops after the round that runs, waiting for it at most the given time; the updates it has not removed stay in
-     * the queue.
+     * the queue. Its thread is then interrupted, and gets {@link Pools#GRACE} to end.
      *
      * @param timeout the longest wait for the round
      * @param unit    its unit
@@ -128,10 +132,11 @@ public final class IndexQueueWorker {
                     timeout, unit, LEASE);
         } catch (ExecutionException e) {
             LOG.debug("The last round of the index queue failed", e);
+        } finally {
+            executor.shutdownNow(); // also when the wait is interrupted
         }
-        executor.shutdownNow();
-        if (!executor.awaitTermination(timeout, unit)) {
-            LOG.warn("The thread of the index queue had not ended {} {} after it was stopped", timeout, unit);
+        if (!executor.awaitTermination(Pools.GRACE.toNanos(), TimeUnit.NANOSECONDS)) {
+            LOG.warn("The thread of the index queue had not ended {} after it was stopped", Pools.GRACE);
         }
     }
 
@@ -245,7 +250,8 @@ public final class IndexQueueWorker {
     /*
      * A written version as storage holds it, and a deletion, each at the version of its update: the instant the
      * write was made at (the memory store does not yet give back the instant of a version written with a zone other
-     * than UTC). An entity type that is not searched has no entry, and its update is removed.
+     * than UTC). A version storage does not have has no entry: read as of it, storage gives the version before it,
+     * whose content is not the update's. An entity type that is not searched has no entry, and its update is removed.
      */
     private Maybe<IndexEntry> entryOf(Transaction transaction, IndexUpdate update) {
         if (!indexEntries.searched(update.entity())) {
@@ -255,7 +261,28 @@ public final class IndexQueueWorker {
             return Maybe.just(IndexEntry.deleted(update.namespace(), update.entity(), update.id(), update.version()));
         }
         return persistence.readDocument(transaction, update.version(), update.namespace(), update.entity(), update.id())
+                .filter(document -> holdsTheVersion(document, update))
                 .flatMap(document -> Maybe.fromOptional(indexEntries.written(new JsonDocument(new DocumentKey(
                         update.namespace(), update.entity(), update.id(), update.version()), document.jackson()))));
+    }
+
+    /**
+     * Whether the document storage gave, read as of the version of the update, is that version and not one before
+     * it. Compared to the microsecond, the finest time every store keeps and the time of a write (PostgreSQL and the
+     * memory store keep microseconds, Neo4j the whole instant).
+     *
+     * @param document the document storage gave
+     * @param update   the update it was read for
+     * @return false when storage does not have the version of the update
+     */
+    static boolean holdsTheVersion(JsonDocument document, IndexUpdate update) {
+        Instant stored = document.key().timestamp().toInstant().truncatedTo(ChronoUnit.MICROS);
+        Instant written = update.version().toInstant().truncatedTo(ChronoUnit.MICROS);
+        if (stored.isBefore(written)) {
+            LOG.warn("Storage does not have the version {} of {}/{}/{}, only versions before it: it is not sent to the "
+                    + "search index", update.version(), update.namespace(), update.entity(), update.id());
+            return false;
+        }
+        return true;
     }
 }

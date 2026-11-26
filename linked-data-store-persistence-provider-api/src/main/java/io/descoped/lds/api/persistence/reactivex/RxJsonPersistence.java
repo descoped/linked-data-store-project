@@ -48,14 +48,17 @@ public interface RxJsonPersistence {
                                          Range<String> range);
 
     /**
-     * Read {@link JsonDocument}s.
+     * The versions of one document, in the order of the range. A version that marks the document as deleted is
+     * included, as a document whose {@link JsonDocument#deleted()} is true and which has no content.
      * <p>
      * Not settled: whether a failure of the store is given as {@code onError(PersistenceException)}.
      *
      * @param tx         the transaction
      * @param ns         the name space
      * @param entityName the entity name
-     * @param range      lower and upper id bounds
+     * @param id         the id of the document
+     * @param range      lower and upper bounds of the versions
+     * @return the versions
      */
     Flowable<JsonDocument> readDocumentVersions(Transaction tx, String ns, String entityName, String id,
                                                 Range<ZonedDateTime> range);
@@ -127,6 +130,16 @@ public interface RxJsonPersistence {
     Completable deleteAllDocumentVersions(Transaction tx, String ns, String entity, String id,
                                           PersistenceDeletePolicy policy);
 
+    /**
+     * Deletes every version of every document of the entity in the namespace, also of an entity that the
+     * specification does not have.
+     *
+     * @param tx            the transaction
+     * @param namespace     the namespace
+     * @param entity        the entity
+     * @param specification the specification of the documents
+     * @return completes when every document is deleted
+     */
     Completable deleteAllEntities(Transaction tx, String namespace, String entity, Specification specification);
 
     /**

@@ -24,6 +24,9 @@ final class Neo4jTransaction implements Transaction {
 
     private static final Logger LOG = LoggerFactory.getLogger(Neo4jTransaction.class);
 
+    /* A parameter in a statement, by its whole name. */
+    private static final Pattern PARAMETER = Pattern.compile("\\$(\\w+)");
+
     private final boolean logCypher;
     private final Session session;
     private final org.neo4j.driver.Transaction driverTransaction;
@@ -118,14 +121,17 @@ final class Neo4jTransaction implements Transaction {
      * The statement with its parameters written into it, to be read or run by hand.
      */
     static String interactive(String query, Map<String, Object> parameters) {
-        String interactiveQuery = query;
-        for (Map.Entry<String, Object> entry : parameters.entrySet()) {
-            // the whole name: $id is not the beginning of $idAfter
-            String regex = "\\$" + Pattern.quote(entry.getKey()) + "\\b";
-            String replacement = serializeForInteractive(entry.getValue());
-            interactiveQuery = interactiveQuery.replaceAll(regex, Matcher.quoteReplacement(replacement));
+        // One pass over the statement, so that a value written into it is not read again: a text that holds
+        // "$limit" stays as it is. The whole name is taken: $id is not the beginning of $idAfter.
+        Matcher parameter = PARAMETER.matcher(query);
+        StringBuilder interactiveQuery = new StringBuilder();
+        while (parameter.find()) {
+            String name = parameter.group(1);
+            String replacement = parameters.containsKey(name) ? serializeForInteractive(parameters.get(name)) : parameter.group();
+            parameter.appendReplacement(interactiveQuery, Matcher.quoteReplacement(replacement));
         }
-        return interactiveQuery;
+        parameter.appendTail(interactiveQuery);
+        return interactiveQuery.toString();
     }
 
     private static String serializeForInteractive(Object parameters) {
@@ -162,7 +168,9 @@ final class Neo4jTransaction implements Transaction {
                 }
                 sb.append("]");
             }
-            case CharSequence text -> sb.append("'").append(text).append("'");
+            // a backslash and a quote are escaped, so that the text ends where it does
+            case CharSequence text -> sb.append("'").append(text.toString().replace("\\", "\\\\").replace("'", "\\'")).append("'");
+            case Boolean bool -> sb.append(bool);
             case Number number -> sb.append(number);
             case Temporal temporal -> sb.append("datetime('").append(temporal).append("')");
             default -> {

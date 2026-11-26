@@ -19,6 +19,9 @@ hs_err_pid*
 /linked-data-store-server/conf/
 /linked-data-store-server/conf_dev/
 
+# The notes of a release or milestone, cut from RELEASE-NOTES.md for gh release create
+/notes.md
+
 # Local run state of the providers
 /linked-data-store-search-provider-solr/data/
 

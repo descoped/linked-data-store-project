@@ -1,5 +1,6 @@
 package io.descoped.lds.api.persistence;
 
+import io.descoped.lds.api.json.FieldName;
 import tools.jackson.databind.JsonNode;
 
 import java.util.Map;
@@ -33,7 +34,9 @@ public final class Limits {
     public static final int ID_BYTES = 1024;
 
     /**
-     * The longest path of a value as it is stored ({@code $.address.street}, {@code $.tags[]}), in bytes of UTF-8.
+     * The longest path of a value as it is stored ({@code $.address.street}, {@code $.tags[]}), in bytes of UTF-8. The
+     * escape before a character of a name that is the syntax of a path ({@code $.a\.b}, {@link FieldName}) is a byte of
+     * the path.
      */
     public static final int PATH_BYTES = 1024;
 
@@ -74,7 +77,8 @@ public final class Limits {
     /**
      * What in a document goes past {@link #PATH_BYTES} or {@link #ARRAY_LEVELS}, as a text that names the path, or null
      * when nothing does. The path is the one the providers store: {@code $}, then {@code .} and the name of each field,
-     * and {@code []} for each array.
+     * with an escape before each {@code .}, {@code [}, {@code ]} and {@code \} in it ({@link FieldName}), and
+     * {@code []} for each array.
      *
      * @param document the document
      * @return the text, or null
@@ -93,8 +97,9 @@ public final class Limits {
         int length = path.length();
         if (node.isObject()) {
             for (Map.Entry<String, JsonNode> field : node.properties()) {
-                path.append('.').append(field.getKey());
-                String over = overLimit(field.getValue(), path, bytes + 1 + utf8Length(field.getKey()), arrays);
+                String name = FieldName.escape(field.getKey());
+                path.append('.').append(name);
+                String over = overLimit(field.getValue(), path, bytes + 1 + utf8Length(name), arrays);
                 path.setLength(length);
                 if (over != null) {
                     return over;

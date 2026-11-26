@@ -158,6 +158,48 @@ class PostgresProviderTest {
         assertThat(atTen.key().timestamp()).isEqualTo(ZonedDateTime.of(2020, 6, 1, 10, 0, 0, 0, UTC));
     }
 
+    @Test
+    void versionsAMicrosecondApartAreKeptAndReadBack() {
+        ZonedDateTime threeMicrosLater = T1.plusNanos(3_000);
+        ZonedDateTime fourMicrosLater = T1.plusNanos(4_000);
+        write(NS, "Micro", "m", T1, city("Oslo"));
+        write(NS, "Micro", "m", threeMicrosLater, city("Bergen"));
+        write(NS, "Micro", "m", fourMicrosLater, city("Trondheim"));
+
+        try (Transaction tx = persistence.createTransaction(true)) {
+            assertThat(persistence.readDocumentVersions(tx, NS, "Micro", "m", Range.unbounded())
+                    .map(document -> document.key().timestamp()).toList().blockingGet())
+                    .containsExactly(T1, threeMicrosLater, fourMicrosLater);
+        }
+        assertThat(read(NS, "Micro", "m", T1.plusNanos(2_999)).jackson()).isEqualTo(city("Oslo"));
+        JsonDocument atThree = read(NS, "Micro", "m", threeMicrosLater);
+        assertThat(atThree.key().timestamp()).isEqualTo(threeMicrosLater);
+        assertThat(atThree.jackson()).isEqualTo(city("Bergen"));
+        assertThat(read(NS, "Micro", "m", NOW).jackson()).isEqualTo(city("Trondheim"));
+    }
+
+    @Test
+    void aVersionWrittenTwiceInOneWriteIsTheLastOne() {
+        ZonedDateTime sameMicrosecond = T1.plusNanos(500); // stored as T1
+        ZonedDateTime sameInstantInOslo = T2.withZoneSameInstant(ZoneId.of("Europe/Oslo"));
+        writeAll(List.of(
+                document(NS, "Twice", "micro", T1, mapper.createObjectNode().put("city", "Oslo").put("only", "first")),
+                document(NS, "Twice", "micro", sameMicrosecond, city("Bergen")),
+                document(NS, "Twice", "zoned", T2, city("Oslo")),
+                document(NS, "Twice", "zoned", sameInstantInOslo, city("Bergen")),
+                document(NS, "Twice", "apart", T1, city("Oslo")),
+                document(NS, "Twice", "between", T1, city("Oslo")),
+                document(NS, "Twice", "apart", T1, city("Bergen"))));
+
+        for (String id : List.of("micro", "zoned", "apart")) {
+            assertThat(read(NS, "Twice", id, NOW).jackson()).as(id).isEqualTo(city("Bergen"));
+            try (Transaction tx = persistence.createTransaction(true)) {
+                assertThat(persistence.readDocumentVersions(tx, NS, "Twice", id, Range.unbounded()).count().blockingGet())
+                        .as(id).isOne();
+            }
+        }
+    }
+
     // ---- find
 
     @Test
@@ -417,6 +459,30 @@ class PostgresProviderTest {
 
         assertThatThrownBy(() -> tx.commit().join()).hasCauseInstanceOf(PersistenceException.class);
         tx.cancel().join();
+    }
+
+    @Test
+    void aCommitAfterAStatementFailedFailsAndWritesNothing() throws SQLException {
+        PostgresTransaction tx = fragments.transactionFactory.createTransaction(false);
+        persistence.createOrOverwrite(tx, document(NS, "FailedCommit", "f", T1, city("Oslo")), null).blockingAwait();
+        try (Statement statement = tx.connection.createStatement()) {
+            assertThatThrownBy(() -> statement.execute("SELECT 1 / 0")).isInstanceOf(SQLException.class);
+        }
+
+        assertThatThrownBy(() -> tx.commit().join()).hasCauseInstanceOf(PersistenceException.class);
+        assertThat(read(NS, "FailedCommit", "f", NOW)).isNull();
+        assertThat(fragments.transactionFactory.dataSource.getHikariPoolMXBean().getActiveConnections()).isZero();
+    }
+
+    @Test
+    void aReadTransactionCommitsAsBeforeAfterAStatementFailed() throws SQLException {
+        PostgresTransaction tx = fragments.transactionFactory.createTransaction(true);
+        try (Statement statement = tx.connection.createStatement()) {
+            assertThatThrownBy(() -> statement.execute("SELECT 1 / 0")).isInstanceOf(SQLException.class);
+        }
+
+        assertThat(tx.commit().join()).isNotNull();
+        assertThat(fragments.transactionFactory.dataSource.getHikariPoolMXBean().getActiveConnections()).isZero();
     }
 
     // ---- helpers

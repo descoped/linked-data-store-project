@@ -51,8 +51,7 @@ public class PersistenceReverseLinksConnectionFetcher extends ConnectionFetcher<
      */
     private static String getIdFromSource(DataFetchingEnvironment environment) {
         Map<String, Object> source = environment.getSource();
-        DocumentKey key = (DocumentKey) source.get("__graphql_internal_document_key");
-        return key.id();
+        return ((DocumentKey) source.get(DOCUMENT_KEY)).id();
     }
 
     @Override
@@ -80,14 +79,14 @@ public class PersistenceReverseLinksConnectionFetcher extends ConnectionFetcher<
             boolean hasPrevious = true;
             if (environment.getSelectionSet().contains("pageInfo/hasPreviousPage")) {
                 hasPrevious = persistence.readSourceDocuments(tx, parameters.getSnapshot(), query,
-                        Range.lastBefore(1, firstEdge.getCursor().getValue())
+                        Range.lastBefore(1, lowest(edges, parameters).getCursor().getValue())
                 ).isEmpty().map(wasEmpty -> !wasEmpty).blockingGet();
             }
 
             boolean hasNext = true;
             if (environment.getSelectionSet().contains("pageInfo/hasNextPage")) {
                 hasNext = persistence.readSourceDocuments(tx, parameters.getSnapshot(), query,
-                        Range.firstAfter(1, lastEdge.getCursor().getValue())
+                        Range.firstAfter(1, highest(edges, parameters).getCursor().getValue())
                 ).isEmpty().map(wasEmpty -> !wasEmpty).blockingGet();
             }
 

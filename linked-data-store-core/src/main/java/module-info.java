@@ -14,7 +14,6 @@ module io.descoped.lds.core {
     requires undertow.core;
     requires xnio.api;
     requires com.networknt.schema;
-    requires java.xml; // belongs in test scope only; no class of core uses it
     requires tools.jackson.core;
     requires tools.jackson.databind;
     requires jackson.dataformat.msgpack;
@@ -26,8 +25,6 @@ module io.descoped.lds.core {
 
     opens io.descoped.lds.graphql.graphiql;
 
-    provides io.descoped.lds.api.search.SearchIndexProvider with io.descoped.lds.core.search.TestSearchIndex;
-
     uses io.descoped.lds.api.persistence.PersistenceInitializer;
     uses io.descoped.lds.api.search.IndexQueueProvider;
     uses io.descoped.lds.api.search.SearchIndexProvider;
@@ -35,5 +32,4 @@ module io.descoped.lds.core {
 
     exports io.descoped.lds.core;
     exports io.descoped.lds.core.lifecycle;
-    exports io.descoped.lds.test.server; // Needed to run tests in IntelliJ
 }

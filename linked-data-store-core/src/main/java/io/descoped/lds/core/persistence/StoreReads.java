@@ -156,11 +156,18 @@ public final class StoreReads {
             executor.shutdown();
         }
         long deadline = System.nanoTime() + timeout.toNanos();
-        for (ExecutorService executor : executors) {
-            if (!executor.awaitTermination(Math.max(0, deadline - System.nanoTime()), TimeUnit.NANOSECONDS)) {
-                LOG.warn("A read of the store had not completed after {}; it is interrupted", timeout);
-                executor.shutdownNow();
+        try {
+            for (ExecutorService executor : executors) {
+                if (!executor.awaitTermination(Math.max(0, deadline - System.nanoTime()), TimeUnit.NANOSECONDS)) {
+                    LOG.warn("A read of the store had not completed after {}; it is interrupted", timeout);
+                    executor.shutdownNow();
+                }
             }
+        } catch (InterruptedException e) {
+            for (ExecutorService executor : executors) {
+                executor.shutdownNow(); // a stop that is interrupted does not wait, and leaves no read running
+            }
+            throw e;
         }
     }
 

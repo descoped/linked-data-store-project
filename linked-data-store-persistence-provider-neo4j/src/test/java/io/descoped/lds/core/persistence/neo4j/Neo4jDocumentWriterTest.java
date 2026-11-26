@@ -94,6 +94,21 @@ class Neo4jDocumentWriterTest {
                 Map.of("parent", 0, "name", "count", "type", "number", "path", "$.count", "value", 7L));
     }
 
+    /**
+     * A node is joined to its parent by the name of its field as it is, and its path has the name with an escape
+     * before each character that is the syntax of a path (FieldName), as every provider writes a path.
+     */
+    @Test
+    void aNameIsThePathOfItsNodeWithTheSyntaxOfAPathEscaped() throws Exception {
+        Map<String, Object> parameters = parametersOf("{'a.b':{'x[1]':['v']},'[]':1}");
+
+        assertThat(nodes(parameters)).extracting(node -> node.get("name") + " " + node.get("path")).containsExactly(
+                "a.b $.a\\.b",
+                "x[1] $.a\\.b.x\\[1\\]",
+                "[] $.a\\.b.x\\[1\\][]",
+                "[] $.\\[\\]");
+    }
+
     @Test
     void aTextInALinkFieldThatNamesAnEntityItMayLinkToIsALink() throws Exception {
         Map<String, Object> parameters = parametersOf("{'home':'/Boat/b1','history':{'lived':['/House/h1','/House/h2']}}");

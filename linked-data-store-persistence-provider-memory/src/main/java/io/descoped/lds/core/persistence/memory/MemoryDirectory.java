@@ -5,36 +5,20 @@ import io.descoped.tuple.Tuple;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicLong;
 
+/**
+ * The subspaces of the store, one for each tuple that names one. Each subspace gets the next number as its prefix,
+ * packed as a tuple integer: a type code that tells the length, then the bytes. Such a prefix never begins another,
+ * so no key is in two subspaces, however many there are.
+ */
 class MemoryDirectory {
 
-    final int prefixLength;
-
-    final byte[] nextPrefix;
+    private final AtomicLong next = new AtomicLong();
     final ConcurrentMap<Tuple, Subspace> subspaceByTuple = new ConcurrentHashMap<>();
 
-    MemoryDirectory(int prefixLength) {
-        this.prefixLength = prefixLength;
-        this.nextPrefix = new byte[prefixLength];
-    }
-
     CompletableFuture<Subspace> createOrOpen(Tuple key) {
-        Subspace subspace = subspaceByTuple.computeIfAbsent(key, _ -> new Subspace(allocateUnusedShortPrefix()));
+        Subspace subspace = subspaceByTuple.computeIfAbsent(key, _ -> new Subspace(Tuple.of(next.getAndIncrement()).pack()));
         return CompletableFuture.completedFuture(subspace);
-    }
-
-    byte[] allocateUnusedShortPrefix() {
-        synchronized (nextPrefix) {
-            // copy next prefix
-            byte[] prefix = new byte[prefixLength];
-            System.arraycopy(nextPrefix, 0, prefix, 0, prefix.length);
-            // increment prefix
-            for (int i = prefixLength - 1; i >= 0; i--)
-                if (++nextPrefix[i] != 0) {
-                    // rolled around least-significant byte, increment the more significant byte as well
-                    break;
-                }
-            return prefix;
-        }
     }
 }

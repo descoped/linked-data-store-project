@@ -6,6 +6,7 @@ import org.testng.annotations.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import static io.descoped.lds.core.persistence.memory.OrderedKeyValueTransaction.ROW_LIMIT_UNLIMITED;
 
@@ -13,7 +14,7 @@ public class MemoryTransactionTest {
 
     @Test
     public void thatTransactionRollsBackOnCancel() {
-        MemoryTransactionFactory factory = new MemoryTransactionFactory(false);
+        MemoryTransactionFactory factory = new MemoryTransactionFactory();
         try (MemoryTransaction tx = factory.createTransaction(false)) {
             tx.set(new byte[]{1, 2, 2}, new byte[]{1, 2, 2}, "i1");
             tx.set(new byte[]{1, 2, 3}, new byte[]{1, 2, 3}, "i1");
@@ -71,6 +72,62 @@ public class MemoryTransactionTest {
         // check that cancel works
         List<KeyValue> actual = copyDatabase(factory);
         Assert.assertEquals(actual, expected); // confirm that database state is identical with the initial state
+    }
+
+    @Test
+    public void thatACancelAfterACommitLeavesTheCommit() {
+        MemoryTransactionFactory factory = new MemoryTransactionFactory();
+        MemoryTransaction tx = factory.createTransaction(false);
+        tx.set(new byte[]{1}, new byte[]{1}, "i1");
+        tx.commit().join();
+        tx.cancel().join();
+        tx.close();
+
+        try (MemoryTransaction reading = factory.createTransaction(true)) {
+            Assert.assertEquals(getRange(reading, startsWith(new byte[]{1}), "i1").size(), 1);
+        }
+        factory.close();
+    }
+
+    /*
+     * The lock of the store belongs to the thread that began the transaction. Ended on another thread, the
+     * transaction fails and stays as it was, so its own thread can still end it and let the lock go.
+     */
+    @Test
+    public void thatATransactionEndedOnAnotherThreadCanStillBeEndedOnItsOwn() throws Exception {
+        MemoryTransactionFactory factory = new MemoryTransactionFactory();
+        MemoryTransaction tx = factory.createTransaction(false);
+        tx.set(new byte[]{1}, new byte[]{1}, "i1");
+
+        Throwable[] failure = new Throwable[1];
+        Thread other = Thread.ofPlatform().start(() -> {
+            try {
+                tx.commit().join();
+            } catch (Throwable t) {
+                failure[0] = t;
+            }
+        });
+        other.join(10_000);
+        Assert.assertFalse(other.isAlive());
+        Assert.assertNotNull(failure[0], "a commit on another thread fails");
+
+        tx.commit().join();
+        Assert.assertFalse(((ReentrantReadWriteLock) factory.readWriteLock).isWriteLocked(), "the lock is let go");
+        factory.close();
+    }
+
+    @Test
+    public void thatAReadOnlyTransactionDoesNotWrite() {
+        MemoryTransactionFactory factory = new MemoryTransactionFactory();
+        try (MemoryTransaction tx = factory.createTransaction(true)) {
+            Assert.assertThrows(IllegalStateException.class, () -> tx.set(new byte[]{1}, new byte[]{1}, "i1"));
+            Assert.assertThrows(IllegalStateException.class, () -> tx.clear(new byte[]{1}, "i1"));
+            Assert.assertThrows(IllegalStateException.class, () -> tx.clearRange(startsWith(new byte[]{1}), "i1"));
+        }
+        try (MemoryTransaction tx = factory.createTransaction(true)) {
+            Assert.assertEquals(getRange(tx, startsWith(new byte[]{1}), "i1").size(), 0);
+        }
+        factory.close();
     }
 
     private List<KeyValue> getRange(MemoryTransaction tx, Range range, String index) {

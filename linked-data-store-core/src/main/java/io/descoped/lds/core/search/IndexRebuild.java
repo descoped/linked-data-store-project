@@ -6,6 +6,7 @@ import io.descoped.lds.api.persistence.reactivex.RxJsonPersistence;
 import io.descoped.lds.api.search.IndexQueue;
 import io.descoped.lds.api.search.IndexUpdate;
 import io.descoped.lds.api.search.SearchIndex;
+import io.descoped.lds.core.lifecycle.Pools;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Flowable;
 import io.reactivex.rxjava3.core.Scheduler;
@@ -189,8 +190,10 @@ public final class IndexRebuild {
 
     /**
      * Stops a rebuild that runs, and closes its read transaction. What it has added to the queue stays there.
+     *
+     * @param timeout how long the read may take to end, at most
      */
-    public void stop() {
+    public void stop(Duration timeout) {
         synchronized (lock) {
             stopped = true;
             if (running != null && !running.isDisposed()) {
@@ -198,7 +201,8 @@ public final class IndexRebuild {
                 running.dispose();
             }
         }
-        executor.close(); // waits for the read transaction to be closed
+        // waits for the read transaction to be closed, at most the time given
+        Pools.stop("The rebuild of the search index", executor, timeout);
     }
 
     /**

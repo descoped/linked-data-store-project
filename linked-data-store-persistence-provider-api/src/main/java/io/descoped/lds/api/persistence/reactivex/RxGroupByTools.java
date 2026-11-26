@@ -9,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
@@ -25,6 +26,10 @@ public class RxGroupByTools {
      * The returned stream honors downstream back-pressure at the group-level, and will buffer all items in each group
      * until they are subscribed to and consumed. This allows more control over memory-usage than the built-in group-by
      * operations currently supported by RxJava.
+     * <p>
+     * A failure of the upstream after the first group is open ends the open group with that failure, after the items
+     * it has, and the flow of groups then completes; a failure before the first group ends the flow of groups. A
+     * group whose subscriber cancels it ends without a signal.
      *
      * @param upstream         the upstream as a flow of upstream-items.
      * @param groupKeyFunction the function that will be applied to an upstream item to determine which group it
@@ -52,13 +57,20 @@ public class RxGroupByTools {
                 })
                 .doOnComplete(() -> putInCurrentGroup(groupKeyRef, itemsByGroup, groupCompleteItem))
                 .doOnError(throwable -> putInCurrentGroup(groupKeyRef, itemsByGroup, new GroupedItemWrapper<>(throwable)))
+                // a failure after a group is open ends that group, which says it: it reaches the consumer once, after
+                // the items before it (the flow of groups ending with it too, two failures would race, and RxJava
+                // would report the one that lost as undeliverable)
+                .onErrorResumeNext(failure -> groupKeyRef.get() != null ? Flowable.empty() : Flowable.error(failure))
                 .doOnCancel(() -> putInCurrentGroup(groupKeyRef, itemsByGroup, cancelledItem))
                 .map(_ -> {
                     final K groupKey = groupKeyRef.get();
                     final BlockingQueue<GroupedItemWrapper<T>> blockingQueue = itemsByGroup.get(groupKey);
+                    // set when the subscriber of the group cancels it, before its thread is interrupted
+                    final AtomicBoolean groupCancelled = new AtomicBoolean();
                     final BiConsumer<BlockingQueue<GroupedItemWrapper<T>>, Emitter<T>> generator =
-                            (queue, emitter) -> emitNext(queue, emitter, groupCompleteItem, cancelledItem);
-                    Flowable<T> innerGroupFlow = Flowable.generate(() -> blockingQueue, generator, BlockingQueue::clear);
+                            (queue, emitter) -> emitNext(queue, emitter, groupCompleteItem, cancelledItem, groupCancelled);
+                    Flowable<T> innerGroupFlow = Flowable.generate(() -> blockingQueue, generator, BlockingQueue::clear)
+                            .doOnCancel(() -> groupCancelled.set(true));
                     return new MyGroupedFlowable<>(groupKey, innerGroupFlow.subscribeOn(Schedulers.newThread()));
                 });
     }
@@ -104,20 +116,32 @@ public class RxGroupByTools {
     }
 
     /*
-     * Gives the next item of a group to its subscriber, or ends the group.
+     * Gives the next item of a group to its subscriber, or ends the group. A group its subscriber has cancelled ends
+     * without a signal, which no one would receive (RxJava would report it as undeliverable): when the wait for the
+     * next item is interrupted, as the cancel does, or ended by the cancel or the failure of the upstream.
      */
     private static <T> void emitNext(BlockingQueue<GroupedItemWrapper<T>> queue, Emitter<T> emitter,
-                                     GroupedItemWrapper<T> groupCompleteItem, GroupedItemWrapper<T> cancelledItem) throws InterruptedException {
-        GroupedItemWrapper<T> wrapper = queue.take();
+                                     GroupedItemWrapper<T> groupCompleteItem, GroupedItemWrapper<T> cancelledItem,
+                                     AtomicBoolean groupCancelled) throws InterruptedException {
+        GroupedItemWrapper<T> wrapper;
+        try {
+            wrapper = queue.take();
+        } catch (InterruptedException e) {
+            if (groupCancelled.get()) {
+                return; // the generator is not called again: the group is cancelled
+            }
+            throw e;
+        }
         if (wrapper == groupCompleteItem) {
             emitter.onComplete();
             return;
         }
-        if (wrapper == cancelledItem) {
-            emitter.onError(new RuntimeException("cancelled"));
-        }
-        if (wrapper.throwable != null) {
-            emitter.onError(wrapper.throwable);
+        if (wrapper == cancelledItem || wrapper.throwable != null) {
+            if (!groupCancelled.get()) {
+                // the group is cut short: its subscriber is told, so that a part is not taken for the whole
+                emitter.onError(wrapper == cancelledItem ? new RuntimeException("cancelled") : wrapper.throwable);
+            }
+            return;
         }
         emitter.onNext(wrapper.item);
     }
