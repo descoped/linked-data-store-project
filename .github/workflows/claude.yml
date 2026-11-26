@@ -139,12 +139,11 @@ jobs:
         with:
           # No prompt: the action answers the mention. Besides the read-only
           # gh and git commands it may run the Maven build, so a fix is checked
-          # here and not only by CI afterwards. An allowed command is matched by
-          # its start, so the build it is told to run starts with verify.
+          # here and not only by CI afterwards.
           claude_args: >-
             --model opus
             --disallowedTools "Agent"
             --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh issue view:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git status:*),Bash(./mvnw --batch-mode --no-transfer-progress verify:*),Bash(./mvnw --batch-mode --no-transfer-progress package:*)"
-            --append-system-prompt "Read .claude/CLAUDE.md before changing anything. When you change code, run ./mvnw --batch-mode --no-transfer-progress verify -T 1C, and push only when it passes; say plainly when it does not."
+            --append-system-prompt "Read .claude/CLAUDE.md before changing anything. When you change code, run ./mvnw --batch-mode --no-transfer-progress -T 1C clean verify once the Maven wrapper exists, and push only when it passes; say plainly when it does not."
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           track_progress: true

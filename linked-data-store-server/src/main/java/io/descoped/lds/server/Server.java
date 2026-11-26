@@ -99,15 +99,23 @@ public class Server {
                 Thread.currentThread().join();
             }
         } catch (InterruptedException _) {
-            // asked to end
+            Thread.currentThread().interrupt(); // asked to end: kept for the caller, put aside for the stop below
         } catch (RuntimeException e) {
             if (!asked.get()) {
                 throw e;
             }
             LOG.info("LDS was asked to end while it started: {}", String.valueOf(e));
         } finally {
-            Thread.interrupted(); // the interrupt asked for the stop: the stop waits for what runs, as it is told
-            process.stop(UndertowApplication.STOP_TIMEOUT);
+            // the interrupt asked for the stop: the stop waits for what runs, as it is told, and the thread is
+            // interrupted again when it is done
+            boolean interrupted = Thread.interrupted();
+            try {
+                process.stop(UndertowApplication.STOP_TIMEOUT);
+            } finally {
+                if (interrupted) {
+                    Thread.currentThread().interrupt();
+                }
+            }
         }
     }
 }
